@@ -682,6 +682,25 @@ local function LierManette(actif)
 end
 courrier.LierManette = LierManette
 
+-- ConsolePort prend la touche A pour son curseur quand la banque s'ouvre, et
+-- peut passer apres nous : la liaison est reposee un peu plus tard, et le
+-- panneau est donne a son curseur, qui peut alors y aller.
+local function LierManetteBientot(actif)
+    LierManette(actif)
+    if not actif then return end
+    local CP = _G.ConsolePort
+    if panneau and type(CP) == "table" and type(CP.AddInterfaceCursorFrame) == "function" and not panneau.dansConsolePort then
+        panneau.dansConsolePort = pcall(CP.AddInterfaceCursorFrame, CP, panneau)
+    end
+    if _G.C_Timer and _G.C_Timer.After then
+        for _, delai in ipairs({ 0.3, 1 }) do
+            _G.C_Timer.After(delai, function()
+                if panneau and panneau:IsShown() then LierManette(true) end
+            end)
+        end
+    end
+end
+
 local function Remplir(plan)
     for _, t in ipairs(panneau.textes) do t:Hide() end
     for _, i in ipairs(panneau.icones) do i:Hide() end
@@ -925,7 +944,7 @@ local function Remplir(plan)
         y = y + (t:GetStringHeight() or 14) + 6
     end
     panneau.contenu:SetHeight(math.max(1, y))
-    LierManette(nb > 0)
+    LierManetteBientot(nb > 0)
     -- Hauteur exacte du contenu : ni vide, ni debordement.
     panneau:SetHeight(HAUT_DU_CONTENU + y + BAS_DU_CONTENU)
     return not vide
