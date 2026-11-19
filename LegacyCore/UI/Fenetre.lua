@@ -205,6 +205,7 @@ local TAILLE_MAX, ECART_ARBRES = 44, 24
 local ESPACE = 1.8           -- pas entre deux talents, en tailles de talent (comme le jeu)
 local COULEUR_FLECHE = { 0.30, 0.27, 0.23, 1 }
 local VERT_VALIDE = { 0.18, 0.62, 0.24 }
+local GRIS_CADRE = 0.62
 
 -- Les cadres de talents du jeu (carre a coins coupes, ou octogone d'un
 -- choix), s'ils existent dans ce client.
@@ -435,8 +436,9 @@ DessinerArbres = function(contenu, arbres, y, disponibles)
                 c.rang:SetTextColor(0.45, 0.9, 0.5)
                 if c.caseRang.SetBackdropBorderColor then c.caseRang:SetBackdropBorderColor(VERT_VALIDE[1], VERT_VALIDE[2], VERT_VALIDE[3], 1) end
             else
-                c.rang:SetTextColor(0.82, 0.82, 0.82)
-                if c.caseRang.SetBackdropBorderColor then c.caseRang:SetBackdropBorderColor(0.55, 0.55, 0.55, 1) end
+                -- Le gris du cadre du talent (relevé sur la capture : 159/255).
+                c.rang:SetTextColor(GRIS_CADRE, GRIS_CADRE, GRIS_CADRE)
+                if c.caseRang.SetBackdropBorderColor then c.caseRang:SetBackdropBorderColor(GRIS_CADRE, GRIS_CADRE, GRIS_CADRE, 1) end
             end
             local noeud = n
             c:SetScript("OnEnter", function(self)

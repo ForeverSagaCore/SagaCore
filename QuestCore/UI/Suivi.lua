@@ -293,20 +293,22 @@ local function Poser(index, y, texte, options)
     else
         l.pion:Hide()
     end
-    -- Bouton "Donner" au bout d'une ligne d'objectif d'un membre.
+    -- Don : une petite icone de cadeau au bout d'une ligne d'objectif d'un
+    -- membre ; la quantite est dans l'infobulle.
     if options.don then
         if not l.don then
-            l.don = CreateFrame("Button", nil, l, "UIPanelButtonTemplate")
-            l.don:SetHeight(16)
-            local fs = l.don:GetFontString()
-            if fs then fs:SetFontObject("GameFontHighlightSmall") end
+            l.don = CreateFrame("Button", nil, l)
+            l.don:SetSize(14, 14)
+            l.don.t = l.don:CreateTexture(nil, "ARTWORK")
+            l.don.t:SetAllPoints()
+            l.don.t:SetTexture("Interface\\Icons\\INV_Misc_Gift_02")
+            l.don.t:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            l.don:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
             l.don:SetScript("OnLeave", function() GameTooltip:Hide() end)
         end
         local d = options.don
-        l.don:SetText(d.texte)
-        l.don:SetWidth((l.don:GetTextWidth() or 50) + 16)
         l.don:ClearAllPoints()
-        l.don:SetPoint("TOPRIGHT", l, "TOPRIGHT", 0, 2)
+        l.don:SetPoint("TOPRIGHT", l, "TOPRIGHT", 0, 1)
         l.don:SetScript("OnClick", d.auClic)
         l.don:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
@@ -330,7 +332,7 @@ local function Poser(index, y, texte, options)
     elseif options.etoile then
         l.texte:SetPoint("TOPRIGHT", l.etoile, "TOPLEFT", -4, 0)
     elseif options.don then
-        l.texte:SetPoint("TOPRIGHT", l.don, "TOPLEFT", -6, -2)
+        l.texte:SetPoint("TOPRIGHT", l.don, "TOPLEFT", -4, -1)
     elseif options.pion or options.margeDroite then
         l.texte:SetPoint("TOPRIGHT", l, "TOPRIGHT", -(options.margeDroite or 22), 0)
     else
