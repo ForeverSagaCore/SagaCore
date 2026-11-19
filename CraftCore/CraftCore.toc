@@ -3,7 +3,7 @@
 ## Notes: Crafting manager for every profession: stocks across your characters, recipes, projects and what you are missing.
 ## Notes-frFR: Gestionnaire d'artisanat pour tous les métiers : stocks de tous vos personnages, recettes, projets et manques.
 ## Author: CraftCore
-## Version: 0.29.9
+## Version: 0.30.0
 ## IconTexture: Interface\Icons\INV_Misc_Gear_01
 ## SavedVariables: CraftCoreDB, CoreSuiteDB
 ## AddonCompartmentFunc: CraftCore_OnAddonCompartmentClick
@@ -11,6 +11,11 @@
 # Traductions avant le reste, enUS sert de repli pour toute clé manquante.
 Locale\enUS.lua
 Locale\frFR.lua
+Locale\deDE.lua
+Locale\esES.lua
+Locale\itIT.lua
+Locale\ruRU.lua
+Locale\zhCN.lua
 Core\Mouchard.lua
 
 Core\Bootstrap.lua

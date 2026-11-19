@@ -12,7 +12,7 @@ local _, NS = ...
 --   - dans chaque fenetre, les icones en haut a droite : on passe d'un
 --     add-on a l'autre, la nouvelle fenetre prend la place exacte de l'ancienne.
 
-local VERSION = 20
+local VERSION = 21
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -34,16 +34,262 @@ Suite.ORDRE = {
 }
 local N = #Suite.ORDRE
 
-local FR = GetLocale and GetLocale() == "frFR"
-local T = {
-    survol = FR and "Survolez pour choisir un add-on" or "Hover to pick an add-on",
-    deplacer = FR and "Glisser : déplacer" or "Drag: move",
-    barre = FR and "Clic droit : montrer ou cacher la barre de la suite" or "Right-click: show or hide the suite bar",
-    absent = FR and "Pas installé" or "Not installed",
-    ouvrir = FR and "Clic : ouvrir" or "Click: open",
-    manette = FR and "A : ouvrir" or "A: open",
-    ancree = FR and "(ancrée : se déplace seulement ici)" or "(locked: moves only here)",
+-- ---------------------------------------------------------------------------
+-- Langue de la suite : celle du jeu par defaut, ou celle choisie dans les
+-- reglages generaux (commune aux quatre add-ons). Les textes de ce fichier
+-- se traduisent ici ; ceux de chaque add-on dans son dossier Locale.
+-- ---------------------------------------------------------------------------
+
+Suite.LANGUES = {
+    { code = "enUS", nom = "English" }, { code = "frFR", nom = "Français" }, { code = "deDE", nom = "Deutsch" },
+    { code = "esES", nom = "Español" }, { code = "itIT", nom = "Italiano" }, { code = "ruRU", nom = "Русский" },
+    { code = "zhCN", nom = "简体中文" },
 }
+local CORRESPONDANCE = { esMX = "esES", zhTW = "zhCN", enGB = "enUS" }
+function Suite.CodeLangue(code)
+    code = code or (GetLocale and GetLocale()) or "enUS"
+    code = CORRESPONDANCE[code] or code
+    for _, l in ipairs(Suite.LANGUES) do if l.code == code then return code end end
+    return "enUS"
+end
+-- La langue en vigueur : le choix des reglages generaux, sinon celle du jeu.
+function Suite.Langue()
+    local choix = type(CoreSuiteDB) == "table" and CoreSuiteDB.langue or nil
+    return Suite.CodeLangue(choix)
+end
+
+local DICO = {
+    frFR = {
+        ["Hover to pick an add-on"] = "Survolez pour choisir un add-on",
+        ["Drag: move"] = "Glisser : déplacer",
+        ["Right-click: show or hide the suite bar"] = "Clic droit : montrer ou cacher la barre de la suite",
+        ["Not installed"] = "Pas installé",
+        ["Click: open"] = "Clic : ouvrir",
+        ["A: open"] = "A : ouvrir",
+        ["(locked: moves only here)"] = "(ancrée : se déplace seulement ici)",
+        ["Quests: pick up and turn in"] = "Quêtes : à prendre et à rendre",
+        ["Creatures to kill"] = "Créatures à tuer",
+        ["Loot to collect"] = "Butin à ramasser",
+        ["Objects to use and places to visit"] = "Objets à utiliser et lieux à visiter",
+        ["Herbalism: gathering spots"] = "Herboristerie : lieux de récolte",
+        ["Mining: veins"] = "Minage : filons",
+        ["Fishing: fishing spots"] = "Pêche : lieux de pêche",
+        ["My markers"] = "Mes repères",
+        ["Click: show or hide"] = "Clic : afficher ou masquer",
+        ["Right-click: show only this"] = "Clic droit : n'afficher que ça",
+        ["Right-click: show everything"] = "Clic droit : tout réafficher",
+        ["Hidden"] = "Masqué",
+        ["Click: pick the herbs or ores to show"] = "Clic : choisir les herbes ou minerais à montrer",
+        ["From the GatherMate2 database"] = "D'après la base GatherMate2",
+        ["Spotted here, not gathered yet"] = "Repéré ici, pas encore récolté",
+        ["Gathered %d times here"] = "Récolté %d fois ici",
+        ["Path guidance"] = "Guidage du trajet",
+        ["Drag: move up or down. Right-click: stop guiding."] = "Glisser : monter ou descendre. Clic droit : arrêter le guidage.",
+        ["Out of range"] = "Hors de portée",
+        ["General settings"] = "Réglages généraux",
+        ["Common to the whole suite."] = "Communs à toute la suite.",
+        ["Language"] = "Langue",
+        ["Game language"] = "Langue du jeu",
+        ["Apply (reloads the interface)"] = "Appliquer (recharge l'interface)",
+        ["Close"] = "Fermer",
+    },
+    deDE = {
+        ["Hover to pick an add-on"] = "Darüberfahren, um ein Add-on zu wählen",
+        ["Drag: move"] = "Ziehen: verschieben",
+        ["Right-click: show or hide the suite bar"] = "Rechtsklick: Leiste der Suite ein- oder ausblenden",
+        ["Not installed"] = "Nicht installiert",
+        ["Click: open"] = "Klick: öffnen",
+        ["A: open"] = "A: öffnen",
+        ["(locked: moves only here)"] = "(fixiert: nur hier verschiebbar)",
+        ["Quests: pick up and turn in"] = "Quests: annehmen und abgeben",
+        ["Creatures to kill"] = "Zu tötende Kreaturen",
+        ["Loot to collect"] = "Zu sammelnde Beute",
+        ["Objects to use and places to visit"] = "Zu benutzende Objekte und zu besuchende Orte",
+        ["Herbalism: gathering spots"] = "Kräuterkunde: Fundorte",
+        ["Mining: veins"] = "Bergbau: Vorkommen",
+        ["Fishing: fishing spots"] = "Angeln: Angelplätze",
+        ["My markers"] = "Meine Markierungen",
+        ["Click: show or hide"] = "Klick: ein- oder ausblenden",
+        ["Right-click: show only this"] = "Rechtsklick: nur dies anzeigen",
+        ["Right-click: show everything"] = "Rechtsklick: alles wieder anzeigen",
+        ["Hidden"] = "Ausgeblendet",
+        ["Click: pick the herbs or ores to show"] = "Klick: anzuzeigende Kräuter oder Erze wählen",
+        ["From the GatherMate2 database"] = "Aus der GatherMate2-Datenbank",
+        ["Spotted here, not gathered yet"] = "Hier gesichtet, noch nicht gesammelt",
+        ["Gathered %d times here"] = "Hier %d-mal gesammelt",
+        ["Path guidance"] = "Wegführung",
+        ["Drag: move up or down. Right-click: stop guiding."] = "Ziehen: nach oben oder unten. Rechtsklick: Führung beenden.",
+        ["Out of range"] = "Außer Reichweite",
+        ["General settings"] = "Allgemeine Einstellungen",
+        ["Common to the whole suite."] = "Gelten für die ganze Suite.",
+        ["Language"] = "Sprache",
+        ["Game language"] = "Spielsprache",
+        ["Apply (reloads the interface)"] = "Übernehmen (lädt die Oberfläche neu)",
+        ["Close"] = "Schließen",
+    },
+    esES = {
+        ["Hover to pick an add-on"] = "Pasa el ratón para elegir un accesorio",
+        ["Drag: move"] = "Arrastrar: mover",
+        ["Right-click: show or hide the suite bar"] = "Clic derecho: mostrar u ocultar la barra de la suite",
+        ["Not installed"] = "No instalado",
+        ["Click: open"] = "Clic: abrir",
+        ["A: open"] = "A: abrir",
+        ["(locked: moves only here)"] = "(anclado: solo se mueve aquí)",
+        ["Quests: pick up and turn in"] = "Misiones: aceptar y entregar",
+        ["Creatures to kill"] = "Criaturas que matar",
+        ["Loot to collect"] = "Botín que recoger",
+        ["Objects to use and places to visit"] = "Objetos que usar y lugares que visitar",
+        ["Herbalism: gathering spots"] = "Herboristería: puntos de recolección",
+        ["Mining: veins"] = "Minería: filones",
+        ["Fishing: fishing spots"] = "Pesca: zonas de pesca",
+        ["My markers"] = "Mis marcas",
+        ["Click: show or hide"] = "Clic: mostrar u ocultar",
+        ["Right-click: show only this"] = "Clic derecho: mostrar solo esto",
+        ["Right-click: show everything"] = "Clic derecho: mostrarlo todo",
+        ["Hidden"] = "Oculto",
+        ["Click: pick the herbs or ores to show"] = "Clic: elegir las hierbas o minerales que mostrar",
+        ["From the GatherMate2 database"] = "Según la base de datos de GatherMate2",
+        ["Spotted here, not gathered yet"] = "Visto aquí, aún no recolectado",
+        ["Gathered %d times here"] = "Recolectado %d veces aquí",
+        ["Path guidance"] = "Guía de ruta",
+        ["Drag: move up or down. Right-click: stop guiding."] = "Arrastrar: subir o bajar. Clic derecho: detener la guía.",
+        ["Out of range"] = "Fuera de alcance",
+        ["General settings"] = "Ajustes generales",
+        ["Common to the whole suite."] = "Comunes a toda la suite.",
+        ["Language"] = "Idioma",
+        ["Game language"] = "Idioma del juego",
+        ["Apply (reloads the interface)"] = "Aplicar (recarga la interfaz)",
+        ["Close"] = "Cerrar",
+    },
+    itIT = {
+        ["Hover to pick an add-on"] = "Passa sopra per scegliere un add-on",
+        ["Drag: move"] = "Trascina: sposta",
+        ["Right-click: show or hide the suite bar"] = "Clic destro: mostra o nascondi la barra della suite",
+        ["Not installed"] = "Non installato",
+        ["Click: open"] = "Clic: apri",
+        ["A: open"] = "A: apri",
+        ["(locked: moves only here)"] = "(bloccato: si sposta solo qui)",
+        ["Quests: pick up and turn in"] = "Missioni: da prendere e da consegnare",
+        ["Creatures to kill"] = "Creature da uccidere",
+        ["Loot to collect"] = "Bottino da raccogliere",
+        ["Objects to use and places to visit"] = "Oggetti da usare e luoghi da visitare",
+        ["Herbalism: gathering spots"] = "Erbalismo: punti di raccolta",
+        ["Mining: veins"] = "Estrazione: filoni",
+        ["Fishing: fishing spots"] = "Pesca: zone di pesca",
+        ["My markers"] = "I miei segnaposto",
+        ["Click: show or hide"] = "Clic: mostra o nascondi",
+        ["Right-click: show only this"] = "Clic destro: mostra solo questo",
+        ["Right-click: show everything"] = "Clic destro: mostra tutto",
+        ["Hidden"] = "Nascosto",
+        ["Click: pick the herbs or ores to show"] = "Clic: scegli le erbe o i minerali da mostrare",
+        ["From the GatherMate2 database"] = "Dal database di GatherMate2",
+        ["Spotted here, not gathered yet"] = "Avvistato qui, non ancora raccolto",
+        ["Gathered %d times here"] = "Raccolto %d volte qui",
+        ["Path guidance"] = "Guida del percorso",
+        ["Drag: move up or down. Right-click: stop guiding."] = "Trascina: sposta su o giù. Clic destro: ferma la guida.",
+        ["Out of range"] = "Fuori portata",
+        ["General settings"] = "Impostazioni generali",
+        ["Common to the whole suite."] = "Comuni a tutta la suite.",
+        ["Language"] = "Lingua",
+        ["Game language"] = "Lingua del gioco",
+        ["Apply (reloads the interface)"] = "Applica (ricarica l'interfaccia)",
+        ["Close"] = "Chiudi",
+    },
+    ruRU = {
+        ["Hover to pick an add-on"] = "Наведите, чтобы выбрать модификацию",
+        ["Drag: move"] = "Перетащить: переместить",
+        ["Right-click: show or hide the suite bar"] = "ПКМ: показать или скрыть панель набора",
+        ["Not installed"] = "Не установлено",
+        ["Click: open"] = "Щелчок: открыть",
+        ["A: open"] = "A: открыть",
+        ["(locked: moves only here)"] = "(закреплено: перемещается только здесь)",
+        ["Quests: pick up and turn in"] = "Задания: взять и сдать",
+        ["Creatures to kill"] = "Существа, которых нужно убить",
+        ["Loot to collect"] = "Добыча, которую нужно собрать",
+        ["Objects to use and places to visit"] = "Предметы для использования и места для посещения",
+        ["Herbalism: gathering spots"] = "Травничество: места сбора",
+        ["Mining: veins"] = "Горное дело: залежи",
+        ["Fishing: fishing spots"] = "Рыбная ловля: места ловли",
+        ["My markers"] = "Мои метки",
+        ["Click: show or hide"] = "Щелчок: показать или скрыть",
+        ["Right-click: show only this"] = "ПКМ: показать только это",
+        ["Right-click: show everything"] = "ПКМ: показать всё",
+        ["Hidden"] = "Скрыто",
+        ["Click: pick the herbs or ores to show"] = "Щелчок: выбрать травы или руды",
+        ["From the GatherMate2 database"] = "По базе данных GatherMate2",
+        ["Spotted here, not gathered yet"] = "Замечено здесь, ещё не собрано",
+        ["Gathered %d times here"] = "Собрано здесь %d раз",
+        ["Path guidance"] = "Навигация по маршруту",
+        ["Drag: move up or down. Right-click: stop guiding."] = "Перетащить: вверх или вниз. ПКМ: остановить навигацию.",
+        ["Out of range"] = "Вне досягаемости",
+        ["General settings"] = "Общие настройки",
+        ["Common to the whole suite."] = "Общие для всего набора.",
+        ["Language"] = "Язык",
+        ["Game language"] = "Язык игры",
+        ["Apply (reloads the interface)"] = "Применить (перезагрузка интерфейса)",
+        ["Close"] = "Закрыть",
+    },
+    zhCN = {
+        ["Hover to pick an add-on"] = "悬停以选择插件",
+        ["Drag: move"] = "拖动：移动",
+        ["Right-click: show or hide the suite bar"] = "右键：显示或隐藏套件栏",
+        ["Not installed"] = "未安装",
+        ["Click: open"] = "点击：打开",
+        ["A: open"] = "A：打开",
+        ["(locked: moves only here)"] = "（已锁定：只能在此移动）",
+        ["Quests: pick up and turn in"] = "任务：接取与交付",
+        ["Creatures to kill"] = "需要击杀的生物",
+        ["Loot to collect"] = "需要拾取的物品",
+        ["Objects to use and places to visit"] = "需要使用的物体和需要前往的地点",
+        ["Herbalism: gathering spots"] = "草药学：采集点",
+        ["Mining: veins"] = "采矿：矿脉",
+        ["Fishing: fishing spots"] = "钓鱼：钓鱼点",
+        ["My markers"] = "我的标记",
+        ["Click: show or hide"] = "点击：显示或隐藏",
+        ["Right-click: show only this"] = "右键：只显示这一项",
+        ["Right-click: show everything"] = "右键：全部显示",
+        ["Hidden"] = "已隐藏",
+        ["Click: pick the herbs or ores to show"] = "点击：选择要显示的草药或矿石",
+        ["From the GatherMate2 database"] = "来自 GatherMate2 数据库",
+        ["Spotted here, not gathered yet"] = "在此发现，尚未采集",
+        ["Gathered %d times here"] = "在此采集了 %d 次",
+        ["Path guidance"] = "路线指引",
+        ["Drag: move up or down. Right-click: stop guiding."] = "拖动：上下移动。右键：停止指引。",
+        ["Out of range"] = "超出范围",
+        ["General settings"] = "通用设置",
+        ["Common to the whole suite."] = "适用于整个套件。",
+        ["Language"] = "语言",
+        ["Game language"] = "游戏语言",
+        ["Apply (reloads the interface)"] = "应用（重新载入界面）",
+        ["Close"] = "关闭",
+    },
+}
+
+-- Un texte de la suite, dans la langue en vigueur (anglais a defaut).
+local function TX(texte)
+    local d = DICO[Suite.Langue()]
+    return (d and d[texte]) or texte
+end
+Suite.TX = TX
+
+-- Table de textes traduits au moment ou on les lit (la langue choisie n'est
+-- connue qu'une fois les reglages charges).
+local function Paresseux(source)
+    return setmetatable({}, { __index = function(_, cle)
+        local texte = source[cle]
+        return texte and TX(texte) or nil
+    end })
+end
+
+local T = Paresseux({
+    survol = "Hover to pick an add-on",
+    deplacer = "Drag: move",
+    barre = "Right-click: show or hide the suite bar",
+    absent = "Not installed",
+    ouvrir = "Click: open",
+    manette = "A: open",
+    ancree = "(locked: moves only here)",
+})
 
 local function Reglages()
     CoreSuiteDB = type(CoreSuiteDB) == "table" and CoreSuiteDB or {}
@@ -360,6 +606,126 @@ local function ManetteActive()
     return ok and actif == true
 end
 
+-- ---------------------------------------------------------------------------
+-- Reglages generaux : communs a toute la suite (pour l'instant la langue).
+-- Une petite roue dans le pied de chaque fenetre, a gauche de Fermer.
+-- ---------------------------------------------------------------------------
+
+function Suite.OuvrirReglagesGeneraux()
+    local c = Suite.reglagesGeneraux
+    if not c then
+        local charte = NS.charte
+        if charte and charte.Fenetre then
+            c = charte.Fenetre("CoreSuiteReglages", 360, 360, { portrait = false })
+        else
+            c = CreateFrame("Frame", "CoreSuiteReglages", UIParent, "BasicFrameTemplateWithInset")
+            c:SetSize(360, 360)
+            c:SetFrameStrata("FULLSCREEN_DIALOG")
+        end
+        c:SetPoint("CENTER")
+        c:SetToplevel(true)
+        table.insert(UISpecialFrames, "CoreSuiteReglages")
+        local zone = c.zone or c
+        c.description = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        c.description:SetPoint("TOPLEFT", zone, "TOPLEFT", 4, -4)
+        c.titreLangue = c:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        c.titreLangue:SetPoint("TOPLEFT", c.description, "BOTTOMLEFT", 0, -16)
+        c.choix = {}
+        local options = { { code = nil } }
+        for _, l in ipairs(Suite.LANGUES) do table.insert(options, { code = l.code, nom = l.nom }) end
+        local precedent = c.titreLangue
+        for rang, o in ipairs(options) do
+            local okR, b = pcall(CreateFrame, "CheckButton", nil, c, "UIRadioButtonTemplate")
+            if not okR or not b then
+                -- Sans le modele : le bouton rond du jeu, pose a la main.
+                b = CreateFrame("CheckButton", nil, c)
+                b:SetSize(16, 16)
+                b:SetNormalTexture("Interface\\Buttons\\UI-RadioButton")
+                b:GetNormalTexture():SetTexCoord(0, 0.25, 0, 1)
+                b:SetCheckedTexture("Interface\\Buttons\\UI-RadioButton")
+                b:GetCheckedTexture():SetTexCoord(0.25, 0.5, 0, 1)
+                b:SetHighlightTexture("Interface\\Buttons\\UI-RadioButton", "ADD")
+                b:GetHighlightTexture():SetTexCoord(0.5, 0.75, 0, 1)
+            end
+            b:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", rang == 1 and 4 or 0, rang == 1 and -10 or -6)
+            b.code = o.code
+            b.nom = o.nom
+            b.texte = b.text or b.Text or b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            b.texte:ClearAllPoints()
+            b.texte:SetPoint("LEFT", b, "RIGHT", 6, 0)
+            b:SetScript("OnClick", function(self)
+                c.enAttente = self.code or false
+                Suite.RendreReglagesGeneraux()
+            end)
+            table.insert(c.choix, b)
+            precedent = b
+        end
+        local function Bouton(libelle, largeur, voisin)
+            if charte and charte.BoutonDePied and c.pied then return charte.BoutonDePied(c, libelle, largeur, voisin) end
+            local b = CreateFrame("Button", nil, c, "UIPanelButtonTemplate")
+            b:SetSize(largeur, 22)
+            if voisin then b:SetPoint("RIGHT", voisin, "LEFT", -6, 0) else b:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", -12, 10) end
+            b:SetText(libelle)
+            return b
+        end
+        c.fermerBas = Bouton(TX("Close"), 110)
+        c.fermerBas:SetScript("OnClick", function() c:Hide() end)
+        c.appliquer = Bouton(TX("Apply (reloads the interface)"), 220, c.fermerBas)
+        c.appliquer:SetScript("OnClick", function()
+            CoreSuiteDB = type(CoreSuiteDB) == "table" and CoreSuiteDB or {}
+            CoreSuiteDB.langue = c.enAttente or nil
+            if ReloadUI then ReloadUI() end
+        end)
+        Suite.reglagesGeneraux = c
+    end
+    c.enAttente = nil
+    Suite.RendreReglagesGeneraux()
+    c:Show()
+    if c.Raise then c:Raise() end
+end
+
+function Suite.RendreReglagesGeneraux()
+    local c = Suite.reglagesGeneraux
+    if not c then return end
+    if c.titre then c.titre:SetText(TX("General settings")) end
+    if c.TitleText then c.TitleText:SetText(TX("General settings")) end
+    c.description:SetText(TX("Common to the whole suite."))
+    c.titreLangue:SetText(TX("Language"))
+    local enregistre = type(CoreSuiteDB) == "table" and CoreSuiteDB.langue or nil
+    local choisi = enregistre
+    if c.enAttente ~= nil then choisi = c.enAttente or nil end
+    for _, b in ipairs(c.choix) do
+        if b.code then
+            b.texte:SetText(b.nom)
+        else
+            local jeu = Suite.CodeLangue(nil)
+            local nomJeu = jeu
+            for _, l in ipairs(Suite.LANGUES) do if l.code == jeu then nomJeu = l.nom end end
+            b.texte:SetText(TX("Game language") .. " (" .. nomJeu .. ")")
+        end
+        b:SetChecked(b.code == choisi)
+    end
+    c.appliquer:SetEnabled(c.enAttente ~= nil and (c.enAttente or nil) ~= enregistre)
+end
+
+local function RoueDeReglages(cadre)
+    if not cadre.pied or cadre.suiteRoue then return end
+    local b = CreateFrame("Button", nil, cadre.pied)
+    b:SetSize(20, 20)
+    b:SetPoint("RIGHT", cadre.pied, "RIGHT", -(110 + 10), 0)
+    b:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
+    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(TX("General settings"), 1, 0.82, 0)
+        GameTooltip:AddLine(TX("Common to the whole suite."), 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:SetScript("OnClick", function() Suite.OuvrirReglagesGeneraux() end)
+    cadre.suiteRoue = b
+end
+
 -- Les add-ons de la suite en onglets lateraux, sur le bord GAUCHE de la
 -- fenetre : le bord droit reste aux onglets propres a chaque add-on
 -- (metiers, equipement, carte...). LT / RT passent d'un add-on a l'autre au
@@ -388,6 +754,7 @@ function Suite.Entete(cadre, cleCourante)
     rangee.l3:SetPoint("BOTTOM", rangee.boutons[1], "TOP", 0, 12)
     rangee.r3 = cadre:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     rangee.r3:SetPoint("TOP", rangee.boutons[#rangee.boutons], "BOTTOM", 0, -10)
+    pcall(RoueDeReglages, cadre)
     cadre.suiteEntete = rangee
     cadre:HookScript("OnShow", function(self)
         Suite.PrendrePlace(cleCourante, self)
@@ -707,30 +1074,30 @@ local function AvecReperes() return _G.MapCoreAPI ~= nil end
 
 Suite.FILTRES = {
     { cle = "quetes", atlas = "QuestNormal", fichier = "Interface\\GossipFrame\\AvailableQuestIcon",
-      nom = FR and "Quêtes : à prendre et à rendre" or "Quests: pick up and turn in", dispo = AvecQuestCore },
+      nom = "Quests: pick up and turn in", dispo = AvecQuestCore },
     { cle = "tuer", fichier = QC .. "slay_mono", teinte = { 1, 0.38, 0.32 },
-      nom = FR and "Créatures à tuer" or "Creatures to kill", dispo = AvecQuestCore },
+      nom = "Creatures to kill", dispo = AvecQuestCore },
     { cle = "butin", fichier = QC .. "loot_mono", teinte = { 1, 0.82, 0 },
-      nom = FR and "Butin à ramasser" or "Loot to collect", dispo = AvecQuestCore },
+      nom = "Loot to collect", dispo = AvecQuestCore },
     { cle = "objet", fichier = QC .. "object_mono", teinte = { 0.45, 0.8, 1 },
-      nom = FR and "Objets à utiliser et lieux à visiter" or "Objects to use and places to visit", dispo = AvecQuestCore },
+      nom = "Objects to use and places to visit", dispo = AvecQuestCore },
     { cle = "herbes", droite = true, fichier = "Interface\\Icons\\Trade_Herbalism", rond = true,
-      nom = FR and "Herboristerie : lieux de récolte" or "Herbalism: gathering spots", dispo = AvecRecolte("herbes") },
+      nom = "Herbalism: gathering spots", dispo = AvecRecolte("herbes") },
     { cle = "minerais", droite = true, fichier = "Interface\\Icons\\Trade_Mining", rond = true,
-      nom = FR and "Minage : filons" or "Mining: veins", dispo = AvecRecolte("minerais") },
+      nom = "Mining: veins", dispo = AvecRecolte("minerais") },
     { cle = "peche", droite = true, fichier = "Interface\\Icons\\Trade_Fishing", rond = true,
-      nom = FR and "Pêche : lieux de pêche" or "Fishing: fishing spots", dispo = AvecRecolte("peche") },
+      nom = "Fishing: fishing spots", dispo = AvecRecolte("peche") },
     { cle = "reperes", fichier = "Interface\\TargetingFrame\\UI-RaidTargetingIcons", coords = { 0, 0.25, 0, 0.25 },
-      nom = FR and "Mes repères" or "My markers", dispo = AvecReperes },
+      nom = "My markers", dispo = AvecReperes },
 }
 
-local T_FILTRE = {
-    clic = FR and "Clic : afficher ou masquer" or "Click: show or hide",
-    seul = FR and "Clic droit : n'afficher que ça" or "Right-click: show only this",
-    tout = FR and "Clic droit : tout réafficher" or "Right-click: show everything",
-    masque = FR and "Masqué" or "Hidden",
-    liste = FR and "Clic : choisir les herbes ou minerais à montrer" or "Click: pick the herbs or ores to show",
-}
+local T_FILTRE = Paresseux({
+    clic = "Click: show or hide",
+    seul = "Right-click: show only this",
+    tout = "Right-click: show everything",
+    masque = "Hidden",
+    liste = "Click: pick the herbs or ores to show",
+})
 
 local function Filtres()
     local d = Reglages()
@@ -817,7 +1184,7 @@ local function BoutonFiltre(barre, info)
     b.anneau:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
     b.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
     b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
-    b.cle, b.nom = info.cle, info.nom
+    b.cle, b.nom = info.cle, TX(info.nom)
     b:SetScript("OnClick", function(self, bouton)
         if bouton == "RightButton" then
             local tout = Seul(self.cle)
@@ -864,12 +1231,12 @@ function Suite.PionRecolte(parent, taille)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(nom or ("#" .. tostring(l.objet)), 1, 1, 1)
         if l.base then
-            GameTooltip:AddLine(FR and "D'après la base GatherMate2" or "From the GatherMate2 database", 0.8, 0.8, 0.8)
+            GameTooltip:AddLine(TX("From the GatherMate2 database"), 0.8, 0.8, 0.8)
         elseif l.repere then
             -- Noeud vu par un personnage sans le metier : a venir recolter.
-            GameTooltip:AddLine(FR and "Repéré ici, pas encore récolté" or "Spotted here, not gathered yet", 1, 0.82, 0)
+            GameTooltip:AddLine(TX("Spotted here, not gathered yet"), 1, 0.82, 0)
         else
-            GameTooltip:AddLine(string.format(FR and "Récolté %d fois ici" or "Gathered %d times here",
+            GameTooltip:AddLine(string.format(TX("Gathered %d times here"),
                 tonumber(l.n) or 1), 0.8, 0.8, 0.8)
         end
         GameTooltip:Show()
@@ -1083,11 +1450,11 @@ end
 --   Fin = function() (le guidage s'arrete, quelle qu'en soit la raison) }
 -- ---------------------------------------------------------------------------
 
-local TG = {
-    titre = FR and "Guidage du trajet" or "Path guidance",
-    aide = FR and "Glisser : monter ou descendre. Clic droit : arrêter le guidage." or "Drag: move up or down. Right-click: stop guiding.",
-    loin = FR and "Hors de portée" or "Out of range",
-}
+local TG = Paresseux({
+    titre = "Path guidance",
+    aide = "Drag: move up or down. Right-click: stop guiding.",
+    loin = "Out of range",
+})
 
 Suite.guide = Suite.guide or {}
 

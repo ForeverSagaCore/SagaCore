@@ -227,6 +227,12 @@ end
 
 suivi.Icone = IconeDeQuete
 
+-- Couleurs du cadeau (icone grisee puis teintee). "violet" : l'icone du jeu
+-- telle quelle. Le vert est reserve au don qui complete l'objectif.
+local COULEURS_DON = { vert = { 0.35, 0.95, 0.4 }, bleu = { 0.45, 0.7, 1 }, orange = { 1, 0.62, 0.25 },
+    rouge = { 1, 0.35, 0.35 }, jaune = { 1, 0.88, 0.3 } }
+suivi.COULEURS_DON = COULEURS_DON
+
 -- Nom d'un membre du groupe, a la couleur de sa classe.
 local function NomDeMembre(nom)
     local classe = NS.groupe and NS.groupe.Classe and NS.groupe.Classe(nom)
@@ -298,7 +304,7 @@ local function Poser(index, y, texte, options)
     if options.don then
         if not l.don then
             l.don = CreateFrame("Button", nil, l)
-            l.don:SetSize(14, 14)
+            l.don:SetSize(11, 11)
             l.don.t = l.don:CreateTexture(nil, "ARTWORK")
             l.don.t:SetAllPoints()
             l.don.t:SetTexture("Interface\\Icons\\INV_Misc_Gift_02")
@@ -307,13 +313,21 @@ local function Poser(index, y, texte, options)
             l.don:SetScript("OnLeave", function() GameTooltip:Hide() end)
         end
         local d = options.don
+        -- Vert : le don complète son objectif. Sinon, la couleur choisie
+        -- dans les réglages pour les dons partiels (violet du jeu par défaut).
+        local teinte = d.complet and COULEURS_DON.vert or COULEURS_DON[Reglages().couleurDon or "violet"]
+        l.don.t:SetDesaturated(teinte ~= nil)
+        if teinte then l.don.t:SetVertexColor(teinte[1], teinte[2], teinte[3])
+        else l.don.t:SetVertexColor(1, 1, 1) end
         l.don:ClearAllPoints()
-        l.don:SetPoint("TOPRIGHT", l, "TOPRIGHT", 0, 1)
+        l.don:SetPoint("TOPRIGHT", l, "TOPRIGHT", 0, 0)
         l.don:SetScript("OnClick", d.auClic)
         l.don:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             GameTooltip:SetText(d.texte, 1, 0.82, 0)
             if d.aide then GameTooltip:AddLine(d.aide, 1, 1, 1, true) end
+            if d.complet then GameTooltip:AddLine(L.GIVE_FULL, 0.31, 0.82, 0.41, true)
+            else GameTooltip:AddLine(L.GIVE_PARTIAL, 0.8, 0.8, 0.8, true) end
             GameTooltip:Show()
         end)
         l.don:Show()
@@ -793,8 +807,11 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
                             -- sur chaque objectif qui lui manque.
                             local simule = NS.groupe.Simule and NS.groupe.Simule(m.nom)
                             if not fini and simule and NS.don then
+                                -- Apercu : un objectif sur deux en don complet, l'autre partiel.
                                 local nom, n = m.nom, ob.r - ob.n
-                                don = { texte = string.format(L.GIVE, n), aide = L.GIVE_SIMULATED,
+                                local complet = rang % 2 == 1
+                                if not complet and n > 1 then n = math.ceil(n / 2) end
+                                don = { texte = string.format(L.GIVE, n), aide = L.GIVE_SIMULATED, complet = complet,
                                     auClic = function() NS.don.Donner(nom, objet or 0, n) end }
                             elseif not fini and objet and NS.don and moi.cle == NS.ClePersonnage() then
                                 local manque = ob.r - ob.n
@@ -802,7 +819,7 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
                                 if n > 0 then
                                     local nom, quantite = m.nom, n
                                     local nomObjet = (NS.Appeler(_G.GetItemInfo, objet)) or ""
-                                    don = { texte = string.format(L.GIVE, n),
+                                    don = { texte = string.format(L.GIVE, n), complet = n >= manque,
                                         aide = string.format(L.GIVE_TIP, nom, n, nomObjet),
                                         auClic = function() NS.don.Donner(nom, objet, quantite) end }
                                 end

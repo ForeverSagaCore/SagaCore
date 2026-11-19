@@ -1608,6 +1608,11 @@ local function ConstruireReglages(parent)
         function(v) NS.base.ReglagesGeneraux().ajustementAuto = v end)
     Choix(L.SET_PARTY, "groupe", { { true, L.YES }, { false, L.NO } },
         function() return { groupe = NS.groupe.Actif() } end, function(v) NS.groupe.PoserActif(v) end)
+    -- Couleur du cadeau des dons partiels (le vert reste celui du don complet).
+    Choix(L.SET_GIFT, "couleurDon", { { "violet", L.SET_GIFT_PURPLE }, { "bleu", L.SET_GIFT_BLUE },
+        { "orange", L.SET_GIFT_ORANGE }, { "rouge", L.SET_GIFT_RED }, { "jaune", L.SET_GIFT_YELLOW } },
+        function() return { couleurDon = NS.suivi.Reglages().couleurDon or "violet" } end,
+        function(v) NS.suivi.Reglages().couleurDon = v pcall(NS.suivi.Rendre) end)
     Choix(L.SET_DONE_PLACE, "termineesDansQuetes", { { false, L.SET_DONE_TURNIN_ONLY }, { true, L.SET_DONE_BOTH } })
     Choix(L.SET_GROUP, "regroupement", { { "zone", L.SET_GROUP_ZONE }, { "etat", L.SET_GROUP_STATE } })
     Choix(L.SET_COMBAT, "modeCombat", { { "normal", L.SET_COMBAT_NORMAL }, { "estompe", L.SET_COMBAT_FADE },
@@ -1646,7 +1651,7 @@ local function ConstruireReglages(parent)
     local function B() return NS.bandeau.Reglages() end
     local function Secondes(v)
         local t = string.format("%.2f", v):gsub("0+$", ""):gsub("%.$", "")
-        if GetLocale and GetLocale() == "frFR" then t = t:gsub("%.", ",") end
+        if NS.langue and NS.langue ~= "enUS" and NS.langue ~= "zhCN" then t = t:gsub("%.", ",") end
         return string.format(L.SET_BANNER_SECONDS, t)
     end
     Reglage(L.SET_BANNER_DURATION, function() return B().duree end, function(v) B().duree = v end,

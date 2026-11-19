@@ -1,6 +1,7 @@
 local _, NS = ...
-if GetLocale and GetLocale() ~= "frFR" then return end
-local L = NS.L
+NS.LANGUES = NS.LANGUES or {}
+local L = {}
+NS.LANGUES.frFR = L
 L.TITLE = "MapCore"
 L.LOADED = "MapCore %s chargé. /mc ouvre la carte."
 L.CLOSE = "Fermer"

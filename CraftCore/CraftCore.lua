@@ -1,9 +1,35 @@
 local _, NS = ...
 
--- Langue du client, enUS pour toute cle non traduite. Patron repris de Panorama.
-local L = NS.locales[GetLocale()] or NS.locales.enUS
-if L ~= NS.locales.enUS then setmetatable(L, { __index = NS.locales.enUS }) end
+-- Langue : l'anglais pour toute cle non traduite, celle du jeu au
+-- chargement, puis celle choisie dans les reglages generaux de la suite des
+-- que les reglages sont charges. NS.L reste la meme table : les textes
+-- changent en place.
+local L = {}
 NS.L = L
+local CORRESPONDANCE = { esMX = "esES", zhTW = "zhCN", enGB = "enUS" }
+local function CodeLangue(code)
+    code = code or (GetLocale and GetLocale()) or "enUS"
+    return CORRESPONDANCE[code] or code
+end
+function NS.AppliquerLangue(code)
+    code = CodeLangue(code)
+    local base, choisie = NS.locales.enUS, NS.locales[code]
+    for cle in pairs(L) do if base[cle] == nil then L[cle] = nil end end
+    for cle, texte in pairs(base) do L[cle] = texte end
+    if choisie and choisie ~= base then for cle, texte in pairs(choisie) do L[cle] = texte end end
+    NS.langue = choisie and code or "enUS"
+end
+NS.AppliquerLangue()
+do
+    local veille = CreateFrame("Frame")
+    veille:RegisterEvent("ADDON_LOADED")
+    veille:SetScript("OnEvent", function(self, _, qui)
+        if qui ~= "CraftCore" then return end
+        self:UnregisterEvent("ADDON_LOADED")
+        local choix = type(CoreSuiteDB) == "table" and CoreSuiteDB.langue or nil
+        if choix and CodeLangue(choix) ~= NS.langue then NS.AppliquerLangue(choix) end
+    end)
+end
 
 local base = NS.base
 local inventaire = NS.inventaire

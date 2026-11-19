@@ -1,6 +1,7 @@
 local _, NS = ...
-if GetLocale and GetLocale() ~= "frFR" then return end
-local L = NS.L
+NS.LANGUES = NS.LANGUES or {}
+local L = {}
+NS.LANGUES.frFR = L
 
 L.TITLE = "QuestCore"
 L.LOADED = "QuestCore %s chargé. /qc ouvre la fenêtre."
@@ -430,3 +431,11 @@ L.GIVE_READY = "%d objet(s) posés dans l'échange avec %s : validez l'échange 
 L.GIVE_SIMULATED = "Membre simulé : pas d'échange possible."
 L.GIVE_NOT_FOUND = "%s n'est pas dans le groupe."
 L.GIVE_TOO_FAR = "%s est trop loin pour un échange : rapprochez-vous."
+L.SET_GIFT = "Couleur des dons partiels"
+L.SET_GIFT_PURPLE = "Violet"
+L.SET_GIFT_BLUE = "Bleu"
+L.SET_GIFT_ORANGE = "Orange"
+L.SET_GIFT_RED = "Rouge"
+L.SET_GIFT_YELLOW = "Jaune"
+L.GIVE_FULL = "Complète son objectif"
+L.GIVE_PARTIAL = "Don partiel : couvre une partie de ce qu'il lui manque"
