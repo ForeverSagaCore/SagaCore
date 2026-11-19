@@ -568,7 +568,10 @@ end)
 
 local SIMULES = { { "Aelis", "PRIEST" }, { "Borgrim", "WARRIOR" }, { "Cylia", "MAGE" }, { "Darok", "HUNTER" } }
 
-function groupe.Simulation() return tonumber(NS.base.ReglagesGeneraux().simuGroupe) or 0 end
+function groupe.Simulation()
+    if not (NS.suite and NS.suite.Prive and NS.suite.Prive()) then return 0 end
+    return tonumber(NS.base.ReglagesGeneraux().simuGroupe) or 0
+end
 
 -- Classe d'un membre simule, nil pour un vrai.
 function groupe.Simule(nom)

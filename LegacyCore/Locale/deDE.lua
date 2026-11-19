@@ -68,6 +68,7 @@ L.CHAR_LEVEL_OF = "%s Stufe %s"
 L.CHAR_SKILL_OF = "%s %s"
 L.OPEN_LEGACY = "Vermächtnis öffnen, um Punkte zu vergeben"
 L.OPEN_LEGACY_FAIL = "Das Vermächtnis-Fenster ließ sich nicht öffnen: nutze seine Taste (standardmäßig Y)."
+L.OPEN_LEGACY_KEY = "Das Spiel lässt nur seine eigene Oberfläche das Vermächtnis öffnen: drücken Sie %s."
 L.UNLOCKED_LEVEL = "Vermächtnis freigeschaltet (Stufe %d)"
 L.OPEN_LEGACY_OTHER = "Melde dich mit %s an, um seine Punkte zu vergeben."
 L.ADVICE = {

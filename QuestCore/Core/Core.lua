@@ -2,7 +2,7 @@ local _, NS = ...
 
 -- Socle : lectures sous filet, base de sauvegarde, cle du personnage.
 
-NS.VERSION = "0.30.0"
+NS.VERSION = "0.30.2"
 NS.base = {}
 local base = NS.base
 
@@ -150,3 +150,5 @@ function base.PersoParCle(cle)
     if not base.cacheParCle then base.Persos() end
     return base.cacheParCle and base.cacheParCle[cle]
 end
+
+

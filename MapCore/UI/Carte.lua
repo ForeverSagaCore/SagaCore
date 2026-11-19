@@ -13,7 +13,7 @@ local L = NS.L
 local TUILE = 256
 local ZOOM_MAX = 6
 local HAUT_TITRE = 30
--- Sous la carte : la rangee de filtres, puis l'aide.
+-- Sous la carte : la rangee de filtres (et des services), puis l'aide.
 local BAS_CARTE = 50
 local ALPHA_COURSE = 0.05
 local COULEURS_TRAJET = { { 1, 0.82, 0 }, { 0.45, 0.8, 1 }, { 0.5, 0.95, 0.4 }, { 0.82, 0.55, 1 } }
@@ -273,6 +273,7 @@ function page.Guider(oui)
     if oui then
         Tournee().faits = {}
         Ordonner()
+        fournisseur.carte = false
         S.Guider("MapCore", fournisseur)
     else
         S.ArreterGuidage("MapCore")
@@ -303,6 +304,366 @@ end
 
 -- Cadre a la proportion exacte de la carte, centre dans la place ; puis la
 -- toile : echelle d'ajustement x zoom, decalage borne.
+-- ---------------------------------------------------------------------------
+-- Services : maitres de classe et de metier, reparation, boites aux lettres...
+-- Leur place vient de QuestieDB (Data/Services.lua). Seuls ceux de sa faction
+-- (ou neutres) ; pour les maitres de classe, ceux de sa classe.
+-- ---------------------------------------------------------------------------
+
+local SERVICES = {
+    { cle = "classe", libelle = "SVC_CLASS", fichiers = { "Interface\\Minimap\\Tracking\\Class" }, defaut = true },
+    { cle = "metier", libelle = "SVC_PROF", fichiers = { "Interface\\Minimap\\Tracking\\Profession" }, defaut = true },
+    { cle = "maitre", libelle = "SVC_OTHER", fichiers = { "Interface\\Minimap\\Tracking\\StableMaster" } },
+    { cle = "reparation", libelle = "SVC_REPAIR", fichiers = { "Interface\\Minimap\\Tracking\\Repair" }, defaut = true },
+    { cle = "courrier", libelle = "SVC_MAIL", fichiers = { "Interface\\Minimap\\Tracking\\Mailbox" }, defaut = true },
+    { cle = "auberge", libelle = "SVC_INN", fichiers = { "Interface\\Minimap\\Tracking\\Innkeeper" } },
+    { cle = "banque", libelle = "SVC_BANK", fichiers = { "Interface\\Minimap\\Tracking\\Banker" } },
+    { cle = "vol", libelle = "SVC_FLIGHT", fichiers = { "Interface\\Minimap\\Tracking\\FlightMaster" } },
+}
+page.SERVICES = SERVICES
+
+-- Les services se filtrent comme le reste, dans la barre de la suite sous
+-- la carte (cle "svc:..."). Les anciens reglages de MapCore sont repris une
+-- fois.
+local function ServicesReglages()
+    local r = Reglages()
+    r.services = type(r.services) == "table" and r.services or {}
+    return r.services
+end
+
+function page.ServiceActif(cle)
+    local S = NS.suite or _G.CoreSuite
+    local service
+    for _, sv in ipairs(SERVICES) do if sv.cle == cle then service = sv end end
+    if not service then return false end
+    if S and S.Filtre then
+        S.defautsFiltres = S.defautsFiltres or {}
+        if service.defaut ~= true then S.defautsFiltres["svc:" .. cle] = false end
+        local ancien = ServicesReglages()[cle]
+        if ancien ~= nil and S.PoserFiltre then
+            ServicesReglages()[cle] = nil
+            local d = S.Filtre("svc:" .. cle)
+            if d ~= ancien then S.PoserFiltre("svc:" .. cle, ancien, true) end
+        end
+        return S.Filtre("svc:" .. cle)
+    end
+    local v = ServicesReglages()[cle]
+    if v == nil then return service.defaut == true end
+    return v == true
+end
+
+-- Les filtres de services, pour la barre de la suite.
+local function FiltresDeServices()
+    local liste = {}
+    for _, sv in ipairs(SERVICES) do
+        table.insert(liste, { cle = "svc:" .. sv.cle, fichier = sv.fichiers[1], nomTraduit = NS.L[sv.libelle],
+            defaut = sv.defaut == true })
+    end
+    return liste
+end
+
+-- La premiere icone que ce client sait afficher.
+-- Icone ronde : le masque rond du jeu (pas de coins noirs). Un masque
+-- interdit ensuite SetTexCoord : on n'en pose jamais sur ces textures.
+local function Arrondir(tex)
+    if tex.arrondie then return end
+    tex.arrondie = true
+    if tex.SetMask then pcall(tex.SetMask, tex, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+end
+
+local function PoserIcone(tex, service)
+    service.fichierBon = service.fichierBon or service.fichiers[1]
+    tex:SetTexture(service.fichierBon)
+end
+
+local ICONES_METIER = {
+    ALCHEMY = "Interface\\Icons\\Trade_Alchemy", BLACKSMITHING = "Interface\\Icons\\Trade_BlackSmithing",
+    ENCHANTING = "Interface\\Icons\\Trade_Engraving", ENGINEERING = "Interface\\Icons\\Trade_Engineering",
+    HERBALISM = "Interface\\Icons\\Trade_Herbalism", LEATHERWORKING = "Interface\\Icons\\INV_Misc_ArmorKit_17",
+    MINING = "Interface\\Icons\\Trade_Mining", SKINNING = "Interface\\Icons\\INV_Misc_Pelt_Wolf_01",
+    TAILORING = "Interface\\Icons\\Trade_Tailoring", COOKING = "Interface\\Icons\\INV_Misc_Food_15",
+    FIRSTAID = "Interface\\Icons\\Spell_Holy_SealOfSacrifice", FISHING = "Interface\\Icons\\Trade_Fishing",
+}
+
+local function InfoService(cle)
+    for _, s in ipairs(SERVICES) do if s.cle == cle then return s end end
+end
+
+-- L'icone d'une entree : celle de son metier pour un maitre de metier.
+-- Deuxieme valeur : vrai pour une icone d'objet (carree), a arrondir.
+local function IconeDe(e)
+    if e[1] == "metier" and ICONES_METIER[e[7]] then return ICONES_METIER[e[7]], true end
+    local service = InfoService(e[1])
+    return service and service.fichiers[1], false
+end
+
+-- Pose une icone sur une paire de textures : la normale (icones de suivi du
+-- jeu, deja detourees) ou la ronde (icones d'objets).
+local function PoserSur(porteur, icone, rond)
+    porteur.icone:SetShown(not rond)
+    porteur.iconeRonde:SetShown(rond == true)
+    if rond then porteur.iconeRonde:SetTexture(icone) else porteur.icone:SetTexture(icone) end
+end
+page.IconeDe = IconeDe
+
+-- Contour sombre et rond sous une icone ronde, plus net qu'un anneau.
+local function Contour(parent, taille)
+    local c = parent:CreateTexture(nil, "BACKGROUND")
+    c:SetSize(taille + 3, taille + 3)
+    c:SetPoint("CENTER")
+    c:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
+    c:SetVertexColor(0.08, 0.06, 0.03, 0.9)
+    return c
+end
+
+local function PinService(rang)
+    vue.services = vue.services or {}
+    local b = vue.services[rang]
+    if b then return b end
+    b = CreateFrame("Button", nil, vue.toile)
+    b:SetSize(16, 16)
+    b.icone = b:CreateTexture(nil, "ARTWORK")
+    b.icone:SetAllPoints()
+    b.iconeRonde = b:CreateTexture(nil, "ARTWORK")
+    b.iconeRonde:SetPoint("CENTER")
+    b.iconeRonde:SetSize(14, 14)
+    Arrondir(b.iconeRonde)
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        local e = self.entree
+        if e[1] == "courrier" then
+            GameTooltip:SetText(NS.L.SVC_MAILBOX, 1, 0.82, 0)
+        else
+            GameTooltip:SetText(e[4], 1, 0.82, 0)
+            if e[5] and e[5] ~= "" then GameTooltip:AddLine(e[5], 1, 1, 1) end
+            for _, a in ipairs(self.autres or {}) do
+                GameTooltip:AddLine(a[4] .. ((a[5] and a[5] ~= "") and ("  |cffbbbbbb" .. a[5] .. "|r") or ""), 1, 0.82, 0)
+            end
+        end
+        GameTooltip:AddLine(NS.L.GO_CLICK, 0.6, 0.6, 0.6)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- Clic : la fleche de guidage jusqu'a lui (et il clignote).
+    b:SetScript("OnMouseUp", function(self, bouton)
+        if bouton ~= "LeftButton" then return end
+        local e = self.entree
+        local service = InfoService(e[1])
+        page.GuiderVers({ carte = vue.idCarte, x = e[2] / 100, y = e[3] / 100,
+            nom = e[1] == "courrier" and NS.L.SVC_MAILBOX or e[4], detail = e[5] ~= "" and e[5] or nil,
+            icone = (IconeDe(e)), rond = select(2, IconeDe(e)), petit = true })
+    end)
+    vue.services[rang] = b
+    return b
+end
+
+-- Nouveau choix : un halo dore qui s'elargit et s'efface deux fois pour
+-- dire "c'est ici", puis l'icone clignote (cible.debutClignote).
+local function Halo(b, cible)
+    if not b.ping then
+        local f = CreateFrame("Frame", nil, b)
+        f:SetPoint("CENTER")
+        f:SetSize(44, 44)
+        local t = f:CreateTexture(nil, "BACKGROUND")
+        t:SetAllPoints()
+        t:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
+        t:SetVertexColor(1, 0.82, 0)
+        t:SetBlendMode("ADD")
+        local ag = f:CreateAnimationGroup()
+        ag:SetLooping("REPEAT")
+        local taille = ag:CreateAnimation("Scale")
+        if taille.SetScaleFrom then taille:SetScaleFrom(0.3, 0.3) taille:SetScaleTo(1.4, 1.4)
+        else taille:SetFromScale(0.3, 0.3) taille:SetToScale(1.4, 1.4) end
+        taille:SetDuration(0.8)
+        local fondu = ag:CreateAnimation("Alpha")
+        fondu:SetFromAlpha(0.9)
+        fondu:SetToAlpha(0)
+        fondu:SetDuration(0.8)
+        f.anim = ag
+        b.ping = f
+    end
+    b.ping:Show()
+    b.ping.anim:Play()
+    cible.debutClignote = (GetTime and GetTime() or 0) + 1.6
+    local ping = b.ping
+    local plusTard = NS.Lecture("C_Timer.After")
+    if plusTard then
+        plusTard(1.6, function()
+            ping.anim:Stop()
+            ping:Hide()
+            if page.cibleGuidee == cible and b:IsShown() and b.anim then b.anim:Play() end
+        end)
+    end
+end
+
+local function PoserServices(idCarte)
+    for _, b in ipairs(vue.services or {}) do
+        if b.anim then b.anim:Stop() end
+        b:SetAlpha(1)
+        b:Hide()
+    end
+    vue.nServices = 0
+    vue.cibleSurCarte = false
+    local liste = NS.SERVICES and NS.SERVICES[idCarte]
+    if not liste then return end
+    local faction = (UnitFactionGroup and UnitFactionGroup("player") == "Horde") and "H" or "A"
+    local _, classe = NS.Appeler(UnitClass, "player")
+    local c = page.cibleGuidee
+    local poses = {}
+    for _, e in ipairs(liste) do
+        local ok = page.ServiceActif(e[1])
+        if ok and e[6] ~= "" and e[6] ~= "AH" and e[6] ~= faction then ok = false end
+        if ok and e[1] == "classe" and classe and e[7] ~= "" and e[7] ~= classe then ok = false end
+        -- Deux icones identiques presque au meme endroit (deux maitres
+        -- d'alchimie cote a cote) n'en font qu'une ; l'infobulle les nomme.
+        if ok then
+            for _, autre in ipairs(poses) do
+                local ae = autre.entree
+                if ae[1] == e[1] and ae[7] == e[7] and math.abs(ae[2] - e[2]) < 1.2 and math.abs(ae[3] - e[3]) < 1.2 then
+                    if e[4] ~= "" and e[4] ~= ae[4] then
+                        autre.autres = autre.autres or {}
+                        table.insert(autre.autres, e)
+                    end
+                    -- Celui qu'on rejoint garde sa place exacte.
+                    if c and math.abs(c.x - e[2] / 100) < 0.0005 and math.abs(c.y - e[3] / 100) < 0.0005 then
+                        autre.ax, autre.ay = e[2] / 100, e[3] / 100
+                    end
+                    ok = false
+                    break
+                end
+            end
+        end
+        if ok then
+            vue.nServices = vue.nServices + 1
+            local b = PinService(vue.nServices)
+            b.autres = nil
+            table.insert(poses, b)
+            b.entree = e
+            PoserSur(b, IconeDe(e))
+            b.ax, b.ay = e[2] / 100, e[3] / 100
+            b:Show()
+        end
+    end
+    -- Chaque icone a son propre etage, toujours le meme : leur ordre ne
+    -- change jamais d'un dessin a l'autre. Celle qu'on rejoint passe au-dessus
+    -- et clignote, a sa place ; les autres ne bougent pas.
+    local base = vue.toile:GetFrameLevel() + 3
+    for rang, b in ipairs(poses) do
+        local vise = c and c.carte == idCarte and math.abs(c.x - b.ax) < 0.0005 and math.abs(c.y - b.ay) < 0.0005
+        b:SetFrameLevel(vise and (base + #poses + 1) or (base + rang))
+        if vise then
+                -- Nouveau choix : un halo dore qui s'elargit et s'efface deux
+                -- fois pour dire "c'est ici", puis l'icone clignote.
+                if c.halo ~= false then
+                    c.halo = false
+                    Halo(b, c)
+                end
+                if not b.anim then
+                    b.anim = b:CreateAnimationGroup()
+                    b.anim:SetLooping("BOUNCE")
+                    local fondu = b.anim:CreateAnimation("Alpha")
+                    fondu:SetFromAlpha(1)
+                    fondu:SetToAlpha(0)
+                    fondu:SetDuration(0.6)
+                end
+                local maintenant = GetTime and GetTime() or 0
+                if not b.anim:IsPlaying() and maintenant >= (c.debutClignote or 0) then b.anim:Play() end
+                vue.cibleSurCarte = true
+            elseif b.anim and b.anim:IsPlaying() then
+                b.anim:Stop()
+            end
+    end
+end
+
+-- Les services visibles de cette carte, pour la liste des plus proches.
+function page.ServicesVisibles(idCarte)
+    local liste = {}
+    local faction = (UnitFactionGroup and UnitFactionGroup("player") == "Horde") and "H" or "A"
+    local _, classe = NS.Appeler(UnitClass, "player")
+    for _, e in ipairs(NS.SERVICES and NS.SERVICES[idCarte] or {}) do
+        local ok = page.ServiceActif(e[1])
+        if ok and e[6] ~= "" and e[6] ~= "AH" and e[6] ~= faction then ok = false end
+        if ok and e[1] == "classe" and classe and e[7] ~= "" and e[7] ~= classe then ok = false end
+        if ok then
+            local icone, rond = IconeDe(e)
+            table.insert(liste, { carte = idCarte, x = e[2] / 100, y = e[3] / 100,
+                nom = e[1] == "courrier" and NS.L.SVC_MAILBOX or e[4],
+                detail = e[5] ~= "" and e[5] or nil, icone = icone, rond = rond, petit = true })
+        end
+    end
+    return liste
+end
+
+-- La destination guidee clignote sur la carte : son icone, a sa taille,
+-- qui apparait et disparait.
+function page.PoserClignote(idCarte)
+    if not vue then return end
+    if not vue.clignote then
+        local b = CreateFrame("Frame", nil, vue.toile)
+        b.icone = b:CreateTexture(nil, "OVERLAY")
+        b.icone:SetAllPoints()
+        b.iconeRonde = b:CreateTexture(nil, "OVERLAY")
+        b.iconeRonde:SetPoint("CENTER")
+        b.iconeRonde:SetSize(14, 14)
+        Arrondir(b.iconeRonde)
+        local ag = b:CreateAnimationGroup()
+        ag:SetLooping("BOUNCE")
+        local fondu = ag:CreateAnimation("Alpha")
+        fondu:SetFromAlpha(1)
+        fondu:SetToAlpha(0)
+        fondu:SetDuration(0.6)
+        b.anim = ag
+        vue.clignote = b
+    end
+    local b, c = vue.clignote, page.cibleGuidee
+    -- Deja pose sur la carte (un service) : il clignote lui-meme.
+    if c and c.carte == idCarte and not vue.cibleSurCarte then
+        local taille = c.petit and 16 or 20
+        b:SetSize(taille, taille)
+        PoserSur(b, c.icone, c.rond)
+        b.ax, b.ay = c.x, c.y
+        b:SetFrameLevel(vue.toile:GetFrameLevel() + 40)
+        b:Show()
+        if c.halo ~= false then
+            c.halo = false
+            Halo(b, c)
+        end
+        local maintenant = GetTime and GetTime() or 0
+        if not b.anim:IsPlaying() and maintenant >= (c.debutClignote or 0) then b.anim:Play() end
+    else
+        b.anim:Stop()
+        b:Hide()
+    end
+end
+
+-- Localiser depuis un autre add-on (marchand, recolte, quete...) : la carte
+-- s'ouvre sur la destination, qui clignote apres un halo. La fleche, elle,
+-- est celle du guidage lance par cet add-on.
+function page.Localiser(dst)
+    if type(dst) ~= "table" or not dst.carte then return end
+    carteChoisie, continentChoisi = dst.carte, nil
+    page.cibleGuidee = { carte = dst.carte, x = dst.x, y = dst.y, nom = dst.nom,
+        icone = dst.icone or "Interface\\Minimap\\Tracking\\Target", petit = true }
+    local S = NS.suite or _G.CoreSuite
+    local f = NS.fenetre and NS.fenetre.Cadre and NS.fenetre.Cadre()
+    if f and f:IsShown() then
+        page.Rendre()
+    elseif S and S.Ouvrir and S.membres and S.membres.MapCore then
+        S.Ouvrir("MapCore")
+    elseif NS.fenetre and NS.fenetre.Ouvrir then
+        NS.fenetre.Ouvrir()
+    end
+    -- La fenetre vient de s'ouvrir : sa vue a pu effacer la cible en se
+    -- cachant auparavant ; on la repose.
+    if not page.cibleGuidee then
+        page.cibleGuidee = { carte = dst.carte, x = dst.x, y = dst.y, nom = dst.nom,
+            icone = dst.icone or "Interface\\Minimap\\Tracking\\Target", petit = true }
+        page.Rendre()
+    end
+end
+
+function page.CompteServices() return vue and vue.nServices or 0 end
+
 local function Disposer()
     if not vue or not vue.largeur then return end
     local placeL = (vue:GetWidth() or 0)
@@ -319,6 +680,7 @@ local function Disposer()
     decX = math.min(0, math.max(l0 - l, decX))
     decY = math.min(0, math.max(h0 - h, decY))
     vue.toile:SetScale(echelle)
+    if page.Retenir then pcall(page.Retenir) end
     vue.toile:ClearAllPoints()
     vue.toile:SetPoint("TOPLEFT", vue.clip, "TOPLEFT", decX / echelle, -decY / echelle)
     vue.echelle = echelle
@@ -340,6 +702,18 @@ local function Disposer()
         b:ClearAllPoints()
         b:SetPoint("CENTER", vue.toile, "TOPLEFT", b.ax * vue.largeur * echelle, -b.ay * vue.hauteur * echelle)
     end
+    if vue.clignote and vue.clignote:IsShown() then
+        local b = vue.clignote
+        b:SetScale(1 / echelle)
+        b:ClearAllPoints()
+        b:SetPoint("CENTER", vue.toile, "TOPLEFT", b.ax * vue.largeur * echelle, -b.ay * vue.hauteur * echelle)
+    end
+    for i = 1, (vue.nServices or 0) do
+        local b = vue.services[i]
+        b:SetScale(1 / echelle)
+        b:ClearAllPoints()
+        b:SetPoint("CENTER", vue.toile, "TOPLEFT", b.ax * vue.largeur * echelle, -b.ay * vue.hauteur * echelle)
+    end
     for i = 1, (vue.nMiens or 0) do
         local b = vue.miens[i]
         b:SetScale(1 / echelle)
@@ -353,6 +727,16 @@ local function CurseurDansClip()
     local x, y = GetCursorPosition()
     local s = vue.clip:GetEffectiveScale()
     return x / s - (vue.clip:GetLeft() or 0), (vue.clip:GetTop() or 0) - y / s
+end
+
+-- Carte parente (ville -> zone -> continent -> monde), ou nil.
+local function CarteParente(id)
+    local info = id and NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), id)
+    local parent = type(info) == "table" and info.parentMapID
+    if not parent or parent == 0 then return nil end
+    local infoP = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), parent)
+    if type(infoP) ~= "table" or (infoP.mapType or 9) < 1 then return nil end
+    return parent
 end
 
 local function Zoomer(facteur, autourX, autourY)
@@ -442,7 +826,7 @@ local function Construire(parent, basDroite)
     clip:EnableMouseWheel(true)
     clip:SetScript("OnMouseWheel", function(_, sens)
         local x, y = CurseurDansClip()
-        Zoomer(sens > 0 and 1.25 or 0.8, x, y)
+        Zoomer(sens > 0 and 1.12 or 1 / 1.12, x, y)
     end)
     clip:SetScript("OnMouseDown", function(_, bouton)
         if bouton ~= "LeftButton" then return end
@@ -450,16 +834,34 @@ local function Construire(parent, basDroite)
         vue.saisie = { x = x, y = y, dx = decX, dy = decY }
     end)
     clip:SetScript("OnMouseUp", function(_, bouton)
+        local saisie = vue.saisie
         vue.saisie = nil
+        -- Simple clic gauche (sans glisser) sur un continent ou le monde : on
+        -- descend dans la zone cliquee.
+        if bouton == "LeftButton" and saisie and vue.largeur and vue.echelle then
+            local x, y = CurseurDansClip()
+            if math.abs(x - saisie.x) < 4 and math.abs(y - saisie.y) < 4 then
+                local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), vue.idCarte)
+                if type(info) == "table" and (info.mapType or 9) <= 2 then
+                    local u = (x - decX) / (vue.largeur * vue.echelle)
+                    local v = (y - decY) / (vue.hauteur * vue.echelle)
+                    local sous = NS.Appeler(NS.Lecture("C_Map.GetMapInfoAtPosition"), vue.idCarte, u, v)
+                    if type(sous) == "table" and sous.mapID and sous.mapID ~= vue.idCarte then
+                        carteChoisie = sous.mapID
+                        page.Rendre()
+                        return
+                    end
+                end
+            end
+        end
         -- Clic droit : un repere, la ou l'on clique.
         if bouton == "RightButton" and vue.largeur and vue.echelle then
             local x, y = CurseurDansClip()
             local u = (x - decX) / (vue.largeur * vue.echelle)
             local v = (y - decY) / (vue.hauteur * vue.echelle)
             if u >= 0 and u <= 1 and v >= 0 and v <= 1 then
-                local r = NS.base.NouveauRepere(vue.idCarte, u, v)
-                page.Rendre()
-                page.Editer(r)
+                -- Un brouillon : rien n'est garde avant Enregistrer.
+                page.Editer({ carte = vue.idCarte, x = u, y = v, icone = 1, rayon = 0, note = "", nouveau = true })
             end
         end
     end)
@@ -490,23 +892,30 @@ local function Construire(parent, basDroite)
     -- recolte, reperes.
     local Suite = NS.suite or _G.CoreSuite
     if Suite and Suite.BarreFiltres then
-        vue.filtres = Suite.BarreFiltres(vue, function() page.Rendre() end, function() return vue.idCarte end)
+        vue.filtres = Suite.BarreFiltres(vue, function() page.Rendre() end, function() return vue.idCarte end,
+            FiltresDeServices())
         vue.filtres:Etendre(bord, 8)
     end
 
     local plus = Bouton(bord, "+", 24)
     plus:SetPoint("TOPRIGHT", bord, "TOPRIGHT", -8, -8)
     plus:SetFrameLevel(toile:GetFrameLevel() + 30)
-    plus:SetScript("OnClick", function() Zoomer(1.5) end)
+    plus:SetScript("OnClick", function() Zoomer(1.25) end)
     local moins = Bouton(bord, "-", 24)
     moins:SetPoint("TOP", plus, "BOTTOM", 0, -2)
     moins:SetFrameLevel(toile:GetFrameLevel() + 30)
-    moins:SetScript("OnClick", function() Zoomer(1 / 1.5) end)
+    moins:SetScript("OnClick", function() Zoomer(1 / 1.25) end)
+    -- Remonter d'un echelon, explicitement : ville -> zone -> continent.
+    vue.remonter = Bouton(bord, "", 60)
+    vue.remonter:SetPoint("TOPRIGHT", plus, "TOPLEFT", -6, 0)
+    vue.remonter:SetFrameLevel(toile:GetFrameLevel() + 30)
+    vue.remonter:SetScript("OnClick", function() page.Remonter() end)
 
     vue:SetScript("OnSizeChanged", function() if vue:IsVisible() then Disposer() end end)
     Calque()
     vue:SetScript("OnShow", function() calque:Show() end)
     vue:SetScript("OnHide", function()
+        page.cibleGuidee = nil
         calque:Hide()
         local fenetre = _G.MapCoreFenetre
         if fenetre then fenetre:SetAlpha(1) end
@@ -676,10 +1085,30 @@ local function Repere(rang)
         GameTooltip:SetText(NS.L.MARKER, 1, 0.82, 0)
         if self.repere.note and self.repere.note ~= "" then GameTooltip:AddLine(self.repere.note, 1, 1, 1, true) end
         GameTooltip:AddLine(NS.L.CLICK_EDIT, 0.6, 0.6, 0.6)
+        GameTooltip:AddLine(NS.L.DRAG_MOVE, 0.6, 0.6, 0.6)
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     b:SetScript("OnClick", function(self) page.Editer(self.repere) end)
+    -- Glisser : deplacer le repere.
+    b:RegisterForDrag("LeftButton")
+    b:SetScript("OnDragStart", function(self) self.glisse = true GameTooltip:Hide() end)
+    b:SetScript("OnDragStop", function(self)
+        self.glisse = nil
+        local r = self.repere
+        if not (r and vue.largeur and vue.echelle) then return end
+        local x, y = CurseurDansClip()
+        local u = (x - decX) / (vue.largeur * vue.echelle)
+        local v = (y - decY) / (vue.hauteur * vue.echelle)
+        if u >= 0 and u <= 1 and v >= 0 and v <= 1 then r.x, r.y = u, v end
+        page.Rendre()
+    end)
+    b:SetScript("OnUpdate", function(self)
+        if not self.glisse or not vue.echelle then return end
+        local x, y = CurseurDansClip()
+        self:ClearAllPoints()
+        self:SetPoint("CENTER", vue.clip, "TOPLEFT", x, -y)
+    end)
     vue.miens[rang] = b
     return b
 end
@@ -696,7 +1125,7 @@ local function PoserReperes(idCarte)
         local ok, points = pcall(api.Points)
         for _, pt in ipairs(ok and points or {}) do
             local x, y
-            local garder = not (Suite and Suite.PointVisible) or Suite.PointVisible(pt) or pt.numero ~= nil
+            local garder = not (Suite and Suite.PointVisible) or Suite.PointVisible(pt)
             if Suite and Suite.GuidageActif and Suite.GuidageActif("QuestCore") then garder = pt.numero ~= nil end
             if garder then x, y = api.Reporter(pt, idCarte) end
             if x then
@@ -789,7 +1218,6 @@ local function PoserReperes(idCarte)
                 b:SetSize(22, 22)
                 b.icone = b:CreateTexture(nil, "ARTWORK")
                 b.icone:SetAllPoints()
-                if b.icone.SetMask then pcall(b.icone.SetMask, b.icone, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
                 b.anneau = b:CreateTexture(nil, "OVERLAY")
                 b.anneau:SetPoint("TOPLEFT", -4, 4)
                 b.anneau:SetPoint("BOTTOMRIGHT", 4, -4)
@@ -844,6 +1272,13 @@ local continentChoisi
 
 -- Pour la manette : zoom au centre, et les lignes du menu.
 function page.Zoomer(facteur) if vue then Zoomer(facteur) end end
+
+function page.Remonter()
+    local parent = vue and CarteParente(vue.idCarte)
+    if not parent then return end
+    carteChoisie = parent
+    page.Rendre()
+end
 function page.Menu() return menu end
 
 local function LigneMenu(rang)
@@ -1046,14 +1481,18 @@ function page.GuiderVers(dst)
     local S = NS.suite or _G.CoreSuite
     if not (S and S.Guider and dst) then return end
     local point = { carte = dst.carte, x = dst.x, y = dst.y, titre = NS.L.GO_TITLE, qui = dst.nom }
+    page.cibleGuidee = dst
     S.Guider("MapCore", {
+        carte = false,
         Cible = function() return point end,
         Arrivee = function()
             local plusTard = NS.Lecture("C_Timer.After")
             if plusTard then plusTard(0, function() S.ArreterGuidage("MapCore") end) end
         end,
         Clic = function() if NS.fenetre and NS.fenetre.Basculer then NS.fenetre.Basculer() end end,
-        Fin = function() pcall(page.Rendre) end,
+        -- Arrive ou arrete : la fleche s'en va, l'icone continue de clignoter
+        -- jusqu'au prochain choix ou a la fermeture de la fenetre.
+        Fin = function() end,
     })
     pcall(page.Rendre)
 end
@@ -1107,11 +1546,30 @@ local function RendreMenu(idCarte)
     local r = Reglages()
     Titre(NS.L.OPTIONS)
     Ligne(NS.L.OPT_REVEAL, r.reveler == true, false, function() r.reveler = not r.reveler page.Rendre() end)
+    -- Effacer d'un coup les reperes de cette carte : un clic pour demander,
+    -- un second pour confirmer (rien ne se recupere).
+    local mesReperes = {}
+    for _, rp in ipairs(NS.base.Reperes()) do if rp.carte == idCarte then table.insert(mesReperes, rp) end end
+    if #mesReperes > 0 then
+        local confirmer = page.effacerDemande == idCarte
+        Ligne(confirmer and string.format(NS.L.MARKERS_CLEAR_CONFIRM, #mesReperes)
+            or string.format(NS.L.MARKERS_CLEAR, #mesReperes), nil, false, function()
+            if confirmer then
+                for _, rp in ipairs(mesReperes) do NS.base.SupprimerRepere(rp.id) end
+                page.effacerDemande = nil
+            else
+                page.effacerDemande = idCarte
+            end
+            page.Rendre()
+        end, confirmer and { 1, 0.35, 0.3 } or { 0.9, 0.9, 0.9 })
+    end
     y = y + 8
     -- Ou aller : une seule couche. On choisit ce qu'on montre (tout, les
     -- quetes, la recolte, ses reperes), puis les destinations les plus
     -- proches ; un clic lance la fleche.
     local L0 = NS.L
+    -- (Ou aller : retire du menu, jugé confus. Gardé ici, désactivé.)
+    if false then
     Titre(L0.GO_TITLE)
     local actuel = page.ModeAffiche()
     for _, m in ipairs(page.MODES) do
@@ -1139,40 +1597,50 @@ local function RendreMenu(idCarte)
             GameTooltip:Show()
         end)
     end
-    y = y + 8
-    -- Mes personnages : ou chacun a ete laisse, et son foyer.
-    local positions = NS.base.Positions and NS.base.Positions() or {}
-    if #positions > 0 then
-        Titre(L0.CHARS_TITLE)
-        for _, p in ipairs(positions) do
-            local perso = p
-            local couleur = _G.RAID_CLASS_COLORS and p.classe and _G.RAID_CLASS_COLORS[p.classe]
-            couleur = couleur and { couleur.r, couleur.g, couleur.b } or { 0.9, 0.9, 0.9 }
-            Ligne(NS.NomCourt(p.cle) .. "  |cffb3b3b3" .. tostring(p.zone or "?") .. "|r", nil, false, function()
-                if perso.carte then
-                    carteChoisie, continentChoisi = perso.carte, nil
-                    page.Rendre()
-                end
-            end, couleur, function(self)
+    end
+    -- Les services affiches sur la carte, les plus proches d'abord.
+    local proches = page.ServicesVisibles(idCarte or 0)
+    if #proches > 0 then
+        local carteJ = CarteDuPerso()
+        local jx, jy = carteJ and PositionJoueur(carteJ)
+        local wx, wy, wc
+        if jx then wx, wy, wc = Yards(carteJ, jx, jy) end
+        for _, dst in ipairs(proches) do
+            if wx then
+                local x, yy, c = Yards(dst.carte, dst.x, dst.y)
+                if x and c == wc then dst.distance = math.floor(math.sqrt((x - wx) ^ 2 + (yy - wy) ^ 2) + 0.5) end
+            end
+        end
+        table.sort(proches, function(a, b)
+            if (a.distance ~= nil) ~= (b.distance ~= nil) then return a.distance ~= nil end
+            if a.distance and b.distance and a.distance ~= b.distance then return a.distance < b.distance end
+            return tostring(a.nom) < tostring(b.nom)
+        end)
+        y = y + 8
+        Titre(L0.SVC_NEAREST)
+        for k, dst in ipairs(proches) do
+            if k > 5 then break end
+            local cible = dst
+            local texte = "|T" .. tostring(dst.icone) .. ":14|t " .. tostring(dst.nom)
+            if dst.distance then texte = texte .. "  |cff8c8c8c" .. string.format(L0.GO_YARDS, dst.distance) .. "|r" end
+            Ligne(texte, nil, false, function() page.GuiderVers(cible) end, { 0.9, 0.9, 0.9 }, function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(NS.NomCourt(perso.cle) .. (perso.niveau and ("  " .. string.format(L0.CHAR_LEVEL, perso.niveau)) or ""), 1, 0.82, 0)
-                GameTooltip:AddLine(string.format(L0.CHAR_WHERE, tostring(perso.zone or "?")), 1, 1, 1)
-                if perso.foyer then GameTooltip:AddLine(string.format(L0.CHAR_HEARTH, perso.foyer), 1, 1, 1) end
-                if perso.quand and not perso.moi then
-                    GameTooltip:AddLine(string.format(L0.CHAR_SEEN, tostring(NS.Appeler(date, "%d/%m %H:%M", perso.quand) or "?")), 0.6, 0.6, 0.6)
-                end
-                if perso.carte then GameTooltip:AddLine(L0.CHAR_CLICK, 0.6, 0.6, 0.6) end
+                GameTooltip:SetText(tostring(cible.nom), 1, 0.82, 0)
+                if cible.detail then GameTooltip:AddLine(cible.detail, 1, 1, 1, true) end
+                GameTooltip:AddLine(L0.GO_CLICK, 0.6, 0.6, 0.6)
                 GameTooltip:Show()
             end)
         end
-        y = y + 8
     end
+    y = y + 8
     -- Itineraires de toute la suite, en un coup d'oeil : le trajet de quetes
     -- (QuestCore), le circuit de recolte de ce qui manque (CraftCore) et la
     -- tournee de recolte (MapCore). Chacun garde son add-on ; ici on les voit,
     -- on lance ou arrete leur guidage, on ouvre l'add-on concerne.
     local Suite = NS.suite or _G.CoreSuite
     local L = NS.L
+    -- (Itineraires : retire du menu, juge hors de propos ici. Garde, desactive.)
+    if false then
     Titre(L.ROUTES_TITLE)
     local GRIS, BLANC = { 0.6, 0.6, 0.6 }, { 0.9, 0.9, 0.9 }
     local function Guidage(actif, basculer)
@@ -1219,6 +1687,7 @@ local function RendreMenu(idCarte)
     if aucun then Ligne(L.ROUTES_NONE, nil, false, nil, GRIS) end
     if nT == 0 then Ligne(L.FARM_HELP, nil, false, nil, GRIS) end
     y = y + 8
+    end
     -- Recherche : toutes les zones de tous les continents dont le nom
     -- contient le texte tape.
     local function LigneZone(z)
@@ -1249,38 +1718,244 @@ local function RendreMenu(idCarte)
         menu.liste:SetHeight(math.max(y, 1))
         return
     end
-    -- Continents, puis les zones du continent choisi.
+    -- Les zones du continent choisi (onglets a droite de la fenetre).
     local continent = continentChoisi or ContinentDe(idCarte)
-    Titre(NS.L.ZONES)
-    for _, c in ipairs(Enfants(947, 2)) do
-        local id = c.mapID
-        Ligne(c.name, nil, continent == id, function()
-            continentChoisi = id
-            page.Rendre()
-        end, continent == id and { 1, 0.82, 0 } or { 0.82, 0.69, 0.4 })
-    end
-    y = y + 4
     if continent then
+        Titre(NomDeCarte(continent) or NS.L.ZONES)
         local zones = Enfants(continent, 3)
         table.sort(zones, function(a, b) return tostring(a.name) < tostring(b.name) end)
-        for _, z in ipairs(zones) do
-            local id = z.mapID
-            local mini, maxi = NiveauxDeZone(id)
-            local texte, couleur = "   " .. z.name, nil
-            if mini then
-                texte = string.format("   [%s] %s", mini == maxi and mini or (mini .. "-" .. maxi), z.name)
-                couleur = CouleurDeNiveau(math.floor((mini + maxi) / 2))
-            end
-            Ligne(texte, nil, idCarte == id, function()
-                carteChoisie = id
-                page.Rendre()
-            end, couleur)
-        end
+        for _, z in ipairs(zones) do LigneZone(z) end
     end
     menu.liste:SetHeight(math.max(y, 1))
 end
 
-function page.Rendre(parent, basDroite, menuParent, menuHaut)
+-- ---------------------------------------------------------------------------
+-- Haut et droite de la fenetre : les personnages en portraits (comme dans
+-- CraftCore et QuestCore) et les continents en onglets lateraux.
+-- ---------------------------------------------------------------------------
+
+local fenetreMere, persoVu
+local TAILLE_PORTRAIT, TAILLE_ONGLET = 30, 34
+
+local function PoserVisage(texture, p)
+    texture:SetTexCoord(0, 1, 0, 1)
+    if p.moi and SetPortraitTexture and pcall(SetPortraitTexture, texture, "player") then return end
+    local coords = _G.CLASS_ICON_TCOORDS and p.classe and _G.CLASS_ICON_TCOORDS[p.classe]
+    if coords then
+        texture:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
+        pcall(texture.SetTexCoord, texture, coords[1], coords[2], coords[3], coords[4])
+        return
+    end
+    texture:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+end
+
+local function Portrait(parent)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetSize(TAILLE_PORTRAIT, TAILLE_PORTRAIT)
+    b.cadre = b:CreateTexture(nil, "BACKGROUND")
+    b.cadre:SetAllPoints()
+    b.cadre:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
+    b.visage = b:CreateTexture(nil, "ARTWORK")
+    b.visage:SetPoint("TOPLEFT", 4, -4)
+    b.visage:SetPoint("BOTTOMRIGHT", -4, 4)
+    b.halo = b:CreateTexture(nil, "OVERLAY")
+    b.halo:SetPoint("TOPLEFT", b, "TOPLEFT", -2, 2)
+    b.halo:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 2, -2)
+    b.halo:SetTexture("Interface\\Buttons\\CheckButtonHilight")
+    b.halo:SetBlendMode("ADD")
+    b.halo:Hide()
+    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    return b
+end
+
+local function RendrePortraits()
+    local f = fenetreMere
+    if not f or not f.entete then return end
+    if not f.bandePersos then
+        local bande = CreateFrame("Frame", nil, f)
+        bande:SetPoint("LEFT", f.entete, "LEFT", 0, 0)
+        bande:SetPoint("RIGHT", f.entete, "RIGHT", 0, 0)
+        bande:SetHeight(TAILLE_PORTRAIT + 4)
+        bande.boutons = {}
+        f.bandePersos = bande
+    end
+    local bande = f.bandePersos
+    local L0 = NS.L
+    local S = NS.suite or _G.CoreSuite
+    local liste = {}
+    for _, p in ipairs(NS.base.Positions and NS.base.Positions() or {}) do
+        if not (S and S.Visible) or S.Visible(p.cle) then table.insert(liste, p) end
+    end
+    for _, b in ipairs(bande.boutons) do b:Hide() end
+    local vu = persoVu
+    if not vu then for _, p in ipairs(liste) do if p.moi then vu = p.cle end end end
+    for rang, p in ipairs(liste) do
+        local b = bande.boutons[rang]
+        if not b then b = Portrait(bande) bande.boutons[rang] = b end
+        b:ClearAllPoints()
+        b:SetPoint("LEFT", bande, "LEFT", 2 + (rang - 1) * (TAILLE_PORTRAIT + 6), 0)
+        PoserVisage(b.visage, p)
+        b.halo:SetShown(p.cle == vu)
+        b:SetAlpha(p.cle == vu and 1 or 0.7)
+        local perso = p
+        b:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            local couleur = _G.RAID_CLASS_COLORS and perso.classe and _G.RAID_CLASS_COLORS[perso.classe]
+            GameTooltip:SetText(NS.NomCourt(perso.cle) .. (perso.niveau and ("  " .. string.format(L0.CHAR_LVL, perso.niveau)) or ""),
+                couleur and couleur.r or 1, couleur and couleur.g or 0.82, couleur and couleur.b or 0)
+            local lieu = tostring(perso.zone or "?")
+            if perso.sousZone and perso.sousZone ~= "" and perso.sousZone ~= perso.zone then
+                lieu = lieu .. ", " .. perso.sousZone
+            end
+            GameTooltip:AddLine(lieu, 1, 1, 1)
+            if perso.foyer then GameTooltip:AddLine(string.format(L0.CHAR_HEARTH, perso.foyer), 1, 1, 1) end
+            if perso.quand and not perso.moi then
+                GameTooltip:AddLine(string.format(L0.CHAR_SEEN, tostring(NS.Appeler(date, "%d/%m %H:%M", perso.quand) or "?")), 0.6, 0.6, 0.6)
+            end
+            if perso.carte then GameTooltip:AddLine(L0.CHAR_CLICK, 0.6, 0.6, 0.6) end
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnClick", function()
+            persoVu = perso.cle
+            if PlaySound and SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_TAB then PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB) end
+            if perso.carte then carteChoisie, continentChoisi = perso.carte, nil end
+            page.Rendre()
+        end)
+        b:Show()
+    end
+end
+
+-- Icone d'un continent : la teleportation de mage vers une capitale de ce
+-- continent, du camp du joueur. Un continent inconnu garde la carte.
+local function IconeContinent(id, nom)
+    local horde = UnitFactionGroup and UnitFactionGroup("player") == "Horde"
+    if id == 1414 then return horde and "Interface\\Icons\\Spell_Arcane_TeleportOrgrimmar" or "Interface\\Icons\\Spell_Arcane_TeleportDarnassus" end
+    if id == 1415 then return horde and "Interface\\Icons\\Spell_Arcane_TeleportUnderCity" or "Interface\\Icons\\Spell_Arcane_TeleportStormWind" end
+    return "Interface\\Icons\\INV_Misc_Map_01"
+end
+
+local function Onglet(f)
+    local o = CreateFrame("CheckButton", nil, f)
+    o:SetSize(TAILLE_ONGLET, TAILLE_ONGLET)
+    local fond = o:CreateTexture(nil, "BACKGROUND")
+    fond:SetTexture("Interface\\SpellBook\\SpellBook-SkillLineTab")
+    fond:SetSize(TAILLE_ONGLET * 2, TAILLE_ONGLET * 2)
+    fond:SetPoint("TOPLEFT", -3, 12)
+    o.Icon = o:CreateTexture(nil, "ARTWORK")
+    o.Icon:SetAllPoints()
+    o:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    o:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
+    local halo = o:GetCheckedTexture()
+    if halo then halo:SetBlendMode("ADD") end
+    o:SetScript("OnEnter", function(self)
+        self.Icon:SetVertexColor(1, 1, 1)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(self.libelle or "")
+        GameTooltip:Show()
+    end)
+    o:SetScript("OnLeave", function(self)
+        if not self.choisi then self.Icon:SetVertexColor(0.55, 0.55, 0.55) end
+        GameTooltip:Hide()
+    end)
+    return o
+end
+
+local function RendreOnglets(idCarte)
+    local f = fenetreMere
+    if not f then return end
+    f.ongletsContinents = f.ongletsContinents or {}
+    local actuel = continentChoisi or ContinentDe(idCarte)
+    local precedent
+    local S = NS.suite or _G.CoreSuite
+    for _, o in ipairs(f.ongletsContinents) do o:Hide() end
+    f.ordreContinents = {}
+    for rang, c in ipairs(Enfants(947, 2)) do
+        local o = f.ongletsContinents[rang]
+        if not o then o = Onglet(f) f.ongletsContinents[rang] = o end
+        local id = c.mapID
+        o.libelle, o.id = c.name, id
+        o.Icon:SetTexture(IconeContinent(id, c.name))
+        o.choisi = (id == actuel)
+        o:SetChecked(o.choisi)
+        local v = o.choisi and 1 or 0.55
+        o.Icon:SetVertexColor(v, v, v)
+        o:SetScript("OnClick", function(self)
+            if PlaySound and SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_TAB then PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB) end
+            self:SetChecked(self.choisi)
+            continentChoisi, carteChoisie = id, id
+            if menu then menu:SetVerticalScroll(0) end
+            page.Rendre()
+        end)
+        o:ClearAllPoints()
+        if precedent then
+            o:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -((S and S.ECART_ENTRE_ONGLETS) or 14))
+        elseif S and S.AncreHaut then
+            local ancre, point = S.AncreHaut(f, "droite")
+            o:SetPoint("TOPLEFT", ancre, point, 0, S.HAUT_ONGLET or -7)
+        else
+            o:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, -60)
+        end
+        o:Show()
+        table.insert(f.ordreContinents, o)
+        precedent = o
+    end
+end
+
+-- Pour la manette : les portraits, et LT / RT d'un continent a l'autre.
+function page.Portraits()
+    local liste = {}
+    for _, b in ipairs(fenetreMere and fenetreMere.bandePersos and fenetreMere.bandePersos.boutons or {}) do
+        if b:IsShown() then table.insert(liste, b) end
+    end
+    return liste
+end
+function page.Toile() return vue and vue.toile end
+function page.PersoVoisin(pas)
+    local liste = page.Portraits()
+    if #liste < 2 then return end
+    local rang = 1
+    for i, b in ipairs(liste) do if b.halo:IsShown() then rang = i end end
+    local cible = liste[math.max(1, math.min(#liste, rang + pas))]
+    if cible and cible ~= liste[rang] then cible:Click("LeftButton") end
+end
+function page.ContinentVoisin(pas)
+    local liste = fenetreMere and fenetreMere.ordreContinents or {}
+    if #liste == 0 then return end
+    local rang = 0
+    for i, o in ipairs(liste) do if o.choisi then rang = i end end
+    local cible = liste[math.max(1, math.min(#liste, rang + pas))]
+    if cible and not cible.choisi then cible:Click("LeftButton") end
+end
+
+-- Memoire : on retrouve la carte, le continent, le personnage regarde et le
+-- zoom ou on les avait laisses, meme apres /reload.
+local restaure = false
+local function Memoire()
+    local r = Reglages()
+    r.memoire = type(r.memoire) == "table" and r.memoire or {}
+    return r.memoire
+end
+local function Restaurer()
+    if restaure then return end
+    restaure = true
+    local m = Memoire()
+    carteChoisie, continentChoisi, persoVu = m.carte, m.continent, m.perso
+    if m.zoom then
+        zoom, decX, decY = m.zoom, m.decX or 0, m.decY or 0
+        derniereCarte = carteChoisie or CarteDuPerso()
+    end
+end
+function page.Retenir()
+    if not restaure then return end
+    local m = Memoire()
+    m.carte, m.continent, m.perso = carteChoisie, continentChoisi, persoVu
+    m.zoom, m.decX, m.decY = zoom, decX, decY
+end
+
+function page.Rendre(parent, basDroite, menuParent, menuHaut, mere)
+    if mere then fenetreMere = mere end
+    Restaurer()
     if not vue then
         if not parent then return end
         Construire(parent, basDroite)
@@ -1326,7 +2001,28 @@ function page.Rendre(parent, basDroite, menuParent, menuHaut)
     if idCarte ~= derniereCarte then zoom, decX, decY = 1, 0, 0 derniereCarte = idCarte end
     vue.idCarte = idCarte
     vue.titre:SetText(idCarte and NomDeCarte(idCarte) or L.TITLE)
+    -- Le nom de la zone, le meme dans QuestCore et MapCore : encre sur le
+    -- parchemin, or sur le fond sombre.
+    if NS.charte.Fond() == "parchemin" then
+        vue.titre:SetTextColor(0.42, 0.18, 0.02)
+        vue.titre:SetShadowColor(0, 0, 0, 0)
+    else
+        vue.titre:SetTextColor(1, 0.82, 0)
+        vue.titre:SetShadowColor(0, 0, 0, 1)
+    end
     RendreMenu(idCarte)
+    pcall(RendrePortraits)
+    pcall(RendreOnglets, idCarte)
+    if NS.fenetre and NS.fenetre.ApresRendu then pcall(NS.fenetre.ApresRendu) end
+    -- L'echelon du dessus, nomme : "Voir Dun Morogh".
+    local parent = CarteParente(idCarte)
+    if parent then
+        vue.remonter:SetText(string.format(NS.L.MAP_UP, NomDeCarte(parent) or "?"))
+        vue.remonter:SetWidth((vue.remonter.GetTextWidth and vue.remonter:GetTextWidth() or 100) + 24)
+        vue.remonter:Show()
+    else
+        vue.remonter:Hide()
+    end
     -- Ailleurs que chez soi : un bouton pour revenir a sa position.
     if carteChoisie then
         vue.allerA:SetText(NS.L.BACK_HERE)
@@ -1346,6 +2042,8 @@ function page.Rendre(parent, basDroite, menuParent, menuHaut)
         Cacher(vue.toile.tuiles) Cacher(vue.toile.revelees) Cacher(vue.toile.explorees)
         for i = 1, vue.enService do vue.reperes[i]:Hide() end
         vue.enService = 0
+        for _, b in ipairs(vue.services or {}) do b:Hide() end
+        vue.nServices = 0
         if calque then calque.fleche:Hide() for _, t in ipairs(calque.points or {}) do t:Hide() end end
         vue.vide:SetText(L.NO_MAP)
         vue.vide:Show()
@@ -1357,7 +2055,10 @@ function page.Rendre(parent, basDroite, menuParent, menuHaut)
     vue.toile:SetSize(largeur, hauteur)
     vue.compte.revelees = PoserRevelees(idCarte)
     vue.compte.explorees = PoserExplorees(idCarte)
-    PoserReperes(idCarte)
+    local okR, souciR = pcall(PoserReperes, idCarte)
+    if not okR then NS.base.NoterIncident("reperes", souciR) end
+    pcall(PoserServices, idCarte)
+    pcall(page.PoserClignote, idCarte)
     Disposer()
 end
 
@@ -1376,7 +2077,7 @@ local editeur
 local function ConstruireEditeur()
     local ok, f = pcall(CreateFrame, "Frame", nil, vue, "BackdropTemplate")
     f = ok and f or CreateFrame("Frame", nil, vue)
-    f:SetSize(320, 196)
+    f:SetSize(380, 214)
     f:SetPoint("CENTER", vue.bord, "CENTER", 0, 0)
     f:SetFrameLevel(vue.toile:GetFrameLevel() + 60)
     f:EnableMouse(true)
@@ -1385,86 +2086,113 @@ local function ConstruireEditeur()
             edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border", edgeSize = 24,
             insets = { left = 6, right = 6, top = 6, bottom = 6 } })
     end
+    local MARGE = 24
     f.titre = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    f.titre:SetPoint("TOP", f, "TOP", 0, -16)
+    f.titre:SetPoint("TOP", f, "TOP", 0, -18)
     f.titre:SetText(NS.L.MARKER)
 
     local libelle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    libelle:SetPoint("TOPLEFT", f, "TOPLEFT", 20, -42)
+    libelle:SetPoint("TOPLEFT", f, "TOPLEFT", MARGE, -48)
     libelle:SetText(NS.L.NOTE)
     local okS, saisie = pcall(CreateFrame, "EditBox", nil, f, "InputBoxTemplate")
     saisie = okS and saisie or CreateFrame("EditBox", nil, f)
-    saisie:SetSize(220, 20)
-    saisie:SetPoint("LEFT", libelle, "RIGHT", 12, 0)
+    saisie:SetHeight(20)
+    saisie:SetPoint("LEFT", libelle, "RIGHT", 14, 0)
+    saisie:SetPoint("RIGHT", f, "RIGHT", -MARGE, 0)
     saisie:SetAutoFocus(false)
     saisie:SetMaxLetters(120)
     saisie:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     saisie:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
     f.saisie = saisie
 
-    -- Les huit icones de cible du jeu.
+    -- Les huit icones de cible du jeu, reparties sur la largeur.
     f.icones = {}
+    local largeurUtile = 380 - 2 * MARGE
+    local pas = (largeurUtile - 24) / 7
     for i = 1, 8 do
         local b = CreateFrame("Button", nil, f)
         b:SetSize(24, 24)
-        b:SetPoint("TOPLEFT", f, "TOPLEFT", 20 + (i - 1) * 34, -72)
+        b:SetPoint("TOPLEFT", f, "TOPLEFT", MARGE + (i - 1) * pas, -80)
         b.t = b:CreateTexture(nil, "ARTWORK")
         b.t:SetAllPoints()
         b.t:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
         b.t:SetTexCoord(page.CoordsIcone(i))
-        b.halo = b:CreateTexture(nil, "OVERLAY")
-        b.halo:SetTexture("Interface\\Buttons\\CheckButtonHilight")
-        b.halo:SetBlendMode("ADD")
-        b.halo:SetPoint("TOPLEFT", -3, 3)
-        b.halo:SetPoint("BOTTOMRIGHT", 3, -3)
+        b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
         b:SetScript("OnClick", function() f.icone = i page.MarquerEditeur() end)
         f.icones[i] = b
     end
 
     -- Zone entouree : aucune, petite, moyenne, grande.
     local zone = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    zone:SetPoint("TOPLEFT", f, "TOPLEFT", 20, -110)
+    zone:SetPoint("TOPLEFT", f, "TOPLEFT", MARGE, -118)
     zone:SetText(NS.L.CIRCLE)
     f.rayons = {}
-    local precedent
+    local largeurB = (largeurUtile - 3 * 6) / 4
     for rang, texte in ipairs({ NS.L.CIRCLE_NONE, NS.L.CIRCLE_S, NS.L.CIRCLE_M, NS.L.CIRCLE_L }) do
-        local b = Bouton(f, texte, 50)
-        if precedent then b:SetPoint("LEFT", precedent, "RIGHT", 4, 0)
-        else b:SetPoint("TOPLEFT", zone, "BOTTOMLEFT", 0, -4) end
+        local b = Bouton(f, texte, largeurB)
+        b:SetWidth(largeurB)
+        b:SetPoint("TOPLEFT", f, "TOPLEFT", MARGE + (rang - 1) * (largeurB + 6), -136)
         b:SetScript("OnClick", function() f.rayon = rang - 1 page.MarquerEditeur() end)
         f.rayons[rang] = b
-        precedent = b
     end
 
-    local enregistrer = Bouton(f, NS.L.SAVE, 90)
-    enregistrer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -18, 16)
+    local largeurP = (largeurUtile - 2 * 6) / 3
+    local fermer = Bouton(f, NS.L.CLOSE, largeurP)
+    fermer:SetWidth(largeurP)
+    fermer:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", MARGE, 20)
+    -- Fermer sans enregistrer : un nouveau repere n'est pas garde.
+    fermer:SetScript("OnClick", function() f:Hide() page.Rendre() end)
+    local supprimer = Bouton(f, NS.L.DELETE, largeurP)
+    supprimer:SetWidth(largeurP)
+    supprimer:SetPoint("LEFT", fermer, "RIGHT", 6, 0)
+    supprimer:SetScript("OnClick", function()
+        if f.repere and not f.repere.nouveau then NS.base.SupprimerRepere(f.repere.id) end
+        f:Hide()
+        page.Rendre()
+    end)
+    f.supprimer = supprimer
+    local enregistrer = Bouton(f, NS.L.SAVE, largeurP)
+    enregistrer:SetWidth(largeurP)
+    enregistrer:SetPoint("LEFT", supprimer, "RIGHT", 6, 0)
     enregistrer:SetScript("OnClick", function()
         local r = f.repere
         if r then
+            if r.nouveau then r = NS.base.NouveauRepere(r.carte, r.x, r.y) end
             r.note = f.saisie:GetText() or ""
             r.icone, r.rayon = f.icone or 1, f.rayon or 0
         end
         f:Hide()
         page.Rendre()
     end)
-    local supprimer = Bouton(f, NS.L.DELETE, 90)
-    supprimer:SetPoint("RIGHT", enregistrer, "LEFT", -6, 0)
-    supprimer:SetScript("OnClick", function()
-        if f.repere then NS.base.SupprimerRepere(f.repere.id) end
-        f:Hide()
-        page.Rendre()
-    end)
-    local fermer = Bouton(f, NS.L.CLOSE, 70)
-    fermer:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 18, 16)
-    fermer:SetScript("OnClick", function() f:Hide() end)
+    -- Apercu du brouillon, la ou l'on a clique.
+    f.apercu = vue.toile:CreateTexture(nil, "OVERLAY", nil, 6)
+    f.apercu:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
+    f.apercu:Hide()
+    f:SetScript("OnHide", function(self) self.apercu:Hide() self.repere = nil end)
     f:Hide()
     return f
 end
 
 function page.MarquerEditeur()
     if not editeur then return end
-    for i, b in ipairs(editeur.icones) do b.halo:SetShown(i == editeur.icone) end
+    for i, b in ipairs(editeur.icones) do
+        b.t:SetDesaturated(i ~= editeur.icone)
+        b.t:SetAlpha(i == editeur.icone and 1 or 0.45)
+    end
     for rang, b in ipairs(editeur.rayons) do b:SetEnabled((rang - 1) ~= editeur.rayon) end
+    local r = editeur.repere
+    editeur.supprimer:SetEnabled(r ~= nil and not r.nouveau)
+    -- L'apercu du nouveau repere suit l'icone choisie.
+    if r and r.nouveau and vue.largeur and vue.echelle then
+        local a = editeur.apercu
+        a:SetTexCoord(page.CoordsIcone(editeur.icone or 1))
+        a:SetSize(20 / vue.echelle, 20 / vue.echelle)
+        a:ClearAllPoints()
+        a:SetPoint("CENTER", vue.toile, "TOPLEFT", r.x * vue.largeur, -r.y * vue.hauteur)
+        a:Show()
+    else
+        editeur.apercu:Hide()
+    end
 end
 
 function page.Editer(r)

@@ -368,7 +368,10 @@ local function MontrerZone(win)
     if not enZone or not zone or not zone:IsShown() then cadre:Hide() return end
     cadre:ClearAllPoints()
     cadre:SetPoint("TOPLEFT", zone, "TOPLEFT", -6, 6)
-    cadre:SetPoint("BOTTOMRIGHT", zone, "BOTTOMRIGHT", 6, -6)
+    -- La carte deborde de la zone fixe jusqu'en bas du contenu : le liseré
+    -- suit la carte entiere.
+    local bas = (NS.fenetre.Page() == "carte" and win.zone) or zone
+    cadre:SetPoint("BOTTOMRIGHT", bas, "BOTTOMRIGHT", 6, -6)
     cadre:SetFrameLevel((zone:GetFrameLevel() or 1) + 20)
     cadre:Show()
 end

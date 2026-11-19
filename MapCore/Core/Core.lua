@@ -2,7 +2,7 @@ local _, NS = ...
 
 -- Socle de MapCore : lectures sous filet, base de sauvegarde.
 
-NS.VERSION = "0.7.0"
+NS.VERSION = "0.8.0"
 NS.base = {}
 local base = NS.base
 
@@ -99,6 +99,8 @@ _G.MapCoreAPI = {
         end
         return liste
     end,
+    -- Ouvre la carte sur un point { carte, x (0-1), y (0-1), nom, icone }.
+    Montrer = function(dst) if NS.pageCarte and NS.pageCarte.Localiser then NS.pageCarte.Localiser(dst) end end,
 }
 
 -- ---------------------------------------------------------------------------
@@ -128,6 +130,8 @@ function base.NoterPosition()
     end
     local zone = NS.Appeler(NS.Lecture("GetRealZoneText"))
     if type(zone) == "string" and zone ~= "" then p.zone = zone end
+    local sous = NS.Appeler(NS.Lecture("GetSubZoneText"))
+    p.sousZone = (type(sous) == "string" and sous ~= "") and sous or nil
     local foyer = NS.Appeler(NS.Lecture("GetBindLocation"))
     if type(foyer) == "string" and foyer ~= "" then p.foyer = foyer end
     local niveau = NS.Appeler(NS.Lecture("UnitLevel"), "player")

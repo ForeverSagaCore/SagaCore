@@ -262,7 +262,7 @@ local function Barre(parent)
     b.texte = bordure:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     b.texte:SetPoint("CENTER", b, "CENTER", 0, 0)
     local fichier, _, drapeaux = b.texte:GetFont()
-    if fichier then b.texte:SetFont(fichier, 9, drapeaux) end
+    if fichier then b.texte:SetFont(NS.Police(fichier), 9, drapeaux) end
     b.texte:SetShadowOffset(1, -1)
     return b
 end

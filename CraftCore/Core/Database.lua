@@ -193,7 +193,12 @@ function base.PersonnageAffiche()
     if type(d) ~= "table" then return nil end
     local choix = d.personnageAffiche
     if choix == "tous" then return "tous" end
-    if choix and d.personnages and d.personnages[choix] then return choix end
+    local S = NS.suite
+    local visible = not (S and S.Visible) or not choix or S.Visible(choix)
+    if choix and d.personnages and d.personnages[choix] and visible then return choix end
+    -- Faction regardee differente de celle du personnage connecte.
+    local autre = S and S.PersoDeLaFaction and S.PersoDeLaFaction()
+    if autre and d.personnages and d.personnages[autre] then return autre end
     return NS.ClePersonnage()
 end
 

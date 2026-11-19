@@ -177,4 +177,4 @@ licence GPL-3.0) : merci à toute l'équipe Questie.
 Interface faite uniquement avec les éléments natifs du jeu.
 
 CraftCore est un logiciel libre, sous licence GPL-3.0.
-Page du projet et mises à jour : https://github.com/Kyudan-zz/CraftCore
+Page du projet et mises à jour : https://github.com/Kyudan-zz/SagaCore

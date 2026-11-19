@@ -68,6 +68,7 @@ L.CHAR_LEVEL_OF = "%s nivel %s"
 L.CHAR_SKILL_OF = "%s %s"
 L.OPEN_LEGACY = "Abrir el Legado para gastar puntos"
 L.OPEN_LEGACY_FAIL = "No se pudo abrir la ventana de Legado: usa su tecla (Y por defecto)."
+L.OPEN_LEGACY_KEY = "El juego solo permite abrir el Legado desde su propia interfaz: pulsa %s."
 L.UNLOCKED_LEVEL = "Legado desbloqueado (nivel %d)"
 L.OPEN_LEGACY_OTHER = "Conéctate con %s para gastar sus puntos."
 L.ADVICE = {

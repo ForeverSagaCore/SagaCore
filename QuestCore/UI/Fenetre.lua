@@ -22,6 +22,15 @@ local cadre
 local etat = { cle = nil, ouvertes = {} }
 
 -- Personnage choisi : le meme dans toute la suite (CraftCore, QuestCore).
+-- Les personnages de la faction regardee (onglets Alliance / Horde).
+local function PersosVisibles()
+    local S, liste = NS.suite, {}
+    for _, p in ipairs(NS.base.Persos()) do
+        if not (S and S.Visible) or S.Visible(p.cle) then table.insert(liste, p) end
+    end
+    return liste
+end
+
 local function ChoisirPerso(cle)
     etat.cle = cle
     local S = NS.suite
@@ -162,7 +171,7 @@ local function Poser(contenu, index, y, options)
             b.texte = cadreBarre:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             b.texte:SetPoint("CENTER", b, "CENTER", 0, 0)
             local fichier, _, drapeaux = b.texte:GetFont()
-            if fichier then b.texte:SetFont(fichier, 9, drapeaux) end
+            if fichier then b.texte:SetFont(NS.Police(fichier), 9, drapeaux) end
             b.texte:SetShadowOffset(1, -1)
             l.barre = b
         end
@@ -523,7 +532,7 @@ end
 
 local function RendreListe()
     local bande = cadre.bande
-    local persos = NS.base.Persos()
+    local persos = PersosVisibles()
     local courant = NS.ClePersonnage()
     bande.boutons = bande.boutons or {}
     for _, b in ipairs(bande.boutons) do b:Hide() end
@@ -567,7 +576,7 @@ end
 
 local function RendreCommunes(contenu, index, y)
     local parQuete = {}
-    for _, p in ipairs(NS.base.Persos()) do
+    for _, p in ipairs(PersosVisibles()) do
         for id, q in pairs(p.quetes or {}) do
             parQuete[id] = parQuete[id] or {}
             table.insert(parQuete[id], { p = p, q = q })
@@ -1174,10 +1183,7 @@ RendreDonjonOuvert = function(contenu, p, d, index, y)
                 if lieu then
                     index = index + 1
                     y = Poser(contenu, index, y, { retrait = sous, boutons = { { L.DUNGEON_LOCATE_GIVER, function()
-                        if NS.pageCarte and NS.pageCarte.MontrerEntree then
-                            NS.pageCarte.MontrerEntree(lieu.carte, lieu.x, lieu.y, lieu.nom)
-                        end
-                        fen.OuvrirCarte()
+                        fen.VoirQuete(id, p)
                     end } } })
                 end
             end
@@ -1366,6 +1372,8 @@ local function RendreDisponibles(contenu, p, index, y)
                             etat.page = "parcours"
                             ParcoursChange()
                         end },
+                        { L.DUNGEON_LOCATE_GIVER, function() fen.VoirQuete(id, p) end,
+                            NS.donjons.LieuDuDonneur(id) ~= nil },
                     } }) + 2
                 end
             end
@@ -1377,18 +1385,35 @@ end
 local MarquerMenu
 local PoserOnglet, MarquerSelection
 
+-- Memoire : on rouvre la page ou on s'etait arrete, meme apres /reload.
+local pageRestauree = false
+local function Memoire()
+    if type(QuestCoreDB) ~= "table" then return nil end
+    QuestCoreDB.memoire = type(QuestCoreDB.memoire) == "table" and QuestCoreDB.memoire or {}
+    return QuestCoreDB.memoire
+end
+
 function fen.Rendre()
     if not cadre or not cadre:IsShown() then return end
+    local m = Memoire()
+    if m and not pageRestauree then
+        pageRestauree = true
+        if m.page then etat.page = m.page end
+    end
     local ok, souci = pcall(function()
-        local persos = NS.base.Persos()
+        local persos = PersosVisibles()
         SuivreLaSuite()
         -- Arrive par LT / RT depuis un autre add-on : premier ou dernier onglet.
         local entree = NS.suite and NS.suite.PrendreEntree and NS.suite.PrendreEntree()
         if entree == "debut" then etat.page = "quetes" elseif entree == "fin" then etat.page = "carte" end
-        if not etat.cle or not NS.base.PersoParCle(etat.cle) then
-            -- Par defaut, le personnage connecte.
+        local visible = false
+        for _, p in ipairs(persos) do if p.cle == etat.cle then visible = true end end
+        if not etat.cle or not NS.base.PersoParCle(etat.cle) or not visible then
+            -- Par defaut, le personnage connecte (s'il est de la faction regardee).
             local moi = NS.ClePersonnage()
-            etat.cle = (moi and NS.base.PersoParCle(moi)) and moi or (persos[1] and persos[1].cle)
+            local moiVisible = false
+            for _, p in ipairs(persos) do if p.cle == moi then moiVisible = true end end
+            etat.cle = moiVisible and moi or (persos[1] and persos[1].cle)
         end
         RendreListe()
         MarquerMenu()
@@ -1477,6 +1502,7 @@ function fen.Rendre()
                 cadre.ongletEquipement, dernier, cadre.ongletCarte)
         end
     end)
+    if m and etat.page then m.page = etat.page end
     if not ok then NS.base.NoterIncident("fenetre", souci) end
 end
 
@@ -1634,6 +1660,8 @@ local function ConstruireReglages(parent)
     y = y + 30
     y = y + 8
     -- Mode developpeur : groupe simule, pour travailler l'affichage en groupe.
+    -- Prive : seulement sur le poste de l'auteur (/sagacore prive).
+    if NS.suite and NS.suite.Prive and NS.suite.Prive() then
     Titre(L.SET_DEV)
     Choix(L.SET_DEV_GROUP, "simuGroupe", { { 0, L.SET_DEV_OFF }, { 1, "1" }, { 2, "2" }, { 3, "3" }, { 4, "4" } },
         function() return { simuGroupe = NS.groupe.Simulation() } end,
@@ -1644,6 +1672,7 @@ local function ConstruireReglages(parent)
     end)
     y = y + 30
     y = y + 8
+    end
     -- Bandeau des quetes : ce qui vient d'avancer, quelques secondes a l'ecran.
     Titre(L.SET_BANNER)
     Choix(L.SET_BANNER_SHOW, "actif", { { true, L.YES }, { false, L.NO } },
@@ -1876,13 +1905,13 @@ end
 -- Le personnage affiche est-il le dernier de la bande ? (la croix droite
 -- passe alors aux add-ons de la suite, en haut a droite)
 function fen.DernierPersonnage()
-    local persos = NS.base.Persos()
+    local persos = PersosVisibles()
     return #persos == 0 or (persos[#persos].cle == etat.cle)
 end
 
 -- Croix gauche / droite : personnage voisin dans la bande du haut.
 function fen.PersonnageVoisin(pas)
-    local persos = NS.base.Persos()
+    local persos = PersosVisibles()
     if #persos == 0 then return end
     local index = 1
     for rang, p in ipairs(persos) do if p.cle == etat.cle then index = rang break end end
@@ -2070,6 +2099,17 @@ function fen.OuvrirReglages()
     fen.Ouvrir()
     etat.page, etat.pageMenu = "reglages", "reglages"
     fen.Rendre()
+end
+
+-- "Voir sur la carte" d'une quete a prendre : la carte de la zone ou elle
+-- se prend, son point d'exclamation qui clignote (clic : guidage).
+function fen.VoirQuete(id, p)
+    local lieu = NS.donjons.LieuDuDonneur(id)
+    if not lieu then return end
+    if NS.pageCarte and NS.pageCarte.MontrerQuete then
+        NS.pageCarte.MontrerQuete(id, lieu.carte, lieu.x, lieu.y, NS.ref.NomDeQuete(id, p), lieu.nom)
+    end
+    fen.OuvrirCarte()
 end
 
 function fen.OuvrirCarte()

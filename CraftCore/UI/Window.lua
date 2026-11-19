@@ -283,7 +283,7 @@ local function LigneDeTableau(contenu, index)
         local o = type(objet) == "string" and _G[objet] or objet
         if type(o) == "table" and o.GetFont then
             local fichier, taille, options = o:GetFont()
-            if fichier then fs:SetFont(fichier, taille, options) end
+            if fichier then fs:SetFont(NS.Police(fichier), taille, options) end
         end
     end
 
@@ -546,7 +546,7 @@ local TAILLE_TITRE = 15
 local function PoliceDeTitre(fs)
     fs:SetFontObject(_G.QuestTitleFont and "QuestTitleFont" or "GameFontNormalLarge")
     local fichier, taille, options = fs:GetFont()
-    if fichier and taille and taille > TAILLE_TITRE then fs:SetFont(fichier, TAILLE_TITRE, options) end
+    if fichier and taille and taille > TAILLE_TITRE then fs:SetFont(NS.Police(fichier), TAILLE_TITRE, options) end
 end
 
 local function TitreDeSection(contenu, index, y, texte, droite)
@@ -3352,12 +3352,9 @@ local function MetiersAPresenter()
         vus[sien.ligne] = true
     end
 
+    -- Un personnage sans metier n'a aucun onglet de metier : on ne montre
+    -- jamais ceux des autres personnages du compte.
     local rencontres = {}
-    if #liste == 0 then
-        -- Tant qu'aucun metier n'a ete ouvert par ce personnage, on montre ce
-        -- que le compte connait plutot que rien du tout.
-        rencontres = NS.recettes and NS.recettes.MetiersRencontres and NS.recettes.MetiersRencontres() or {}
-    end
     local autres = {}
     for ligne in pairs(rencontres) do
         if not vus[ligne] then table.insert(autres, ligne) end
@@ -3575,11 +3572,14 @@ local function SynchroniserOngletsDePersonnage(win)
     if not win.bandePersos then return end
 
     local courant = NS.ClePersonnage()
+    -- Seulement la faction regardee (onglets Alliance / Horde de la suite).
+    local S = NS.suite
+    local function Visible(cle) return not (S and S.Visible) or S.Visible(cle) end
     local liste = {}
-    if d.personnages[courant] then table.insert(liste, courant) end
+    if d.personnages[courant] and Visible(courant) then table.insert(liste, courant) end
     local autres = {}
     for cle in pairs(d.personnages) do
-        if cle ~= courant then table.insert(autres, cle) end
+        if cle ~= courant and Visible(cle) then table.insert(autres, cle) end
     end
     table.sort(autres)
     for _, cle in ipairs(autres) do table.insert(liste, cle) end
@@ -3647,7 +3647,7 @@ local function SynchroniserOngletsDePersonnage(win)
     win.dernierPortrait = precedent
 
     for cle, portrait in pairs(win.ongletsPersos) do
-        if not d.personnages[cle] then portrait:Hide() end
+        if not d.personnages[cle] or not Visible(cle) then portrait:Hide() end
     end
 end
 
@@ -3843,7 +3843,7 @@ local function Construire()
     fab.texte:SetWordWrap(false)
     fab.texte:SetWidth(250)
     local fichier, _, drapeaux = fab.texte:GetFont()
-    if fichier then fab.texte:SetFont(fichier, 9, drapeaux) end
+    if fichier then fab.texte:SetFont(NS.Police(fichier), 9, drapeaux) end
     fab.texte:SetShadowOffset(1, -1)
     fab:Hide()
     win.barreFabrication = fab
@@ -4009,6 +4009,16 @@ function ecran.Montrer(cle)
     if not fenetre then fenetre = Construire() end
     -- Anciennes pages, desormais dans Mes projets.
     if cle == "rapides" or cle == "approv" then cle = "projets" end
+    -- Memoire : on rouvre la ou on s'etait arrete, meme apres /reload.
+    local memoire
+    if type(CraftCoreDB) == "table" then
+        CraftCoreDB.memoire = type(CraftCoreDB.memoire) == "table" and CraftCoreDB.memoire or {}
+        memoire = CraftCoreDB.memoire
+    end
+    if not ecran.page and memoire then
+        ecran.page = memoire.page
+        ecran.metier = ecran.metier or memoire.metier
+    end
     ecran.page = cle or ecran.page or "stocks"
     for _, p in ipairs(PAGES) do if p.cle == ecran.page then ecran.pageMenu = ecran.page end end
     if NS.base.SuivreLaSuite then pcall(NS.base.SuivreLaSuite) end
@@ -4083,6 +4093,7 @@ function ecran.Montrer(cle)
     if not ecran.metier or not fenetre.onglets[ecran.metier] then
         ecran.metier = (fenetre.ordreOnglets and fenetre.ordreOnglets[1]) or nil
     end
+    if memoire then memoire.page, memoire.metier = ecran.page, ecran.metier end
     local metierActif = PAGES_PAR_METIER[ecran.page] == true
     for cle, onglet in pairs(fenetre.onglets) do
         local choisi = metierActif and cle == ecran.metier

@@ -16,7 +16,7 @@ local TUILE = 256
 local ZOOM_MAX = 6
 local HAUT_TITRE = 30
 -- Sous la carte : la rangee de filtres.
-local BAS_CARTE = 38
+local BAS_CARTE = 50
 local ALPHA_COURSE = 0.05
 local COULEURS_TRAJET = { { 1, 0.82, 0 }, { 0.45, 0.8, 1 }, { 0.5, 0.95, 0.4 }, { 0.82, 0.55, 1 } }
 
@@ -63,8 +63,98 @@ function page.EnModeTrajet() return modeTrajet and TrajetCourant() ~= nil end
 local entree
 function page.MontrerEntree(idCarte, x, y, nom)
     modeTrajet = false
+    quetePointee = nil
     entree = { carte = idCarte, x = x, y = y, nom = nom }
     carteChoisie = idCarte
+end
+
+-- Une quete a prendre, montree depuis "Voir sur la carte" : l'icone de la
+-- quete (le point d'exclamation, pas le PNJ), qui pulse doucement.
+local quetePointee
+
+function page.MontrerQuete(id, idCarte, x, y, nomQuete, nomDonneur)
+    modeTrajet = false
+    entree = nil
+    quetePointee = { carte = idCarte, x = x, y = y, quete = id, nom = nomQuete, donneur = nomDonneur }
+    carteChoisie = idCarte
+    -- Voir sur la carte : la fleche de guidage part aussi vers la quete.
+    local S = NS.suite or _G.CoreSuite
+    if S and S.Guider and x and y then
+        local point = { carte = idCarte, x = x, y = y, titre = nomQuete, qui = nomDonneur }
+        S.Guider("QuestCorePointee", {
+            carte = false,
+            Cible = function() return point end,
+            Arrivee = function()
+                local plusTard = NS.Lecture("C_Timer.After")
+                if plusTard then plusTard(0, function() S.ArreterGuidage("QuestCorePointee") end) end
+            end,
+            Fin = function() end,
+        })
+    end
+end
+
+local function PoserQuetePointee(idCarte)
+    if not vue then return end
+    if not vue.pointee then
+        -- Le meme point d'exclamation que les autres quetes, a la meme taille,
+        -- mais violet (le jaune, le bleu et l'orange ont deja un sens) et qui
+        -- clignote : il apparait, disparait, apparait...
+        local b = CreateFrame("Button", nil, vue.toile)
+        b:SetSize(22, 22)
+        b.t = b:CreateTexture(nil, "ARTWORK")
+        b.t:SetPoint("CENTER")
+        if b.t.SetAtlas and pcall(b.t.SetAtlas, b.t, "QuestNormal") and b.t:GetAtlas() then
+            b.t:SetSize(20, 20)
+        else
+            b.t:SetTexture("Interface\\GossipFrame\\AvailableQuestIcon")
+            b.t:SetSize(16, 16)
+        end
+        b.t:SetDesaturated(true)
+        b.t:SetVertexColor(0.78, 0.45, 1)
+        local ag = b:CreateAnimationGroup()
+        ag:SetLooping("BOUNCE")
+        local fondu = ag:CreateAnimation("Alpha")
+        fondu:SetFromAlpha(1)
+        fondu:SetToAlpha(0)
+        fondu:SetDuration(0.6)
+        b.anim = ag
+        b:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(self.nom or "", 1, 0.82, 0)
+            if self.donneur then GameTooltip:AddLine(string.format(L.DUNGEON_GIVER, self.donneur), 1, 1, 1) end
+            GameTooltip:AddLine(L.MAP_GUIDE_CLICK, 0.6, 0.6, 0.6)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        -- Clic : la fleche de guidage de la suite mene jusqu'a la quete.
+        b:SetScript("OnClick", function(self)
+            local S = NS.suite or _G.CoreSuite
+            local q = quetePointee
+            if not (S and S.Guider and q) then return end
+            local point = { carte = q.carte, x = q.x, y = q.y, titre = q.nom, qui = q.donneur }
+            S.Guider("QuestCorePointee", {
+                carte = false,
+                Cible = function() return point end,
+                Arrivee = function()
+                    local plusTard = NS.Lecture("C_Timer.After")
+                    if plusTard then plusTard(0, function() S.ArreterGuidage("QuestCorePointee") end) end
+                end,
+                Fin = function() end,
+            })
+            GameTooltip:Hide()
+        end)
+        vue.pointee = b
+    end
+    local b = vue.pointee
+    if quetePointee and quetePointee.carte == idCarte then
+        b.ax, b.ay, b.nom, b.donneur = quetePointee.x, quetePointee.y, quetePointee.nom, quetePointee.donneur
+        b:SetFrameLevel(vue.toile:GetFrameLevel() + 25)
+        b:Show()
+        if b.anim and not b.anim:IsPlaying() then b.anim:Play() end
+    else
+        if b.anim then b.anim:Stop() end
+        b:Hide()
+    end
 end
 
 local function PoserEntree(idCarte)
@@ -436,6 +526,12 @@ local function Disposer()
             b:ClearAllPoints()
             b:SetPoint("CENTER", vue.toile, "TOPLEFT", b.ax * vue.largeur * echelle, -b.ay * vue.hauteur * echelle)
         end
+    end
+    if vue.pointee and vue.pointee:IsShown() then
+        vue.pointee:SetScale(1 / echelle)
+        vue.pointee:ClearAllPoints()
+        vue.pointee:SetPoint("CENTER", vue.toile, "TOPLEFT", vue.pointee.ax * vue.largeur * echelle,
+            -vue.pointee.ay * vue.hauteur * echelle)
     end
     if vue.entree and vue.entree:IsShown() then
         vue.entree:SetScale(1 / echelle)
@@ -1110,6 +1206,15 @@ function page.Rendre(parent, basDroite, menuParent, menuHaut)
     if idCarte ~= derniereCarte then zoom, decX, decY = 1, 0, 0 derniereCarte = idCarte end
     vue.idCarte = idCarte
     vue.titre:SetText(idCarte and NomDeCarte(idCarte) or L.MAPPAGE_TITLE)
+    -- Le nom de la zone, le meme dans QuestCore et MapCore : encre sur le
+    -- parchemin, or sur le fond sombre.
+    if NS.charte.Fond() == "parchemin" then
+        vue.titre:SetTextColor(0.42, 0.18, 0.02)
+        vue.titre:SetShadowColor(0, 0, 0, 0)
+    else
+        vue.titre:SetTextColor(1, 0.82, 0)
+        vue.titre:SetShadowColor(0, 0, 0, 1)
+    end
     RendreMenu(idCarte)
     -- Un seul bouton, toujours au meme endroit : rien ne bouge.
     local cible
@@ -1171,6 +1276,7 @@ function page.Rendre(parent, basDroite, menuParent, menuHaut)
     vue.compte.explorees = PoserExplorees(idCarte)
     PoserReperes(idCarte)
     pcall(PoserEntree, idCarte)
+    pcall(PoserQuetePointee, idCarte)
     Disposer()
 end
 

@@ -4,7 +4,7 @@ local _, NS = ...
 -- l'heritage (systeme Legacy de WoW Forever) du personnage connecte.
 -- Lecture seule : LegacyCore ne depense ni ne modifie jamais rien.
 
-NS.VERSION = "0.3.0"
+NS.VERSION = "0.3.2"
 NS.base = {}
 local base = NS.base
 
@@ -412,18 +412,55 @@ end
 -- Ouvre la fenetre d'heritage du jeu (pour depenser les points) : par le
 -- raccourci du jeu qui l'ouvre, sinon par sa fonction d'ouverture.
 function NS.OuvrirHeritageDuJeu()
-    local nombre = NS.Appeler(_G.GetNumBindings) or 0
-    for i = 1, nombre do
-        local commande = NS.Appeler(_G.GetBinding, i)
-        if type(commande) == "string" and string.find(string.upper(commande), "LEGACY") and _G.RunBinding then
-            if pcall(_G.RunBinding, commande) then return true end
+    -- Jamais RunBinding ni les fonctions du jeu appelees a l'aveugle : le jeu
+    -- les reserve a sa propre interface et bloque l'add-on. On montre
+    -- seulement une fenetre d'heritage deja chargee et non protegee.
+    if NS.Appeler(_G.InCombatLockdown) then return false end
+    -- L'interface d'heritage du jeu peut n'etre chargee qu'a la demande.
+    local nombreAddons = NS.Appeler(NS.Lecture("C_AddOns.GetNumAddOns", "GetNumAddOns")) or 0
+    local infoAddon = NS.Lecture("C_AddOns.GetAddOnInfo", "GetAddOnInfo")
+    local charger = NS.Lecture("C_AddOns.LoadAddOn", "LoadAddOn")
+    local estCharge = NS.Lecture("C_AddOns.IsAddOnLoaded", "IsAddOnLoaded")
+    for i = 1, nombreAddons do
+        local nomAddon = NS.Appeler(infoAddon, i)
+        if type(nomAddon) == "string" and string.find(nomAddon, "^Blizzard_") and string.find(nomAddon, "Legacy")
+            and not NS.Appeler(estCharge, nomAddon) then
+            NS.Appeler(charger, nomAddon)
         end
     end
+    local vus = {}
     for nom, valeur in pairs(_G) do
-        if type(valeur) == "function" and type(nom) == "string" and string.find(nom, "Legacy")
-            and string.find(nom, "Toggle") then
-            if pcall(valeur) then return true end
+        if type(nom) == "string" and type(valeur) == "table" and string.find(nom, "^Legacy") and string.find(nom, "Frame$")
+            and type(valeur.GetObjectType) == "function" and type(valeur.Show) == "function" then
+            local okP, protege = pcall(valeur.IsProtected, valeur)
+            local parent = NS.Appeler(valeur.GetParent, valeur)
+            table.insert(vus, nom .. (protege and " (protege)" or "") .. (parent == _G.UIParent and "" or " (enfant)"))
+            if okP and not protege and parent == _G.UIParent then
+                local montrer = NS.Lecture("ShowUIPanel")
+                if montrer then NS.Appeler(montrer, valeur) else pcall(valeur.Show, valeur) end
+                if NS.Appeler(valeur.IsShown, valeur) then
+                    if NS.suite and NS.suite.Prive and NS.suite.Prive() then NS.Dire("Héritage, ouverte : " .. nom) end
+                    return true
+                end
+            end
         end
+    end
+    -- Mode prive : ce qui a ete trouve, pour viser la bonne fenetre.
+    if NS.suite and NS.suite.Prive and NS.suite.Prive() then
+        NS.Dire("Héritage, fenêtres vues : " .. (#vus > 0 and table.concat(vus, ", ") or "aucune"))
     end
     return false
+end
+
+-- La touche qui ouvre l'heritage dans les raccourcis du joueur, ou nil.
+function NS.ToucheHeritage()
+    local nombre = NS.Appeler(_G.GetNumBindings) or 0
+    for i = 1, nombre do
+        local commande, _, touche = NS.Appeler(_G.GetBinding, i)
+        if type(commande) == "string" and string.find(string.upper(commande), "LEGACY") and type(touche) == "string" then
+            local lisible = NS.Appeler(_G.GetBindingText, touche) or touche
+            return lisible
+        end
+    end
+    return nil
 end

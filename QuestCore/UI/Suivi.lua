@@ -360,9 +360,9 @@ local function Poser(index, y, texte, options)
         -- Hierarchie : zone (+3), titre de quete (+1), texte, detail (-1).
         local taille = Reglages().taille + (options.zone and 3 or 0) + (options.titre and 1 or 0)
             - (options.petit and 1 or 0)
-        l.texte:SetFont(fichier, taille, drapeaux)
+        l.texte:SetFont(NS.Police(fichier), taille, drapeaux)
         local f2, _, d2 = l.droite:GetFont()
-        if f2 then l.droite:SetFont(f2, Reglages().taille, d2) end
+        if f2 then l.droite:SetFont(NS.Police(f2), Reglages().taille, d2) end
     end
     -- Titres sur une seule ligne, tronques ; le reste peut passer a la ligne.
     l.texte:SetWordWrap(not options.uneLigne)
@@ -1778,6 +1778,8 @@ local function Construire()
     -- l'une au-dessus de l'autre, elles forment une colonne harmonisee.
     cadre = NS.charte.Fenetre("QuestCoreSuivi", LARGEUR, s.hauteur or HAUTEUR,
         { portrait = false, strate = "MEDIUM", sansPied = true })
+    cadre:HookScript("OnShow", function() if suivi.RangerQuestie then pcall(suivi.RangerQuestie) end end)
+    cadre:HookScript("OnHide", function() if suivi.RangerQuestie then pcall(suivi.RangerQuestie) end end)
     -- Reglages de l'add-on, en haut a gauche : un clic les ouvre.
     local reglages = CreateFrame("Button", nil, cadre)
     reglages:SetSize(14, 14)
@@ -3023,5 +3025,45 @@ do
     f:RegisterEvent("PLAYER_ENTERING_WORLD")
     f:SetScript("OnEvent", function()
         if ReglagesGuidage().actif then pcall(guidage.Basculer, true) end
+    end)
+end
+
+-- ---------------------------------------------------------------------------
+-- Questie : son suivi de quetes se range tant que le notre est affiche, au
+-- meme endroit ; il revient quand on ferme le notre. Rien n'est change dans
+-- les reglages de Questie.
+-- ---------------------------------------------------------------------------
+do
+    local function NotreSuiviVisible() return cadre and cadre:IsShown() end
+    local function SuiviQuestie() return _G.Questie_BaseFrame end
+    local accroche = false
+
+    local function Ranger()
+        local q = SuiviQuestie()
+        if not q then return end
+        if not accroche then
+            accroche = true
+            q:HookScript("OnShow", function(self)
+                if NotreSuiviVisible() and not NS.Appeler(InCombatLockdown) then self:Hide() end
+            end)
+        end
+        if NotreSuiviVisible() then
+            if q:IsShown() and not NS.Appeler(InCombatLockdown) then q:Hide() end
+        else
+            local profil = _G.Questie and _G.Questie.db and _G.Questie.db.profile
+            if profil and profil.trackerEnabled and not q:IsShown() and not NS.Appeler(InCombatLockdown) then q:Show() end
+        end
+    end
+    suivi.RangerQuestie = Ranger
+
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:SetScript("OnEvent", function()
+        -- Questie construit son suivi un peu apres la connexion.
+        local plusTard = NS.Lecture("C_Timer.After")
+        if plusTard then
+            plusTard(3, function() pcall(Ranger) end)
+            plusTard(10, function() pcall(Ranger) end)
+        end
     end)
 end

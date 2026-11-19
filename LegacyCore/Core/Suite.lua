@@ -12,7 +12,7 @@ local _, NS = ...
 --   - dans chaque fenetre, les icones en haut a droite : on passe d'un
 --     add-on a l'autre, la nouvelle fenetre prend la place exacte de l'ancienne.
 
-local VERSION = 21
+local VERSION = 27
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -31,8 +31,23 @@ Suite.ORDRE = {
     { cle = "QuestCore", icone = "Interface\\Icons\\INV_Misc_Book_08" },
     { cle = "MapCore", icone = "Interface\\Icons\\INV_Misc_Map_01" },
     { cle = "LegacyCore", icone = "Interface\\Icons\\Spell_Holy_SealOfWisdom" },
+    -- Discret : montre seulement s'il est installe (pas dans la premiere
+    -- version publiee).
+    { cle = "TradeCore", icone = "Interface\\Icons\\INV_Misc_Coin_02", discret = true },
 }
-local N = #Suite.ORDRE
+-- Les add-ons annonces des leur chargement (avant les fenetres).
+Suite.presents = Suite.presents or {}
+function Suite.Annoncer(cle) Suite.presents[cle] = true end
+
+-- Les add-ons a montrer : tous, sauf les discrets absents.
+function Suite.Liste()
+    local liste = {}
+    for _, info in ipairs(Suite.ORDRE) do
+        if not info.discret or Suite.presents[info.cle] or Suite.membres[info.cle] then table.insert(liste, info) end
+    end
+    return liste
+end
+local function N() return #Suite.Liste() end
 
 -- ---------------------------------------------------------------------------
 -- Langue de la suite : celle du jeu par defaut, ou celle choisie dans les
@@ -60,6 +75,13 @@ end
 
 local DICO = {
     frFR = {
+        ["Show or hide everything"] = "Tout afficher ou tout masquer",
+        ["Click: show everything"] = "Clic : tout afficher",
+        ["Click: hide everything"] = "Clic : tout masquer",
+        ["Faction theme"] = "Thème de faction",
+        ["Character's faction"] = "Faction du personnage",
+        ["Alliance theme"] = "Thème Alliance",
+        ["Horde theme"] = "Thème Horde",
         ["Hover to pick an add-on"] = "Survolez pour choisir un add-on",
         ["Drag: move"] = "Glisser : déplacer",
         ["Right-click: show or hide the suite bar"] = "Clic droit : montrer ou cacher la barre de la suite",
@@ -87,6 +109,7 @@ local DICO = {
         ["Drag: move up or down. Right-click: stop guiding."] = "Glisser : monter ou descendre. Clic droit : arrêter le guidage.",
         ["Out of range"] = "Hors de portée",
         ["General settings"] = "Réglages généraux",
+        ["Settings"] = "Réglages",
         ["Common to the whole suite."] = "Communs à toute la suite.",
         ["Language"] = "Langue",
         ["Game language"] = "Langue du jeu",
@@ -94,6 +117,13 @@ local DICO = {
         ["Close"] = "Fermer",
     },
     deDE = {
+        ["Show or hide everything"] = "Alles anzeigen oder ausblenden",
+        ["Click: show everything"] = "Klick: alles anzeigen",
+        ["Click: hide everything"] = "Klick: alles ausblenden",
+        ["Faction theme"] = "Fraktionsdesign",
+        ["Character's faction"] = "Fraktion des Charakters",
+        ["Alliance theme"] = "Allianz-Design",
+        ["Horde theme"] = "Horde-Design",
         ["Hover to pick an add-on"] = "Darüberfahren, um ein Add-on zu wählen",
         ["Drag: move"] = "Ziehen: verschieben",
         ["Right-click: show or hide the suite bar"] = "Rechtsklick: Leiste der Suite ein- oder ausblenden",
@@ -121,6 +151,7 @@ local DICO = {
         ["Drag: move up or down. Right-click: stop guiding."] = "Ziehen: nach oben oder unten. Rechtsklick: Führung beenden.",
         ["Out of range"] = "Außer Reichweite",
         ["General settings"] = "Allgemeine Einstellungen",
+        ["Settings"] = "Einstellungen",
         ["Common to the whole suite."] = "Gelten für die ganze Suite.",
         ["Language"] = "Sprache",
         ["Game language"] = "Spielsprache",
@@ -128,6 +159,13 @@ local DICO = {
         ["Close"] = "Schließen",
     },
     esES = {
+        ["Show or hide everything"] = "Mostrar u ocultar todo",
+        ["Click: show everything"] = "Clic: mostrar todo",
+        ["Click: hide everything"] = "Clic: ocultar todo",
+        ["Faction theme"] = "Tema de facción",
+        ["Character's faction"] = "Facción del personaje",
+        ["Alliance theme"] = "Tema de la Alianza",
+        ["Horde theme"] = "Tema de la Horda",
         ["Hover to pick an add-on"] = "Pasa el ratón para elegir un accesorio",
         ["Drag: move"] = "Arrastrar: mover",
         ["Right-click: show or hide the suite bar"] = "Clic derecho: mostrar u ocultar la barra de la suite",
@@ -155,6 +193,7 @@ local DICO = {
         ["Drag: move up or down. Right-click: stop guiding."] = "Arrastrar: subir o bajar. Clic derecho: detener la guía.",
         ["Out of range"] = "Fuera de alcance",
         ["General settings"] = "Ajustes generales",
+        ["Settings"] = "Ajustes",
         ["Common to the whole suite."] = "Comunes a toda la suite.",
         ["Language"] = "Idioma",
         ["Game language"] = "Idioma del juego",
@@ -162,6 +201,13 @@ local DICO = {
         ["Close"] = "Cerrar",
     },
     itIT = {
+        ["Show or hide everything"] = "Mostra o nascondi tutto",
+        ["Click: show everything"] = "Clic: mostra tutto",
+        ["Click: hide everything"] = "Clic: nascondi tutto",
+        ["Faction theme"] = "Tema di fazione",
+        ["Character's faction"] = "Fazione del personaggio",
+        ["Alliance theme"] = "Tema dell'Alleanza",
+        ["Horde theme"] = "Tema dell'Orda",
         ["Hover to pick an add-on"] = "Passa sopra per scegliere un add-on",
         ["Drag: move"] = "Trascina: sposta",
         ["Right-click: show or hide the suite bar"] = "Clic destro: mostra o nascondi la barra della suite",
@@ -189,6 +235,7 @@ local DICO = {
         ["Drag: move up or down. Right-click: stop guiding."] = "Trascina: sposta su o giù. Clic destro: ferma la guida.",
         ["Out of range"] = "Fuori portata",
         ["General settings"] = "Impostazioni generali",
+        ["Settings"] = "Impostazioni",
         ["Common to the whole suite."] = "Comuni a tutta la suite.",
         ["Language"] = "Lingua",
         ["Game language"] = "Lingua del gioco",
@@ -196,6 +243,13 @@ local DICO = {
         ["Close"] = "Chiudi",
     },
     ruRU = {
+        ["Show or hide everything"] = "Показать или скрыть всё",
+        ["Click: show everything"] = "Клик: показать всё",
+        ["Click: hide everything"] = "Клик: скрыть всё",
+        ["Faction theme"] = "Оформление фракции",
+        ["Character's faction"] = "Фракция персонажа",
+        ["Alliance theme"] = "Оформление Альянса",
+        ["Horde theme"] = "Оформление Орды",
         ["Hover to pick an add-on"] = "Наведите, чтобы выбрать модификацию",
         ["Drag: move"] = "Перетащить: переместить",
         ["Right-click: show or hide the suite bar"] = "ПКМ: показать или скрыть панель набора",
@@ -223,6 +277,7 @@ local DICO = {
         ["Drag: move up or down. Right-click: stop guiding."] = "Перетащить: вверх или вниз. ПКМ: остановить навигацию.",
         ["Out of range"] = "Вне досягаемости",
         ["General settings"] = "Общие настройки",
+        ["Settings"] = "Настройки",
         ["Common to the whole suite."] = "Общие для всего набора.",
         ["Language"] = "Язык",
         ["Game language"] = "Язык игры",
@@ -230,6 +285,13 @@ local DICO = {
         ["Close"] = "Закрыть",
     },
     zhCN = {
+        ["Show or hide everything"] = "全部显示或隐藏",
+        ["Click: show everything"] = "点击：全部显示",
+        ["Click: hide everything"] = "点击：全部隐藏",
+        ["Faction theme"] = "阵营主题",
+        ["Character's faction"] = "角色的阵营",
+        ["Alliance theme"] = "联盟主题",
+        ["Horde theme"] = "部落主题",
         ["Hover to pick an add-on"] = "悬停以选择插件",
         ["Drag: move"] = "拖动：移动",
         ["Right-click: show or hide the suite bar"] = "右键：显示或隐藏套件栏",
@@ -257,6 +319,7 @@ local DICO = {
         ["Drag: move up or down. Right-click: stop guiding."] = "拖动：上下移动。右键：停止指引。",
         ["Out of range"] = "超出范围",
         ["General settings"] = "通用设置",
+        ["Settings"] = "设置",
         ["Common to the whole suite."] = "适用于整个套件。",
         ["Language"] = "语言",
         ["Game language"] = "游戏语言",
@@ -279,6 +342,286 @@ local function Paresseux(source)
         local texte = source[cle]
         return texte and TX(texte) or nil
     end })
+end
+
+-- ---------------------------------------------------------------------------
+-- Theme de faction : le decor des zones sombres (suivis, menus de gauche)
+-- porte l'embleme de l'Alliance ou de la Horde, gris et discret. Par defaut,
+-- la faction du personnage connecte ; on peut en forcer une.
+-- ---------------------------------------------------------------------------
+
+-- Fonctions privees (theme force, TradeCore, mode developpeur) : visibles
+-- seulement sur le poste de l'auteur, apres /sagacore prive. Les joueurs
+-- n'en voient rien : le theme suit simplement la faction du personnage.
+function Suite.Prive()
+    return type(CoreSuiteDB) == "table" and CoreSuiteDB.prive == true
+end
+
+-- /sagacore : ouvre la suite la ou on l'avait laissee (dernier add-on,
+-- derniere page), ou la referme. /sagacore prive : options privees.
+SLASH_FOREVERSAGACORE1 = "/sagacore"
+SlashCmdList.FOREVERSAGACORE = function(arg)
+    arg = (arg or ""):lower()
+    if arg:match("^%s*prive%s*$") then
+        CoreSuiteDB = type(CoreSuiteDB) == "table" and CoreSuiteDB or {}
+        CoreSuiteDB.prive = not CoreSuiteDB.prive or nil
+        if ReloadUI then ReloadUI() end
+        return
+    end
+    if arg:match("^%s*$") then
+        local S = _G.CoreSuite
+        if S and S.BasculerDernier then
+            local premier
+            for _, info in ipairs(S.Liste()) do
+                if S.Installe(info.cle) then premier = info.cle break end
+            end
+            S.BasculerDernier(premier)
+        end
+    end
+end
+
+-- Police d'une ecriture non latine. Le jeu sait afficher le chinois ou le
+-- russe avec ses polices de base (elles ont une police de secours pour
+-- chaque ecriture), mais une police posee a la main par son fichier perd ce
+-- secours : les caracteres deviennent des carres. Pour ces langues, on prend
+-- le fichier de la police de secours du jeu.
+local ECRITURES = { zhCN = "simplifiedchinese", zhTW = "traditionalchinese", ruRU = "russian", koKR = "korean" }
+function Suite.FichierPolice(fichier)
+    local ecriture = ECRITURES[Suite.Langue and Suite.Langue() or ""]
+    if not ecriture then return fichier end
+    local base = _G.GameFontNormal
+    if base and base.GetFontObjectForAlphabet then
+        local ok, objet = pcall(base.GetFontObjectForAlphabet, base, ecriture)
+        if ok and objet and objet.GetFont then
+            local f = objet:GetFont()
+            if f then return f end
+        end
+    end
+    return fichier
+end
+
+-- Le theme suit la faction du personnage. Les onglets Alliance / Horde
+-- (prives) permettent de voir l'autre le temps de la session.
+function Suite.Theme()
+    if Suite.themeSession then return Suite.themeSession end
+    local faction = UnitFactionGroup and UnitFactionGroup("player")
+    return faction == "Horde" and "horde" or "alliance"
+end
+
+-- Illustration de faction du jeu, pour les zones sombres : celles du
+-- panneau JcJ du jeu (un nain sous la banniere de l'Alliance, un orc sous
+-- celle de la Horde). Recadree pour remplir la zone sans deformer, assombrie
+-- pour que le texte reste lisible. Rend faux si le client n'a pas l'image.
+local ILLUSTRATIONS = {
+    alliance = {
+        { fichier = "Interface\\PVPFrame\\PvPQueueBackgroundAlliance", l = 324 / 512, h = 231 / 256, ratio = 324 / 231, foyer = 0.75 },
+        { fichier = "Interface\\LFGFrame\\UI-PVP-BACKGROUND-Alliance", l = 1, h = 1, ratio = 2, foyer = 0.75 },
+    },
+    horde = {
+        { fichier = "Interface\\PVPFrame\\PvPQueueBackgroundHorde", l = 324 / 512, h = 231 / 256, ratio = 324 / 231, foyer = 0.75 },
+        { fichier = "Interface\\LFGFrame\\UI-PVP-BACKGROUND-Horde", l = 1, h = 1, ratio = 2, foyer = 0.75 },
+    },
+}
+Suite.LUMIERE_FOND = 0.6
+Suite.GRIS_FOND = 0.7
+
+local function Recadrer(tex)
+    local im = tex.suiteIllustration
+    if not im then return end
+    local w, h = tex:GetWidth() or 0, tex:GetHeight() or 0
+    if w <= 0 or h <= 0 then tex:SetTexCoord(0, im.l, 0, im.h) return end
+    local zone = w / h
+    if zone < im.ratio then
+        -- Zone plus haute que l'image : on garde toute la hauteur, on coupe
+        -- les cotes autour du foyer.
+        local part = zone / im.ratio
+        local g = math.max(0, math.min(1 - part, im.foyer - part / 2))
+        tex:SetTexCoord(g * im.l, (g + part) * im.l, 0, im.h)
+    else
+        local part = im.ratio / zone
+        local hautP = (1 - part) / 2
+        tex:SetTexCoord(0, im.l, hautP * im.h, (hautP + part) * im.h)
+    end
+end
+
+Suite.fondsFaction = Suite.fondsFaction or {}
+function Suite.FondDeFaction(tex)
+    if not tex then return false end
+    if not tex.suiteFondFaction then
+        tex.suiteFondFaction = true
+        table.insert(Suite.fondsFaction, tex)
+        local parent = tex:GetParent()
+        if parent and parent.HookScript then
+            pcall(parent.HookScript, parent, "OnSizeChanged", function() Recadrer(tex) end)
+        end
+    end
+    for _, im in ipairs(ILLUSTRATIONS[Suite.Theme()] or {}) do
+        -- Le jeu accepte n'importe quel chemin ; seul GetTexture dit si
+        -- l'image existe vraiment dans ce client.
+        if pcall(tex.SetTexture, tex, im.fichier) and tex:GetTexture() then
+            tex.suiteIllustration = im
+            -- A demi grise : l'image reste reconnaissable sans crier.
+            if tex.SetDesaturation then tex:SetDesaturation(Suite.GRIS_FOND) else tex:SetDesaturated(true) end
+            local v = Suite.LUMIERE_FOND
+            tex:SetVertexColor(v, v, v)
+            tex:SetAlpha(1)
+            Recadrer(tex)
+            tex:Show()
+            return true
+        end
+    end
+    tex.suiteIllustration = nil
+    return false
+end
+
+-- Logo de la faction, en couleur adoucie : le blason du jeu (celui du
+-- chronometre des champs de bataille), pose sur les zones sombres.
+local LOGOS = { alliance = "Interface\\Timer\\Alliance-Logo", horde = "Interface\\Timer\\Horde-Logo" }
+Suite.ALPHA_LOGO = 0.25
+Suite.GRIS_LOGO = 0.4
+Suite.TAILLE_LOGO = 230
+Suite.HAUT_LOGO = 70
+Suite.ECART_TRAIT = 14
+Suite.logos = Suite.logos or {}
+-- moitie : seule la moitie gauche du blason, coupee net par un trait.
+function Suite.Logo(tex, alpha, moitie)
+    if not tex then return false end
+    if not tex.suiteLogo then
+        tex.suiteLogo = true
+        tex.suiteAlpha = alpha
+        tex.suiteMoitie = moitie
+        table.insert(Suite.logos, tex)
+    end
+    local ok = pcall(tex.SetTexture, tex, LOGOS[Suite.Theme()] or LOGOS.alliance)
+    -- Le blason occupe le centre du fichier : on rogne le vide autour.
+    tex:SetTexCoord(0.17, tex.suiteMoitie and 0.5 or 0.83, 0.1, 0.9)
+    if tex.SetDesaturation then tex:SetDesaturation(Suite.GRIS_LOGO) end
+    tex:SetVertexColor(1, 1, 1)
+    tex:SetAlpha(tex.suiteAlpha or Suite.ALPHA_LOGO)
+    tex:SetShown(ok and not tex.suiteMasque)
+    return ok
+end
+
+-- Logo en bas de la colonne de menu. Le menu peut naitre apres l'en-tete :
+-- on reessaie a chaque actualisation.
+function Suite.LogoDuMenu(cadre)
+    if not cadre or cadre.suiteLogoMenu or not cadre.menu then return end
+    -- A cheval sur le trait qui separe le menu du contenu : on n'en voit que
+    -- la moitie gauche, en bas de la colonne.
+    -- Dans le fond interieur, couche ARTWORK : au-dessus de l'illustration
+    -- du menu et du trait, sous les lignes du menu.
+    local porteur = CreateFrame("Frame", nil, cadre)
+    porteur:SetAllPoints(cadre)
+    porteur:SetFrameLevel(math.max(1, cadre.menu:GetFrameLevel()))
+    local t = porteur:CreateTexture(nil, "BACKGROUND", nil, 7)
+    t:SetSize(Suite.TAILLE_LOGO / 2, Suite.TAILLE_LOGO * 1.2)
+    -- Le trait lui-meme quand la fenetre le garde (CraftCore), sinon le bord
+    -- du menu plus l'ecart commun a la suite.
+    if cadre.trait then
+        t:SetPoint("BOTTOMRIGHT", cadre.trait, "BOTTOMLEFT", 1, Suite.HAUT_LOGO)
+    else
+        t:SetPoint("BOTTOMRIGHT", cadre.menu, "BOTTOMRIGHT", Suite.ECART_TRAIT, Suite.HAUT_LOGO)
+    end
+    cadre.suiteLogoMenu = t
+    Suite.Logo(t, nil, true)
+end
+
+function Suite.AppliquerTheme()
+    for _, tex in ipairs(Suite.logos) do pcall(Suite.Logo, tex) end
+    for _, tex in ipairs(Suite.fondsFaction) do
+        if not Suite.FondDeFaction(tex) and NS.charte and NS.charte.FondDuJournal then
+            pcall(NS.charte.FondDuJournal, tex)
+        end
+    end
+    for _, rappel in ipairs(Suite.rappelsFondSuivis or {}) do pcall(rappel) end
+    Suite.RendreFactions()
+end
+
+-- Onglets Alliance / Horde : celui de la faction regardee s'allume.
+function Suite.RendreFactions()
+    for _, rangee in ipairs(Suite.entetes or {}) do
+        for _, b in ipairs(rangee.factions or {}) do
+            local actif = b.faction == Suite.Theme()
+            -- Sans personnage de cette faction : grise, sans effet.
+            local possible = actif or b.faction == Suite.FactionDuJoueur() or #Suite.PersosDeFaction(b.faction) > 0
+            b:SetChecked(actif)
+            b:SetEnabled(possible)
+            b.icone:SetDesaturated(not possible)
+            local v = actif and 1 or 0.55
+            b.icone:SetVertexColor(v, v, v)
+        end
+    end
+end
+
+-- Faction d'un personnage connu de la suite ("alliance", "horde" ou nil).
+local function SourcesDePersos()
+    local cc = type(_G.CraftCoreDB) == "table" and _G.CraftCoreDB.personnages
+    local qc = type(_G.QuestCoreDB) == "table" and _G.QuestCoreDB.persos
+    local lc = type(_G.LegacyCoreDB) == "table" and _G.LegacyCoreDB.persos
+    return { type(cc) == "table" and cc or {}, type(qc) == "table" and qc or {}, type(lc) == "table" and lc or {} }
+end
+
+function Suite.FactionDe(cle)
+    for _, src in ipairs(SourcesDePersos()) do
+        local f = type(src[cle]) == "table" and src[cle].faction
+        if f == "Alliance" or f == "Horde" then return f:lower() end
+    end
+    return nil
+end
+
+function Suite.FactionDuJoueur()
+    return (UnitFactionGroup and UnitFactionGroup("player") == "Horde") and "horde" or "alliance"
+end
+
+-- Un personnage se montre-t-il ? Ceux de la faction regardee, et ceux dont
+-- la faction n'est pas encore connue.
+function Suite.Visible(cle)
+    local f = Suite.FactionDe(cle)
+    return f == nil or f == Suite.Theme()
+end
+
+-- Les personnages d'une faction, le connecte d'abord, puis par nom.
+function Suite.PersosDeFaction(faction)
+    local vus, liste = {}, {}
+    for _, src in ipairs(SourcesDePersos()) do
+        for cle in pairs(src) do
+            if type(cle) == "string" and cle:find(" %- ") and not vus[cle] and Suite.FactionDe(cle) == faction then
+                vus[cle] = true
+                table.insert(liste, cle)
+            end
+        end
+    end
+    local courant = NS.ClePersonnage and NS.ClePersonnage()
+    table.sort(liste, function(a, b)
+        if (a == courant) ~= (b == courant) then return a == courant end
+        return a < b
+    end)
+    return liste
+end
+
+-- Le personnage a montrer pour la faction regardee.
+function Suite.PersoDeLaFaction()
+    local courant = NS.ClePersonnage and NS.ClePersonnage()
+    if Suite.Theme() == Suite.FactionDuJoueur() then return courant end
+    return Suite.PersosDeFaction(Suite.Theme())[1]
+end
+
+-- Pour la session seulement : a la prochaine connexion, la faction du
+-- personnage reprend la main. nil : la faction du personnage. Les fenetres
+-- ouvertes passent sur un personnage de la faction regardee.
+function Suite.PoserTheme(v)
+    if v == Suite.FactionDuJoueur() then v = nil end
+    Suite.themeSession = (v == "alliance" or v == "horde") and v or nil
+    local cle = Suite.PersoDeLaFaction()
+    if cle and Suite.PoserPersonnage then Suite.PoserPersonnage(cle) end
+    Suite.AppliquerTheme()
+    for _, m in pairs(Suite.membres or {}) do
+        local f = m.fenetre and m.fenetre()
+        if f and f:IsShown() then
+            f:Hide()
+            pcall(m.ouvrir)
+        end
+    end
 end
 
 local T = Paresseux({
@@ -422,6 +765,18 @@ function Suite.PrendrePlace(cle, cadre)
         end
     end
     Reglages().dernier = cle
+end
+
+-- Raccourci de la suite : ferme la fenetre ouverte, sinon rouvre le dernier
+-- add-on utilise (la ou on l'avait laisse), a defaut `defaut`.
+function Suite.BasculerDernier(defaut)
+    for _, m in pairs(Suite.membres) do
+        local f = m.fenetre and m.fenetre()
+        if f and f:IsShown() then f:Hide() return end
+    end
+    local d = Reglages()
+    local cible = (d.dernier and Suite.Installe(d.dernier)) and d.dernier or defaut
+    if cible then Suite.Ouvrir(cible) end
 end
 
 -- Ouvre un add-on (ou le ferme s'il est deja seul ouvert).
@@ -616,10 +971,10 @@ function Suite.OuvrirReglagesGeneraux()
     if not c then
         local charte = NS.charte
         if charte and charte.Fenetre then
-            c = charte.Fenetre("CoreSuiteReglages", 360, 360, { portrait = false })
+            c = charte.Fenetre("CoreSuiteReglages", 360, 380, { portrait = false })
         else
             c = CreateFrame("Frame", "CoreSuiteReglages", UIParent, "BasicFrameTemplateWithInset")
-            c:SetSize(360, 360)
+            c:SetSize(360, 500)
             c:SetFrameStrata("FULLSCREEN_DIALOG")
         end
         c:SetPoint("CENTER")
@@ -660,6 +1015,14 @@ function Suite.OuvrirReglagesGeneraux()
             table.insert(c.choix, b)
             precedent = b
         end
+        -- Fond : l'illustration de la faction, sur la zone sombre.
+        local zoneFond = c.Inset or c.fond
+        if zoneFond and zoneFond.CreateTexture then
+            local t = zoneFond:CreateTexture(nil, "BACKGROUND", nil, 5)
+            t:SetPoint("TOPLEFT", zoneFond, "TOPLEFT", 3, -3)
+            t:SetPoint("BOTTOMRIGHT", zoneFond, "BOTTOMRIGHT", -3, 3)
+            if not Suite.FondDeFaction(t) then t:Hide() end
+        end
         local function Bouton(libelle, largeur, voisin)
             if charte and charte.BoutonDePied and c.pied then return charte.BoutonDePied(c, libelle, largeur, voisin) end
             local b = CreateFrame("Button", nil, c, "UIPanelButtonTemplate")
@@ -676,9 +1039,38 @@ function Suite.OuvrirReglagesGeneraux()
             CoreSuiteDB.langue = c.enAttente or nil
             if ReloadUI then ReloadUI() end
         end)
+        -- Manette : croix haut / bas pour choisir, A pour valider, B pour fermer.
+        if c.EnableGamePadButton and pcall(c.EnableGamePadButton, c, true) then
+            c.focus = 1
+            local function Elements()
+                local liste = {}
+                for _, b in ipairs(c.choix) do table.insert(liste, b) end
+                table.insert(liste, c.appliquer)
+                table.insert(liste, c.fermerBas)
+                return liste
+            end
+            c.MarquerFocus = function()
+                for rang, b in ipairs(Elements()) do
+                    if rang == c.focus then b:LockHighlight() else b:UnlockHighlight() end
+                end
+            end
+            c:SetScript("OnGamePadButtonDown", function(_, bouton)
+                local liste = Elements()
+                if bouton == "PADDDOWN" then c.focus = math.min(#liste, c.focus + 1)
+                elseif bouton == "PADDUP" then c.focus = math.max(1, c.focus - 1)
+                elseif bouton == "PAD1" then
+                    local b = liste[c.focus]
+                    if b and (not b.IsEnabled or b:IsEnabled()) then b:Click() end
+                elseif bouton == "PAD2" then c:Hide() return end
+                c.MarquerFocus()
+            end)
+        end
         Suite.reglagesGeneraux = c
     end
+    c.focus = 1
+    if c.MarquerFocus then c.MarquerFocus() end
     c.enAttente = nil
+    c:SetHeight(380)
     Suite.RendreReglagesGeneraux()
     c:Show()
     if c.Raise then c:Raise() end
@@ -708,13 +1100,14 @@ function Suite.RendreReglagesGeneraux()
     c.appliquer:SetEnabled(c.enAttente ~= nil and (c.enAttente or nil) ~= enregistre)
 end
 
-local function RoueDeReglages(cadre)
-    if not cadre.pied or cadre.suiteRoue then return end
-    local b = CreateFrame("Button", nil, cadre.pied)
-    b:SetSize(20, 20)
-    b:SetPoint("RIGHT", cadre.pied, "RIGHT", -(110 + 10), 0)
-    b:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
-    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+-- Bouton Reglages dans le pied, a gauche de Fermer : le meme bouton du jeu.
+local function BoutonReglages(cadre)
+    if not cadre.pied or cadre.suiteReglages then return end
+    local charte = NS.charte
+    local b = CreateFrame("Button", nil, cadre.pied, "UIPanelButtonTemplate")
+    b:SetSize(110, charte and charte.HAUTEUR_BOUTON or 22)
+    b:SetPoint("RIGHT", cadre.pied, "RIGHT", -(110 + (charte and charte.ECART or 8)), 0)
+    b:SetText(TX("Settings"))
     b:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText(TX("General settings"), 1, 0.82, 0)
@@ -723,7 +1116,7 @@ local function RoueDeReglages(cadre)
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     b:SetScript("OnClick", function() Suite.OuvrirReglagesGeneraux() end)
-    cadre.suiteRoue = b
+    cadre.suiteReglages = b
 end
 
 -- Les add-ons de la suite en onglets lateraux, sur le bord GAUCHE de la
@@ -734,7 +1127,7 @@ function Suite.Entete(cadre, cleCourante)
     if not cadre or cadre.suiteEntete then return end
     local rangee = { boutons = {}, courante = cleCourante }
     local precedent
-    for _, info in ipairs(Suite.ORDRE) do
+    for _, info in ipairs(Suite.Liste()) do
         local cle = info.cle
         local b = OngletLateral(cadre, info, function()
             if cle ~= cleCourante and Suite.Installe(cle) then Suite.Ouvrir(cle) end
@@ -754,7 +1147,34 @@ function Suite.Entete(cadre, cleCourante)
     rangee.l3:SetPoint("BOTTOM", rangee.boutons[1], "TOP", 0, 12)
     rangee.r3 = cadre:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     rangee.r3:SetPoint("TOP", rangee.boutons[#rangee.boutons], "BOTTOM", 0, -10)
-    pcall(RoueDeReglages, cadre)
+    pcall(BoutonReglages, cadre)
+    -- Tout en bas de la colonne : Alliance et Horde, pour le theme.
+    rangee.factions = {}
+    local dessous
+    for _, faction in ipairs(Suite.Prive() and { "horde", "alliance" } or {}) do
+        local b = OngletLateral(cadre, { cle = faction == "horde" and "Horde" or "Alliance",
+            icone = faction == "horde" and "Interface\\Icons\\INV_BannerPVP_01" or "Interface\\Icons\\INV_BannerPVP_02" }, function() end)
+        b.faction = faction
+        b.estFaction = true
+        b:SetScript("OnClick", function(self) Suite.PoserTheme(self.faction) end)
+        b:SetScript("OnEnter", function(self)
+            self.icone:SetVertexColor(1, 1, 1)
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetText(TX(self.faction == "horde" and "Horde theme" or "Alliance theme"), 1, 0.82, 0)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function(self)
+            if self.faction ~= Suite.Theme() then self.icone:SetVertexColor(0.55, 0.55, 0.55) end
+            GameTooltip:Hide()
+        end)
+        b:ClearAllPoints()
+        if dessous then b:SetPoint("BOTTOMRIGHT", dessous, "TOPRIGHT", 0, Suite.ECART_ENTRE_ONGLETS)
+        else b:SetPoint("BOTTOMRIGHT", cadre, "BOTTOMLEFT", 0, 46) end
+        table.insert(rangee.factions, b)
+        dessous = b
+    end
+    rangee.cadre = cadre
+    pcall(Suite.LogoDuMenu, cadre)
     cadre.suiteEntete = rangee
     cadre:HookScript("OnShow", function(self)
         Suite.PrendrePlace(cleCourante, self)
@@ -766,10 +1186,9 @@ function Suite.Entete(cadre, cleCourante)
 end
 
 -- Pastille sur l'onglet d'un add-on (texte court), nil pour l'enlever.
+-- Plus de pastille : elle collait a l'onglet sans apporter grand-chose.
 function Suite.PoserBadge(cle, texte)
-    Suite.badges = Suite.badges or {}
-    Suite.badges[cle] = texte and tostring(texte) or nil
-    Suite.Actualiser()
+    Suite.badges = {}
 end
 
 -- Ecart entre les onglets de la suite et ceux de l'add-on.
@@ -779,7 +1198,7 @@ Suite.ECART_ONGLETS = 22
 -- premier onglet (en avancant) ou son dernier (en reculant).
 function Suite.Voisin(cleCourante, pas)
     local liste = {}
-    for _, info in ipairs(Suite.ORDRE) do
+    for _, info in ipairs(Suite.Liste()) do
         if Suite.Installe(info.cle) then table.insert(liste, info.cle) end
     end
     if #liste < 2 then return false end
@@ -796,6 +1215,14 @@ end
 -- Chaque fenetre appelle ManetteBas a l'appui : vrai si la suite a pris le
 -- bouton.
 function Suite.ManetteBas(cleCourante, bouton)
+    -- Reglages generaux ouverts : la manette est a eux.
+    local r = Suite.reglagesGeneraux
+    if r and r:IsShown() then return true end
+    -- Menu (Start) : les reglages generaux.
+    if bouton == "PADFORWARD" then
+        Suite.OuvrirReglagesGeneraux()
+        return true
+    end
     if bouton == "PADLSTICK" or bouton == "PADRSTICK" then
         Suite.Voisin(cleCourante, bouton == "PADLSTICK" and -1 or 1)
         return true
@@ -917,9 +1344,9 @@ end
 local function IconeDuBouton()
     local d = Reglages()
     if d.dernier and Suite.Installe(d.dernier) then
-        for _, info in ipairs(Suite.ORDRE) do if info.cle == d.dernier then return info.icone end end
+        for _, info in ipairs(Suite.Liste()) do if info.cle == d.dernier then return info.icone end end
     end
-    for _, info in ipairs(Suite.ORDRE) do if Suite.Installe(info.cle) then return info.icone end end
+    for _, info in ipairs(Suite.Liste()) do if Suite.Installe(info.cle) then return info.icone end end
     return Suite.ORDRE[1].icone
 end
 
@@ -936,7 +1363,7 @@ function Suite.ConstruireMinicarte()
         local d = Reglages()
         local cible = (d.dernier and Suite.Installe(d.dernier)) and d.dernier or nil
         if not cible then
-            for _, info in ipairs(Suite.ORDRE) do
+            for _, info in ipairs(Suite.Liste()) do
                 if Suite.Installe(info.cle) then cible = info.cle break end
             end
         end
@@ -956,12 +1383,12 @@ function Suite.ConstruireMinicarte()
 
     -- L'eventail : les add-ons, en ligne a cote du bouton.
     local eventail = CreateFrame("Frame", nil, bouton)
-    eventail:SetSize(N * 30, 30)
+    eventail:SetSize(N() * 30, 30)
     eventail:SetPoint("RIGHT", bouton, "LEFT", -2, 0)
     eventail.boutons = {}
-    for rang, info in ipairs(Suite.ORDRE) do
+    for rang, info in ipairs(Suite.Liste()) do
         local b = IconeRonde(eventail, 28, info)
-        b:SetPoint("RIGHT", eventail, "RIGHT", -(N - rang) * 30, 0)
+        b:SetPoint("RIGHT", eventail, "RIGHT", -(N() - rang) * 30, 0)
         eventail.boutons[rang] = b
     end
     eventail:Hide()
@@ -1018,6 +1445,13 @@ function Suite.Actualiser()
     if Suite.barre then
         Suite.barre:Hide()
     end
+    pcall(Suite.RendreFactions)
+    for _, rangee in ipairs(Suite.entetes) do
+        if rangee.cadre then
+            local ok, souci = pcall(Suite.LogoDuMenu, rangee.cadre)
+            if not ok and Suite.Prive() then print("|cffffd100SagaCore logo erreur|r", tostring(souci)) end
+        end
+    end
     local pad = ManetteActive()
     for _, rangee in ipairs(Suite.entetes) do
         if rangee.l3 then
@@ -1025,6 +1459,8 @@ function Suite.Actualiser()
             rangee.r3:SetText(GlyphePad("PADRSTICK"))
             rangee.l3:SetShown(pad)
             rangee.r3:SetShown(pad)
+            local reg = rangee.cadre and rangee.cadre.suiteReglages
+            if reg then reg:SetText((pad and (GlyphePad("PADFORWARD") .. " ") or "") .. TX("Settings")) end
         end
         for _, b in ipairs(rangee.boutons) do
             local installe = Suite.Installe(b.cle)
@@ -1096,7 +1532,9 @@ local T_FILTRE = Paresseux({
     seul = "Right-click: show only this",
     tout = "Right-click: show everything",
     masque = "Hidden",
-    liste = "Click: pick the herbs or ores to show",
+    titreTout = "Show or hide everything",
+    afficherTout = "Click: show everything",
+    masquerTout = "Click: hide everything",
 })
 
 local function Filtres()
@@ -1106,7 +1544,11 @@ local function Filtres()
 end
 
 -- Le filtre est-il actif (montre) ? Par defaut, tout est montre.
-function Suite.Filtre(cle) return Filtres()[cle] ~= false end
+function Suite.Filtre(cle)
+    local v = Filtres()[cle]
+    if v == nil then return (Suite.defautsFiltres or {})[cle] ~= false end
+    return v ~= false
+end
 
 -- Un lieu de recolte est-il montre ? Selon le filtre de son metier.
 -- Un lieu de recolte est-il montre ? Seulement si le personnage a le metier,
@@ -1121,7 +1563,6 @@ function Suite.LieuVisible(lieu)
         if ok and oui == false then return false end
     end
     if not Suite.Filtre(metier) then return false end
-    if lieu.nomType and Filtres()["type:" .. lieu.nomType] == false then return false end
     return true
 end
 
@@ -1141,13 +1582,6 @@ end
 
 Suite.barresFiltres = Suite.barresFiltres or {}
 
-local function Seul(cle)
-    for _, f in ipairs(Suite.FILTRES) do
-        if f.dispo() and f.cle ~= cle and Suite.Filtre(f.cle) then return false end
-    end
-    return Suite.Filtre(cle)
-end
-
 local function Prevenir()
     for _, barre in ipairs(Suite.barresFiltres) do
         pcall(barre.Actualiser, barre)
@@ -1155,11 +1589,35 @@ local function Prevenir()
     end
 end
 
-function Suite.PoserFiltre(cle, actif)
-    if actif then Filtres()[cle] = nil else Filtres()[cle] = false end
-    Prevenir()
+function Suite.PoserFiltre(cle, actif, silencieux)
+    Filtres()[cle] = actif and true or false
+    if not silencieux then Prevenir() end
 end
 
+-- Les filtres d'une barre qu'on peut voir (le personnage a le metier...).
+local function Presents(barre)
+    local liste = {}
+    for _, b in ipairs(barre.boutons) do
+        if b.cle ~= "tout" and b.dispo() then table.insert(liste, b.cle) end
+    end
+    return liste
+end
+
+local function ToutMontre(barre)
+    for _, cle in ipairs(Presents(barre)) do if not Suite.Filtre(cle) then return false end end
+    return true
+end
+
+local function Seul(barre, cle)
+    for _, c in ipairs(Presents(barre)) do
+        if Suite.Filtre(c) ~= (c == cle) then return false end
+    end
+    return true
+end
+
+-- Un bouton, une regle pour tous : clic, afficher ou masquer ; clic droit,
+-- n'afficher que lui (encore une fois : tout reafficher). Le bouton "tout"
+-- affiche ou masque tout d'un coup.
 local function BoutonFiltre(barre, info)
     local taille = 26
     local b = CreateFrame("Button", nil, barre)
@@ -1184,25 +1642,32 @@ local function BoutonFiltre(barre, info)
     b.anneau:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
     b.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
     b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
-    b.cle, b.nom = info.cle, TX(info.nom)
+    b.cle, b.nom, b.groupe = info.cle, info.nomTraduit or TX(info.nom or ""), info.groupe
+    b.dispo = info.dispo or function() return true end
     b:SetScript("OnClick", function(self, bouton)
-        if bouton == "RightButton" then
-            local tout = Seul(self.cle)
-            for _, f in ipairs(Suite.FILTRES) do
-                if tout or f.cle == self.cle then Filtres()[f.cle] = nil else Filtres()[f.cle] = false end
-            end
-            Prevenir()
+        if self.cle == "tout" then
+            local montrer = not ToutMontre(barre)
+            for _, c in ipairs(Presents(barre)) do Filtres()[c] = montrer end
+        elseif bouton == "RightButton" then
+            local tout = Seul(barre, self.cle)
+            for _, c in ipairs(Presents(barre)) do Filtres()[c] = tout or c == self.cle end
         else
-            Suite.PoserFiltre(self.cle, not Suite.Filtre(self.cle))
+            Filtres()[self.cle] = not Suite.Filtre(self.cle)
         end
+        Prevenir()
         if self:IsMouseOver() and self:GetScript("OnEnter") then self:GetScript("OnEnter")(self) end
     end)
     b:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText(self.nom, 1, 0.82, 0)
-        if not Suite.Filtre(self.cle) then GameTooltip:AddLine(T_FILTRE.masque, 0.6, 0.6, 0.6) end
-        GameTooltip:AddLine(self.droite and T_FILTRE.liste or T_FILTRE.clic, 1, 1, 1)
-        GameTooltip:AddLine(Seul(self.cle) and T_FILTRE.tout or T_FILTRE.seul, 1, 1, 1)
+        if self.cle == "tout" then
+            GameTooltip:SetText(T_FILTRE.titreTout, 1, 0.82, 0)
+            GameTooltip:AddLine(ToutMontre(barre) and T_FILTRE.masquerTout or T_FILTRE.afficherTout, 1, 1, 1)
+        else
+            GameTooltip:SetText(self.nom, 1, 0.82, 0)
+            if not Suite.Filtre(self.cle) then GameTooltip:AddLine(T_FILTRE.masque, 0.6, 0.6, 0.6) end
+            GameTooltip:AddLine(T_FILTRE.clic, 1, 1, 1)
+            GameTooltip:AddLine(Seul(barre, self.cle) and T_FILTRE.tout or T_FILTRE.seul, 1, 1, 1)
+        end
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1268,145 +1733,65 @@ function Suite.PionRecolte(parent, taille)
     return b
 end
 
--- Rangee de filtres, centree ; auChangement redessine la carte.
--- La barre se pose ensuite par l'add-on (barre:SetPoint).
--- Liste au-dessus d'un filtre de metier : chaque herbe ou minerai de la
--- carte, a cocher ou decocher, et le metier entier en tete.
-local function ListeDesTypes(barre, bouton)
-    local l = barre.liste
-    if not l then
-        local ok, f = pcall(CreateFrame, "Frame", nil, barre, "BackdropTemplate")
-        l = ok and f or CreateFrame("Frame", nil, barre)
-        if l.SetBackdrop then
-            l:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8",
-                edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12,
-                insets = { left = 3, right = 3, top = 3, bottom = 3 } })
-            l:SetBackdropColor(0.05, 0.05, 0.05, 0.95)
-            l:SetBackdropBorderColor(0.75, 0.6, 0.35, 1)
-        end
-        l:SetFrameStrata("DIALOG")
-        l:EnableMouse(true)
-        l.lignes = {}
-        barre.liste = l
-    end
-    if l:IsShown() and l.cle == bouton.cle then l:Hide() return end
-    l.cle = bouton.cle
-    -- Les types presents sur la carte affichee, avec leur nombre.
-    local types, ordre = {}, {}
-    local api = _G.CraftCoreAPI
-    local carte = barre.carteFn and barre.carteFn()
-    if api and api.Lieux and carte then
-        local ok, lieux = pcall(api.Lieux, carte)
-        for _, x in ipairs(ok and lieux or {}) do
-            if x.metier == bouton.cle and x.nomType then
-                if not types[x.nomType] then
-                    types[x.nomType] = { nom = x.nomType, n = 0, icone = x.icone }
-                    if not x.icone and x.objet and api.Objet then types[x.nomType].icone = select(2, api.Objet(x.objet)) end
-                    table.insert(ordre, types[x.nomType])
-                end
-                types[x.nomType].n = types[x.nomType].n + 1
-            end
-        end
-    end
-    table.sort(ordre, function(a, b) return a.nom < b.nom end)
-    local function Ligne(rang)
-        local r = l.lignes[rang]
-        if r then return r end
-        r = CreateFrame("CheckButton", nil, l, "UICheckButtonTemplate")
-        r:SetSize(22, 22)
-        r.icone = r:CreateTexture(nil, "ARTWORK")
-        r.icone:SetSize(14, 14)
-        r.icone:SetPoint("LEFT", r, "RIGHT", 2, 0)
-        r.nom = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        r.nom:SetPoint("LEFT", r.icone, "RIGHT", 4, 0)
-        r.nom:SetJustifyH("LEFT")
-        l.lignes[rang] = r
-        return r
-    end
-    for _, r in ipairs(l.lignes) do r:Hide() end
-    local largeur = 140
-    local entete = Ligne(1)
-    entete:ClearAllPoints()
-    entete:SetPoint("TOPLEFT", l, "TOPLEFT", 8, -6)
-    entete.icone:SetTexture(bouton.fichier)
-    entete.nom:SetText(bouton.nom)
-    entete.nom:SetFontObject("GameFontNormalSmall")
-    entete:SetChecked(Suite.Filtre(bouton.cle))
-    entete:SetScript("OnClick", function(self)
-        Suite.PoserFiltre(bouton.cle, self:GetChecked() and true or false)
-    end)
-    entete:Show()
-    largeur = math.max(largeur, (entete.nom:GetStringWidth() or 0) + 60)
-    for k, t in ipairs(ordre) do
-        local r = Ligne(k + 1)
-        r:ClearAllPoints()
-        r:SetPoint("TOPLEFT", l, "TOPLEFT", 20, -6 - k * 20)
-        r.icone:SetTexture(t.icone or bouton.fichier)
-        r.nom:SetFontObject("GameFontHighlightSmall")
-        r.nom:SetText(string.format("%s  |cff999999%d|r", t.nom, t.n))
-        r:SetChecked(Filtres()["type:" .. t.nom] ~= false)
-        local nomType = t.nom
-        r:SetScript("OnClick", function(self)
-            if self:GetChecked() then Filtres()["type:" .. nomType] = nil else Filtres()["type:" .. nomType] = false end
-            Prevenir()
-        end)
-        r:Show()
-        largeur = math.max(largeur, (r.nom:GetStringWidth() or 0) + 72)
-    end
-    if #ordre == 0 then
-        local r = Ligne(2)
-        r:Hide()
-    end
-    l:SetSize(largeur, 12 + (#ordre + 1) * 20)
-    l:ClearAllPoints()
-    l:SetPoint("BOTTOMRIGHT", bouton, "TOPRIGHT", 0, 6)
-    l:Show()
-end
+-- Rangee de filtres sous une carte, sur toute sa largeur. A gauche : "tout",
+-- puis les quetes, les reperes et la recolte ; a droite, les filtres propres
+-- a l'add-on (`extras`, les services de MapCore). auChangement redessine.
+local TOUT_FILTRE = { cle = "tout", fichier = "Interface\\Minimap\\Tracking\\None" }
+local ORDRE_FILTRES = { "quetes", "tuer", "butin", "objet", "reperes", "herbes", "minerais", "peche" }
 
-function Suite.BarreFiltres(parent, auChangement, carteFn)
+function Suite.BarreFiltres(parent, auChangement, carteFn, extras)
     local barre = CreateFrame("Frame", nil, parent)
     barre:SetHeight(28)
     barre.auChangement = auChangement
     barre.carteFn = carteFn
     barre.boutons = {}
-    for _, info in ipairs(Suite.FILTRES) do
+    table.insert(barre.boutons, BoutonFiltre(barre, TOUT_FILTRE))
+    local parCle = {}
+    for _, info in ipairs(Suite.FILTRES) do parCle[info.cle] = info end
+    for _, cle in ipairs(ORDRE_FILTRES) do
+        if parCle[cle] then table.insert(barre.boutons, BoutonFiltre(barre, parCle[cle])) end
+    end
+    Suite.defautsFiltres = Suite.defautsFiltres or {}
+    for _, info in ipairs(extras or {}) do
+        if info.defaut == false then Suite.defautsFiltres[info.cle] = false end
         local b = BoutonFiltre(barre, info)
-        b.dispo = info.dispo
-        b.droite, b.fichier = info.droite, info.fichier
-        -- Metiers : un clic ouvre la liste des herbes / minerais de la carte.
-        if info.droite then
-            b:SetScript("OnClick", function(self, bouton)
-                if bouton == "RightButton" then
-                    local tout = Seul(self.cle)
-                    for _, f in ipairs(Suite.FILTRES) do
-                        if tout or f.cle == self.cle then Filtres()[f.cle] = nil else Filtres()[f.cle] = false end
-                    end
-                    Prevenir()
-                else
-                    ListeDesTypes(barre, self)
-                end
-            end)
-        end
+        b.droite = true
         table.insert(barre.boutons, b)
     end
-    barre:SetScript("OnHide", function(self) if self.liste then self.liste:Hide() end end)
-    -- A gauche : quetes, a tuer, butin, objets, reperes ; a droite : les
-    -- metiers de recolte du personnage.
     function barre.Actualiser(self)
-        local x, xd = 0, 0
-        for _, b in ipairs(self.boutons) do
-            local dispo = b.dispo()
-            b:SetShown(dispo)
-            if dispo then
-                b:ClearAllPoints()
-                if b.droite then
-                    b:SetPoint("RIGHT", self, "RIGHT", -xd - 6, 0)
-                    xd = xd + 34
-                else
-                    b:SetPoint("LEFT", self, "LEFT", x, 0)
-                    x = x + 34
+        local x, PAS = 0, 34
+        local avant
+        -- La droite d'abord, de droite a gauche.
+        local xd = 0
+        for k = #self.boutons, 1, -1 do
+            local b = self.boutons[k]
+            if b.droite then
+                local dispo = b.dispo()
+                b:SetShown(dispo)
+                if dispo then
+                    b:ClearAllPoints()
+                    b:SetPoint("RIGHT", self, "RIGHT", -xd, 0)
+                    xd = xd + PAS
                 end
-                local actif = Suite.Filtre(b.cle)
+            end
+        end
+        for _, b in ipairs(self.boutons) do
+            if not b.droite then
+                local dispo = b.dispo()
+                b:SetShown(dispo)
+                if dispo then
+                    -- Un petit ecart entre les groupes : tout | quetes | reperes et recolte.
+                    if avant and (b.cle == "quetes" or b.cle == "reperes") then x = x + 10 end
+                    b:ClearAllPoints()
+                    b:SetPoint("LEFT", self, "LEFT", x, 0)
+                    x = x + PAS
+                    avant = b
+                end
+            end
+        end
+        for _, b in ipairs(self.boutons) do
+            if b:IsShown() then
+                local actif = (b.cle == "tout") or Suite.Filtre(b.cle)
                 b.icone:SetDesaturated(not actif)
                 if b.teinte and actif then b.icone:SetVertexColor(b.teinte[1], b.teinte[2], b.teinte[3])
                 else b.icone:SetVertexColor(1, 1, 1) end
@@ -1415,12 +1800,6 @@ function Suite.BarreFiltres(parent, auChangement, carteFn)
             end
         end
         if not self.etendue then self:SetWidth(math.max(1, x + xd)) end
-        if self.liste and self.liste:IsShown() then
-            local cle = self.liste.cle
-            for _, b in ipairs(self.boutons) do
-                if b.cle == cle and b:IsShown() then self.liste:Hide() ListeDesTypes(self, b) end
-            end
-        end
     end
     -- Sur toute la largeur d'un cadre (la carte), sous lui.
     function barre.Etendre(self, cadre, ecart)
@@ -1596,6 +1975,18 @@ function Suite.Guider(cle, fournisseur)
     end
     g.cle, g.fournisseur = cle, fournisseur
     CadreGuidage():Show()
+    -- Partout ou l'on guide, la carte de MapCore s'ouvre sur la destination,
+    -- qui y clignote. Sauf si le guidage part deja d'une carte (carte = false).
+    if fournisseur and fournisseur.carte ~= false then
+        local api = _G.MapCoreAPI
+        if api and api.Montrer and fournisseur.Cible then
+            local ok, pt = pcall(fournisseur.Cible)
+            if ok and type(pt) == "table" and pt.carte and pt.x and pt.y then
+                pcall(api.Montrer, { carte = pt.carte, x = pt.x, y = pt.y, nom = pt.qui or pt.titre,
+                    icone = fournisseur.icone })
+            end
+        end
+    end
 end
 
 function Suite.ArreterGuidage(cle)
@@ -1615,6 +2006,10 @@ if not Suite.cadreDemarrage then
         pcall(_G.CoreSuite.ConstruireMinicarte)
         pcall(_G.CoreSuite.ConstruireBarre)
         pcall(_G.CoreSuite.Actualiser)
+        -- La faction n'est sure qu'une fois connecte : on repose les fonds.
+        if C_Timer and C_Timer.After then
+            C_Timer.After(1, function() pcall(_G.CoreSuite.AppliquerTheme) end)
+        end
     end)
     Suite.cadreDemarrage = f
 end

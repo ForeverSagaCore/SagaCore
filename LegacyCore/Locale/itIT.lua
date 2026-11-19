@@ -68,6 +68,7 @@ L.CHAR_LEVEL_OF = "%s livello %s"
 L.CHAR_SKILL_OF = "%s %s"
 L.OPEN_LEGACY = "Apri l'Eredità per spendere punti"
 L.OPEN_LEGACY_FAIL = "Impossibile aprire la finestra Eredità: usa il suo tasto (Y di default)."
+L.OPEN_LEGACY_KEY = "Il gioco lascia aprire l'Eredità solo alla propria interfaccia: premi %s."
 L.UNLOCKED_LEVEL = "Eredità sbloccata (livello %d)"
 L.OPEN_LEGACY_OTHER = "Accedi con %s per spendere i suoi punti."
 L.ADVICE = {

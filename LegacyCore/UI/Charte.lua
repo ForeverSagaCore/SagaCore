@@ -22,6 +22,13 @@ local _, NS = ...
 NS.charte = {}
 local charte = NS.charte
 
+-- Fichier de police adapte a la langue choisie (voir Suite.FichierPolice).
+function NS.Police(fichier)
+    local S = NS.suite
+    if S and S.FichierPolice then return S.FichierPolice(fichier) end
+    return fichier
+end
+
 charte.MARGE = 12              -- entre le bord du fond et le contenu, partout
 charte.ECART = 8               -- entre deux elements voisins
 charte.ESPACE_SECTION = 14     -- avant un titre de section
@@ -161,7 +168,8 @@ function charte.Fond()
         end
         if suite.fond == "noir" or suite.fond == "parchemin" then return suite.fond end
     end
-    return g.fond == "parchemin" and "parchemin" or "noir"
+    -- Par defaut : le parchemin.
+    return g.fond == "noir" and "noir" or "parchemin"
 end
 
 function charte.PoserFond(valeur)
@@ -243,7 +251,7 @@ local function EncrerTexte(fs, parchemin)
         -- Le nom d'une ligne gagne un point : plus lisible sur le papier.
         if fs.agrandir and fs.GetFont then
             local fichier, taille, options = fs:GetFont()
-            if fichier and taille and taille < 12 then fs:SetFont(fichier, 12, options) end
+            if fichier and taille and taille < 12 then fs:SetFont(NS.Police(fichier), 12, options) end
         end
     else
         if fs.encre and Proche(r, g, b, fs.encre[1], fs.encre[2], fs.encre[3]) and fs.couleurOrigine then
@@ -295,8 +303,9 @@ end
 function charte.FondDesSuivis()
     local d = _G.CoreSuiteDB
     local v = type(d) == "table" and d.fondSuivis
-    if v == "parchemin" or v == "illustre" then return v end
-    return "gris"
+    if v == "parchemin" or v == "gris" then return v end
+    -- Par defaut : l'illustration, avec le logo de la faction.
+    return "illustre"
 end
 
 -- Chaque add-on y inscrit le rendu de son suivi.
@@ -309,7 +318,7 @@ end
 
 function charte.PoserFondDesSuivis(valeur)
     CoreSuiteDB = type(CoreSuiteDB) == "table" and CoreSuiteDB or {}
-    CoreSuiteDB.fondSuivis = (valeur == "parchemin" or valeur == "illustre") and valeur or nil
+    CoreSuiteDB.fondSuivis = (valeur == "parchemin" or valeur == "gris") and valeur or nil
     local suite = _G.CoreSuite
     for _, f in ipairs(type(suite) == "table" and suite.rappelsFondSuivis or {}) do pcall(f) end
 end
@@ -332,6 +341,32 @@ function charte.HabillerSuivi(cadre)
     end
     if cadre.illustration then
         if choix == "illustre" then charte.FondDuJournal(cadre.illustration) else cadre.illustration:Hide() end
+    end
+    -- Le logo de la faction, sur l'illustration.
+    local suite = _G.CoreSuite
+    if choix == "illustre" and not cadre.logoFaction and suite and suite.Logo then
+        -- Comme dans les fenetres : la moitie du blason, coupee par le bord
+        -- droit, en bas.
+        local t = fond:CreateTexture(nil, "ARTWORK", nil, 7)
+        cadre.logoFaction = t
+        -- A la taille du suivi : jamais plus haut que lui (un suivi court,
+        -- comme celui des fabrications vide, ne le laisse pas deborder).
+        local function Ajuster()
+            local h = (fond.GetHeight and fond:GetHeight()) or 0
+            local haut = math.min(204, math.floor((h - 16) * 0.75))
+            t.suiteMasque = haut < 60
+            if t.suiteMasque then t:Hide() return end
+            t:SetSize(math.floor(haut * 85 / 204), haut)
+            t:ClearAllPoints()
+            t:SetPoint("BOTTOMRIGHT", fond, "BOTTOMRIGHT", -3, math.min(60, math.floor((h - haut) / 2)))
+            if suite.Logo then suite.Logo(t, nil, true) end
+        end
+        Ajuster()
+        if fond.HookScript then pcall(fond.HookScript, fond, "OnSizeChanged", Ajuster) end
+        suite.Logo(t, nil, true)
+    end
+    if cadre.logoFaction then
+        if choix == "illustre" and suite and suite.Logo then suite.Logo(cadre.logoFaction, nil, true) else cadre.logoFaction:Hide() end
     end
     return choix == "parchemin"
 end
@@ -408,6 +443,9 @@ local function AtlasExiste(nom)
 end
 
 function charte.FondDuJournal(texture)
+    if texture.SetVertexColor then texture:SetVertexColor(1, 1, 1) end
+    if texture.SetDesaturated then texture:SetDesaturated(false) end
+    if texture.SetTexCoord then texture:SetTexCoord(0, 1, 0, 1) end
     -- 1. Le fond tel que la carte l'affiche.
     local sources = {}
     local qs = _G.QuestScrollFrame
@@ -467,7 +505,7 @@ function charte.PoliceStable(fs)
         local o = type(objet) == "string" and _G[objet] or objet
         if type(o) == "table" and o.GetFont then
             local fichier, taille, options = o:GetFont()
-            if fichier then self:SetFont(fichier, taille, options) end
+            if fichier then self:SetFont(NS.Police(fichier), taille, options) end
         end
     end
 end
@@ -485,7 +523,7 @@ function charte.TitreDeSection(fs, filet)
     if parchemin then
         fs:SetFontObject(_G.QuestTitleFont and "QuestTitleFont" or "GameFontNormalLarge")
         local fichier, taille, options = fs:GetFont()
-        if fichier and taille and taille > charte.TAILLE_TITRE then fs:SetFont(fichier, charte.TAILLE_TITRE, options) end
+        if fichier and taille and taille > charte.TAILLE_TITRE then fs:SetFont(NS.Police(fichier), charte.TAILLE_TITRE, options) end
         fs:SetTextColor(0.42, 0.18, 0.02)
         if filet then filet:SetColorTexture(0.42, 0.18, 0.02, 0.45) end
     else

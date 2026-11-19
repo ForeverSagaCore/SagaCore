@@ -15,7 +15,7 @@ evenements:SetScript("OnEvent", function(_, evenement)
             })
         end
         for _, e in ipairs({ "ZONE_CHANGED_NEW_AREA", "PLAYER_LEVEL_UP", "HEARTHSTONE_BOUND", "PLAYER_LOGOUT",
-            "PLAYER_ENTERING_WORLD" }) do
+            "PLAYER_ENTERING_WORLD", "ZONE_CHANGED", "ZONE_CHANGED_INDOORS" }) do
             pcall(evenements.RegisterEvent, evenements, e)
         end
         NS.Dire(string.format(L.LOADED, NS.VERSION))

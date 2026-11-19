@@ -249,6 +249,31 @@ local function TousLesPoints()
             end
         end
     end
+    -- Un seul repere par lieu et par sorte : plusieurs quetes chez le meme
+    -- donneur (ou sur les memes creatures) ne s'empilent plus. Les autres
+    -- titres se lisent au survol. Les etapes numerotees restent toutes.
+    local tries, places = {}, {}
+    for _, pt in ipairs(cache) do
+        if pt.numero then
+            table.insert(tries, pt)
+        else
+            local cle = tostring(pt.carte) .. ":" .. math.floor(pt.x * 100 / CELLULE) .. ":"
+                .. math.floor(pt.y * 100 / CELLULE) .. ":" .. tostring(pt.genre) .. ":" .. tostring(pt.icone) .. ":" .. tostring(pt.dispo)
+            local deja = places[cle]
+            if deja then
+                if pt.titre and pt.titre ~= deja.titre then
+                    deja.autres = deja.autres or {}
+                    local vu = false
+                    for _, t in ipairs(deja.autres) do if t == pt.titre then vu = true end end
+                    if not vu then table.insert(deja.autres, pt.titre) end
+                end
+            else
+                places[cle] = pt
+                table.insert(tries, pt)
+            end
+        end
+    end
+    cache = tries
     return cache
 end
 carte.TousLesPoints = TousLesPoints
@@ -288,7 +313,7 @@ local function CreerRepere(parent)
     b.numero = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     b.numero:SetPoint("CENTER", b.pastille, "CENTER", 0, 0)
     local fichier, _, drapeaux = b.numero:GetFont()
-    if fichier then b.numero:SetFont(fichier, 11, "OUTLINE") end
+    if fichier then b.numero:SetFont(NS.Police(fichier), 11, "OUTLINE") end
     b.numero:SetDrawLayer("OVERLAY", 2)
     b.pastille:Hide()
     local poser = b.numero.SetText
@@ -302,6 +327,7 @@ local function CreerRepere(parent)
         if not pt then return end
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(pt.titre or ("#" .. tostring(pt.quete)), 1, 0.82, 0)
+        for _, autre in ipairs(pt.autres or {}) do GameTooltip:AddLine(autre, 1, 0.82, 0) end
         if pt.numero then
             GameTooltip:AddLine(string.format(L.MAP_ROUTE_STEP, pt.parcours or "", pt.numero), 1, 1, 1)
         end

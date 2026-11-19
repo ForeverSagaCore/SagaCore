@@ -150,7 +150,14 @@ end
 -- Commandes assignables, utilisables au clavier comme a la manette
 -- ---------------------------------------------------------------------------
 
+-- Le raccourci ouvre la suite la ou on l'avait laissee (dernier add-on,
+-- derniere page), et la referme.
 function CraftCore_Basculer()
+    local S = NS.suite or _G.CoreSuite
+    if S and S.BasculerDernier then
+        local ok = pcall(S.BasculerDernier, "CraftCore")
+        if ok then return end
+    end
     ecran.Basculer()
 end
 

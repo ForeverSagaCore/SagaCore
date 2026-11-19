@@ -68,6 +68,7 @@ L.CHAR_LEVEL_OF = "%s %s 级"
 L.CHAR_SKILL_OF = "%s %s"
 L.OPEN_LEGACY = "打开传承以分配点数"
 L.OPEN_LEGACY_FAIL = "无法打开传承窗口：请使用其快捷键（默认为 Y）。"
+L.OPEN_LEGACY_KEY = "只有游戏自身界面能打开传承窗口：请按 %s。"
 L.UNLOCKED_LEVEL = "传承已解锁（%d 级）"
 L.OPEN_LEGACY_OTHER = "登录 %s 以分配其点数。"
 L.ADVICE = {

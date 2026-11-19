@@ -48,6 +48,15 @@ local VERT = { 0.31, 0.82, 0.41 }
 -- Personnage choisi : le meme dans toute la suite
 -- ---------------------------------------------------------------------------
 
+-- Les personnages de la faction regardee (onglets Alliance / Horde).
+local function PersosVisibles()
+    local S, liste = NS.suite, {}
+    for _, p in ipairs(NS.base.Personnages()) do
+        if not (S and S.Visible) or S.Visible(p.cle) then table.insert(liste, p) end
+    end
+    return liste
+end
+
 local function ChoisirPerso(cle)
     etat.cle = cle
     local S = NS.suite
@@ -296,7 +305,7 @@ local function Dimensionner(c, n)
     c.caseRang:ClearAllPoints()
     c.caseRang:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", math.floor(n * 0.36 + 0.5), -math.floor(n * 0.28 + 0.5))
     local police = c.rang:GetFont()
-    if police then c.rang:SetFont(police, math.max(12, math.floor(n * 0.37 + 0.5)), "") end
+    if police then c.rang:SetFont(NS.Police(police), math.max(12, math.floor(n * 0.37 + 0.5)), "") end
 end
 
 local function TitreDArbre(contenu, rang)
@@ -388,7 +397,7 @@ DessinerArbres = function(contenu, arbres, y, disponibles)
         -- Un peu plus petit que le titre de section (Mes arbres).
         t:SetFontObject("GameFontNormal")
         local fichier, _, options = t:GetFont()
-        if fichier then t:SetFont(fichier, (NS.charte.TAILLE_TITRE or 15) - 2, options) end
+        if fichier then t:SetFont(NS.Police(fichier), (NS.charte.TAILLE_TITRE or 15) - 2, options) end
         t:SetText((a.nom or L[NOMS_ARBRES[a.genre] or ""] or "?") .. "  |cffffffff" .. NS.base.Depenses(a) .. "|r")
         t:Show()
         if t.bandeau then t.bandeau:Hide() end
@@ -495,7 +504,11 @@ local function RendreArbres(contenu, p, index, y)
         local b = CreateFrame("Button", nil, contenu, "UIPanelButtonTemplate")
         b:SetHeight(20)
         b:SetScript("OnClick", function()
-            if not NS.OuvrirHeritageDuJeu() then NS.Dire(L.OPEN_LEGACY_FAIL) end
+            -- Le jeu reserve sa fenetre d'heritage a sa propre interface : y
+            -- toucher (charger son module, la montrer) contamine l'interface et
+            -- bloque ensuite d'autres actions (sacs...). On rappelle la touche.
+            local touche = NS.ToucheHeritage()
+            NS.Dire(touche and string.format(L.OPEN_LEGACY_KEY, touche) or L.OPEN_LEGACY_FAIL)
         end)
         contenu.boutonHeritage = b
     end
@@ -622,7 +635,7 @@ local function RendrePersos(contenu, index, y)
     index = index + 1
     y = Titre(contenu, index, y, L.NAV_CHARACTERS, true)
     local courant = NS.ClePersonnage()
-    for _, p in ipairs(NS.base.Personnages()) do
+    for _, p in ipairs(PersosVisibles()) do
         local debloque = (p.niveau or 0) >= NS.base.NIVEAU_HERITAGE
         local detail
         if p.releve and p.releve.arbres and #p.releve.arbres > 0 then
@@ -788,7 +801,7 @@ local function RendreChrono(contenu, p, index, y)
     end
     local jour
     local persos = {}
-    for _, q in ipairs(NS.base.Personnages()) do persos[q.cle] = q end
+    for _, q in ipairs(PersosVisibles()) do persos[q.cle] = q end
     local temps = {}
     for k, e in ipairs(evenements) do
         if k > 150 then break end
@@ -1018,10 +1031,23 @@ local function Construire()
     cadre:SetScript("OnShow", function() fen.Rendre() end)
 end
 
+-- Memoire : on rouvre la page ou on s'etait arrete, meme apres /reload.
+local pageRestauree = false
+local function Memoire()
+    if type(LegacyCoreDB) ~= "table" then return nil end
+    LegacyCoreDB.memoire = type(LegacyCoreDB.memoire) == "table" and LegacyCoreDB.memoire or {}
+    return LegacyCoreDB.memoire
+end
+
 function fen.Rendre()
     if not cadre or not cadre:IsShown() then return end
+    local m = Memoire()
+    if m and not pageRestauree then
+        pageRestauree = true
+        if m.page then etat.page = m.page end
+    end
     local ok, souci = pcall(function()
-        local persos = NS.base.Personnages()
+        local persos = PersosVisibles()
         SuivreLaSuite()
         local trouve = false
         for _, p in ipairs(persos) do if p.cle == etat.cle then trouve = true end end
@@ -1063,6 +1089,7 @@ function fen.Rendre()
         NS.charte.Encrer(contenu, parchemin)
         if fen.ApresRendu then fen.ApresRendu() end
     end)
+    if m and etat.page then m.page = etat.page end
     if not ok then NS.base.NoterIncident("fenetre", souci) end
 end
 
@@ -1128,6 +1155,11 @@ function fen.ApresRendu()
         cadre.barreManette = barre
     end
     if not ManetteActive() then barre:Hide() return end
+    local bh = cadre.contenu and cadre.contenu.boutonHeritage
+    if bh then
+        bh:SetText((bh:IsShown() and bh:IsEnabled() and (Glyphe("PAD1") .. " ") or "") .. L.OPEN_LEGACY)
+        bh:SetWidth((bh:GetTextWidth() or 120) + 30)
+    end
     barre.texte:SetText(Glyphe("PADLSHOULDER") .. " " .. Glyphe("PADRSHOULDER") .. "  " .. L.PAD_PAGES .. "      "
         .. Glyphe("PADDLEFT") .. " " .. Glyphe("PADDRIGHT") .. "  " .. L.PAD_CHARS .. "      "
         .. Glyphe("PADDUP") .. " " .. Glyphe("PADDDOWN") .. "  " .. L.PAD_SCROLL .. "      "
@@ -1147,7 +1179,7 @@ local function PageVoisine(pas)
 end
 
 local function PersoVoisin(pas)
-    local persos = NS.base.Personnages()
+    local persos = PersosVisibles()
     if #persos == 0 then return end
     local index = 1
     for rang, p in ipairs(persos) do if p.cle == etat.cle then index = rang end end
@@ -1174,6 +1206,12 @@ local function Traiter(bouton)
     if bouton == "PADDLEFT" then PersoVoisin(-1) return false end
     if bouton == "PADLSHOULDER" then PageVoisine(-1) return false end
     if bouton == "PADRSHOULDER" then PageVoisine(1) return false end
+    -- A : le bouton de la page (ouvrir l'heritage), quand il est la.
+    if bouton == "PAD1" then
+        local b = cadre.contenu and cadre.contenu.boutonHeritage
+        if b and b:IsShown() and b:IsEnabled() then b:Click() end
+        return false
+    end
     if bouton == "PADDUP" then Defiler(-1) return false end
     if bouton == "PADDDOWN" then Defiler(1) return false end
     if bouton == "PAD2" then cadre:Hide() return false end

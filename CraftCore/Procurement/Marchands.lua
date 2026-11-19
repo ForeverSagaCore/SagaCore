@@ -347,6 +347,7 @@ function marchands.Guider(objet)
     local point = { carte = cible.carte, x = cible.x, y = cible.y, titre = L.VENDOR_GUIDE_TITLE,
         qui = tostring(cible.nom or "?") .. "\n|cffb3b3b3" .. string.format(L.VENDOR_GUIDE_WHAT, NS.inventaire.NomDObjet(objet)) .. "|r" }
     S.Guider("CraftCore", {
+        icone = "Interface\\Minimap\\Tracking\\Reagents",
         Cible = function() return point end,
         Arrivee = function()
             local apres = _G.C_Timer and _G.C_Timer.After

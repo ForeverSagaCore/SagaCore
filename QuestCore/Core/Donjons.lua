@@ -202,17 +202,22 @@ function donjons.OuvrirJournal(d, plan)
 end
 
 -- Ou prendre une quete : le premier PNJ qui la donne, sa carte et sa place.
+-- Ou se prend une quete : son PNJ, ou l'objet qui la donne (un panneau, un
+-- mur...). Le premier emplacement qui tombe sur une carte du jeu.
 function donjons.LieuDuDonneur(id)
     local debut = NS.ref.Lire("QuestDB", id, "startedBy")
-    local pnj = type(debut) == "table" and type(debut[1]) == "table" and debut[1][1]
-    if not pnj then return nil end
-    local nom = NS.ref.Lire("NpcDB", pnj, "name")
-    local spawns = NS.ref.Lire("NpcDB", pnj, "spawns")
-    for zone, liste in pairs(type(spawns) == "table" and spawns or {}) do
-        local carte = NS.carte and NS.carte.CarteDeZone and NS.carte.CarteDeZone(zone)
-        local p = type(liste) == "table" and liste[1]
-        if carte and type(p) == "table" and tonumber(p[1]) and tonumber(p[2]) and p[1] >= 0 then
-            return { carte = carte, x = p[1] / 100, y = p[2] / 100, nom = nom }
+    if type(debut) ~= "table" then return nil end
+    for _, source in ipairs({ { 1, "NpcDB" }, { 2, "ObjectDB" } }) do
+        for _, ent in ipairs(type(debut[source[1]]) == "table" and debut[source[1]] or {}) do
+            local nom = NS.ref.Lire(source[2], ent, "name")
+            local spawns = NS.ref.Lire(source[2], ent, "spawns")
+            for zone, liste in pairs(type(spawns) == "table" and spawns or {}) do
+                local carte = NS.carte and NS.carte.CarteDeZone and NS.carte.CarteDeZone(zone)
+                local p = type(liste) == "table" and liste[1]
+                if carte and type(p) == "table" and tonumber(p[1]) and tonumber(p[2]) and p[1] >= 0 then
+                    return { carte = carte, x = p[1] / 100, y = p[2] / 100, nom = nom }
+                end
+            end
         end
     end
     return nil
