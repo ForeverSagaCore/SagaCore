@@ -68,6 +68,9 @@ function actions.PreparerBoutonFabriquer(bouton, recette, nombre)
         return false
     end
     bouton:SetEnabled(pret)
+    -- Un bouton grise ne recoit pas le survol par defaut : sans cela,
+    -- l'infobulle qui dit ce qui manque et ou c'est ne s'affichait jamais.
+    if bouton.SetMotionScriptsWhileDisabled then pcall(bouton.SetMotionScriptsWhileDisabled, bouton, true) end
     bouton:SetScript("OnClick", function() actions.Fabriquer(recette, nombre or 1) end)
     bouton:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
