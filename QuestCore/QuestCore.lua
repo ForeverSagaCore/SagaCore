@@ -78,6 +78,9 @@ evenements:SetScript("OnEvent", function(_, evenement, ...)
         local okC, souciC = pcall(NS.courrier.Installer)
         if not okC then NS.base.NoterIncident("courrier", souciC) end
         NS.Dire(string.format(L.LOADED, NS.VERSION))
+        -- Sans QuestieDB, le suivi du journal marche ; positions, trajets et
+        -- donjons demandent la base de Questie.
+        if not (NS.ref and NS.ref.Disponible and NS.ref.Disponible()) then NS.Dire(L.NO_QUESTIEDB) end
     elseif evenement == "QUEST_TURNED_IN" then
         local id = ...
         pcall(NS.journal.Rendue, tonumber(id))

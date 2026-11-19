@@ -709,10 +709,10 @@ local function RendreParcours(contenu, p, index, y)
     end
     -- Regroupes par genre, chaque groupe se replie.
     local groupes = {
-        { cle = "suite", titre = L.ROUTE_GROUP_CHAINS, liste = {} },
-        { cle = "selection", titre = L.ROUTE_GROUP_FREE, liste = {} },
-        { cle = "progression", titre = L.ROUTE_GROUP_LEVEL, liste = {} },
-        { cle = "kit", titre = L.ROUTE_GROUP_KIT, liste = {} },
+        { cle = "suite", titre = L.ROUTE_GROUP_CHAINS, aide = L.ROUTE_GROUP_CHAINS_HELP, liste = {} },
+        { cle = "selection", titre = L.ROUTE_GROUP_FREE, aide = L.ROUTE_GROUP_FREE_HELP, liste = {} },
+        { cle = "progression", titre = L.ROUTE_GROUP_LEVEL, aide = L.ROUTE_GROUP_LEVEL_HELP, liste = {} },
+        { cle = "kit", titre = L.ROUTE_GROUP_KIT, aide = L.ROUTE_GROUP_KIT_HELP, liste = {} },
     }
     for _, pc in ipairs(liste) do
         table.insert((pc.genre == "suite" and groupes[1].liste) or (pc.genre == "progression" and groupes[3].liste)
@@ -722,15 +722,22 @@ local function RendreParcours(contenu, p, index, y)
       if #groupe.liste > 0 then
         local cleGroupe = "grp" .. groupe.cle
         local groupeFerme = etat.ouvertes[cleGroupe] == false
+        -- Chaque genre de parcours sous son propre titre de section (comme
+        -- les autres pages), avec ce qu'il est, en une ligne.
+        if y > 0 then y = y + ESPACE_SECTION end
         index = index + 1
-        y = Poser(contenu, index, y, { retrait = 0, depliable = true, deplie = not groupeFerme,
-            police = "GameFontNormalSmall", texte = groupe.titre .. " (" .. #groupe.liste .. ")",
-            couleur = { 0.82, 0.69, 0.4 },
+        y = Poser(contenu, index, y, { retrait = 0, depliable = true, deplie = not groupeFerme, section = true, filet = true,
+            texte = groupe.titre .. " (" .. #groupe.liste .. ")",
             auClic = function()
                 if etat.ouvertes[cleGroupe] == false then etat.ouvertes[cleGroupe] = nil
                 else etat.ouvertes[cleGroupe] = false end
                 fen.Rendre()
-            end })
+            end }) + 2
+        if not groupeFerme and groupe.aide then
+            index = index + 1
+            y = Poser(contenu, index, y, { retrait = RETRAIT, texte = groupe.aide, police = "GameFontDisableSmall",
+                couleur = { 0.6, 0.6, 0.6 } }) + 2
+        end
       if not groupeFerme then
     for _, pc in ipairs(groupe.liste) do
         local faites, total, pct = NS.parcours.Avancement(p, pc)
@@ -1078,16 +1085,26 @@ RendreDonjonOuvert = function(contenu, p, d, index, y)
             end
         end })
     end
-    -- Le detail du donjon (boss, butin, plan) : dans le journal de donjons.
-    if NS.donjons.NomDansLeJournal(d) then
-        local donjon = d
-        table.insert(boutons, { L.DUNGEON_DETAIL, function() NS.donjons.OuvrirJournal(donjon, false) end })
-        table.insert(boutons, { L.DUNGEON_PLAN, function() NS.donjons.OuvrirJournal(donjon, true) end })
-    end
     if #boutons > 0 then
         index = index + 1
-        y = Poser(contenu, index, y, { retrait = RETRAIT * 2, boutons = boutons }) + 4
+        y = Poser(contenu, index, y, { retrait = RETRAIT * 2, boutons = boutons }) + 2
     end
+    -- En dessous, ce qui vient du journal de donjons (DungeonJournal) : actif
+    -- s'il est installe et connait ce donjon, grise sinon, avec pourquoi.
+    local installe = _G.ForeverDungeonJournal_NS ~= nil
+    local connu = installe and NS.donjons.NomDansLeJournal(d) ~= nil
+    local donjon = d
+    index = index + 1
+    y = Poser(contenu, index, y, { retrait = RETRAIT * 2, boutons = {
+        { L.DUNGEON_DETAIL, function() NS.donjons.OuvrirJournal(donjon, false) end, connu },
+        { L.DUNGEON_PLAN, function() NS.donjons.OuvrirJournal(donjon, true) end, connu },
+    } }) + 2
+    if not connu then
+        index = index + 1
+        y = Poser(contenu, index, y, { retrait = RETRAIT * 2, police = "GameFontDisableSmall", couleur = { 0.6, 0.6, 0.6 },
+            texte = installe and L.DUNGEON_JOURNAL_UNKNOWN or L.DUNGEON_JOURNAL_MISSING })
+    end
+    y = y + 4
 
     if #d.restantes == 0 then
         index = index + 1

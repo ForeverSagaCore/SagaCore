@@ -15,7 +15,7 @@ Chaque add-on s'installe aussi seul. Installés ensemble, ils partagent la même
 
 | Add-on | | Pourquoi |
 |---|---|---|
-| [Questie](https://www.curseforge.com/wow/addons/questie) | **Indispensable** | Il installe **QuestieDB**, la base des quêtes, des PNJ et des marchands. Sans lui, QuestCore ne se charge pas. |
+| [Questie](https://www.curseforge.com/wow/addons/questie) | **Fortement conseillé** | Il installe **QuestieDB**, la base des quêtes, des PNJ et des marchands. Sans lui, tout le reste marche, mais pas les positions des quêtes, les trajets, les donjons ni la localisation des marchands. |
 | **DungeonJournal** (cherchez « DungeonJournal » dans CurseForge ou WowUp) | Conseillé | Le détail et le plan de chaque donjon (boss, butin), ouverts depuis la page Donjons de QuestCore. |
 
 ## Installation
