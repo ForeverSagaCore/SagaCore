@@ -165,18 +165,32 @@ function donjons.OuvrirJournal(d, plan)
     if not (FDJ and nom) then return false end
     -- Le journal se construit a sa premiere ouverture : on l'ouvre, puis on
     -- choisit la page un instant apres.
-    -- Notre fenetre se ferme : le journal passe devant.
-    local nous = NS.fenetre and NS.fenetre.Cadre and NS.fenetre.Cadre()
-    if nous and nous:IsShown() then nous:Hide() end
     local cadre = _G.ForeverDungeonJournalFrame
     if not (cadre and cadre:IsShown()) and _G.ForeverDungeonJournal_Toggle then
         pcall(_G.ForeverDungeonJournal_Toggle)
     end
+    -- Le journal passe devant notre fenetre, qui reste ouverte, estompee
+    -- derriere ; a la fermeture du journal, tout revient comme avant.
+    local nous = NS.fenetre and NS.fenetre.Cadre and NS.fenetre.Cadre()
     local function Choisir()
         if plan and FDJ.OpenDungeonMap then pcall(FDJ.OpenDungeonMap, nom)
         elseif FDJ.OpenBossPage then pcall(FDJ.OpenBossPage, nom, 1) end
         local f = _G.ForeverDungeonJournalFrame
-        if f and f.Raise then pcall(f.Raise, f) end
+        if not f then return end
+        if nous and nous:IsShown() then
+            if not f.questCoreStrate then f.questCoreStrate = f:GetFrameStrata() end
+            pcall(f.SetFrameStrata, f, nous:GetFrameStrata())
+            nous:SetAlpha(0.35)
+            if not f.questCoreRendu then
+                f.questCoreRendu = true
+                f:HookScript("OnHide", function(self)
+                    local n = NS.fenetre and NS.fenetre.Cadre and NS.fenetre.Cadre()
+                    if n then n:SetAlpha(1) end
+                    if self.questCoreStrate then pcall(self.SetFrameStrata, self, self.questCoreStrate) end
+                end)
+            end
+        end
+        if f.Raise then pcall(f.Raise, f) end
     end
     local apres = _G.C_Timer and _G.C_Timer.After
     if apres then apres(0.2, Choisir) else Choisir() end

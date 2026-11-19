@@ -197,7 +197,7 @@ local DessinerArbres, PoserVisage
 -- Arbres dessines : une case par talent, a sa place
 -- ---------------------------------------------------------------------------
 
-local CASE, ICONE, ECART_ARBRES = 50, 38, 56
+local CASE, ICONE, ECART_ARBRES = 44, 34, 56
 
 -- Les cadres de talents du jeu (carre a coins coupes, ou octogone d'un
 -- choix), s'ils existent dans ce client.
@@ -286,19 +286,10 @@ DessinerArbres = function(contenu, arbres, y)
         table.insert(plans, { arbre = a, colonne = colonne, rangee = rangee,
             largeur = #xs * CASE, hauteur = 40 + #ys * CASE })
     end
-    -- Rangees d'arbres, chacune centree dans la page.
-    local lignes, courante, l0 = {}, {}, 0
-    for _, pl in ipairs(plans) do
-        local besoin = (#courante > 0 and ECART_ARBRES or 0) + pl.largeur
-        if #courante > 0 and l0 + besoin > largeur then
-            table.insert(lignes, { arbres = courante, largeur = l0 })
-            courante, l0 = {}, 0
-            besoin = pl.largeur
-        end
-        table.insert(courante, pl)
-        l0 = l0 + besoin
-    end
-    if #courante > 0 then table.insert(lignes, { arbres = courante, largeur = l0 }) end
+    -- Un arbre par rangee, l'un sous l'autre, chacun centre dans la page :
+    -- aucun ne parait plus important que les autres.
+    local lignes = {}
+    for _, pl in ipairs(plans) do table.insert(lignes, { arbres = { pl }, largeur = pl.largeur }) end
     local nCase, nTitre, nLien = 0, 0, 0
     y = y + 22
     for _, ligne in ipairs(lignes) do
@@ -385,7 +376,7 @@ DessinerArbres = function(contenu, arbres, y)
             x = x + pl.largeur + ECART_ARBRES
             hauteurLigne = math.max(hauteurLigne, pl.hauteur)
         end
-        y = y + hauteurLigne + 16
+        y = y + hauteurLigne + 22
     end
     return y
 end

@@ -12,7 +12,7 @@ local _, NS = ...
 --   - dans chaque fenetre, les icones en haut a droite : on passe d'un
 --     add-on a l'autre, la nouvelle fenetre prend la place exacte de l'ancienne.
 
-local VERSION = 14
+local VERSION = 15
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -314,29 +314,19 @@ local function OngletLateral(parent, info, auClic)
     -- L'icone d'un fichier (pas d'un atlas) prend sa taille d'origine, 64 px :
     -- elle debordait de l'onglet. Taille fixe, dans l'interieur de l'onglet,
     -- et decalage retourne comme le dessin.
-    -- Comme les onglets de metier : l'icone remplit tout l'interieur de
-    -- l'onglet (le jeu la place), puis sa place est retournee comme le dessin.
+    -- L'icone d'un fichier (pas d'un atlas) prend sa taille d'origine, 64 px.
+    -- Taille fixe, a la mesure de l'interieur de l'onglet, et decalage
+    -- retourne comme le dessin.
     if b.natif and b.icone then
-        if not (b.SetFillToInterior and pcall(b.SetFillToInterior, b, true)) then
-            -- Sans cette fonction : taille fixe dans l'interieur de l'onglet.
-            local l, h = b:GetSize()
-            local cote = math.floor(math.min(l or 43, h or 55) * 0.8)
-            b.icone:ClearAllPoints()
-            b.icone:SetPoint("CENTER", b, "CENTER", 0, 0)
-            b.icone:SetSize(cote, cote)
-            if b.icone.SetTexCoord then b.icone:SetTexCoord(0.07, 0.93, 0.07, 0.93) end
-        end
-        local miroir = { LEFT = "RIGHT", RIGHT = "LEFT", TOPLEFT = "TOPRIGHT", TOPRIGHT = "TOPLEFT",
-            BOTTOMLEFT = "BOTTOMRIGHT", BOTTOMRIGHT = "BOTTOMLEFT" }
-        local points = {}
-        for i = 1, (b.icone:GetNumPoints() or 0) do
-            local p, rel, relP, x, y = b.icone:GetPoint(i)
-            table.insert(points, { miroir[p] or p, rel, miroir[relP] or relP, -(tonumber(x) or 0), tonumber(y) or 0 })
-        end
-        if #points > 0 then
-            b.icone:ClearAllPoints()
-            for _, pt in ipairs(points) do b.icone:SetPoint(pt[1], pt[2], pt[3], pt[4], pt[5]) end
-        end
+        local l, h = b:GetSize()
+        local cote = math.floor(math.min(l or 43, h or 55) * 0.8)
+        local dx = 0
+        local point, _, _, x = b.icone:GetPoint(1)
+        if point and tonumber(x) then dx = -x end
+        b.icone:ClearAllPoints()
+        b.icone:SetPoint("CENTER", b, "CENTER", dx, 0)
+        b.icone:SetSize(cote, cote)
+        if b.icone.SetTexCoord then b.icone:SetTexCoord(0.07, 0.93, 0.07, 0.93) end
     end
     b:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
