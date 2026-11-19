@@ -227,13 +227,30 @@ end
 
 suivi.Icone = IconeDeQuete
 
+-- Nom d'un membre du groupe, a la couleur de sa classe.
+local function NomDeMembre(nom)
+    local classe = NS.groupe and NS.groupe.Classe and NS.groupe.Classe(nom)
+    local c = classe and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[classe]
+    if c then
+        return string.format("|cff%02x%02x%02x%s|r", math.floor(c.r * 255), math.floor(c.g * 255), math.floor(c.b * 255), tostring(nom))
+    end
+    return "|cff66c7ff" .. tostring(nom) .. "|r"
+end
+
 -- Une ligne de texte, au retrait donne, sur plusieurs lignes au besoin.
 local function Poser(index, y, texte, options)
     local corps = cadre.corps
     local l = Ligne(index)
     local retrait = options.retrait or 0
     if options.separateur then y = y + 14 end
-    l.separateur:SetShown(options.separateur == true)
+    -- Mini filet : plus fin et plus serre, sous nos objectifs, avant ceux
+    -- du groupe.
+    if options.miniFilet then y = y + 9 end
+    l.separateur:ClearAllPoints()
+    l.separateur:SetPoint("BOTTOMLEFT", l, "TOPLEFT", 0, options.miniFilet and 4 or 7)
+    l.separateur:SetPoint("BOTTOMRIGHT", l, "TOPRIGHT", options.miniFilet and -40 or 0, options.miniFilet and 4 or 7)
+    l.separateur:SetColorTexture(0.8, 0.65, 0.35, options.miniFilet and 0.22 or 0.35)
+    l.separateur:SetShown(options.separateur == true or options.miniFilet == true)
     l:ClearAllPoints()
     l:SetPoint("TOPLEFT", corps, "TOPLEFT", retrait, -y)
     l:SetPoint("RIGHT", corps, "RIGHT", -4, 0)
@@ -685,8 +702,7 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
             local objets = NS.ref.ObjetsRequis(moi, id)
             local rangObjet = 0
             -- Mode groupe : les membres du groupe qui ont la meme quete (et
-            -- QuestCore). A deux, une ligne par personne avec son nom a droite ;
-            -- a plus, une petite ligne dessous avec le compte de chacun.
+            -- QuestCore), sous nos objectifs.
             local membres = NS.groupe and NS.groupe.Membres(id) or {}
             -- Quete a faire : la meme petite carte que pour les quetes a
             -- rendre, pour la mettre dans le trajet.
@@ -702,35 +718,6 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
                         choisies[idQuete] = not choisies[idQuete] or nil
                         suivi.Rendre()
                     end } or nil })
-                if #membres == 1 then
-                    local m = membres[1]
-                    local ob = m.objs[rang]
-                    if ob then
-                        local fait = ob.r > 0 and ob.n >= ob.r
-                        index = index + 1
-                        -- La ligne du coequipier : l'initiale de son nom devant,
-                        -- en bleu (la sienne) ; la notre n'a rien.
-                        local initiale = string.match(m.nom or "", "^[%z\1-\127\194-\244][\128-\191]*") or "?"
-                        y = Poser(index, y, "|cff66c7ff" .. string.upper(initiale) .. "|r " .. NS.groupe.TexteAvec(o.texte, ob),
-                            { retrait = 22, couleur = fait and { 0.5, 0.5, 0.5 } or { 0.85, 0.85, 0.85 },
-                            margeDroite = avecPion and 22 or nil })
-                    end
-                elseif #membres > 1 then
-                    local morceaux = {}
-                    for _, m in ipairs(membres) do
-                        local ob = m.objs[rang]
-                        if ob then
-                            local fait = ob.r > 0 and ob.n >= ob.r
-                            table.insert(morceaux, string.format("|cff66c7ff%s|r %s%d/%d|r", m.nom,
-                                fait and "|cff4fd168" or "|cffffffff", ob.n, ob.r))
-                        end
-                    end
-                    if #morceaux > 0 then
-                        index = index + 1
-                        y = Poser(index, y, table.concat(morceaux, "    "), { retrait = 32,
-                            police = "GameFontNormalSmall", petit = true, uneLigne = true })
-                    end
-                end
                 if o.type == "item" then
                     rangObjet = rangObjet + 1
                     local requis = objets[rangObjet]
@@ -739,6 +726,29 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
                         index = index + 1
                         y = Poser(index, y, autres, { retrait = 32, couleur = { 1, 0.82, 0 },
                             police = "GameFontNormalSmall", petit = true })
+                    end
+                end
+            end
+            -- Le groupe : sous nos objectifs, un mini filet, puis chacun avec
+            -- son nom (couleur de sa classe) et ou il en est.
+            for rangM, m in ipairs(membres) do
+                index = index + 1
+                y = Poser(index, y, NomDeMembre(m.nom), { retrait = 22, police = "GameFontNormalSmall",
+                    petit = true, uneLigne = true, miniFilet = rangM == 1 })
+                if m.etat == 1 then
+                    index = index + 1
+                    y = Poser(index, y, L.DONE, { retrait = 32, couleur = { 0.31, 0.82, 0.41 },
+                        police = "GameFontNormalSmall", petit = true })
+                else
+                    for rang, o in ipairs(q.objectifs or {}) do
+                        local ob = m.objs[rang]
+                        if ob then
+                            local fini = ob.r > 0 and ob.n >= ob.r
+                            index = index + 1
+                            y = Poser(index, y, "- " .. NS.groupe.TexteAvec(o.texte, ob), { retrait = 32,
+                                couleur = fini and { 0.5, 0.5, 0.5 } or { 0.85, 0.85, 0.85 },
+                                police = "GameFontNormalSmall", petit = true })
+                        end
                     end
                 end
             end

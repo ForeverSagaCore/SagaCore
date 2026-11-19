@@ -12,7 +12,7 @@ local _, NS = ...
 --   - dans chaque fenetre, les icones en haut a droite : on passe d'un
 --     add-on a l'autre, la nouvelle fenetre prend la place exacte de l'ancienne.
 
-local VERSION = 16
+local VERSION = 18
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -305,10 +305,22 @@ local function OngletLateral(parent, info, auClic)
     b.cle = info.cle
     -- Pose sur le bord gauche : le dessin de l'onglet est retourne (l'icone
     -- reste a l'endroit).
+    -- Le modele du jeu remet son dessin (SetAtlas) a chaque changement
+    -- d'etat, ce qui annulait le retournement : on retourne de nouveau apres
+    -- chaque SetAtlas, et les angles coupes restent du cote exterieur.
+    local function Retourner(r)
+        local ulx, uly, llx, lly, urx, ury, lrx, lry = r:GetTexCoord()
+        if ulx then r:SetTexCoord(urx, ury, lrx, lry, ulx, uly, llx, lly) end
+    end
     for _, r in ipairs({ b:GetRegions() }) do
         if r ~= b.icone and r.GetObjectType and r:GetObjectType() == "Texture" and r.GetTexCoord then
-            local ulx, uly, llx, lly, urx, ury, lrx, lry = r:GetTexCoord()
-            if ulx then r:SetTexCoord(urx, ury, lrx, lry, ulx, uly, llx, lly) end
+            Retourner(r)
+            if hooksecurefunc and r.SetAtlas then
+                pcall(hooksecurefunc, r, "SetAtlas", function(self) Retourner(self) end)
+            end
+            if hooksecurefunc and r.SetTexture then
+                pcall(hooksecurefunc, r, "SetTexture", function(self) Retourner(self) end)
+            end
         end
     end
     -- L'icone : exactement comme les onglets de droite (FillToInterior, qui
@@ -347,12 +359,18 @@ local function OngletLateral(parent, info, auClic)
         end)
     end
     b:HookScript("OnEnter", function(self)
+        self.survol = true
+        if self.icone then self.icone:SetVertexColor(1, 1, 1) end
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText(self.cle, 1, 0.82, 0)
         if not Suite.Installe(self.cle) then GameTooltip:AddLine(T.absent, 0.6, 0.6, 0.6) end
         GameTooltip:Show()
     end)
-    b:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    b:HookScript("OnLeave", function(self)
+        self.survol = false
+        if self.icone and self.cle ~= self.courante then self.icone:SetVertexColor(0.55, 0.55, 0.55) end
+        GameTooltip:Hide()
+    end)
     return b
 end
 
@@ -642,9 +660,14 @@ function Suite.Actualiser()
     for _, rangee in ipairs(Suite.entetes) do
         for _, b in ipairs(rangee.boutons) do
             local installe = Suite.Installe(b.cle)
+            local courant = b.cle == rangee.courante
             b.icone:SetDesaturated(not installe)
             b:SetAlpha(installe and 1 or 0.5)
-            if b.SetChecked then b:SetChecked(b.cle == rangee.courante) end
+            if b.SetChecked then b:SetChecked(courant) end
+            -- Comme les onglets de metier : celui qui n'est pas ouvert reste
+            -- en retrait ; il s'eclaire au survol.
+            local v = (courant or b.survol) and 1 or 0.55
+            b.icone:SetVertexColor(v, v, v)
             -- Pastille (ex. points d'heritage a depenser) dans le coin de l'icone.
             local pastille = Suite.badges and Suite.badges[b.cle]
             if pastille and not b.badge then

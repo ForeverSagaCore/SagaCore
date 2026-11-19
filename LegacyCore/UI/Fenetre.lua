@@ -217,17 +217,15 @@ local function Atlas(forme, etat)
     return atlasVus[nom] and nom or nil
 end
 
--- Un lien : un trait et sa pointe de fleche.
+-- Un lien : un trait et sa pointe (deux traits courts en chevron, ou la
+-- pointe du jeu si on l'a relevee).
 local function Lien(contenu, rang)
     contenu.liens = contenu.liens or {}
     local l = contenu.liens[rang]
     if l then return l end
     if not contenu.CreateLine then return nil end
-    l = { trait = contenu:CreateLine(nil, "BACKGROUND") }
-    l.trait:SetThickness(2)
-    l.pointe = contenu:CreateTexture(nil, "ARTWORK")
-    l.pointe:SetTexture("Interface\\ChatFrame\\ChatFrameExpandArrow")
-    l.pointe:SetSize(12, 12)
+    l = { trait = contenu:CreateLine(nil, "ARTWORK"), aile1 = contenu:CreateLine(nil, "ARTWORK"),
+        aile2 = contenu:CreateLine(nil, "ARTWORK"), pointe = contenu:CreateTexture(nil, "ARTWORK") }
     contenu.liens[rang] = l
     return l
 end
@@ -287,35 +285,103 @@ local function TitreDArbre(contenu, rang)
     return t
 end
 
--- Une fleche de la case `depuis` a la case `vers`, bord a bord.
-local function Fleche(l, depuis, vers, actif)
+-- Une fleche de la case `depuis` a la case `vers`, bord a bord, toutes du
+-- meme dessin.
+local function Fleche(contenu, l, depuis, vers, actif, echelle)
+    local releve = NS.natif and NS.natif.Releve()
+    local style = releve and releve.fleches or {}
     local x1, y1 = depuis.gx, depuis.gy
     local x2, y2 = vers.gx, vers.gy
-    local p1, p2, angle, dx, dy
+    local p1, p2, ux, uy
     if y1 == y2 then
-        if x2 > x1 then p1, p2, angle, dx, dy = "RIGHT", "LEFT", 0, -5, 0
-        else p1, p2, angle, dx, dy = "LEFT", "RIGHT", math.pi, 5, 0 end
+        if x2 > x1 then p1, p2, ux, uy = "RIGHT", "LEFT", 1, 0 else p1, p2, ux, uy = "LEFT", "RIGHT", -1, 0 end
     elseif x1 == x2 then
-        if y2 > y1 then p1, p2, angle, dx, dy = "BOTTOM", "TOP", -math.pi / 2, 0, 5
-        else p1, p2, angle, dx, dy = "TOP", "BOTTOM", math.pi / 2, 0, -5 end
+        if y2 > y1 then p1, p2, ux, uy = "BOTTOM", "TOP", 0, -1 else p1, p2, ux, uy = "TOP", "BOTTOM", 0, 1 end
     else
-        p1, p2, angle, dx, dy = "CENTER", "CENTER", nil, 0, 0
+        p1, p2 = "CENTER", "CENTER"
     end
-    l.trait:SetStartPoint(p1, depuis)
-    l.trait:SetEndPoint(p2, vers, dx, dy)
-    local r, g, b = 0.42, 0.42, 0.42
-    if actif then r, g, b = 0.31, 0.82, 0.41 end
-    l.trait:SetColorTexture(r, g, b, 1)
+    local couleur = (style.trait and style.trait.couleur) or { 0.16, 0.13, 0.09, 1 }
+    if actif then couleur = { 0.31, 0.82, 0.41, 1 } end
+    local epaisseur = math.max(2, math.floor(((style.trait and style.trait.epaisseur) or 3) * (echelle or 1) + 0.5))
+    local ecart = 3
+    l.trait:SetThickness(epaisseur)
+    l.trait:SetColorTexture(couleur[1], couleur[2], couleur[3], couleur[4] or 1)
+    l.trait:SetStartPoint(p1, depuis, (ux or 0) * ecart, (uy or 0) * ecart)
+    l.trait:SetEndPoint(p2, vers, -(ux or 0) * ecart, -(uy or 0) * ecart)
     l.trait:Show()
-    if angle and l.pointe.SetRotation then
-        l.pointe:ClearAllPoints()
-        l.pointe:SetPoint("CENTER", vers, p2, dx * 0.6, dy * 0.6)
-        l.pointe:SetRotation(angle)
-        l.pointe:SetVertexColor(r + 0.2, g + 0.2, b + 0.2)
-        l.pointe:Show()
-    else
-        l.pointe:Hide()
+    l.aile1:Hide() l.aile2:Hide() l.pointe:Hide()
+    if not ux then return end
+    -- La pointe, collee au bord de la case d'arrivee.
+    local tx, ty = -ux * ecart, -uy * ecart
+    local long = 7
+    local px, py = -uy, ux
+    for rang, aile in ipairs({ l.aile1, l.aile2 }) do
+        local signe = rang == 1 and 1 or -1
+        aile:SetThickness(epaisseur)
+        aile:SetColorTexture(couleur[1], couleur[2], couleur[3], couleur[4] or 1)
+        aile:SetStartPoint(p2, vers, tx, ty)
+        aile:SetEndPoint(p2, vers, tx - ux * long + px * long * signe, ty - uy * long + py * long * signe)
+        aile:Show()
     end
+end
+
+-- Un talent dessine avec les elements releves dans la fenetre du jeu :
+-- memes textures, memes places, meme police, a notre taille.
+local function AppliquerNatif(c, d)
+    c.natifs = c.natifs or {}
+    local ref = ICONE
+    for _, t in pairs(c.natifs) do t:Hide() end
+    for rang, x in ipairs(d.textures or {}) do
+        if rang == d.icone then
+            c.icone:ClearAllPoints()
+            c.icone:SetPoint("CENTER", c, "CENTER", x.dx * ref, x.dy * ref)
+            c.icone:SetSize(x.w * ref, x.h * ref)
+            pcall(c.icone.SetDrawLayer, c.icone, x.couche or "ARTWORK", x.sous or 0)
+            if x.coords and #x.coords >= 8 then c.icone:SetTexCoord(unpack(x.coords)) end
+        else
+            local t = c.natifs[rang]
+            if not t then
+                t = c:CreateTexture(nil, "ARTWORK")
+                c.natifs[rang] = t
+            end
+            pcall(t.SetDrawLayer, t, x.couche or "ARTWORK", x.sous or 0)
+            local pose = false
+            if x.atlas and t.SetAtlas then pose = pcall(t.SetAtlas, t, x.atlas) end
+            if not pose and x.fichier then
+                t:SetTexture(x.fichier)
+                if x.coords and #x.coords >= 8 then t:SetTexCoord(unpack(x.coords)) end
+                pose = true
+            end
+            if pose then
+                t:ClearAllPoints()
+                t:SetPoint("CENTER", c, "CENTER", x.dx * ref, x.dy * ref)
+                t:SetSize(x.w * ref, x.h * ref)
+                local k = x.couleur or { 1, 1, 1, 1 }
+                t:SetVertexColor(k[1], k[2], k[3], k[4] or 1)
+                t:SetAlpha(x.alpha or 1)
+                if x.mode then pcall(t.SetBlendMode, t, x.mode) end
+                t:SetDesaturated(x.gris and true or false)
+                t:Show()
+            end
+        end
+    end
+    local icone = d.icone and d.textures[d.icone]
+    if icone then
+        c.icone:SetDesaturated(icone.gris and true or false)
+        local k = icone.couleur or { 1, 1, 1, 1 }
+        c.icone:SetVertexColor(k[1], k[2], k[3])
+    end
+    local r = d.rang or {}
+    if r.police then pcall(c.rang.SetFont, c.rang, r.police, math.max(8, math.floor((r.taille or 0.3) * ref + 0.5)), r.options) end
+    c.rang:SetParent(c)
+    c.rang:ClearAllPoints()
+    c.rang:SetPoint("CENTER", c, "CENTER", (r.dx or 0.3) * ref, (r.dy or -0.4) * ref)
+    local k = r.couleur or { 1, 1, 1 }
+    c.rang:SetTextColor(k[1], k[2], k[3])
+    c.rang:SetDrawLayer("OVERLAY", 7)
+    c.cadre:Hide()
+    c.bord:Hide()
+    c.caseRang:Hide()
 end
 
 DessinerArbres = function(contenu, arbres, y, disponibles)
@@ -348,7 +414,7 @@ DessinerArbres = function(contenu, arbres, y, disponibles)
     local pas = PAS_MAX
     if maxCol > 1 then pas = math.min(PAS_MAX, math.floor((colonnePage - ICONE - 10) / (maxCol - 1))) end
     local nCase, nTitre, nLien = 0, 0, 0
-    local haut = y + 30
+    local haut = y + 44
     for rang, pl in ipairs(plans) do
         local a, parId = pl.arbre, {}
         local gauche = (rang - 1) * (colonnePage + ECART_ARBRES)
@@ -357,7 +423,7 @@ DessinerArbres = function(contenu, arbres, y, disponibles)
         nTitre = nTitre + 1
         local t = TitreDArbre(contenu, nTitre)
         t:ClearAllPoints()
-        t:SetPoint("BOTTOM", contenu, "TOPLEFT", gauche + colonnePage / 2, -(y + 20))
+        t:SetPoint("BOTTOM", contenu, "TOPLEFT", gauche + colonnePage / 2, -(y + 18))
         t:SetFontObject("GameFontNormal")
         local fichier, taille, options = t:GetFont()
         if fichier then t:SetFont(fichier, (taille or 12) + 2, options) end
@@ -399,6 +465,20 @@ DessinerArbres = function(contenu, arbres, y, disponibles)
             end
             c.rang:SetText(r .. "/" .. maxi)
             if pris then c.rang:SetTextColor(0.31, 0.82, 0.41) else c.rang:SetTextColor(1, 1, 1) end
+            -- Les elements du jeu, s'ils ont ete releves.
+            local releve = NS.natif and NS.natif.Releve()
+            local modele = releve and (pris and releve.pris or releve.vide)
+            if modele then
+                pcall(AppliquerNatif, c, modele)
+            else
+                c.caseRang:Show()
+                c.rang:SetParent(c.caseRang)
+                c.rang:ClearAllPoints()
+                c.rang:SetPoint("CENTER", c.caseRang, "CENTER", 0, 0)
+                c.icone:ClearAllPoints()
+                c.icone:SetAllPoints()
+                for _, t in pairs(c.natifs or {}) do t:Hide() end
+            end
             local noeud = n
             c:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -417,7 +497,7 @@ DessinerArbres = function(contenu, arbres, y, disponibles)
                 if depuis and vers then
                     nLien = nLien + 1
                     local l = Lien(contenu, nLien)
-                    if l then Fleche(l, depuis, vers, (tonumber(n.rang) or 0) > 0) end
+                    if l then Fleche(contenu, l, depuis, vers, (tonumber(n.rang) or 0) > 0) end
                 end
             end
         end
@@ -998,7 +1078,7 @@ function fen.Rendre()
             if l.icone then l.icone:SetTexCoord(0, 1, 0, 1) end
         end
         for _, c in ipairs(contenu.cases or {}) do c:Hide() end
-        for _, l in ipairs(contenu.liens or {}) do l.trait:Hide() l.pointe:Hide() end
+        for _, l in ipairs(contenu.liens or {}) do l.trait:Hide() l.pointe:Hide() l.aile1:Hide() l.aile2:Hide() end
         for _, t in ipairs(contenu.titresArbres or {}) do t:Hide() if t.bandeau then t.bandeau:Hide() end end
         if contenu.histo then contenu.histo:Hide() end
         if contenu.boutonHeritage then contenu.boutonHeritage:Hide() end
