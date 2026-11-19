@@ -1,0 +1,41 @@
+## Interface: 16001
+## Title: CraftCore
+## Notes: Crafting manager for every profession: stocks across your characters, recipes, projects and what you are missing.
+## Notes-frFR: Gestionnaire d'artisanat pour tous les métiers : stocks de tous vos personnages, recettes, projets et manques.
+## Author: CraftCore
+## Version: 0.29.0
+## IconTexture: Interface\Icons\INV_Misc_Gear_01
+## SavedVariables: CraftCoreDB, CoreSuiteDB
+## AddonCompartmentFunc: CraftCore_OnAddonCompartmentClick
+
+# Traductions avant le reste, enUS sert de repli pour toute clé manquante.
+Locale\enUS.lua
+Locale\frFR.lua
+Core\Mouchard.lua
+
+Core\Bootstrap.lua
+Core\Suite.lua
+Core\Database.lua
+Core\Objets.lua
+Inventory\Containers.lua
+Recipes\Emplacements.lua
+Recipes\Sources.lua
+Recipes\Recipes.lua
+Recipes\Transverse.lua
+CraftingEngine\Engine.lua
+Projects\Projects.lua
+Caisses\Caisses.lua
+Procurement\Procurement.lua
+Procurement\Marchands.lua
+UI\Charte.lua
+UI\Actions.lua
+UI\Equipement.lua
+UI\Window.lua
+UI\Minimap.lua
+UI\Aide.lua
+UI\Manette.lua
+UI\Infobulles.lua
+UI\Suivi.lua
+UI\Courrier.lua
+
+CraftCore.lua

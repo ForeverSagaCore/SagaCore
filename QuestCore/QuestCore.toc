@@ -1,0 +1,37 @@
+## Interface: 16001
+## Title: QuestCore
+## Notes: Quests of all your characters: active quests, chains and prerequisites, items to send to each other.
+## Notes-frFR: Les quêtes de tous vos personnages : quêtes en cours, suites et prérequis, objets à vous envoyer.
+## Author: QuestCore
+## Version: 0.29.1
+## IconTexture: Interface\Icons\INV_Misc_Book_08
+## Dependencies: QuestieDB
+## OptionalDeps: CraftCore
+## SavedVariables: QuestCoreDB, CoreSuiteDB
+
+Locale\enUS.lua
+Locale\frFR.lua
+Core\Mouchard.lua
+Core\Core.lua
+Core\Suite.lua
+Data\Reveal.lua
+Core\Objets.lua
+Core\Emplacements.lua
+Core\Equipement.lua
+Core\Journal.lua
+Core\Base.lua
+Core\Parcours.lua
+Core\Histoire.lua
+Core\Donjons.lua
+Core\Disponibles.lua
+UI\Charte.lua
+UI\Manette.lua
+UI\Equipement.lua
+UI\Fenetre.lua
+UI\Infobulles.lua
+UI\Minimap.lua
+UI\Carte.lua
+UI\CartePage.lua
+UI\Suivi.lua
+UI\Courrier.lua
+QuestCore.lua
