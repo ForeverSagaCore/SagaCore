@@ -429,7 +429,15 @@ DessinerArbres = function(contenu, arbres, y, disponibles)
                 c.bord:Show()
             end
             c.rang:SetText(r .. "/" .. maxi)
-            if pris then c.rang:SetTextColor(0.45, 0.9, 0.5) else c.rang:SetTextColor(1, 1, 1) end
+            -- Case du rang : grise (texte et contour) sans point, verte comme
+            -- le cadre du talent quand il en a.
+            if pris then
+                c.rang:SetTextColor(0.45, 0.9, 0.5)
+                if c.caseRang.SetBackdropBorderColor then c.caseRang:SetBackdropBorderColor(VERT_VALIDE[1], VERT_VALIDE[2], VERT_VALIDE[3], 1) end
+            else
+                c.rang:SetTextColor(0.82, 0.82, 0.82)
+                if c.caseRang.SetBackdropBorderColor then c.caseRang:SetBackdropBorderColor(0.55, 0.55, 0.55, 1) end
+            end
             local noeud = n
             c:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")

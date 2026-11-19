@@ -787,7 +787,14 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
                             -- ce qu'il me faut) : bouton Donner, sur mon perso.
                             local don
                             local objet = objetParRang[rang]
-                            if not fini and objet and NS.don and moi.cle == NS.ClePersonnage() then
+                            -- Groupe simule (mode developpeur) : apercu du bouton
+                            -- sur chaque objectif qui lui manque.
+                            local simule = NS.groupe.Simule and NS.groupe.Simule(m.nom)
+                            if not fini and simule and NS.don then
+                                local nom, n = m.nom, ob.r - ob.n
+                                don = { texte = string.format(L.GIVE, n), aide = L.GIVE_SIMULATED,
+                                    auClic = function() NS.don.Donner(nom, objet or 0, n) end }
+                            elseif not fini and objet and NS.don and moi.cle == NS.ClePersonnage() then
                                 local manque = ob.r - ob.n
                                 local n = math.min(manque, NS.don.EnTrop(objet, tonumber(o.requis) or 0))
                                 if n > 0 then
