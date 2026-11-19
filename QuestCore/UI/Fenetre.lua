@@ -1993,6 +1993,12 @@ function fen.OuvrirDisponible(id)
 end
 
 -- Ouvre la fenetre sur la carte du personnage connecte.
+function fen.OuvrirReglages()
+    fen.Ouvrir()
+    etat.page, etat.pageMenu = "reglages", "reglages"
+    fen.Rendre()
+end
+
 function fen.OuvrirCarte()
     if not cadre then Construire() end
     ChoisirPerso(NS.ClePersonnage() or etat.cle)

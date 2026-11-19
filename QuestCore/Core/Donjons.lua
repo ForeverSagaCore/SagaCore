@@ -163,10 +163,22 @@ function donjons.OuvrirJournal(d, plan)
     local FDJ = _G.ForeverDungeonJournal_NS
     local nom = donjons.NomDansLeJournal(d)
     if not (FDJ and nom) then return false end
-    if FDJ.OpenBossFromWorldMap then pcall(FDJ.OpenBossFromWorldMap, nom, 1) end
-    if plan and FDJ.OpenDungeonMap then
-        local apres = _G.C_Timer and _G.C_Timer.After
-        if apres then apres(0.15, function() pcall(FDJ.OpenDungeonMap, nom) end) else pcall(FDJ.OpenDungeonMap, nom) end
+    -- Le journal se construit a sa premiere ouverture : on l'ouvre, puis on
+    -- choisit la page un instant apres.
+    -- Notre fenetre se ferme : le journal passe devant.
+    local nous = NS.fenetre and NS.fenetre.Cadre and NS.fenetre.Cadre()
+    if nous and nous:IsShown() then nous:Hide() end
+    local cadre = _G.ForeverDungeonJournalFrame
+    if not (cadre and cadre:IsShown()) and _G.ForeverDungeonJournal_Toggle then
+        pcall(_G.ForeverDungeonJournal_Toggle)
     end
+    local function Choisir()
+        if plan and FDJ.OpenDungeonMap then pcall(FDJ.OpenDungeonMap, nom)
+        elseif FDJ.OpenBossPage then pcall(FDJ.OpenBossPage, nom, 1) end
+        local f = _G.ForeverDungeonJournalFrame
+        if f and f.Raise then pcall(f.Raise, f) end
+    end
+    local apres = _G.C_Timer and _G.C_Timer.After
+    if apres then apres(0.2, Choisir) else Choisir() end
     return true
 end

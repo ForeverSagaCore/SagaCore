@@ -235,8 +235,8 @@ local function Case(contenu, rang)
     c.bord:SetPoint("TOPLEFT", -2, 2)
     c.bord:SetPoint("BOTTOMRIGHT", 2, -2)
     c.icone = c:CreateTexture(nil, "ARTWORK")
-    c.icone:SetPoint("TOPLEFT", 3, -3)
-    c.icone:SetPoint("BOTTOMRIGHT", -3, 3)
+    c.icone:SetPoint("TOPLEFT", -1, 1)
+    c.icone:SetPoint("BOTTOMRIGHT", 1, -1)
     c.icone:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     -- Le cadre du jeu (coins coupes), par-dessus l'icone.
     c.cadre = c:CreateTexture(nil, "OVERLAY", nil, -1)
@@ -267,6 +267,8 @@ end
 DessinerArbres = function(contenu, arbres, y)
     local largeur = contenu:GetWidth() or 760
     local nCase, nTitre, nLien = 0, 0, 0
+    local MARGE_G = 14
+    largeur = largeur - MARGE_G
     local x, hauteurLigne = 0, 0
     -- Dans l'ordre du jeu, sans les arbres vides.
     local ORDRE = { aventure = 1, ressources = 2, metiers = 3 }
@@ -287,25 +289,46 @@ DessinerArbres = function(contenu, arbres, y)
         for i, v in ipairs(xs) do colonne[v] = i end
         for i, v in ipairs(ys) do rangee[v] = i end
         local largeurArbre = math.max(#xs * CASE, 170)
-        local hauteurArbre = 26 + #ys * CASE
+        local hauteurArbre = 32 + #ys * CASE
         if x > 0 and x + largeurArbre > largeur then
             y = y + hauteurLigne + 10
             x, hauteurLigne = 0, 0
         end
         nTitre = nTitre + 1
         local t = TitreDArbre(contenu, nTitre)
+        -- Titre centre au-dessus de son arbre, sur un bandeau leger.
+        local largeurReelle = #xs * CASE
         t:ClearAllPoints()
-        t:SetPoint("TOPLEFT", contenu, "TOPLEFT", x, -y)
-        t:SetText((a.nom or L[NOMS_ARBRES[a.genre] or ""] or "?") .. "  |cffffffff" .. NS.base.Depenses(a) .. "|r")
+        t:SetPoint("TOP", contenu, "TOPLEFT", MARGE_G + x + largeurReelle / 2, -y - 2)
+        t:SetFontObject("GameFontNormalLarge")
+        t:SetText((a.nom or L[NOMS_ARBRES[a.genre] or ""] or "?") .. "   |cffffffff" .. NS.base.Depenses(a) .. "|r")
         t:Show()
+        if not t.bandeau then
+            t.bandeau = contenu:CreateTexture(nil, "BACKGROUND")
+            t.bandeau:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+            t.bandeau:SetBlendMode("ADD")
+            t.bandeau:SetAlpha(0.35)
+        end
+        t.bandeau:ClearAllPoints()
+        t.bandeau:SetPoint("TOPLEFT", contenu, "TOPLEFT", MARGE_G + x - 4, -y)
+        t.bandeau:SetSize(largeurReelle + 8, 22)
+        t.bandeau:Show()
         for _, n in ipairs(a.noeuds) do
             nCase = nCase + 1
             local c = Case(contenu, nCase)
             c:ClearAllPoints()
-            c:SetPoint("TOPLEFT", contenu, "TOPLEFT", x + (colonne[n.x] - 1) * CASE + 4, -(y + 26 + (rangee[n.y] - 1) * CASE))
+            c:SetPoint("TOPLEFT", contenu, "TOPLEFT", MARGE_G + x + (colonne[n.x] - 1) * CASE + 6, -(y + 32 + (rangee[n.y] - 1) * CASE))
             local r, maxi = tonumber(n.rang) or 0, tonumber(n.maxi) or 1
-            c.icone:SetTexture(n.icone or NS.IconeDeSort(n.sort) or "Interface\\Icons\\INV_Misc_QuestionMark")
-            c.icone:SetDesaturated(r == 0)
+            local icone = n.icone or NS.IconeDeSort(n.sort)
+            c.icone:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+            if icone then
+                c.icone:SetTexture(icone)
+            elseif not (n.atlas and pcall(c.icone.SetAtlas, c.icone, n.atlas)) then
+                c.icone:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+            end
+            local verrouille = r == 0 and (n.dispo == false or n.verrou)
+            -- Seul un talent verrouille est grise ; les autres en pleines couleurs.
+            c.icone:SetDesaturated(verrouille and true or false)
             -- Pris : vert. Prenable : or. Verrouille : gris.
             if r > 0 then
                 c.bord:SetColorTexture(0.31, 0.82, 0.41, r >= maxi and 1 or 0.7)
@@ -317,7 +340,7 @@ DessinerArbres = function(contenu, arbres, y)
                 c.bord:SetColorTexture(1, 0.82, 0, 0.9)
                 c.rang:SetTextColor(1, 0.82, 0)
             end
-            c.icone:SetAlpha((r == 0 and (n.dispo == false or n.verrou)) and 0.5 or 1)
+            c.icone:SetAlpha(verrouille and 0.8 or 1)
             -- Le cadre du jeu : vert pris, jaune prenable, gris verrouille.
             local etat = (r > 0 and "green") or ((n.dispo == false or n.verrou) and "gray") or "yellow"
             local atlas = Atlas(n.choix and "choice" or "square", etat)
@@ -371,50 +394,43 @@ end
 
 local function RendreArbres(contenu, p, index, y)
     local releve = p.releve
-    if (p.niveau or 0) < NS.base.NIVEAU_HERITAGE then
-        index = index + 1
-        y = Poser(contenu, index, y, { texte = string.format(L.LOCKED_LEVEL, NS.base.NIVEAU_HERITAGE, p.niveau or 0),
-            couleur = BLANC, multi = true })
-    end
-    if not releve or not releve.arbres or #releve.arbres == 0 then
-        index = index + 1
-        y = Poser(contenu, index, y, { texte = (p.cle == NS.ClePersonnage()) and L.NO_DATA_HERE or L.NO_DATA_OTHER,
-            couleur = BLANC, multi = true })
-        return index, y
-    end
-    -- Bilan : points depenses sur ce personnage, et disponibles si le jeu le dit.
+    -- Toujours les memes trois lignes en tete, quel que soit le personnage :
+    -- passer de l'un a l'autre ne fait rien bouger.
+    local debloque = (p.niveau or 0) >= NS.base.NIVEAU_HERITAGE
+    index = index + 1
+    y = Poser(contenu, index, y, { texte = debloque and string.format(L.UNLOCKED_LEVEL, p.niveau or 0)
+        or string.format(L.LOCKED_LEVEL, NS.base.NIVEAU_HERITAGE, p.niveau or 0), couleur = debloque and VERT or BLANC })
+    local arbres = releve and releve.arbres or {}
     local depenses, disponibles = 0, nil
-    for _, a in ipairs(releve.arbres) do
+    for _, a in ipairs(arbres) do
         depenses = depenses + NS.base.Depenses(a)
         if a.disponibles then disponibles = a.disponibles end
     end
     index = index + 1
     y = Poser(contenu, index, y, { texte = string.format(L.POINTS_SPENT, depenses, NS.base.POINTS_MAX),
-        droite = disponibles and string.format(L.POINTS_FREE, disponibles) or nil,
-        couleurDroite = (disponibles or 0) > 0 and VERT or GRIS, apres = 4 })
-    -- Des points a depenser, sur le personnage connecte : la fenetre du jeu.
-    if (disponibles or 0) > 0 and p.cle == NS.ClePersonnage() then
-        if not contenu.boutonHeritage then
-            local b = CreateFrame("Button", nil, contenu, "UIPanelButtonTemplate")
-            b:SetHeight(22)
-            b:SetScript("OnClick", function()
-                if not NS.OuvrirHeritageDuJeu() then NS.Dire(L.OPEN_LEGACY_FAIL) end
-            end)
-            contenu.boutonHeritage = b
-        end
-        local b = contenu.boutonHeritage
-        b:SetText(L.OPEN_LEGACY)
-        b:SetWidth((b:GetTextWidth() or 120) + 30)
-        b:ClearAllPoints()
-        b:SetPoint("TOPLEFT", contenu, "TOPLEFT", 2, -y)
-        b:Show()
-        y = y + 30
+        droite = string.format(L.POINTS_FREE, disponibles or 0),
+        couleurDroite = (disponibles or 0) > 0 and VERT or GRIS })
+    -- Des points a depenser, sur le personnage connecte : la fenetre du jeu,
+    -- au bout de la ligne des points (rien ne se decale).
+    local ligne = contenu.lignes[index]
+    if not contenu.boutonHeritage then
+        local b = CreateFrame("Button", nil, contenu, "UIPanelButtonTemplate")
+        b:SetHeight(20)
+        b:SetScript("OnClick", function()
+            if not NS.OuvrirHeritageDuJeu() then NS.Dire(L.OPEN_LEGACY_FAIL) end
+        end)
+        contenu.boutonHeritage = b
     end
-    if releve.quand then
-        index = index + 1
-        y = Poser(contenu, index, y, { texte = string.format(L.READ_ON, releve.quand), couleur = SECONDAIRE,
-            apres = 4 })
-    end
+    local bouton = contenu.boutonHeritage
+    bouton:SetText(L.OPEN_LEGACY)
+    bouton:SetWidth((bouton:GetTextWidth() or 120) + 30)
+    bouton:ClearAllPoints()
+    bouton:SetPoint("RIGHT", ligne.droite, "LEFT", -12, 0)
+    bouton:SetShown((disponibles or 0) > 0 and p.cle == NS.ClePersonnage())
+    index = index + 1
+    y = Poser(contenu, index, y, { texte = releve and releve.quand and string.format(L.READ_ON, releve.quand)
+        or ((p.cle == NS.ClePersonnage()) and L.NO_DATA_HERE or L.NO_DATA_OTHER), couleur = SECONDAIRE, apres = 4 })
+    if #arbres == 0 then return index, y end
     -- Les arbres, comme dans le jeu : chaque talent a sa place (colonne et
     -- rangee), cote a cote tant que la largeur le permet.
     index = index + 1
@@ -622,7 +638,7 @@ local function DessinerHistogramme(contenu, p, y)
         local valeur = duree or enCours
         if valeur then
             b.plein:SetHeight(math.max(3, HAUTEUR_HISTO * valeur / plusLong))
-            if enCours and not duree then b.plein:SetColorTexture(0.31, 0.82, 0.41, 0.9)
+            if enCours and not duree then b.plein:SetColorTexture(0.42, 0.62, 0.36, 0.85)
             else b.plein:SetColorTexture(1, 0.82, 0, 0.85) end
             b.plein:Show()
         elseif n < niveauPerso then
@@ -937,7 +953,7 @@ function fen.Rendre()
         end
         for _, c in ipairs(contenu.cases or {}) do c:Hide() end
         for _, l in ipairs(contenu.liens or {}) do l:Hide() end
-        for _, t in ipairs(contenu.titresArbres or {}) do t:Hide() end
+        for _, t in ipairs(contenu.titresArbres or {}) do t:Hide() if t.bandeau then t.bandeau:Hide() end end
         if contenu.histo then contenu.histo:Hide() end
         if contenu.boutonHeritage then contenu.boutonHeritage:Hide() end
         local p = etat.cle and NS.base.Personnage(etat.cle)

@@ -1686,6 +1686,21 @@ local function Construire()
     -- l'une au-dessus de l'autre, elles forment une colonne harmonisee.
     cadre = NS.charte.Fenetre("QuestCoreSuivi", LARGEUR, s.hauteur or HAUTEUR,
         { portrait = false, strate = "MEDIUM", sansPied = true })
+    -- Reglages de l'add-on, en haut a gauche : un clic les ouvre.
+    local reglages = CreateFrame("Button", nil, cadre)
+    reglages:SetSize(16, 16)
+    reglages:SetPoint("TOPLEFT", cadre, "TOPLEFT", 8, -4)
+    reglages:SetFrameLevel(cadre:GetFrameLevel() + 10)
+    reglages:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
+    reglages:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    reglages:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(NS.L.OPEN_SETTINGS, 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    reglages:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    reglages:SetScript("OnClick", function() if NS.fenetre and NS.fenetre.OuvrirReglages then NS.fenetre.OuvrirReglages() end end)
+    cadre.boutonReglages = reglages
     cadre:ClearAllPoints()
     if s.point then
         cadre:SetPoint(s.point, UIParent, s.pointRelatif or s.point, s.x or 0, s.y or 0)

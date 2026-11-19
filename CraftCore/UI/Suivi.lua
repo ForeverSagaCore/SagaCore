@@ -299,6 +299,22 @@ local function Construire()
     local cadre = NS.charte.Fenetre("CraftCoreSuivi", LARGEUR_SUIVI, 120,
         { portrait = false, strate = "MEDIUM", sansPied = true })
     if cadre.titre then cadre.titre:SetText(NS.L.TRACK_TITLE) end
+
+    -- Reglages de l'add-on, en haut a gauche : un clic les ouvre.
+    local reglages = CreateFrame("Button", nil, cadre)
+    reglages:SetSize(16, 16)
+    reglages:SetPoint("TOPLEFT", cadre, "TOPLEFT", 8, -4)
+    reglages:SetFrameLevel(cadre:GetFrameLevel() + 10)
+    reglages:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
+    reglages:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    reglages:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(NS.L.OPEN_SETTINGS, 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    reglages:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    reglages:SetScript("OnClick", function() if NS.ecran and NS.ecran.Montrer then NS.ecran.Montrer("reglages") end end)
+    cadre.boutonReglages = reglages
     cadre:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
         TenirParLeBas(self)

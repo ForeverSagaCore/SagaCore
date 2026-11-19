@@ -4,7 +4,7 @@ local _, NS = ...
 -- l'heritage (systeme Legacy de WoW Forever) du personnage connecte.
 -- Lecture seule : LegacyCore ne depense ni ne modifie jamais rien.
 
-NS.VERSION = "0.2.2"
+NS.VERSION = "0.2.3"
 NS.base = {}
 local base = NS.base
 
@@ -184,15 +184,31 @@ function base.Releve()
                         for _, lien in ipairs(type(info.visibleEdges) == "table" and info.visibleEdges or {}) do
                             if type(lien) == "table" and lien.targetNode then table.insert(n.liens, lien.targetNode) end
                         end
-                        local entryID = (info.activeEntry and info.activeEntry.entryID) or info.entryIDs[1]
-                        local entree = NS.Appeler(traits.GetEntryInfo, configID, entryID)
-                        if type(entree) == "table" and entree.definitionID then
-                            local def = NS.Appeler(traits.GetDefinitionInfo, entree.definitionID)
-                            if type(def) == "table" then
-                                n.sort = def.spellID
-                                n.nom = def.overrideName or NomDeSort(def.spellID)
-                                n.description = def.overrideDescription or DescriptionDeSort(def.spellID)
-                                n.icone = def.overrideIcon or NS.IconeDeSort(def.spellID)
+                        -- L'entree choisie d'abord, puis les autres : la premiere qui
+                        -- a un sort (nom, description, icone). Un choix de sous-arbre
+                        -- donne son icone par son atlas.
+                        local entrees = {}
+                        if info.activeEntry and info.activeEntry.entryID then table.insert(entrees, info.activeEntry.entryID) end
+                        for _, e in ipairs(info.entryIDs) do table.insert(entrees, e) end
+                        for _, entryID in ipairs(entrees) do
+                            local entree = NS.Appeler(traits.GetEntryInfo, configID, entryID)
+                            if type(entree) == "table" then
+                                local def = entree.definitionID and NS.Appeler(traits.GetDefinitionInfo, entree.definitionID)
+                                if type(def) == "table" and not n.sort then
+                                    n.sort = def.spellID
+                                    n.nom = def.overrideName or NomDeSort(def.spellID)
+                                    n.description = def.overrideDescription or DescriptionDeSort(def.spellID)
+                                    n.icone = def.overrideIcon or NS.IconeDeSort(def.spellID)
+                                end
+                                if not n.icone and entree.subTreeID and traits.GetSubTreeInfo then
+                                    local sous = NS.Appeler(traits.GetSubTreeInfo, configID, entree.subTreeID)
+                                    if type(sous) == "table" then
+                                        n.atlas = sous.iconElementID
+                                        n.nom = n.nom or sous.name
+                                        n.description = n.description or sous.description
+                                    end
+                                end
+                                if n.icone or n.atlas then break end
                             end
                         end
                         table.insert(arbre.noeuds, n)
