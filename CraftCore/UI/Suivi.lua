@@ -303,8 +303,11 @@ local function Construire()
     -- Reglages de l'add-on, en haut a gauche : un clic les ouvre.
     local reglages = CreateFrame("Button", nil, cadre)
     reglages:SetSize(14, 14)
-    reglages:SetPoint("TOPLEFT", cadre, "TOPLEFT", 24, -5)
-    reglages:SetFrameLevel(cadre:GetFrameLevel() + 20)
+    reglages:SetPoint("TOPLEFT", cadre, "TOPLEFT", 19, -5)
+    -- Au niveau du bouton de fermeture, au-dessus du cadre du jeu (sinon le
+    -- bord du cadre le recouvre des que la fenetre est pleinement opaque).
+    local fermer = cadre.fermer or cadre.CloseButton
+    reglages:SetFrameLevel(math.max(cadre:GetFrameLevel() + 20, (fermer and fermer:GetFrameLevel() or 0) + 2))
     reglages:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
     reglages:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
     reglages:SetScript("OnEnter", function(self)

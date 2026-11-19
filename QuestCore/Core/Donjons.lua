@@ -96,14 +96,14 @@ function donjons.Liste(p)
     if not p then return rendu end
     local avecRetirees = NS.histoire and NS.histoire.AvecRetirees and NS.histoire.AvecRetirees()
     for _, d in ipairs(Index()) do
-        local restantes, faites, total = {}, 0, 0
+        local restantes, faites, total, faitesIds = {}, 0, 0, {}
         for _, id in ipairs(d.ids) do
             local admise = not NS.histoire or NS.histoire.Admise(p, id)
             local faite = p.faites and p.faites[id]
             local retiree = NS.histoire and NS.histoire.Retiree and NS.histoire.Retiree(id)
             if admise and (faite or avecRetirees or not retiree) then
                 total = total + 1
-                if faite then faites = faites + 1 else table.insert(restantes, id) end
+                if faite then faites = faites + 1 table.insert(faitesIds, id) else table.insert(restantes, id) end
             end
         end
         if total > 0 then
@@ -114,7 +114,7 @@ function donjons.Liste(p)
                 return a < b
             end)
             table.insert(rendu, { zone = d.zone, nom = d.nom, nomBase = d.nomBase, ids = d.ids, raid = d.raid, mini = d.mini, maxi = d.maxi,
-                entrees = d.entrees, restantes = restantes, faites = faites, total = total })
+                entrees = d.entrees, restantes = restantes, faites = faites, faitesIds = faitesIds, total = total })
         end
     end
     return rendu
@@ -181,4 +181,21 @@ function donjons.OuvrirJournal(d, plan)
     local apres = _G.C_Timer and _G.C_Timer.After
     if apres then apres(0.2, Choisir) else Choisir() end
     return true
+end
+
+-- Ou prendre une quete : le premier PNJ qui la donne, sa carte et sa place.
+function donjons.LieuDuDonneur(id)
+    local debut = NS.ref.Lire("QuestDB", id, "startedBy")
+    local pnj = type(debut) == "table" and type(debut[1]) == "table" and debut[1][1]
+    if not pnj then return nil end
+    local nom = NS.ref.Lire("NpcDB", pnj, "name")
+    local spawns = NS.ref.Lire("NpcDB", pnj, "spawns")
+    for zone, liste in pairs(type(spawns) == "table" and spawns or {}) do
+        local carte = NS.carte and NS.carte.CarteDeZone and NS.carte.CarteDeZone(zone)
+        local p = type(liste) == "table" and liste[1]
+        if carte and type(p) == "table" and tonumber(p[1]) and tonumber(p[2]) and p[1] >= 0 then
+            return { carte = carte, x = p[1] / 100, y = p[2] / 100, nom = nom }
+        end
+    end
+    return nil
 end

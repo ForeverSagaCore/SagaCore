@@ -284,7 +284,7 @@ DessinerArbres = function(contenu, arbres, y)
         for i, v in ipairs(xs) do colonne[v] = i end
         for i, v in ipairs(ys) do rangee[v] = i end
         table.insert(plans, { arbre = a, colonne = colonne, rangee = rangee,
-            largeur = #xs * CASE, hauteur = 30 + #ys * CASE })
+            largeur = #xs * CASE, hauteur = 40 + #ys * CASE })
     end
     -- Rangees d'arbres, chacune centree dans la page.
     local lignes, courante, l0 = {}, {}, 0
@@ -300,7 +300,7 @@ DessinerArbres = function(contenu, arbres, y)
     end
     if #courante > 0 then table.insert(lignes, { arbres = courante, largeur = l0 }) end
     local nCase, nTitre, nLien = 0, 0, 0
-    y = y + 12
+    y = y + 22
     for _, ligne in ipairs(lignes) do
         local x = math.max(0, math.floor((largeur - ligne.largeur) / 2))
         local hauteurLigne = 0
@@ -308,10 +308,12 @@ DessinerArbres = function(contenu, arbres, y)
             local a, parId = pl.arbre, {}
             nTitre = nTitre + 1
             local t = TitreDArbre(contenu, nTitre)
-            -- Le titre, aligne sur le bord gauche de son arbre.
+            -- Le titre, centre au-dessus de son arbre, un peu plus grand.
             t:ClearAllPoints()
-            t:SetPoint("BOTTOMLEFT", contenu, "TOPLEFT", x + 4, -(y + 20))
+            t:SetPoint("BOTTOM", contenu, "TOPLEFT", x + 6 + pl.largeur / 2 - 6, -(y + 20))
             t:SetFontObject("GameFontNormal")
+            local fichier, taille, options = t:GetFont()
+            if fichier then t:SetFont(fichier, (taille or 12) + 2, options) end
             t:SetText((a.nom or L[NOMS_ARBRES[a.genre] or ""] or "?") .. "  |cffffffff" .. NS.base.Depenses(a) .. "|r")
             t:Show()
             if t.bandeau then t.bandeau:Hide() end
@@ -319,7 +321,7 @@ DessinerArbres = function(contenu, arbres, y)
                 nCase = nCase + 1
                 local c = Case(contenu, nCase)
                 c:ClearAllPoints()
-                c:SetPoint("TOPLEFT", contenu, "TOPLEFT", x + (pl.colonne[n.x] - 1) * CASE + 6, -(y + 30 + (pl.rangee[n.y] - 1) * CASE))
+                c:SetPoint("TOPLEFT", contenu, "TOPLEFT", x + (pl.colonne[n.x] - 1) * CASE + 6, -(y + 40 + (pl.rangee[n.y] - 1) * CASE))
                 local r, maxi = tonumber(n.rang) or 0, tonumber(n.maxi) or 1
                 local icone = n.icone or NS.IconeDeSort(n.sort)
                 c.icone:SetTexCoord(0.07, 0.93, 0.07, 0.93)

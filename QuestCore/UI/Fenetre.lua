@@ -187,6 +187,7 @@ local function Poser(contenu, index, y, options)
     elseif l.barre then
         l.barre:Hide()
     end
+    if l.journal then l.journal:Hide() end
     -- Rangee de boutons du jeu, de gauche a droite, a la place du texte.
     l.boutons = l.boutons or {}
     for _, b in ipairs(l.boutons) do b:Hide() end
@@ -1041,8 +1042,21 @@ RendreDonjonOuvert = function(contenu, p, d, index, y)
             table.insert(plusTard, { id = id, etat = e })
         end
     end
+    -- Le trajet des prerequis : les quetes a prendre maintenant, et celles
+    -- qu'il faut faire avant les autres (prerequis prenables).
+    local vusPre = {}
+    for _, id in ipairs(aPrendre) do vusPre[id] = true end
+    for _, q in ipairs(plusTard) do
+        for _, pre in ipairs(NS.donjons.PrealablesManquants(p, q.id)) do
+            if not vusPre[pre] and NS.parcours.EtatEtape(p, pre) == "prendre" then
+                vusPre[pre] = true
+                table.insert(aPrendre, pre)
+            end
+        end
+    end
 
-    -- L'entree, et les deux actions : la voir, aller prendre le kit.
+    -- L'entree, puis une rangee : nos deux actions a gauche, le journal de
+    -- donjons (DungeonJournal) seul a droite.
     local e = d.entrees[1]
     if e then
         local nomZone = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), e.carte)
@@ -1062,18 +1076,6 @@ RendreDonjonOuvert = function(contenu, p, d, index, y)
             fen.OuvrirCarte()
         end })
     end
-    -- Le trajet des prerequis : les quetes a prendre maintenant, et celles
-    -- qu'il faut faire avant les autres (prerequis prenables).
-    local vusPre = {}
-    for _, id in ipairs(aPrendre) do vusPre[id] = true end
-    for _, q in ipairs(plusTard) do
-        for _, pre in ipairs(NS.donjons.PrealablesManquants(p, q.id)) do
-            if not vusPre[pre] and NS.parcours.EtatEtape(p, pre) == "prendre" then
-                vusPre[pre] = true
-                table.insert(aPrendre, pre)
-            end
-        end
-    end
     if #aPrendre > 0 then
         local ids, cleP, nomD = aPrendre, p.cle, d.nom
         table.insert(boutons, { string.format(L.DUNGEON_KIT_ROUTE, #ids), function()
@@ -1085,39 +1087,52 @@ RendreDonjonOuvert = function(contenu, p, d, index, y)
             end
         end })
     end
-    if #boutons > 0 then
-        index = index + 1
-        y = Poser(contenu, index, y, { retrait = RETRAIT * 2, boutons = boutons }) + 2
-    end
-    -- En dessous, ce qui vient du journal de donjons (DungeonJournal) : actif
-    -- s'il est installe et connait ce donjon, grise sinon, avec pourquoi.
-    local installe = _G.ForeverDungeonJournal_NS ~= nil
-    local connu = installe and NS.donjons.NomDansLeJournal(d) ~= nil
-    local donjon = d
     index = index + 1
-    y = Poser(contenu, index, y, { retrait = RETRAIT * 2, boutons = {
-        { L.DUNGEON_DETAIL, function() NS.donjons.OuvrirJournal(donjon, false) end, connu },
-        { L.DUNGEON_PLAN, function() NS.donjons.OuvrirJournal(donjon, true) end, connu },
-    } }) + 2
-    if not connu then
+    y = Poser(contenu, index, y, { retrait = RETRAIT * 2, boutons = boutons })
+    do
+        local l = contenu.lignes[index]
+        local installe = _G.ForeverDungeonJournal_NS ~= nil
+        local connu = installe and NS.donjons.NomDansLeJournal(d) ~= nil
+        if not l.journal then
+            l.journal = CreateFrame("Button", nil, l, "UIPanelButtonTemplate")
+            l.journal:SetHeight(18)
+            if l.journal.SetMotionScriptsWhileDisabled then l.journal:SetMotionScriptsWhileDisabled(true) end
+            l.journal:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        end
+        local b = l.journal
+        b:SetText(L.DUNGEON_JOURNAL)
+        b:SetWidth((b:GetTextWidth() or 120) + 24)
+        b:ClearAllPoints()
+        b:SetPoint("RIGHT", l, "RIGHT", -8, 0)
+        b:SetEnabled(connu)
+        local donjon = d
+        b:SetScript("OnClick", function() NS.donjons.OuvrirJournal(donjon, false) end)
+        b:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(L.DUNGEON_JOURNAL, 1, 0.82, 0)
+            GameTooltip:AddLine(connu and L.DUNGEON_JOURNAL_TIP or (installe and L.DUNGEON_JOURNAL_UNKNOWN
+                or L.DUNGEON_JOURNAL_MISSING), 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        b:Show()
+        l.journalVu = true
+    end
+    if not (_G.ForeverDungeonJournal_NS ~= nil) then
         index = index + 1
         y = Poser(contenu, index, y, { retrait = RETRAIT * 2, police = "GameFontDisableSmall", couleur = { 0.6, 0.6, 0.6 },
-            texte = installe and L.DUNGEON_JOURNAL_UNKNOWN or L.DUNGEON_JOURNAL_MISSING })
+            texte = L.DUNGEON_JOURNAL_MISSING })
     end
     y = y + 4
 
-    if #d.restantes == 0 then
-        index = index + 1
-        y = Poser(contenu, index, y, { retrait = RETRAIT * 2, texte = L.DUNGEON_ALL_DONE,
-            couleur = { 0.31, 0.82, 0.41 } })
-        return index, y + 4
-    end
-
+    -- Une quete par ligne, son etat a droite ; un clic la deplie : chez qui
+    -- la prendre (et le voir sur la carte), ce qui la debloque, ses recompenses.
     local function Quete(q, retrait)
         local id = q.id
         local niveau = tonumber(NS.ref.Lire("QuestDB", id, "questLevel")) or 0
         local droite, couleurDroite
-        if q.etat == "rendre" then
+        if q.etat == "faite" then
+            droite, couleurDroite = L.DUNGEON_DONE, { 0.31, 0.82, 0.41 }
+        elseif q.etat == "rendre" then
             droite, couleurDroite = L.STORY_TURN_IN, { 0.31, 0.82, 0.41 }
         elseif q.etat == "cours" then
             droite, couleurDroite = L.DUNGEON_IN_LOG, { 0.31, 0.82, 0.41 }
@@ -1131,25 +1146,43 @@ RendreDonjonOuvert = function(contenu, p, d, index, y)
                 droite, couleurDroite = L.DUNGEON_LOCKED, { 0.6, 0.6, 0.6 }
             end
         end
+        local cleOuverte = "dq" .. id
+        local ouverte = etat.ouvertes[cleOuverte] == true
         local rr, gg, bb = NS.ref.CouleurDeNiveau(niveau, p.niveau)
+        if q.etat == "faite" then rr, gg, bb = 0.6, 0.6, 0.6 end
         index = index + 1
-        y = Poser(contenu, index, y, { retrait = retrait,
-            etatQuete = (q.etat == "rendre") and true or ((q.etat == "cours") and false or nil),
+        y = Poser(contenu, index, y, { retrait = retrait, depliable = true, deplie = ouverte,
+            etatQuete = (q.etat == "rendre" or q.etat == "faite") and true or ((q.etat == "cours") and false or nil),
             icone = (q.etat == "prendre") and "Interface\\GossipFrame\\AvailableQuestIcon" or nil,
             texte = string.format("[%d] %s", niveau, NS.ref.NomDeQuete(id, p)),
             couleur = { rr, gg, bb },
             droite = droite, couleurDroite = couleurDroite, decalageDroite = 28,
-            survol = SurvolEtape(p, id) })
+            survol = SurvolEtape(p, id),
+            auClic = function()
+                etat.ouvertes[cleOuverte] = not etat.ouvertes[cleOuverte] or nil
+                fen.Rendre()
+            end })
+        if not ouverte then return end
         local sous = retrait + RETRAIT + 18
-        if q.etat == "prendre" then
+        if q.etat == "prendre" or q.etat == "attente" then
             local donneurs = NS.ref.Donneurs(id)
             if donneurs[1] then
                 index = index + 1
                 y = Poser(contenu, index, y, { retrait = sous, texte = string.format(L.DUNGEON_GIVER, donneurs[1]),
-                    couleur = { 0.7, 0.7, 0.7 }, police = "GameFontDisableSmall" })
+                    couleur = { 0.85, 0.85, 0.85 } })
+                local lieu = NS.donjons.LieuDuDonneur(id)
+                if lieu then
+                    index = index + 1
+                    y = Poser(contenu, index, y, { retrait = sous, boutons = { { L.DUNGEON_LOCATE_GIVER, function()
+                        if NS.pageCarte and NS.pageCarte.MontrerEntree then
+                            NS.pageCarte.MontrerEntree(lieu.carte, lieu.x, lieu.y, lieu.nom)
+                        end
+                        fen.OuvrirCarte()
+                    end } } })
+                end
             end
-        elseif q.etat == "attente" then
-            -- Ce qui la debloque : chaque quete prealable et ou elle en est.
+        end
+        if q.etat == "attente" then
             local manque = NS.donjons.PrealablesManquants(p, id)
             local noms = {}
             for k, pre in ipairs(manque) do
@@ -1171,25 +1204,30 @@ RendreDonjonOuvert = function(contenu, p, d, index, y)
             y = Poser(contenu, index, y, { retrait = sous, texte = recompenses,
                 couleur = { 0.85, 0.85, 0.85 }, police = "GameFontHighlightSmall" })
         end
+        y = y + 2
     end
 
-    -- Le kit.
-    index = index + 1
-    y = Poser(contenu, index, y + 2, { retrait = RETRAIT * 2, police = "GameFontNormalSmall", couleur = { 1, 0.82, 0 },
-        texte = #kit > 0 and string.format(L.DUNGEON_KIT, enPoche, #kit) or L.DUNGEON_KIT_TITLE }) + 2
+    local function Rubrique(texte)
+        index = index + 1
+        y = Poser(contenu, index, y + 6, { retrait = RETRAIT * 2, police = "GameFontNormalSmall", couleur = { 1, 0.82, 0 },
+            texte = texte }) + 2
+    end
+    -- Avant d'y aller.
+    Rubrique(#kit > 0 and string.format(L.DUNGEON_KIT, enPoche, #kit) or L.DUNGEON_KIT_TITLE)
     if #kit == 0 then
         index = index + 1
         y = Poser(contenu, index, y, { retrait = RETRAIT * 2, texte = L.DUNGEON_KIT_EMPTY,
             couleur = { 0.6, 0.6, 0.6 }, police = "GameFontDisableSmall" })
     end
     for _, q in ipairs(kit) do Quete(q, RETRAIT * 2) end
-
-    -- Plus tard.
     if #plusTard > 0 then
-        index = index + 1
-        y = Poser(contenu, index, y + 6, { retrait = RETRAIT * 2, police = "GameFontNormalSmall", couleur = { 1, 0.82, 0 },
-            texte = string.format(L.DUNGEON_LATER, #plusTard) }) + 2
+        Rubrique(string.format(L.DUNGEON_LATER, #plusTard))
         for _, q in ipairs(plusTard) do Quete(q, RETRAIT * 2) end
+    end
+    -- Deja faites : elles restent listees, marquees comme faites.
+    if #(d.faitesIds or {}) > 0 then
+        Rubrique(string.format(L.DUNGEON_DONE_LIST, #d.faitesIds))
+        for _, id in ipairs(d.faitesIds) do Quete({ id = id, etat = "faite" }, RETRAIT * 2) end
     end
     return index, y + 6
 end
