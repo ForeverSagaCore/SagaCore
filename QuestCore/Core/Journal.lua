@@ -663,3 +663,114 @@ do
     end
     if apres then apres(3, Reprendre) end
 end
+
+-- ---------------------------------------------------------------------------
+-- Don : donner a un membre du groupe les objets de quete qu'on a en trop.
+-- Le clic ouvre l'echange et y pose la quantite ; il ne reste qu'a valider
+-- l'echange soi-meme (le jeu le demande).
+-- ---------------------------------------------------------------------------
+
+local don = {}
+NS.don = don
+
+local function C(nom, global) return NS.Lecture("C_Container." .. nom, global or nom) end
+
+-- Les piles de cet objet dans les sacs : { sac, case, nombre, lie, bloque }.
+local function Piles(objet)
+    local piles = {}
+    local nbCases = C("GetContainerNumSlots")
+    local infoCase = NS.Lecture("C_Container.GetContainerItemInfo")
+    local idCase = C("GetContainerItemID")
+    if not nbCases then return piles end
+    for sac = 0, 4 do
+        for case = 1, (NS.Appeler(nbCases, sac) or 0) do
+            local id = idCase and NS.Appeler(idCase, sac, case)
+            if id == objet then
+                local info = infoCase and NS.Appeler(infoCase, sac, case)
+                if type(info) == "table" then
+                    table.insert(piles, { sac = sac, case = case, nombre = info.stackCount or 1,
+                        lie = info.isBound == true, bloque = info.isLocked == true })
+                else
+                    local _, nombre, bloque = NS.Appeler(_G.GetContainerItemInfo, sac, case)
+                    table.insert(piles, { sac = sac, case = case, nombre = nombre or 1, bloque = bloque == true })
+                end
+            end
+        end
+    end
+    return piles
+end
+
+-- Combien on peut donner de cet objet en gardant `garder` pour soi.
+function don.EnTrop(objet, garder)
+    if not objet then return 0 end
+    local total, echangeable = 0, 0
+    for _, p in ipairs(Piles(objet)) do
+        total = total + p.nombre
+        if not p.lie then echangeable = echangeable + p.nombre end
+    end
+    return math.max(0, math.min(total - (garder or 0), echangeable))
+end
+
+local attente
+
+local function Placer()
+    if not attente then return end
+    local reste, place = attente.quantite, 1
+    local prendre = C("PickupContainerItem")
+    local couper = C("SplitContainerItem")
+    local poser = NS.Lecture("ClickTradeButton")
+    local plusTard = NS.Lecture("C_Timer.After")
+    local function Etape()
+        if not attente then return end
+        if reste <= 0 or place > 6 then
+            NS.Dire(string.format(NS.L.GIVE_READY, attente.quantite - reste, attente.nom))
+            attente = nil
+            return
+        end
+        local pile
+        for _, p in ipairs(Piles(attente.objet)) do
+            if not p.lie and not p.bloque then pile = p break end
+        end
+        if not (pile and poser) then
+            NS.Dire(string.format(NS.L.GIVE_READY, attente.quantite - reste, attente.nom))
+            attente = nil
+            return
+        end
+        if pile.nombre <= reste then
+            NS.Appeler(prendre, pile.sac, pile.case)
+            reste = reste - pile.nombre
+        else
+            NS.Appeler(couper, pile.sac, pile.case, reste)
+            reste = 0
+        end
+        NS.Appeler(poser, place)
+        place = place + 1
+        if plusTard then plusTard(0.3, Etape) else Etape() end
+    end
+    Etape()
+end
+
+function don.Donner(nom, objet, quantite)
+    if not (objet and quantite and quantite > 0) then return end
+    if NS.groupe.Simule and NS.groupe.Simule(nom) then NS.Dire(NS.L.GIVE_SIMULATED) return end
+    local unite = NS.groupe.Unite(nom)
+    if not unite then NS.Dire(string.format(NS.L.GIVE_NOT_FOUND, nom)) return end
+    local proche = NS.Lecture("CheckInteractDistance")
+    if proche and not NS.Appeler(proche, unite, 2) then NS.Dire(string.format(NS.L.GIVE_TOO_FAR, nom)) return end
+    attente = { nom = nom, objet = objet, quantite = quantite }
+    local ouvrir = NS.Lecture("InitiateTrade")
+    if not ouvrir then attente = nil return end
+    NS.Appeler(ouvrir, unite)
+end
+
+local ecouteEchange = CreateFrame("Frame")
+pcall(ecouteEchange.RegisterEvent, ecouteEchange, "TRADE_SHOW")
+pcall(ecouteEchange.RegisterEvent, ecouteEchange, "TRADE_CLOSED")
+ecouteEchange:SetScript("OnEvent", function(_, evenement)
+    if evenement == "TRADE_SHOW" then
+        local plusTard = NS.Lecture("C_Timer.After")
+        if plusTard then plusTard(0.2, Placer) else Placer() end
+    else
+        attente = nil
+    end
+end)

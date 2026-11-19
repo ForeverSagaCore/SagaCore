@@ -293,6 +293,31 @@ local function Poser(index, y, texte, options)
     else
         l.pion:Hide()
     end
+    -- Bouton "Donner" au bout d'une ligne d'objectif d'un membre.
+    if options.don then
+        if not l.don then
+            l.don = CreateFrame("Button", nil, l, "UIPanelButtonTemplate")
+            l.don:SetHeight(16)
+            local fs = l.don:GetFontString()
+            if fs then fs:SetFontObject("GameFontHighlightSmall") end
+            l.don:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        end
+        local d = options.don
+        l.don:SetText(d.texte)
+        l.don:SetWidth((l.don:GetTextWidth() or 50) + 16)
+        l.don:ClearAllPoints()
+        l.don:SetPoint("TOPRIGHT", l, "TOPRIGHT", 0, 2)
+        l.don:SetScript("OnClick", d.auClic)
+        l.don:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetText(d.texte, 1, 0.82, 0)
+            if d.aide then GameTooltip:AddLine(d.aide, 1, 1, 1, true) end
+            GameTooltip:Show()
+        end)
+        l.don:Show()
+    elseif l.don then
+        l.don:Hide()
+    end
     -- Colonne de droite (pourcentage d'avancement), le texte s'arrete avant.
     l.droite:SetText(options.droite or "")
     l.droite:ClearAllPoints()
@@ -304,6 +329,8 @@ local function Poser(index, y, texte, options)
         l.texte:SetPoint("TOPRIGHT", l.droite, "TOPLEFT", -6, 0)
     elseif options.etoile then
         l.texte:SetPoint("TOPRIGHT", l.etoile, "TOPLEFT", -4, 0)
+    elseif options.don then
+        l.texte:SetPoint("TOPRIGHT", l.don, "TOPLEFT", -6, -2)
     elseif options.pion or options.margeDroite then
         l.texte:SetPoint("TOPRIGHT", l, "TOPRIGHT", -(options.margeDroite or 22), 0)
     else
@@ -701,6 +728,7 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
         else
             local objets = NS.ref.ObjetsRequis(moi, id)
             local rangObjet = 0
+            local objetParRang = {}
             -- Mode groupe : les membres du groupe qui ont la meme quete (et
             -- QuestCore), sous nos objectifs.
             local membres = NS.groupe and NS.groupe.Membres(id) or {}
@@ -721,6 +749,7 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
                 if o.type == "item" then
                     rangObjet = rangObjet + 1
                     local requis = objets[rangObjet]
+                    objetParRang[rang] = requis and requis.objet
                     local autres = requis and not o.fait and AutresDetenteurs(requis.objet, moi)
                     if autres then
                         index = index + 1
@@ -754,10 +783,25 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
                         local ob = m.objs[rang]
                         if ob then
                             local fini = ob.r > 0 and ob.n >= ob.r
+                            -- Il lui en manque et j'en ai en trop (en gardant
+                            -- ce qu'il me faut) : bouton Donner, sur mon perso.
+                            local don
+                            local objet = objetParRang[rang]
+                            if not fini and objet and NS.don and moi.cle == NS.ClePersonnage() then
+                                local manque = ob.r - ob.n
+                                local n = math.min(manque, NS.don.EnTrop(objet, tonumber(o.requis) or 0))
+                                if n > 0 then
+                                    local nom, quantite = m.nom, n
+                                    local nomObjet = (NS.Appeler(_G.GetItemInfo, objet)) or ""
+                                    don = { texte = string.format(L.GIVE, n),
+                                        aide = string.format(L.GIVE_TIP, nom, n, nomObjet),
+                                        auClic = function() NS.don.Donner(nom, objet, quantite) end }
+                                end
+                            end
                             index = index + 1
                             y = Poser(index, y, "- " .. NS.groupe.TexteAvec(o.texte, ob), { retrait = 32,
                                 couleur = fini and { 0.5, 0.5, 0.5 } or { 0.85, 0.85, 0.85 },
-                                police = "GameFontNormalSmall", petit = true })
+                                police = "GameFontNormalSmall", petit = true, don = don })
                         end
                     end
                 end
