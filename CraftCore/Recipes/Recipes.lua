@@ -37,6 +37,9 @@ local function Catalogue()
     return d.recettes
 end
 
+-- Toutes les recettes connues du compte (pour retrouver qui produit quoi).
+function recettes.Toutes() return Catalogue() or {} end
+
 -- Composants d'une recette, lus dans son plan.
 -- Famille d'un objet, telle que le client la rend. Elle servira a reconnaitre
 -- les composants qui relevent d'une autre profession. On la releve telle
@@ -685,7 +688,14 @@ function recettes.MetiersDuPersonnage()
             table.insert(liste, { ligne = ligne, nom = sien.nom, rang = sien.rang, rangMax = sien.rangMax })
         end
     end
-    table.sort(liste, function(a, b) return (a.nom or "") < (b.nom or "") end)
+    -- Toujours le meme ordre, pour tous les personnages : les metiers
+    -- principaux d'abord (par nom), puis cuisine, peche et secourisme.
+    local SECONDAIRES = { [185] = 1, [356] = 2, [129] = 3 }
+    table.sort(liste, function(a, b)
+        local sa, sb = SECONDAIRES[tonumber(a.ligne) or 0] or 0, SECONDAIRES[tonumber(b.ligne) or 0] or 0
+        if sa ~= sb then return sa < sb end
+        return (a.nom or "") < (b.nom or "")
+    end)
     return liste
 end
 
@@ -855,7 +865,9 @@ end
 function recettes.ChanceDePoint(recette, rang)
     local fin = recettes.FinDuOrange(recette)
     if not fin then return 0 end
-    if rang < fin then return 1 end
+    -- Orange seulement d'apres une estimation (le jeu n'a jamais montre ou
+    -- elle passe au jaune) : tres probable, mais pas compte comme sur.
+    if rang < fin then return (recette.jauneMin or recette.jauneMax) and 1 or 0.95 end
     local gris = recette.gris
     if not gris or rang >= gris or gris <= fin then return 0 end
     return (gris - rang) / (gris - fin)
@@ -864,6 +876,25 @@ end
 -- `objectif` : rang vise, ou nil pour aller aussi loin que les stocks le
 -- permettent. Sans objectif, une recette ne se fait que si tous ses
 -- composants de recolte sont la ; avec un objectif, ce qui manque est compte.
+-- Ce que les rangs vises du personnage prennent dans ses stocks, objet par
+-- objet : la banque le propose a la sortie, comme pour un projet.
+function recettes.BesoinsDesObjectifs(fiche)
+    local besoins = {}
+    fiche = fiche or (NS.base and NS.base.Personnage and NS.base.Personnage())
+    if type(fiche) ~= "table" or type(fiche.objectifsProgression) ~= "table" then return besoins end
+    for cle, vise in pairs(fiche.objectifsProgression) do
+        local sien = type(fiche.metiers) == "table" and fiche.metiers[tostring(cle)]
+        if type(sien) == "table" and sien.rang and tonumber(vise) and tonumber(vise) > sien.rang then
+            local ok, plan = pcall(recettes.Progression, tonumber(cle), sien.rang, sien.rangMax, tonumber(vise))
+            if ok and plan then
+                for objet, n in pairs(plan.utilises or {}) do besoins[objet] = (besoins[objet] or 0) + n end
+                for objet, n in pairs(plan.achats or {}) do besoins[objet] = (besoins[objet] or 0) + n end
+            end
+        end
+    end
+    return besoins
+end
+
 function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif)
     local resultat = { depart = rangDepart, atteint = rangDepart, etapes = {}, achats = {}, manques = {},
         estime = false, arret = nil }
@@ -883,6 +914,66 @@ function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif)
         return stock[objet]
     end
 
+    -- Composants qu'on fabrique soi-meme (le silex a aiguiser brut, fait de
+    -- pierre brute) : une recette apprise qui les produit. Ce qui en manque se
+    -- fabrique d'abord, avec ses propres composants.
+    resultat.intermediaires = {}
+    -- Ce que le plan prend dans le stock du compte, objet par objet : le
+    -- guide dit ensuite ce qu'il faut aller chercher en banque ou ailleurs.
+    resultat.utilises = {}
+    local function Utiliser(objet, n)
+        if n > 0 then resultat.utilises[objet] = (resultat.utilises[objet] or 0) + n end
+    end
+    local producteurs = {}
+    for _, r in pairs(Catalogue() or {}) do
+        if type(r) == "table" and r.objetProduit and type(r.composants) == "table" and #r.composants > 0
+            and recettes.EstApprise(r.id) then
+            producteurs[r.objetProduit] = producteurs[r.objetProduit] or r
+        end
+    end
+    -- Combien de cet objet on peut encore fabriquer avec le stock.
+    local function Fabricables(objet)
+        local r = producteurs[objet]
+        if not r then return 0 end
+        local n
+        for _, c in ipairs(r.composants) do
+            if not recettes.EstVenduPartout(c.objet) and c.objet ~= objet then
+                local k = math.floor(Stock(c.objet) / math.max(1, c.quantite))
+                n = n and math.min(n, k) or k
+            end
+        end
+        return (n or 0) * math.max(1, tonumber(r.quantiteMin) or 1)
+    end
+    local function Disponible(objet) return Stock(objet) + Fabricables(objet) end
+    -- Prend `quantite` d'un composant : le stock d'abord, puis ce qu'on
+    -- fabrique, puis le reste manque.
+    local function Prendre(objet, quantite)
+        local dispo = Stock(objet)
+        local pris = math.min(dispo, quantite)
+        stock[objet] = dispo - pris
+        Utiliser(objet, pris)
+        local reste = quantite - pris
+        local r = producteurs[objet]
+        if reste > 0 and r then
+            local parFois = math.max(1, tonumber(r.quantiteMin) or 1)
+            local fois = math.ceil(reste / parFois)
+            resultat.intermediaires[objet] = (resultat.intermediaires[objet] or 0) + fois
+            for _, c in ipairs(r.composants) do
+                local besoin = c.quantite * fois
+                if recettes.EstVenduPartout(c.objet) then
+                    resultat.achats[c.objet] = (resultat.achats[c.objet] or 0) + besoin
+                elseif c.objet ~= objet then
+                    local d = Stock(c.objet)
+                    Utiliser(c.objet, math.min(d, besoin))
+                    if d < besoin then resultat.manques[c.objet] = (resultat.manques[c.objet] or 0) + (besoin - d) end
+                    stock[c.objet] = math.max(0, d - besoin)
+                end
+            end
+            return
+        end
+        if reste > 0 then resultat.manques[objet] = (resultat.manques[objet] or 0) + reste end
+    end
+
     -- Une fabrication a la fois. Les recettes oranges donnent un point sur ;
     -- les jaunes, un point probable (la chance du jeu, comptee en moyenne).
     local plafond = objectif and math.min(objectif, rangMax or objectif) or (rangMax or 9999)
@@ -900,13 +991,14 @@ function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif)
                 for _, comp in ipairs(recette.composants) do
                     if not recettes.EstVenduPartout(comp.objet) then
                         recolte = recolte + comp.quantite
-                        manque = manque + math.max(0, comp.quantite - Stock(comp.objet))
+                        manque = manque + math.max(0, comp.quantite - Disponible(comp.objet))
                     end
                 end
                 if objectif or manque == 0 then
-                    -- Ce qu'on a deja, puis le moins de recolte par point, puis
-                    -- les oranges avant les jaunes.
-                    local score = (manque * 100000 + recolte * 1000 + 1) / chance + (1 - chance)
+                    -- Les oranges d'abord, toujours : un point sur vaut mieux
+                    -- qu'un point espere, meme s'il coute plus de composants.
+                    -- Puis ce qu'on a deja, puis le moins de recolte par point.
+                    local score = (chance < 1 and 1e12 or 0) + (manque * 100000 + recolte * 1000 + 1) / chance + (1 - chance)
                     if not meilleurScore or score < meilleurScore then
                         meilleur, meilleurScore, meilleureChance = recette, score, chance
                     end
@@ -921,11 +1013,7 @@ function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif)
             if recettes.EstVenduPartout(comp.objet) then
                 resultat.achats[comp.objet] = (resultat.achats[comp.objet] or 0) + comp.quantite
             else
-                local dispo = Stock(comp.objet)
-                if dispo < comp.quantite then
-                    resultat.manques[comp.objet] = (resultat.manques[comp.objet] or 0) + (comp.quantite - dispo)
-                end
-                stock[comp.objet] = math.max(0, dispo - comp.quantite)
+                Prendre(comp.objet, comp.quantite)
             end
         end
         local gain = (meilleur.points or 1) * meilleureChance

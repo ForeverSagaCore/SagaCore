@@ -129,10 +129,16 @@ local function ObjectifsDeProgression(liste)
     local fiche = NS.base.Personnage()
     local catalogue = NS.recettes
     if not fiche or type(fiche.objectifsProgression) ~= "table" or not catalogue then return end
+    -- Metiers qui ont deja leur projet de progression : l'objectif n'est pas
+    -- montre en double, le projet suffit (rang actuel, rang vise, recettes).
+    local avecProjet = {}
+    for _, projet in ipairs(NS.projets and NS.projets.Tous and NS.projets.Tous(false) or {}) do
+        if projet.progression and not projet.horsSuivi then avecProjet[tostring(projet.progression)] = true end
+    end
     for cle, vise in pairs(fiche.objectifsProgression) do
         local ligne = tonumber(cle)
         local sien = type(fiche.metiers) == "table" and fiche.metiers[tostring(cle)]
-        if ligne and type(sien) == "table" and sien.rang then
+        if ligne and type(sien) == "table" and sien.rang and not avecProjet[tostring(cle)] then
             local nom = sien.nom or catalogue.NomDuMetier(ligne) or "?"
             local plan = catalogue.Progression(ligne, sien.rang, sien.rangMax, vise)
             local requis = {}
@@ -140,6 +146,30 @@ local function ObjectifsDeProgression(liste)
                 for _, comp in ipairs(etape.recette.composants or {}) do
                     if not catalogue.EstVenduPartout(comp.objet) then
                         requis[comp.objet] = (requis[comp.objet] or 0) + comp.quantite * etape.fois
+                    end
+                end
+            end
+            -- Ce qu'on fabrique soi-meme (silex a aiguiser, fait de pierre) :
+            -- seule la part deja en stock compte pour lui ; le reste devient
+            -- ses propres composants, a reunir.
+            local inter = plan.intermediaires or {}
+            if next(inter) then
+                local producteurs = {}
+                for _, r in pairs(catalogue.Toutes and catalogue.Toutes() or {}) do
+                    if type(r) == "table" and r.objetProduit and inter[r.objetProduit] and catalogue.EstApprise(r.id) then
+                        producteurs[r.objetProduit] = r
+                    end
+                end
+                for objet, fois in pairs(inter) do
+                    local r = producteurs[objet]
+                    if r then
+                        local fabriques = fois * math.max(1, tonumber(r.quantiteMin) or 1)
+                        requis[objet] = math.max(0, (requis[objet] or 0) - fabriques)
+                        for _, c in ipairs(r.composants or {}) do
+                            if not catalogue.EstVenduPartout(c.objet) then
+                                requis[c.objet] = (requis[c.objet] or 0) + c.quantite * fois
+                            end
+                        end
                     end
                 end
             end
@@ -423,6 +453,10 @@ local function Texte(rang, police)
         cadreSuivi.textes[rang] = t
     end
     t:SetFontObject(police or "GameFontHighlightSmall")
+    -- Un texte est reutilise d'un tour a l'autre (nom, puis compte) : son
+    -- alignement repart a gauche, sinon un nom herite du calage a droite.
+    t:SetJustifyH("LEFT")
+    t:SetWordWrap(true)
     t:Show()
     return t
 end
@@ -587,13 +621,14 @@ local function DessinerObjectifs(y, objectifs)
                 icone:SetDesaturated(m.possede == 0)
                 local nom = T("GameFontHighlightSmall")
                 nom:ClearAllPoints()
-                nom:SetPoint("TOPLEFT", icone, "TOPRIGHT", 6, -2)
+                nom:SetPoint("LEFT", icone, "RIGHT", 6, 0)
                 nom:SetWidth(largeur - 18 - 22 - 70)
                 nom:SetWordWrap(false)
                 nom:SetText(NS.inventaire.NomDObjet(m.objet))
                 local compte = T("GameFontHighlightSmall")
                 compte:ClearAllPoints()
-                compte:SetPoint("TOPRIGHT", zone, "TOPRIGHT", -2, -y - 2)
+                -- Centre sur l'icone, cale au bord droit de la zone.
+                compte:SetPoint("RIGHT", icone, "LEFT", largeur - 2 - 18, 0)
                 compte:SetWidth(70)
                 compte:SetJustifyH("RIGHT")
                 compte:SetText(math.min(m.possede, m.requis) .. " / " .. m.requis)

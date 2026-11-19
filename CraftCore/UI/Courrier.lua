@@ -215,6 +215,10 @@ function courrier.Plan()
         local besoinEnSacs = {}
         for objet, quantite in pairs(pris) do Ajout(besoinEnSacs, objet, quantite) end
         for objet, quantite in pairs(dansMesSacsPourEnvoi) do Ajout(besoinEnSacs, objet, quantite) end
+        -- Les rangs vises (Monter un metier) : leurs composants sortent aussi.
+        local okObj, objectifs = pcall(NS.recettes.BesoinsDesObjectifs, moi)
+        if okObj then for objet, quantite in pairs(objectifs) do Ajout(besoinEnSacs, objet, quantite) end end
+        plan.garder = besoinEnSacs
         for objet, quantite in pairs(besoinEnSacs) do
             local sacs, banque = NS.inventaire.SacsEtBanque(moi, objet)
             local sortir = math.min(banque, math.max(0, quantite - sacs))
@@ -356,7 +360,8 @@ local function Enchainer(etapes, fin)
             if fin then fin(not ok and continuer or nil) end
             return
         end
-        if plusTard then NS.Appeler(plusTard, PAUSE, Suivante) else Suivante() end
+        -- Etape sans deplacement ("vite") : pas de pause, on enchaine.
+        if continuer == "vite" or not plusTard then Suivante() else NS.Appeler(plusTard, PAUSE, Suivante) end
     end
     Suivante()
 end
@@ -378,11 +383,11 @@ local function ToutSortir()
         -- Une etape par pile deplacee ; le nombre de piles se decouvre en route.
         for _ = 1, 40 do
             table.insert(etapes, function()
-                if reste <= 0 then return true end
+                if reste <= 0 then return "vite" end
                 local bac, case = CaseLibre(reservees)
                 if not bac then NS.Dire(L().ASSIST_NO_ROOM) return false end
                 local part = Prendre(banque, ligne.objet, reste)
-                if part == 0 then reste = 0 return true end
+                if part == 0 then reste = 0 return "vite" end
                 NS.Appeler(Conteneur("PickupContainerItem"), bac, case)
                 if CurseurPlein() then return false end
                 reste = reste - part
@@ -485,8 +490,11 @@ function courrier.PilesACompleter(plan)
             if objet then enBanque[objet] = true end
         end
     end
+    -- Jamais ce que mes projets ou mes envois demandent d'avoir en sacs :
+    -- on vient de le sortir pour fabriquer, on ne le propose pas de le ranger.
     local aSortir = {}
     for _, l in ipairs(plan and plan.sortir or {}) do aSortir[l.objet] = true end
+    for objet in pairs(plan and plan.garder or {}) do aSortir[objet] = true end
     local parObjet, liste = {}, {}
     for _, id in ipairs(TousLesSacs()) do
         for emplacement = 1, NombreDEmplacements(id) do
@@ -591,6 +599,13 @@ local function Construire()
     contenu:SetHeight(1)
     cadre.contenu = contenu
     cadre.textes, cadre.icones, cadre.boutons = {}, {}, {}
+    -- A la banque : le fond cuir de la banque du jeu, en mosaique.
+    local cuir = cadre:CreateTexture(nil, "BACKGROUND", nil, 7)
+    cuir:SetAllPoints(cadre.fond)
+    cuir:SetTexture("Interface\\BankFrame\\Bank-Background", "REPEAT", "REPEAT")
+    if cuir.SetHorizTile then cuir:SetHorizTile(true) cuir:SetVertTile(true) end
+    cuir:Hide()
+    cadre.cuir = cuir
     -- Panneau ferme : la touche A rend sa place au jeu.
     cadre:HookScript("OnHide", function(self) pcall(_G.ClearOverrideBindings, self) end)
     cadre:Hide()
@@ -725,6 +740,9 @@ local function Remplir(plan)
             if ok and g then libelle = g .. " " .. libelle end
         end
         b:SetText(libelle)
+        -- Toute la largeur du panneau : le texte (icone de la manette et
+        -- nombre compris) y tient toujours, et les boutons s'alignent.
+        b:SetWidth(largeur)
         b:SetScript("OnClick", auClic)
         b:SetEnabled(not enCours)
         y = y + 32
@@ -827,6 +845,24 @@ local function Remplir(plan)
                 if absent then return "|cff8c8c8c" .. string.format(L().AH_ABSENT, NS.encheres.DateDe(quand)) .. "|r" end
                 return "|cff8c8c8c" .. L().AH_NEVER .. "|r"
             end)
+            -- A acheter : un bouton par objet qui manque, qui le cherche dans
+            -- l'hotel des ventes. L'achat reste a faire soi-meme.
+            local manques = NS.encheres.Manques and NS.encheres.Manques() or {}
+            local aChercher = {}
+            for _, objet in ipairs(objets) do
+                if (manques[objet] or 0) > 0 then table.insert(aChercher, objet) end
+            end
+            if #aChercher > 0 then
+                y = y + 4
+                Titre(L().AH_BUY_TITLE)
+                for k, objet in ipairs(aChercher) do
+                    if k > 6 then Reste(#aChercher - 6) break end
+                    local o = objet
+                    Action(string.format(L().AH_FIND, NS.inventaire.NomDObjet(o), manques[o]), function()
+                        NS.encheres.Chercher(o)
+                    end)
+                end
+            end
         end
         -- Ce qu'on peut fabriquer tout de suite et vendre : prix, benefice.
         local okR, rentables = pcall(NS.encheres.Rentables)
@@ -918,14 +954,32 @@ local function Bornes(noms)
 end
 
 -- A droite de la fenetre accompagnee, aligne sur son bas.
-local function Placer()
+local Placer
+local function Replacer()
+    if panneau and panneau:IsShown() then pcall(Placer) end
+end
+Placer = function()
     panneau:ClearAllPoints()
     panneau:SetWidth(LARGEUR)
+    if panneau.cuir then panneau.cuir:SetShown(lieu == "banque") end
     local gauche, droite, bas = Bornes(FENETRES[lieu] or {})
     if not gauche then
         panneau:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 190)
+        -- La fenetre du jeu s'affiche parfois juste apres l'evenement
+        -- d'ouverture : on reessaie un instant plus tard pour s'y coller.
+        -- On guette sa venue jusqu'a 3 secondes.
+        local attente = 0
+        panneau:SetScript("OnUpdate", function(self, ecoule)
+            attente = attente + (ecoule or 0)
+            local g = Bornes(FENETRES[lieu] or {})
+            if g or attente > 3 then
+                self:SetScript("OnUpdate", nil)
+                if g then pcall(Placer) end
+            end
+        end)
         return
     end
+    panneau:SetScript("OnUpdate", nil)
     panneau:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", droite + (ECART[lieu] or 8), bas)
 end
 
@@ -979,6 +1033,8 @@ local function Brancher()
     Suivre("OpenMailFrame", "OnHide", Rafraichir)
     Suivre("MailFrame", "OnHide", function() courrier.Ferme("courrier") end)
     Suivre("BankFrame", "OnHide", function() courrier.Ferme("banque") end)
+    -- La banque (ou un de ses onglets) s'affiche ou bouge : on s'y recolle.
+    for _, nom in ipairs(FENETRES.banque) do Suivre(nom, "OnShow", Replacer) end
 end
 
 -- Ce qui part a l'envoi d'un courrier : note juste avant, garde si l'envoi

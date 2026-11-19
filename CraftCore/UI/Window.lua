@@ -122,9 +122,10 @@ local METIERS = {
 local PAGES = {
     { cle = "atelier",     libelle = "NAV_DASHBOARD",    icone = "Interface\\Icons\\INV_Misc_Gear_01" },
     { cle = "projets",     libelle = "NAV_PROJECTS",     icone = "Interface\\Icons\\INV_Scroll_03" },
-    { cle = "progressions", libelle = "NAV_PROGRESSIONS", icone = "Interface\\Icons\\INV_Misc_Book_11" },
     { cle = "commandes",   libelle = "NAV_ORDERS",       icone = "Interface\\Icons\\INV_Letter_15" },
     { cle = "recettes",    libelle = "NAV_RECIPES",      icone = "Interface\\Icons\\INV_Misc_Book_09" },
+    -- Monter un metier : une seule page guidee, pour tous les metiers.
+    { cle = "progression", libelle = "NAV_LEVEL_UP",     icone = "Interface\\Icons\\INV_Misc_Book_11" },
     -- La progression, l'equipement et les caisses ont leur onglet a droite,
     -- sous les metiers. Les fabrications rapides et la liste de courses sont
     -- dans Mes projets.
@@ -1960,7 +1961,10 @@ local function RendreListeDeProjets(contenu, progressions)
         local hauteurTitre = EnTeteDeBloc(ligne)
         local titre = NS.projets.NomDe(projet)
         if projet.statut == "archive" then titre = titre .. " (" .. L.PROJECTS_ARCHIVE .. ")" end
-        local lanceur = NS.projets.LanceePar and NS.projets.LanceePar(projet)
+        -- Projet de progression : son metier et son rang suffisent, sans
+        -- "lance par" qui n'apprend rien ici.
+        local deProgression = projet.progression ~= nil
+        local lanceur = not deProgression and NS.projets.LanceePar and NS.projets.LanceePar(projet)
         if lanceur then
             titre = titre .. "   |cff8c8c8c" .. string.format(L.PROJECTS_BY, lanceur) .. "|r"
         elseif projet.repris then
@@ -1980,6 +1984,18 @@ local function RendreListeDeProjets(contenu, progressions)
         end
         ligne:Show()
         y = y + hauteurTitre
+        -- Sous le titre d'un projet de progression : ou en est le metier.
+        if deProgression then
+            local fiche = NS.base.FicheAffichee()
+            local sien = fiche and type(fiche.metiers) == "table" and fiche.metiers[tostring(projet.progression)]
+            local vise = projet.rangVise or (fiche and type(fiche.objectifsProgression) == "table"
+                and fiche.objectifsProgression[tostring(projet.progression)])
+            if type(sien) == "table" and sien.rang then
+                local texte = vise and string.format(L.GOAL_PROG_DETAIL, sien.rang, vise)
+                    or string.format(L.PROG_CURRENT_RANK, sien.rang)
+                y = Paragraphe(contenu, y + 2, texte, "GameFontHighlightSmall")
+            end
+        end
 
         -- Renommer : le champ prend la place du titre, sur sa ligne, sans rien
         -- recouvrir. Entree garde le nom, Echap annule.
@@ -2057,6 +2073,14 @@ local function RendreListeDeProjets(contenu, progressions)
             supprimer:SetScript("OnClick", function()
                 if ecran.suppressionEnCours == projet.id then
                     ecran.suppressionEnCours = nil
+                    -- Un projet de progression et son rang vise ne font qu'un :
+                    -- on supprime les deux, sinon l'objectif reapparait seul.
+                    if projet.progression then
+                        local fiche = NS.base.FicheAffichee()
+                        if fiche and type(fiche.objectifsProgression) == "table" then
+                            fiche.objectifsProgression[tostring(projet.progression)] = nil
+                        end
+                    end
                     NS.projets.Supprimer(projet.id)
                 else
                     ecran.suppressionEnCours = projet.id
@@ -2314,165 +2338,228 @@ local function ListeDObjets(contenu, index, y, objets, droite)
     return index, y, #liste
 end
 
--- Detail de progression d'un metier, sous sa ligne dans la page Progression.
+-- Monter un metier : une seule page, guidee comme une recette. On choisit le
+-- rang vise, puis les etapes s'enchainent dans l'ordre, chacune avec son
+-- bouton. Une etape faite se coche et se replie ; la suivante est mise en
+-- avant. Le rang vise est garde dans la fiche : le suivi de recolte et la
+-- banque l'accompagnent.
 local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     local catalogue = NS.recettes
     local rang, rangMax = sien.rang, sien.rangMax
-    local nomMetier = sien.nom or catalogue.NomDuMetier(ligneMetier) or ""
-
-    -- Deux facons de demander : jusqu'ou mes composants me menent, ou de
-    -- quoi j'ai besoin pour un rang vise.
-    -- Le rang vise est garde dans la fiche du personnage : c'est un objectif,
-    -- que le suivi de recolte accompagne (onglet Objectifs).
+    local VERT, OR, GRIS = { 0.31, 0.82, 0.41 }, { 1, 0.82, 0 }, { 0.62, 0.62, 0.62 }
     local fiche = NS.base.FicheAffichee()
-    local objectifs = fiche and fiche.objectifsProgression
     local cleObjectif = tostring(ligneMetier)
-    local modeObjectif = objectifs ~= nil and objectifs[cleObjectif] ~= nil
-    local objectif = modeObjectif and objectifs[cleObjectif] or math.min(rang + 10, rangMax or (rang + 10))
-    if objectif <= rang and not modeObjectif then objectif = math.min(rang + 1, rangMax or (rang + 1)) end
+    local enregistre = fiche and type(fiche.objectifsProgression) == "table" and tonumber(fiche.objectifsProgression[cleObjectif])
+    local objectif = enregistre or math.min(rang + 10, rangMax or (rang + 10))
+    if objectif <= rang then objectif = math.min(rang + 1, rangMax or (rang + 1)) end
     local function PoserObjectif(valeur)
         if not fiche then return end
-        fiche.objectifsProgression = fiche.objectifsProgression or {}
+        fiche.objectifsProgression = type(fiche.objectifsProgression) == "table" and fiche.objectifsProgression or {}
         fiche.objectifsProgression[cleObjectif] = valeur
         if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
     end
+    local gauche = RETRAIT_PAR_NIVEAU + retraitCourant
 
-    y = y + 4
-    local mesCompos = BoutonAction(contenu, "progStock", L.PROG_MODE_STOCK)
-    mesCompos:ClearAllPoints()
-    mesCompos:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU + retraitCourant, -y)
-    mesCompos:SetEnabled(modeObjectif)
-    mesCompos:SetScript("OnClick", function() PoserObjectif(nil) ecran.Montrer(ecran.page) end)
-    mesCompos:Show()
-    local viser = BoutonAction(contenu, "progObjectif", L.PROG_MODE_GOAL)
-    viser:ClearAllPoints()
-    viser:SetPoint("LEFT", mesCompos, "RIGHT", 6, 0)
-    viser:SetEnabled(not modeObjectif)
-    viser:SetScript("OnClick", function() PoserObjectif(objectif) ecran.Montrer(ecran.page) end)
-    viser:Show()
-    if modeObjectif then
-        -- Le rang vise se regle aux boutons : rien a taper, jouable a la manette.
-        local precedent = viser
-        for _, pas in ipairs({ -5, -1, 1, 5 }) do
-            local b = BoutonAction(contenu, "progPas" .. pas, (pas > 0 and "+" or "") .. pas)
-            b:SetWidth(44)
-            b:ClearAllPoints()
+    -- Ce que les composants du compte donnent deja, a coup sur.
+    local okStock, planStock = pcall(catalogue.Progression, ligneMetier, rang, rangMax, nil)
+    if okStock and planStock and (planStock.pointsSurs or 0) > 0 then
+        y = Paragraphe(contenu, y + 4, string.format(L.GUIDE_ALREADY, rang + planStock.pointsSurs), "GameFontHighlightSmall", VERT)
+    end
+
+    -- Le rang vise, aux boutons : rien a taper, jouable a la manette.
+    y = y + 6
+    contenu.libelleObjectif = contenu.libelleObjectif or contenu:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    contenu.libelleObjectif:ClearAllPoints()
+    contenu.libelleObjectif:SetPoint("TOPLEFT", contenu, "TOPLEFT", gauche, -(y + 4))
+    contenu.libelleObjectif:SetText(L.GUIDE_TARGET)
+    contenu.libelleObjectif:Show()
+    local precedent
+    for _, pas in ipairs({ -5, -1, 1, 5 }) do
+        local b = BoutonAction(contenu, "progPas" .. pas, (pas > 0 and "+" or "") .. pas)
+        b:SetWidth(44)
+        b:ClearAllPoints()
+        if precedent then
             b:SetPoint("LEFT", precedent, "RIGHT", pas == 1 and 60 or 4, 0)
-            b:SetScript("OnClick", function()
-                local cible = objectif + pas
-                cible = math.max(rang + 1, math.min(rangMax or cible, cible))
-                PoserObjectif(cible)
-                ecran.Montrer(ecran.page)
-            end)
-            b:Show()
-            if pas == -1 then
-                contenu.valeurObjectif = contenu.valeurObjectif or contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-                contenu.valeurObjectif:ClearAllPoints()
-                contenu.valeurObjectif:SetPoint("LEFT", b, "RIGHT", 6, 0)
-                contenu.valeurObjectif:SetWidth(48)
-                contenu.valeurObjectif:SetJustifyH("CENTER")
-                contenu.valeurObjectif:SetText(tostring(objectif))
-                contenu.valeurObjectif:Show()
-            end
-            precedent = b
+        else
+            b:SetPoint("LEFT", contenu.libelleObjectif, "RIGHT", 10, 0)
         end
-    elseif contenu.valeurObjectif then
-        contenu.valeurObjectif:Hide()
+        b:SetScript("OnClick", function()
+            local cible = math.max(rang + 1, math.min(rangMax or (objectif + pas), objectif + pas))
+            PoserObjectif(cible)
+            ecran.Montrer(ecran.page)
+        end)
+        b:Show()
+        if pas == -1 then
+            contenu.valeurObjectif = contenu.valeurObjectif or contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+            contenu.valeurObjectif:ClearAllPoints()
+            contenu.valeurObjectif:SetPoint("LEFT", b, "RIGHT", 6, 0)
+            contenu.valeurObjectif:SetWidth(48)
+            contenu.valeurObjectif:SetJustifyH("CENTER")
+            contenu.valeurObjectif:SetText(tostring(objectif))
+            contenu.valeurObjectif:Show()
+        end
+        precedent = b
+    end
+    if enregistre then
+        local oublier = BoutonAction(contenu, "progOublier", L.PROGRESSIONS_STOP)
+        oublier:ClearAllPoints()
+        oublier:SetPoint("LEFT", precedent, "RIGHT", 12, 0)
+        oublier:SetScript("OnClick", function() PoserObjectif(nil) ecran.Montrer(ecran.page) end)
+        oublier:Show()
     end
     y = y + 28
 
-    local plan = catalogue.Progression(ligneMetier, rang, rangMax, modeObjectif and objectif or nil)
-
-    -- Le resultat en clair, sur plusieurs lignes au besoin : jamais tronque.
-    -- Ce qui est atteignable est en vert, ce qui ne l'est qu'en partie en or.
-    local VERT, OR, GRIS = { 0.31, 0.82, 0.41 }, { 1, 0.82, 0 }, { 0.62, 0.62, 0.62 }
-    index, y = TitreDeSection(contenu, index, y, L.PROG_RESULT)
-    local gain = plan.atteint - rang
-    if modeObjectif then
-        if plan.atteint >= objectif then
-            y = Paragraphe(contenu, y, string.format(L.PROG_GOAL_OK, objectif), "GameFontHighlight", VERT)
-        else
-            y = Paragraphe(contenu, y, string.format(L.PROG_GOAL_PARTIAL, objectif, plan.atteint), "GameFontHighlight", OR)
-        end
-    elseif gain > 0 then
-        local texte = string.format(L.PROG_REACH, rang, plan.atteint, gain)
-        if (plan.pointsProbables or 0) > 0 then
-            texte = texte .. " " .. string.format(L.PROG_REACH_PROBABLE, plan.pointsProbables)
-        end
-        y = Paragraphe(contenu, y, texte, "GameFontHighlight", VERT)
+    local plan = catalogue.Progression(ligneMetier, rang, rangMax, objectif)
+    if plan.atteint >= objectif then
+        y = Paragraphe(contenu, y, string.format(L.PROG_GOAL_OK, objectif), "GameFontHighlight", VERT)
     else
-        y = Paragraphe(contenu, y, string.format(L.PROG_REACH_NONE, rang), "GameFontHighlight", OR)
-    end
-    if next(plan.achats) then
-        y = Paragraphe(contenu, y, L.PROG_NEEDS_VENDOR, "GameFontHighlightSmall")
-    end
-    local raisons = { aucuneRecette = L.PROG_STOP_NORECIPE, plusRien = modeObjectif and L.PROG_STOP_NOORANGE or L.PROG_STOP_NOMATS,
-        plafond = string.format(L.PROG_STOP_CAP, rangMax or 0) }
-    if plan.arret and raisons[plan.arret] and not (modeObjectif and plan.atteint >= objectif) then
-        y = Paragraphe(contenu, y, raisons[plan.arret], "GameFontHighlightSmall", GRIS)
+        y = Paragraphe(contenu, y, string.format(L.PROG_GOAL_PARTIAL, objectif, plan.atteint), "GameFontHighlight", OR)
+        local raisons = { aucuneRecette = L.PROG_STOP_NORECIPE, plusRien = L.PROG_STOP_NOORANGE,
+            plafond = string.format(L.PROG_STOP_CAP, rangMax or 0) }
+        if plan.arret and raisons[plan.arret] then
+            y = Paragraphe(contenu, y, raisons[plan.arret], "GameFontHighlightSmall", GRIS)
+        end
     end
 
-    -- Les recettes, dans l'ordre ou les faire.
-    if #plan.etapes > 0 then
-        index, y = TitreDeSection(contenu, index, y, L.PROG_STEPS)
-        for _, etape in ipairs(plan.etapes) do
-            local objet = etape.recette.objetProduit
-            local icone = objet and NS.Appeler(NS.jeu.iconeObjet, objet)
-            local l
-            local rangs = string.format(L.PROG_RANKS, etape.de, etape.a)
-            if etape.probable then rangs = rangs .. "  " .. L.PROG_PROBABLE_TAG end
-            index, y, l = LigneSimple(contenu, index, y, icone,
-                (etape.recette.nom or "?") .. "  |cffffffffx" .. etape.fois .. "|r", rangs)
-            -- Vert : point sur (orange). Or : point probable (jaune).
-            if l then
-                if etape.probable then l.total:SetTextColor(1, 0.82, 0) else l.total:SetTextColor(0.31, 0.82, 0.41) end
-                -- Creer, directement depuis le plan.
-                PoserBoutonFabriquer(l, etape.recette, etape.fois)
-            end
-            if l and objet then
-                l:EnableMouse(true)
-                l:SetScript("OnEnter", function(self)
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    if GameTooltip.SetItemByID then pcall(GameTooltip.SetItemByID, GameTooltip, objet) end
-                    GameTooltip:Show()
-                end)
-                l:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            end
+    -- Les etapes. Chacune dit si elle est faite ; la premiere qui ne l'est
+    -- pas est celle a faire maintenant.
+    local numero, courante = 0, false
+    local function Etape(libelle, faite)
+        numero = numero + 1
+        local droite
+        if faite then
+            droite = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14|t " .. L.GUIDE_DONE
+        elseif not courante then
+            courante = true
+            droite = "|cffffd100" .. L.GUIDE_NOW .. "|r"
         end
-        -- Le plan devient un projet en un clic : les quantites suivent.
-        y = y + 6
-        local creer = BoutonAction(contenu, "progProjet", L.PROG_TO_PROJECT)
-        creer:ClearAllPoints()
-        creer:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU + retraitCourant, -y)
-        creer:SetScript("OnClick", function()
-            local projet = NS.projets.Creer(string.format(L.PROG_PROJECT_NAME, nomMetier, plan.atteint))
-            if not projet then return end
-            projet.progression = ligneMetier
-            for _, etape in ipairs(plan.etapes) do NS.projets.Ajouter(projet.id, etape.recette.id, etape.fois) end
-            NS.Dire(string.format(L.PROG_PROJECT_DONE, NS.projets.NomDe(projet)))
-            ecran.Montrer("progressions")
-        end)
-        creer:Show()
+        index, y = TitreDeSection(contenu, index, y, string.format(L.GUIDE_STEP, numero, libelle), droite)
+        return not faite
+    end
+    local function BoutonDEtape(cle, libelle, auClic)
+        y = y + 4
+        local b = BoutonAction(contenu, cle, libelle)
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", contenu, "TOPLEFT", gauche + RETRAIT_PAR_NIVEAU, -y)
+        b:SetScript("OnClick", auClic)
+        b:Show()
         y = y + 26
     end
-
-    -- A acheter chez un marchand.
-    if next(plan.achats) then
-        index, y = TitreDeSection(contenu, index, y, L.PROG_BUY)
-        index, y = ListeDObjets(contenu, index, y, plan.achats, function(e)
-            local possede = NS.inventaire.TotalPossede(e.objet)
-            if possede >= e.n then return "|cff4fd16a" .. string.format(L.PROG_BUY_ENOUGH, e.n, possede) .. "|r" end
-            if possede > 0 then return string.format(L.PROG_BUY_HAVE, e.n, possede, e.n - possede) end
-            return "x" .. e.n
-        end)
+    local function Icone(objet) return NS.Appeler(NS.jeu.iconeObjet, objet) end
+    local function Nom(objet) return NS.inventaire.NomDObjet(objet) end
+    local function Trie(t)
+        local liste = {}
+        for objet, n in pairs(t or {}) do if n > 0 then table.insert(liste, { objet = objet, n = n }) end end
+        table.sort(liste, function(a, b) if a.n ~= b.n then return a.n > b.n end return tostring(a.objet) < tostring(b.objet) end)
+        return liste
     end
 
-    -- A recolter ou recuperer, pour l'objectif.
-    if modeObjectif and next(plan.manques) then
-        index, y = TitreDeSection(contenu, index, y, L.PROG_GATHER)
-        index, y = ListeDObjets(contenu, index, y, plan.manques, function(e)
-            return string.format(L.PROG_MISSING, e.n)
-        end)
+    -- 1. Recuperer : ce qui dort en banque ou chez mes autres personnages.
+    local aRecuperer = {}
+    for _, e in ipairs(Trie(plan.utilises)) do
+        local enSacs = NS.inventaire.DisponibleDansLesSacs(e.objet)
+        if enSacs < e.n then
+            local morceaux, reste = {}, e.n - enSacs
+            local _, banque = NS.inventaire.SacsEtBanque(fiche, e.objet)
+            if banque > 0 then table.insert(morceaux, string.format(L.GUIDE_IN_BANK, math.min(banque, reste))) reste = reste - banque end
+            local _, detail = NS.inventaire.DetailChezLesAutres(fiche, e.objet)
+            for _, d in ipairs(detail) do
+                if reste <= 0 then break end
+                table.insert(morceaux, d.nom .. " " .. math.min(d.total, reste))
+                reste = reste - d.total
+            end
+            if #morceaux > 0 then table.insert(aRecuperer, { objet = e.objet, n = e.n - enSacs, ou = table.concat(morceaux, ", ") }) end
+        end
+    end
+    if next(plan.utilises or {}) then
+        if Etape(L.GUIDE_FETCH, #aRecuperer == 0) then
+            for _, e in ipairs(aRecuperer) do
+                index, y = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), e.ou)
+            end
+            y = Paragraphe(contenu, y + 2, L.GUIDE_FETCH_HELP, "GameFontDisableSmall")
+        end
+    end
+
+    -- 2. Acheter chez un marchand.
+    if next(plan.achats) then
+        local manque = {}
+        for _, e in ipairs(Trie(plan.achats)) do
+            local reste = e.n - NS.inventaire.TotalPossede(e.objet)
+            if reste > 0 then table.insert(manque, { objet = e.objet, n = reste }) end
+        end
+        if Etape(L.GUIDE_BUY, #manque == 0) then
+            for _, e in ipairs(manque) do
+                local l
+                index, y, l = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), "")
+                if l and NS.marchands and NS.marchands.Localisable and NS.marchands.Localisable(e.objet) then
+                    local objet = e.objet
+                    PoserBoutonDeLigne(l, L.VENDOR_LOCATE, function() NS.marchands.Guider(objet) end, nil, L.VENDOR_LOCATE_HELP)
+                end
+            end
+        end
+    end
+
+    -- 3. Recolter ou obtenir ce qui manque encore au compte.
+    if next(plan.manques) then
+        if Etape(L.GUIDE_GATHER, false) then
+            for _, e in ipairs(Trie(plan.manques)) do
+                index, y = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), "")
+            end
+            BoutonDEtape("progRecolte", L.GUIDE_GATHER_GO, function()
+                PoserObjectif(objectif)
+                if NS.suivi and NS.suivi.Guider then NS.suivi.Guider(true) end
+                ecran.Montrer(ecran.page)
+            end)
+        end
+    end
+
+    -- 4. Fabriquer d'abord les composants qu'on fait soi-meme.
+    if next(plan.intermediaires or {}) then
+        if Etape(L.PROG_CRAFT_FIRST, false) then
+            local producteurs = {}
+            for _, r in pairs(catalogue.Toutes and catalogue.Toutes() or {}) do
+                if type(r) == "table" and r.objetProduit and catalogue.EstApprise(r.id) then producteurs[r.objetProduit] = r end
+            end
+            for _, e in ipairs(Trie(plan.intermediaires)) do
+                local r = producteurs[e.objet]
+                local morceaux = {}
+                for _, c in ipairs(r and r.composants or {}) do
+                    table.insert(morceaux, c.quantite * e.n .. " " .. Nom(c.objet))
+                end
+                local avec = #morceaux > 0 and string.format(L.PROG_CRAFT_WITH, table.concat(morceaux, ", ")) or ""
+                local l
+                index, y, l = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), avec)
+                if l and r then PoserBoutonFabriquer(l, r, e.n) end
+            end
+        end
+    end
+
+    -- 5. Monter le metier : les recettes, dans l'ordre.
+    if #plan.etapes > 0 then
+        if Etape(L.GUIDE_LEVEL, false) then
+            for _, etape in ipairs(plan.etapes) do
+                local objet = etape.recette.objetProduit
+                local rangs = string.format(L.PROG_RANKS, etape.de, etape.a)
+                if etape.probable then rangs = rangs .. "  " .. L.PROG_PROBABLE_TAG end
+                local l
+                index, y, l = LigneSimple(contenu, index, y, objet and Icone(objet),
+                    (etape.recette.nom or "?") .. "  |cffffffffx" .. etape.fois .. "|r", rangs)
+                if l then
+                    if etape.probable then l.total:SetTextColor(1, 0.82, 0) else l.total:SetTextColor(0.31, 0.82, 0.41) end
+                    PoserBoutonFabriquer(l, etape.recette, etape.fois)
+                    if objet then
+                        l:EnableMouse(true)
+                        l:SetScript("OnEnter", function(self)
+                            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                            if GameTooltip.SetItemByID then pcall(GameTooltip.SetItemByID, GameTooltip, objet) end
+                            GameTooltip:Show()
+                        end)
+                        l:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                    end
+                end
+            end
+            y = Paragraphe(contenu, y + 2, L.GUIDE_LEVEL_HELP, "GameFontDisableSmall")
+        end
     end
 
     if plan.estime then
@@ -2488,10 +2575,30 @@ end
 -- un seul a la fois, pour que la page reste lisible.
 local RECOLTE = { [182] = true, [356] = true, [393] = true }
 
+-- Les anciens projets de progression deviennent des rangs vises : la page
+-- Monter un metier les reprend, sans projet a part.
+local function MigrerProjetsDeProgression()
+    if not (NS.projets and NS.projets.Tous) then return end
+    for _, projet in ipairs(NS.projets.Tous(true)) do
+        if projet.progression then
+            local fiche = NS.base.Personnage and NS.base.Personnage()
+            local cle = tostring(projet.progression)
+            if fiche and tonumber(projet.rangVise) then
+                fiche.objectifsProgression = type(fiche.objectifsProgression) == "table" and fiche.objectifsProgression or {}
+                fiche.objectifsProgression[cle] = fiche.objectifsProgression[cle] or tonumber(projet.rangVise)
+            end
+            NS.projets.Supprimer(projet.id)
+        end
+    end
+end
+
 local function RendreProgression(contenu)
     CacherLignesAuDela(contenu, 1)
     CacherActions(contenu)
     CacherParagraphes(contenu)
+    if contenu.valeurObjectif then contenu.valeurObjectif:Hide() end
+    if contenu.libelleObjectif then contenu.libelleObjectif:Hide() end
+    MigrerProjetsDeProgression()
     ecran.deplie = ecran.deplie or {}
     local catalogue = NS.recettes
     local C = NS.inventaire.COULEURS
@@ -2508,7 +2615,7 @@ local function RendreProgression(contenu)
         contenu:SetHeight(60)
         return
     end
-    if ecran.progOuvert == nil then ecran.progOuvert = metiers[1].ligne end
+    -- Par defaut, tout est replie : on ouvre le metier qu'on veut.
 
     index, y = TitreDeSection(contenu, index, y, L.PROG_ALL_TITLE)
     for _, m in ipairs(metiers) do
@@ -3460,28 +3567,20 @@ SynchroniserOnglets = function(win)
     -- La progression, l'equipement et les caisses ne sont pas des metiers :
     -- leurs onglets se posent plus bas, separes, pour qu'on ne les confonde
     -- pas avec eux. La progression couvre tous les metiers a la fois.
-    if win.ongletProgression and precedent and win.ongletProgression.ClearAllPoints then
-        win.ongletProgression:ClearAllPoints()
-        win.ongletProgression:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -30)
+    -- Monter un metier est dans le menu de gauche : plus d'onglet a droite.
+    if win.ongletEquipement and precedent and win.ongletEquipement.ClearAllPoints then
+        win.ongletEquipement:ClearAllPoints()
+        win.ongletEquipement:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -30)
     end
-    if not win.ongletProgression and precedent then
+    if not win.ongletEquipement and precedent then
         local onglet = CreerOngletLateral(win, precedent,
-            "Interface\\Icons\\INV_Misc_Book_11", function()
-                ecran.Montrer("progression")
+            "Interface\\Icons\\INV_Chest_Chain", function()
+                ecran.Montrer("equipement")
             end)
         if onglet.ClearAllPoints then
             onglet:ClearAllPoints()
             onglet:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -30)
         end
-        onglet.libelleParDefaut = L.NAV_PROGRESSION
-        onglet.tooltipText = L.NAV_PROGRESSION
-        win.ongletProgression = onglet
-    end
-    if not win.ongletEquipement and win.ongletProgression then
-        local onglet = CreerOngletLateral(win, win.ongletProgression,
-            "Interface\\Icons\\INV_Chest_Chain", function()
-                ecran.Montrer("equipement")
-            end)
         onglet.libelleParDefaut = L.NAV_EQUIPMENT
         onglet.tooltipText = L.NAV_EQUIPMENT
         win.ongletEquipement = onglet
@@ -4009,6 +4108,8 @@ function ecran.Montrer(cle)
     if not fenetre then fenetre = Construire() end
     -- Anciennes pages, desormais dans Mes projets.
     if cle == "rapides" or cle == "approv" then cle = "projets" end
+    -- Mes progressions et l'onglet Progression ne font plus qu'une page.
+    if cle == "progressions" then cle = "progression" end
     -- Memoire : on rouvre la ou on s'etait arrete, meme apres /reload.
     local memoire
     if type(CraftCoreDB) == "table" then
@@ -4016,7 +4117,7 @@ function ecran.Montrer(cle)
         memoire = CraftCoreDB.memoire
     end
     if not ecran.page and memoire then
-        ecran.page = memoire.page
+        ecran.page = (memoire.page == "progressions") and "progression" or memoire.page
         ecran.metier = ecran.metier or memoire.metier
     end
     ecran.page = cle or ecran.page or "stocks"
@@ -4081,7 +4182,7 @@ function ecran.Montrer(cle)
     end
 
     local okOnglets, souciOnglets = pcall(SynchroniserOnglets, fenetre)
-    for page, onglet in pairs({ progression = fenetre.ongletProgression, equipement = fenetre.ongletEquipement,
+    for page, onglet in pairs({ equipement = fenetre.ongletEquipement,
         caisses = fenetre.ongletCaisses }) do
         local choisi = (ecran.page == page)
         if onglet.SetChecked then onglet:SetChecked(choisi) end
@@ -4136,6 +4237,9 @@ function ecran.Montrer(cle)
         end
         if fenetre.contenu.valeurObjectif and ecran.page ~= "progression" then
             fenetre.contenu.valeurObjectif:Hide()
+        end
+        if fenetre.contenu.libelleObjectif and ecran.page ~= "progression" then
+            fenetre.contenu.libelleObjectif:Hide()
         end
         -- Les paragraphes sont reposes par chaque page qui en a besoin.
         CacherParagraphes(fenetre.contenu)
@@ -4283,7 +4387,7 @@ function ecran.Cible(nom)
     elseif genre == "menu" then cible = win.boutons[cle]
     elseif genre == "onglet" then
         cible = (cle == "equipement" and win.ongletEquipement) or (cle == "caisses" and win.ongletCaisses)
-            or (cle == "progression" and win.ongletProgression) or nil
+            or nil
     elseif genre == "action" then
         -- Le premier bouton d'action dont la cle commence ainsi.
         for cleAction, bouton in pairs(win.contenu.actions or {}) do

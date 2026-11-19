@@ -92,6 +92,8 @@ function projets.Supprimer(id)
     if not d then return false end
     if not d.projets[tostring(id)] then return false end
     d.projets[tostring(id)] = nil
+    -- Le suivi a l'ecran le montre aussitot, sans attendre son prochain tour.
+    if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
     return true
 end
 

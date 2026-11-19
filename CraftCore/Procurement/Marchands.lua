@@ -405,6 +405,40 @@ function encheres.ObjetsARelever()
     return liste
 end
 
+-- Combien il manque de chaque objet a relever (fabrications et progressions).
+function encheres.Manques()
+    local manques = {}
+    local function Ajouter(objet, n)
+        objet = tonumber(objet)
+        if objet and n and n > 0 and not marchands.Achetable(objet) then manques[objet] = (manques[objet] or 0) + n end
+    end
+    if NS.approvisionnement then
+        local ok, l = pcall(NS.approvisionnement.Liste)
+        for _, ligne in ipairs(ok and l or {}) do Ajouter(ligne.objet, ligne.manque) end
+    end
+    if NS.suivi and NS.suivi.RangsVises then
+        local ok, rangs = pcall(NS.suivi.RangsVises)
+        for _, o in ipairs(ok and rangs or {}) do
+            for _, m in ipairs(o.matieres or {}) do Ajouter(m.objet, m.manque) end
+        end
+    end
+    return manques
+end
+
+-- Lance la recherche d'un objet dans la fenetre de l'hotel des ventes : ses
+-- offres s'affichent, et l'achat se fait a la main, comme d'habitude.
+function encheres.Chercher(objet)
+    local f = _G.AuctionHouseFrame
+    local nom = NS.inventaire and NS.inventaire.NomDObjet and NS.inventaire.NomDObjet(objet)
+    if not (f and f.SearchBar and nom) then return false end
+    local mode = _G.AuctionHouseFrameDisplayMode
+    if mode and mode.Buy and f.SetDisplayMode then pcall(f.SetDisplayMode, f, mode.Buy) end
+    local boite = f.SearchBar.SearchBox
+    if boite and boite.SetText then pcall(boite.SetText, boite, nom) end
+    if f.SearchBar.StartSearch then pcall(f.SearchBar.StartSearch, f.SearchBar) end
+    return true
+end
+
 -- Prix moyen d'une unite pour n unites (les moins cheres du releve), la date
 -- du releve, et si l'objet etait absent. nil si jamais releve.
 function encheres.Prix(objet, n)
@@ -639,6 +673,45 @@ function encheres.Rentables()
     end)
     return rendu
 end
+
+-- Ce que le personnage connecte detient (sacs et banque) et qui a un prix
+-- releve a l'hotel des ventes : prix net d'une unite (commission deduite).
+function encheres.EnStock()
+    local rendu = {}
+    local moi = NS.base.Personnage and NS.base.Personnage()
+    if not moi then return rendu end
+    for cle in pairs(NS.base.StocksDe(moi) or {}) do
+        local objet = tonumber(cle)
+        if objet and not Lie(objet) then
+            local prix, quand = encheres.Prix(objet, 1)
+            if prix then
+                local sacs, banque = NS.inventaire.SacsEtBanque(moi, objet)
+                if sacs + banque > 0 then
+                    local net = prix * (1 - COMMISSION)
+                    table.insert(rendu, { objet = objet, sacs = sacs, banque = banque, unite = net,
+                        total = net * (sacs + banque), quand = quand })
+                end
+            end
+        end
+    end
+    table.sort(rendu, function(a, b) return a.total > b.total end)
+    return rendu
+end
+
+-- Pour les autres add-ons de la suite (TradeCore) : ce qu'on peut fabriquer
+-- et vendre, et ce qu'on a a vendre, avec les prix releves.
+_G.CraftCoreAPI = _G.CraftCoreAPI or {}
+_G.CraftCoreAPI.Rentables = function()
+    local liste = {}
+    for _, r in ipairs(encheres.Rentables()) do
+        table.insert(liste, { objet = r.recette.objetProduit, n = r.n, vente = r.valeur.vente, cout = r.valeur.cout,
+            benefice = r.valeur.benefice, quand = r.valeur.quand })
+    end
+    return liste
+end
+_G.CraftCoreAPI.EnStock = function() return encheres.EnStock() end
+_G.CraftCoreAPI.Monnaie = function(cuivre) return marchands.Monnaie(cuivre) end
+_G.CraftCoreAPI.DateDe = function(quand) return encheres.DateDe(quand) end
 
 -- "A l'HV : se vend X, composants Y, benefice Z (releve du ...)" ou nil.
 function encheres.TexteDeValeur(v)

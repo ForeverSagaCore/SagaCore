@@ -13,6 +13,8 @@ Chaque add-on s'installe aussi seul. Installés ensemble, ils partagent la même
 
 Ouvrir la suite là où on l'avait laissée : `/sagacore`.
 
+> **La version la plus à jour est toujours celle de GitHub.** CurseForge et Wago la reçoivent ensuite, avec parfois un peu de retard.
+
 ## Prérequis et compléments
 
 | Add-on | | Pourquoi |
