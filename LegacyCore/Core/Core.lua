@@ -4,7 +4,7 @@ local _, NS = ...
 -- l'heritage (systeme Legacy de WoW Forever) du personnage connecte.
 -- Lecture seule : LegacyCore ne depense ni ne modifie jamais rien.
 
-NS.VERSION = "0.2.4"
+NS.VERSION = "0.2.5"
 NS.base = {}
 local base = NS.base
 
