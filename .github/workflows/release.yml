@@ -1,0 +1,52 @@
+name: Publier une version
+
+# Chaque nouveau numero dans VERSION, pousse sur main, publie la suite : le zip
+# "SagaCore-X.Y.Z-forever.zip" avec les quatre dossiers d'add-ons a la racine
+# (CraftCore, QuestCore, MapCore, LegacyCore), joint a une release GitHub
+# etiquetee vX.Y.Z. WowUp lit ces releases pour proposer les mises a jour.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lire la version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER=$(head -1 VERSION | tr -d '\r[:space:]')
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          if gh release view "v$VER" > /dev/null 2>&1; then
+            echo "nouvelle=non" >> "$GITHUB_OUTPUT"
+          else
+            echo "nouvelle=oui" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fabriquer le zip
+        if: steps.version.outputs.nouvelle == 'oui'
+        run: |
+          mkdir -p build
+          cp -r CraftCore QuestCore MapCore LegacyCore build/
+          cd build
+          zip -qr "SagaCore-${{ steps.version.outputs.version }}-forever.zip" CraftCore QuestCore MapCore LegacyCore
+
+      - name: Publier la release
+        if: steps.version.outputs.nouvelle == 'oui'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="notes/${{ steps.version.outputs.version }}.md"
+          if [ -f "$NOTES" ]; then ARGS=(--notes-file "$NOTES"); else ARGS=(--generate-notes); fi
+          gh release create "v${{ steps.version.outputs.version }}" --target "$GITHUB_SHA" "build/SagaCore-${{ steps.version.outputs.version }}-forever.zip" \
+            --title "SagaCore ${{ steps.version.outputs.version }}" "${ARGS[@]}"
