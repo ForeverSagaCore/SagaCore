@@ -912,8 +912,9 @@ local function OngletMembre(rang)
     return b
 end
 
-local function IconeDeClasse(tex, unite)
-    local _, classe = NS.Appeler(UnitClass, unite)
+local function IconeDeClasse(tex, unite, classeConnue)
+    local classe = classeConnue
+    if not classe then classe = select(2, NS.Appeler(UnitClass, unite)) end
     local coords = classe and _G.CLASS_ICON_TCOORDS and _G.CLASS_ICON_TCOORDS[classe]
     if coords then
         tex:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
@@ -933,12 +934,12 @@ local function PoserOngletsMembres(replie)
     for _, b in ipairs(cadre.onglets or {}) do b:Hide() end
     if #noms == 0 then return end
     local liste = { { nom = nil, unite = "player" } }
-    for _, n in ipairs(noms) do table.insert(liste, { nom = n, unite = NS.groupe.Unite(n) }) end
+    for _, n in ipairs(noms) do table.insert(liste, { nom = n, unite = NS.groupe.Unite(n), classe = NS.groupe.Classe and NS.groupe.Classe(n) }) end
     local precedent
     for rang, m in ipairs(liste) do
         local b = OngletMembre(rang)
         b.nom = m.nom
-        IconeDeClasse(b.icone, m.unite or "none")
+        IconeDeClasse(b.icone, m.unite or "none", m.classe)
         b:SetChecked(s.vuePerso == m.nom)
         b:ClearAllPoints()
         if precedent then b:SetPoint("TOP", precedent, "BOTTOM", 0, -12)

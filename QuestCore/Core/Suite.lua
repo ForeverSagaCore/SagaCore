@@ -12,7 +12,7 @@ local _, NS = ...
 --   - dans chaque fenetre, les icones en haut a droite : on passe d'un
 --     add-on a l'autre, la nouvelle fenetre prend la place exacte de l'ancienne.
 
-local VERSION = 15
+local VERSION = 16
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -37,9 +37,9 @@ local N = #Suite.ORDRE
 local FR = GetLocale and GetLocale() == "frFR"
 local T = {
     survol = FR and "Survolez pour choisir un add-on" or "Hover to pick an add-on",
-    deplacer = FR and "Glisser : deplacer" or "Drag: move",
+    deplacer = FR and "Glisser : déplacer" or "Drag: move",
     barre = FR and "Clic droit : montrer ou cacher la barre de la suite" or "Right-click: show or hide the suite bar",
-    absent = FR and "Pas installe" or "Not installed",
+    absent = FR and "Pas installé" or "Not installed",
     ouvrir = FR and "Clic : ouvrir" or "Click: open",
     manette = FR and "A : ouvrir" or "A: open",
     ancree = FR and "(ancrée : se déplace seulement ici)" or "(locked: moves only here)",
@@ -311,22 +311,40 @@ local function OngletLateral(parent, info, auClic)
             if ulx then r:SetTexCoord(urx, ury, lrx, lry, ulx, uly, llx, lly) end
         end
     end
-    -- L'icone d'un fichier (pas d'un atlas) prend sa taille d'origine, 64 px :
-    -- elle debordait de l'onglet. Taille fixe, dans l'interieur de l'onglet,
-    -- et decalage retourne comme le dessin.
-    -- L'icone d'un fichier (pas d'un atlas) prend sa taille d'origine, 64 px.
-    -- Taille fixe, a la mesure de l'interieur de l'onglet, et decalage
-    -- retourne comme le dessin.
+    -- L'icone : exactement comme les onglets de droite (FillToInterior, qui
+    -- remplit l'interieur de l'onglet), puis son rectangle est retourne
+    -- autour du dessin de l'onglet, retourne lui aussi.
     if b.natif and b.icone then
-        local l, h = b:GetSize()
-        local cote = math.floor(math.min(l or 43, h or 55) * 0.8)
-        local dx = 0
-        local point, _, _, x = b.icone:GetPoint(1)
-        if point and tonumber(x) then dx = -x end
-        b.icone:ClearAllPoints()
-        b.icone:SetPoint("CENTER", b, "CENTER", dx, 0)
-        b.icone:SetSize(cote, cote)
-        if b.icone.SetTexCoord then b.icone:SetTexCoord(0.07, 0.93, 0.07, 0.93) end
+        if b.SetFillToInterior then pcall(b.SetFillToInterior, b, true) end
+        local function Retourner(self)
+            local fond = self.Background
+            if not (fond and fond.GetLeft) then
+                local aire = 0
+                for _, r in ipairs({ self:GetRegions() }) do
+                    if r ~= self.icone and r.GetObjectType and r:GetObjectType() == "Texture" and r.GetWidth then
+                        local a2 = (r:GetWidth() or 0) * (r:GetHeight() or 0)
+                        if a2 > aire then aire, fond = a2, r end
+                    end
+                end
+            end
+            local ic = self.icone
+            local lb, tb = self:GetLeft(), self:GetTop()
+            local lf, rf = fond and fond:GetLeft(), fond and fond:GetRight()
+            local li, ri, ti, bi = ic:GetLeft(), ic:GetRight(), ic:GetTop(), ic:GetBottom()
+            if not (lb and tb and lf and rf and li and ri and ti and bi) then return false end
+            local gauche = lf + rf - ri
+            ic:ClearAllPoints()
+            ic:SetPoint("TOPLEFT", self, "TOPLEFT", gauche - lb, ti - tb)
+            ic:SetSize(ri - li, ti - bi)
+            self.iconeRetournee = true
+            return true
+        end
+        b:HookScript("OnShow", function(self)
+            if self.iconeRetournee then return end
+            if not Retourner(self) and C_Timer and C_Timer.After then
+                C_Timer.After(0, function() if not self.iconeRetournee then Retourner(self) end end)
+            end
+        end)
     end
     b:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
@@ -576,7 +594,7 @@ function Suite.ConstruireMinicarte()
     bouton:SetScript("OnEnter", function(self)
         eventail:Show()
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Core", 1, 0.82, 0)
+        GameTooltip:SetText("Forever SagaCore", 1, 0.82, 0)
         GameTooltip:AddLine(T.survol, 1, 1, 1)
         GameTooltip:AddLine(T.deplacer, 1, 1, 1)
         GameTooltip:Show()

@@ -1,4 +1,4 @@
-# SagaCore
+# Forever SagaCore
 
 **La suite complète pour World of Warcraft : Forever** : quatre add-ons qui suivent toute l'aventure de vos personnages et fonctionnent ensemble, en un seul téléchargement.
 
@@ -24,14 +24,14 @@ Chaque add-on s'installe aussi seul. Installés ensemble, ils partagent la même
 
 1. Installez [WowUp](https://wowup.io) et laissez-le trouver votre jeu.
 2. Dans WowUp, choisissez la version **Forever**, puis **Get Addons** > **Install from URL**.
-3. Collez l'adresse : `https://github.com/Kyudan-zz/SagaCore`
+3. Collez l'adresse : `https://github.com/Kyudan-zz/ForeverSagaCore`
 4. Installez. WowUp proposera ensuite chaque nouvelle version de la suite.
 
 Si vous aviez déjà installé un des add-ons seul, retirez-le de WowUp avant : la suite le contient.
 
 ### À la main
 
-1. Téléchargez `SagaCore-X.Y.Z-forever.zip` depuis la [dernière version](https://github.com/Kyudan-zz/SagaCore/releases/latest).
+1. Téléchargez `ForeverSagaCore-X.Y.Z-forever.zip` depuis la [dernière version](https://github.com/Kyudan-zz/ForeverSagaCore/releases/latest).
 2. Décompressez-le dans `World of Warcraft/_forever_/Interface/AddOns/` : vous obtenez les dossiers `CraftCore`, `QuestCore`, `MapCore` et `LegacyCore`.
 
 ## Signaler un problème

@@ -178,15 +178,19 @@ function donjons.OuvrirJournal(d, plan)
         local f = _G.ForeverDungeonJournalFrame
         if not f then return end
         if nous and nous:IsShown() then
-            if not f.questCoreStrate then f.questCoreStrate = f:GetFrameStrata() end
-            pcall(f.SetFrameStrata, f, nous:GetFrameStrata())
+            -- Le journal garde sa strate d'origine ; c'est notre fenetre qui
+            -- passe juste en dessous, estompee, le temps qu'il reste ouvert.
+            if not nous.questCoreStrate then nous.questCoreStrate = nous:GetFrameStrata() end
+            pcall(nous.SetFrameStrata, nous, "HIGH")
             nous:SetAlpha(0.35)
             if not f.questCoreRendu then
                 f.questCoreRendu = true
-                f:HookScript("OnHide", function(self)
+                f:HookScript("OnHide", function()
                     local n = NS.fenetre and NS.fenetre.Cadre and NS.fenetre.Cadre()
-                    if n then n:SetAlpha(1) end
-                    if self.questCoreStrate then pcall(self.SetFrameStrata, self, self.questCoreStrate) end
+                    if n then
+                        n:SetAlpha(1)
+                        if n.questCoreStrate then pcall(n.SetFrameStrata, n, n.questCoreStrate) end
+                    end
                 end)
             end
         end

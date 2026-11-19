@@ -1628,6 +1628,17 @@ local function ConstruireReglages(parent)
     centrer:SetScript("OnClick", function() NS.suivi.Centrer() end)
     y = y + 30
     y = y + 8
+    -- Mode developpeur : groupe simule, pour travailler l'affichage en groupe.
+    Titre(L.SET_DEV)
+    Choix(L.SET_DEV_GROUP, "simuGroupe", { { 0, L.SET_DEV_OFF }, { 1, "1" }, { 2, "2" }, { 3, "3" }, { 4, "4" } },
+        function() return { simuGroupe = NS.groupe.Simulation() } end,
+        function(v) NS.groupe.PoserSimulation(v) end)
+    local avancee = Bouton(L.SET_DEV_STEP_BUTTON, 120, Libelle(L.SET_DEV_STEP), 8)
+    avancee:SetScript("OnClick", function()
+        if not NS.groupe.SimulerAvancee() then NS.Dire(L.SET_DEV_STEP_NONE) end
+    end)
+    y = y + 30
+    y = y + 8
     -- Bandeau des quetes : ce qui vient d'avancer, quelques secondes a l'ecran.
     Titre(L.SET_BANNER)
     Choix(L.SET_BANNER_SHOW, "actif", { { true, L.YES }, { false, L.NO } },

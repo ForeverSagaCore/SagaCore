@@ -268,6 +268,8 @@ local function NomCourt(nom)
 end
 
 local function Canal()
+    if (tonumber(NS.base.ReglagesGeneraux().simuGroupe) or 0) > 0
+        and not NS.Appeler(NS.Lecture("IsInGroup")) then return "SIMU" end
     if not NS.Appeler(NS.Lecture("IsInGroup")) then return nil end
     local enGroupe = NS.Lecture("IsInGroup")
     local instance, maison = _G.LE_PARTY_CATEGORY_INSTANCE, _G.LE_PARTY_CATEGORY_HOME
@@ -286,7 +288,7 @@ local function Vider()
     if not message then fileActive = false return end
     local canal = Canal()
     local envoyer = NS.Lecture("C_ChatInfo.SendAddonMessage", "SendAddonMessage")
-    if canal and envoyer and groupe.Actif() then NS.Appeler(envoyer, PREFIXE, message, canal) end
+    if canal and canal ~= "SIMU" and envoyer and groupe.Actif() then NS.Appeler(envoyer, PREFIXE, message, canal) end
     local plusTard = NS.Lecture("C_Timer.After")
     if plusTard then plusTard(0.2, Vider) else Vider() end
 end
@@ -482,6 +484,16 @@ end
 
 function groupe.Etat(nom) return groupe.etats[nom] end
 
+-- Classe d'un membre (jeton du jeu : "MAGE"...), nil si inconnue.
+function groupe.Classe(nom)
+    local simule = groupe.Simule(nom)
+    if simule then return simule end
+    local unite = groupe.Unite(nom)
+    if not unite then return nil end
+    local _, classe = NS.Appeler(UnitClass, unite)
+    return classe
+end
+
 -- Unite du jeu d'un membre ("party1"...), pour sa classe.
 function groupe.Unite(nom)
     for i = 1, 4 do
@@ -498,7 +510,7 @@ local function Elaguer()
     local dans = NS.Lecture("UnitInParty")
     local raid = NS.Lecture("UnitInRaid")
     for nom in pairs(groupe.etats) do
-        if not (NS.Appeler(dans, nom) or NS.Appeler(raid, nom)) then groupe.etats[nom] = nil end
+        if not (NS.Appeler(dans, nom) or NS.Appeler(raid, nom) or groupe.Simule(nom)) then groupe.etats[nom] = nil end
     end
     if not Canal() then groupe.etats = {} end
 end
@@ -546,3 +558,108 @@ ecouteGroupe:SetScript("OnEvent", function(_, evenement, a, b, c, d)
         end
     end
 end)
+
+-- ---------------------------------------------------------------------------
+-- Mode developpeur : un groupe simule (1 a 4 membres), pour voir tout ce que
+-- l'interface montre en groupe sans avoir de partenaire. Les membres
+-- simules passent par la meme reception que les vrais ; rien ne part sur le
+-- reseau.
+-- ---------------------------------------------------------------------------
+
+local SIMULES = { { "Aelis", "PRIEST" }, { "Borgrim", "WARRIOR" }, { "Cylia", "MAGE" }, { "Darok", "HUNTER" } }
+
+function groupe.Simulation() return tonumber(NS.base.ReglagesGeneraux().simuGroupe) or 0 end
+
+-- Classe d'un membre simule, nil pour un vrai.
+function groupe.Simule(nom)
+    local n = groupe.Simulation()
+    for rang, m in ipairs(SIMULES) do
+        if rang <= n and m[1] == nom then return m[2] end
+    end
+    return nil
+end
+
+local function RemplirSimule(rang)
+    local nom = SIMULES[rang][1]
+    local quetes, ids = MesQuetes(), {}
+    for id in pairs(quetes) do table.insert(ids, id) end
+    table.sort(ids)
+    Recevoir("R", nom)
+    local etats, favoris = {}, {}
+    for k, id in ipairs(ids) do
+        -- Chacun a une partie de mes quetes, plus ou moins avancees.
+        if (k + rang) % 3 ~= 0 then
+            local q = quetes[id]
+            local fini = (k + rang) % 5 == 0
+            local objs = {}
+            for r, o in ipairs(q.objectifs or {}) do
+                local requis = tonumber(o.requis) or 0
+                local n = fini and requis or math.floor(requis * ((k * 7 + rang * 3 + r) % 5) / 4)
+                table.insert(objs, n .. "/" .. requis)
+            end
+            table.insert(etats, id .. ":" .. (fini and 1 or 0) .. ":" .. table.concat(objs, ","))
+            if #favoris < 2 and k % 2 == rang % 2 then table.insert(favoris, id) end
+        end
+    end
+    -- Et une quete que je n'ai pas.
+    local autre = 990000 + rang
+    Recevoir("T|" .. autre .. "|" .. (10 + rang * 4) .. "|" .. string.format(NS.L.DEV_SIM_QUEST, nom)
+        .. "|" .. NS.L.DEV_SIM_OBJ1 .. "~" .. NS.L.DEV_SIM_OBJ2, nom)
+    table.insert(etats, autre .. ":0:" .. rang .. "/6,0/1")
+    table.insert(favoris, autre)
+    local morceau = "E|"
+    for _, e in ipairs(etats) do
+        if #morceau + #e + 1 > 240 then Recevoir(morceau, nom) morceau = "E|" end
+        morceau = morceau .. e .. ";"
+    end
+    if morceau ~= "E|" then Recevoir(morceau, nom) end
+    Recevoir("F|" .. table.concat(favoris, ","), nom)
+end
+
+function groupe.PoserSimulation(n)
+    n = math.max(0, math.min(#SIMULES, tonumber(n) or 0))
+    for _, m in ipairs(SIMULES) do groupe.etats[m[1]] = nil end
+    NS.base.ReglagesGeneraux().simuGroupe = n
+    for rang = 1, n do pcall(RemplirSimule, rang) end
+    if NS.suivi then pcall(NS.suivi.Rendre) end
+end
+
+-- Un membre simule avance sur une quete que j'ai aussi : bandeau et suivi
+-- reagissent comme pour un vrai.
+function groupe.SimulerAvancee()
+    local n = groupe.Simulation()
+    if n == 0 then return false end
+    local mes = MesQuetes()
+    for essai = 1, n * 4 do
+        local rang = ((groupe.prochainSimule or 0) % n) + 1
+        groupe.prochainSimule = rang
+        local nom = SIMULES[rang][1]
+        local e = groupe.etats[nom]
+        for id, q in pairs(e and e.quetes or {}) do
+            if mes[id] and q.etat ~= 1 then
+                local objs, avance, tous = {}, false, true
+                for _, ob in ipairs(q.objs) do
+                    local nouveau = ob.n
+                    if not avance and ob.n < ob.r then nouveau, avance = ob.n + 1, true end
+                    if nouveau < ob.r then tous = false end
+                    table.insert(objs, nouveau .. "/" .. ob.r)
+                end
+                if avance or #q.objs == 0 then
+                    Recevoir("U|" .. id .. ":" .. (tous and 1 or 0) .. ":" .. table.concat(objs, ","), nom)
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+-- Au chargement : le groupe simule reprend s'il etait en place.
+do
+    local apres = NS.Lecture("C_Timer.After")
+    local function Reprendre()
+        local n = groupe.Simulation()
+        if n > 0 then groupe.PoserSimulation(n) end
+    end
+    if apres then apres(3, Reprendre) end
+end
