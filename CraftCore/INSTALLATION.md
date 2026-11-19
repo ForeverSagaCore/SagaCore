@@ -46,7 +46,7 @@ Quittez complètement World of Warcraft avant de commencer.
 4. Collez cette adresse :
 
    ```
-   https://github.com/Kyudan-zz/SagaCore
+   https://github.com/ForeverSagaCore/SagaCore
    ```
 
 5. Validez, puis cliquez sur **Install**.
@@ -73,7 +73,7 @@ Faites les mises à jour **jeu fermé**.
 ## Méthode 2 : à la main
 
 1. Quittez complètement le jeu.
-2. Ouvrez la page de la **[dernière version de CraftCore](https://github.com/Kyudan-zz/SagaCore/releases/latest)**.
+2. Ouvrez la page de la **[dernière version de CraftCore](https://github.com/ForeverSagaCore/SagaCore/releases/latest)**.
 3. Dans la partie **Assets**, cliquez sur le fichier **`CraftCore-X.Y.Z-forever.zip`** pour le télécharger (X.Y.Z est le numéro de version).
 4. Décompressez-le : vous obtenez un dossier **`CraftCore`**.
 5. Copiez ce dossier dans :
@@ -119,10 +119,10 @@ Le dossier n'est pas au bon endroit. Vérifiez le chemin donné à l'étape 6 de
 Suivez le point 3 de l'étape 4 (Options, Clients, Add New).
 
 **WowUp refuse l'adresse GitHub.**
-Vérifiez que vous avez choisi **Forever** en haut de l'onglet Get Addons, et que l'adresse est exactement `https://github.com/Kyudan-zz/SagaCore`.
+Vérifiez que vous avez choisi **Forever** en haut de l'onglet Get Addons, et que l'adresse est exactement `https://github.com/ForeverSagaCore/SagaCore`.
 
 **Autre souci.**
-Ouvrez un ticket dans l'onglet **[Issues](https://github.com/Kyudan-zz/SagaCore/issues)** de la page du projet, avec :
+Ouvrez un ticket dans l'onglet **[Issues](https://github.com/ForeverSagaCore/SagaCore/issues)** de la page du projet, avec :
 
 1. une capture d'écran du problème ;
 2. ce que vous faisiez juste avant ;

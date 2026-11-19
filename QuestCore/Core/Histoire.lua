@@ -120,7 +120,9 @@ local function Zones(p)
         z.niveau = z.niveaux[math.max(1, math.floor(#z.niveaux / 2))] or 0
         z.niveaux = nil
     end
-    cache[cle] = zones
+    -- La base de Questie se charge un peu apres la connexion : tant qu'elle
+    -- n'a rien donne, on ne garde rien, on relira au prochain affichage.
+    if #ids > 0 then cache[cle] = zones end
     return zones
 end
 

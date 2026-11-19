@@ -82,6 +82,8 @@ function carte.NiveauDeCarte(idCarte)
         end
     end
     local n = niveauxParCarte[idCarte]
+    -- Base de Questie pas encore prete : on recalculera au prochain appel.
+    if not next(niveauxParCarte) then niveauxParCarte = nil end
     if n then return n[1], n[2] end
     return nil
 end

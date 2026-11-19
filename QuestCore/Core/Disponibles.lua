@@ -86,7 +86,7 @@ function dispo.Liste(p)
         if a.niveau ~= b.niveau then return a.niveau < b.niveau end
         return a.id < b.id
     end)
-    cache, cleCache = liste, cle
+    if #ids > 0 then cache, cleCache = liste, cle end
     return liste
 end
 

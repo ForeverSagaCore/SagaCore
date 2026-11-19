@@ -83,8 +83,9 @@ local function Index()
         if (a.mini or 0) ~= (b.mini or 0) then return (a.mini or 0) < (b.mini or 0) end
         return tostring(a.nom) < tostring(b.nom)
     end)
-    index = gardes
-    return index
+    -- Base de Questie pas encore prete : rien n'est garde, on relira.
+    if #ids > 0 then index = gardes end
+    return gardes
 end
 
 function donjons.Disponible() return TableDeLaBase() ~= nil end
