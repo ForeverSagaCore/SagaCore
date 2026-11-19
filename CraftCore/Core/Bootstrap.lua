@@ -7,7 +7,7 @@ end
 _G.CraftCore_NS = NS
 
 NS.ADDON_NAME = ADDON_NAME
-NS.VERSION = "0.29.7"
+NS.VERSION = "0.29.8"
 
 -- Le client ne parle que le langage moderne : releve du 13 novembre 2026 sur
 -- Forever 1.60.1 build 70938, palier 16001. Les anciennes lectures globales

@@ -654,7 +654,7 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
     local idQuete = id
     local pourcent = (q.complete ~= true and q.complete ~= -1) and Avancement(q) or nil
     local yDebut = y
-    local ligneRendu, avecRecompense, yApresTitre
+    local ligneRendu, avecRecompense, yApresTitre, yFinMoi
     index = index + 1
     y = Poser(index, y, (prefixe or "") .. string.format("|cff%02x%02x%02x[%d]|r %s", math.floor(r * 255),
         math.floor(g * 255), math.floor(b * 255), q.niveau or 0, q.titre or ("#" .. id)), { uneLigne = true,
@@ -731,9 +731,19 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
             end
             -- Le groupe : sous nos objectifs, un mini filet, puis chacun avec
             -- son nom (couleur de sa classe) et ou il en est.
+            yFinMoi = y
             for rangM, m in ipairs(membres) do
+                -- Son nom, et ou il en est en tout (comme notre pourcentage).
+                local fait, total = 0, 0
+                for _, ob in ipairs(m.objs or {}) do
+                    if ob.r > 0 then fait = fait + math.min(ob.n, ob.r) total = total + ob.r end
+                end
+                local nomEtPart = NomDeMembre(m.nom)
+                if m.etat ~= 1 and total > 0 then
+                    nomEtPart = nomEtPart .. "  |cffbbbbbb" .. math.floor(fait * 100 / total) .. " %|r"
+                end
                 index = index + 1
-                y = Poser(index, y, NomDeMembre(m.nom), { retrait = 22, police = "GameFontNormalSmall",
+                y = Poser(index, y, nomEtPart, { retrait = 22, police = "GameFontNormalSmall",
                     petit = true, uneLigne = true, miniFilet = rangM == 1 })
                 if m.etat == 1 then
                     index = index + 1
@@ -759,9 +769,10 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
     cadre.blocs[id] = { haut = yDebut, bas = y + 2 }
     -- Petite carte du rendu : au milieu du bloc, a droite.
     -- Centree sur les lignes sous le titre : jamais sur l'etoile du titre.
+    -- Sur nos lignes seulement, jamais sur celles du groupe.
     if ligneRendu and yApresTitre then
         ligneRendu.pion:ClearAllPoints()
-        ligneRendu.pion:SetPoint("RIGHT", cadre.corps, "TOPRIGHT", -1, -(yApresTitre + y) / 2)
+        ligneRendu.pion:SetPoint("RIGHT", cadre.corps, "TOPRIGHT", -1, -(yApresTitre + (yFinMoi or y)) / 2)
     end
     return index, y + 6
 end

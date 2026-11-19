@@ -3,7 +3,7 @@
 ## Notes: Your Legacy at a glance: trees of each character, challenges reached, community advice. Read only.
 ## Notes-frFR: Votre héritage d'un coup d'œil : les arbres de chaque personnage, les défis atteints, les conseils de la communauté. Lecture seule.
 ## Author: LegacyCore
-## Version: 0.2.9
+## Version: 0.2.10
 ## IconTexture: Interface\Icons\Spell_Holy_SealOfWisdom
 ## OptionalDeps: QuestCore, CraftCore, MapCore
 ## SavedVariables: LegacyCoreDB, CoreSuiteDB
@@ -12,7 +12,6 @@ Locale\enUS.lua
 Locale\frFR.lua
 Core\Mouchard.lua
 Core\Core.lua
-Core\Natif.lua
 Core\Suite.lua
 UI\Charte.lua
 UI\Fenetre.lua

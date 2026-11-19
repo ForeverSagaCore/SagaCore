@@ -12,7 +12,7 @@ local _, NS = ...
 --   - dans chaque fenetre, les icones en haut a droite : on passe d'un
 --     add-on a l'autre, la nouvelle fenetre prend la place exacte de l'ancienne.
 
-local VERSION = 18
+local VERSION = 19
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -271,93 +271,29 @@ end
 
 Suite.entetes = Suite.entetes or {}
 
--- Onglet lateral du jeu (celui des fenetres de metier), a defaut un onglet
--- du grimoire.
 local function OngletLateral(parent, info, auClic)
-    local ok, b = pcall(CreateFrame, "Frame", nil, parent, "LargeSideTabButtonTemplate")
-    if ok and b and b.Icon and b.SetChecked and b.SetCustomOnMouseUpHandler then
-        b.Icon:SetTexture(info.icone)
-        b:SetCustomOnMouseUpHandler(function(_, bouton, dedans)
-            if bouton == "LeftButton" and dedans then auClic() end
-        end)
-        b.natif = true
-        b.icone = b.Icon
-    else
-        if ok and b then b:Hide() end
-        b = CreateFrame("CheckButton", nil, parent)
-        b:SetSize(32, 32)
-        local fond = b:CreateTexture(nil, "BACKGROUND")
-        fond:SetTexture("Interface\\SpellBook\\SpellBook-SkillLineTab")
-        fond:SetSize(64, 64)
-        fond:SetPoint("TOPLEFT", -3, 11)
-        b.icone = b:CreateTexture(nil, "ARTWORK")
-        b.icone:SetAllPoints()
-        b.icone:SetTexture(info.icone)
-        b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-        b:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
-        local halo = b:GetCheckedTexture()
-        if halo then halo:SetBlendMode("ADD") end
-        b:SetScript("OnClick", function(self)
-            self:SetChecked(self.cle == self.courante)
-            auClic()
-        end)
-    end
+    -- L'onglet du grimoire du jeu, dessin retourne pour le bord gauche :
+    -- c'est un fichier (pas un atlas), le retournement tient. Meme dessin
+    -- que les onglets des membres du groupe, a cote du suivi des quetes.
+    local b = CreateFrame("CheckButton", nil, parent)
+    b:SetSize(34, 34)
+    b.fond = b:CreateTexture(nil, "BACKGROUND")
+    b.fond:SetTexture("Interface\\SpellBook\\SpellBook-SkillLineTab")
+    b.fond:SetTexCoord(1, 0, 0, 1)
+    b.fond:SetSize(68, 68)
+    b.fond:SetPoint("TOPRIGHT", b, "TOPRIGHT", 3, 12)
+    b.icone = b:CreateTexture(nil, "ARTWORK")
+    b.icone:SetAllPoints()
+    b.icone:SetTexture(info.icone)
+    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    b:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
+    local halo = b:GetCheckedTexture()
+    if halo then halo:SetBlendMode("ADD") end
+    b:SetScript("OnClick", function(self)
+        self:SetChecked(self.cle == self.courante)
+        auClic()
+    end)
     b.cle = info.cle
-    -- Pose sur le bord gauche : le dessin de l'onglet est retourne (l'icone
-    -- reste a l'endroit).
-    -- Le modele du jeu remet son dessin (SetAtlas) a chaque changement
-    -- d'etat, ce qui annulait le retournement : on retourne de nouveau apres
-    -- chaque SetAtlas, et les angles coupes restent du cote exterieur.
-    local function Retourner(r)
-        local ulx, uly, llx, lly, urx, ury, lrx, lry = r:GetTexCoord()
-        if ulx then r:SetTexCoord(urx, ury, lrx, lry, ulx, uly, llx, lly) end
-    end
-    for _, r in ipairs({ b:GetRegions() }) do
-        if r ~= b.icone and r.GetObjectType and r:GetObjectType() == "Texture" and r.GetTexCoord then
-            Retourner(r)
-            if hooksecurefunc and r.SetAtlas then
-                pcall(hooksecurefunc, r, "SetAtlas", function(self) Retourner(self) end)
-            end
-            if hooksecurefunc and r.SetTexture then
-                pcall(hooksecurefunc, r, "SetTexture", function(self) Retourner(self) end)
-            end
-        end
-    end
-    -- L'icone : exactement comme les onglets de droite (FillToInterior, qui
-    -- remplit l'interieur de l'onglet), puis son rectangle est retourne
-    -- autour du dessin de l'onglet, retourne lui aussi.
-    if b.natif and b.icone then
-        if b.SetFillToInterior then pcall(b.SetFillToInterior, b, true) end
-        local function Retourner(self)
-            local fond = self.Background
-            if not (fond and fond.GetLeft) then
-                local aire = 0
-                for _, r in ipairs({ self:GetRegions() }) do
-                    if r ~= self.icone and r.GetObjectType and r:GetObjectType() == "Texture" and r.GetWidth then
-                        local a2 = (r:GetWidth() or 0) * (r:GetHeight() or 0)
-                        if a2 > aire then aire, fond = a2, r end
-                    end
-                end
-            end
-            local ic = self.icone
-            local lb, tb = self:GetLeft(), self:GetTop()
-            local lf, rf = fond and fond:GetLeft(), fond and fond:GetRight()
-            local li, ri, ti, bi = ic:GetLeft(), ic:GetRight(), ic:GetTop(), ic:GetBottom()
-            if not (lb and tb and lf and rf and li and ri and ti and bi) then return false end
-            local gauche = lf + rf - ri
-            ic:ClearAllPoints()
-            ic:SetPoint("TOPLEFT", self, "TOPLEFT", gauche - lb, ti - tb)
-            ic:SetSize(ri - li, ti - bi)
-            self.iconeRetournee = true
-            return true
-        end
-        b:HookScript("OnShow", function(self)
-            if self.iconeRetournee then return end
-            if not Retourner(self) and C_Timer and C_Timer.After then
-                C_Timer.After(0, function() if not self.iconeRetournee then Retourner(self) end end)
-            end
-        end)
-    end
     b:HookScript("OnEnter", function(self)
         self.survol = true
         if self.icone then self.icone:SetVertexColor(1, 1, 1) end
@@ -389,7 +325,7 @@ function Suite.Entete(cadre, cleCourante)
         end)
         b.courante = cleCourante
         b:ClearAllPoints()
-        if precedent then b:SetPoint("TOPRIGHT", precedent, "BOTTOMRIGHT", 0, -2)
+        if precedent then b:SetPoint("TOPRIGHT", precedent, "BOTTOMRIGHT", 0, -14)
         else b:SetPoint("TOPRIGHT", cadre, "TOPLEFT", 0, -60) end
         table.insert(rangee.boutons, b)
         precedent = b
