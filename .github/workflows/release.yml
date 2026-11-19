@@ -9,6 +9,8 @@ on:
   push:
     branches:
       - main
+  # Lancement a la main (Actions > Publier une version > Run workflow) :
+  # renvoie la version en cours sur CurseForge, meme si la release existe.
   workflow_dispatch:
 
 permissions:
@@ -17,6 +19,8 @@ permissions:
 jobs:
   publier:
     runs-on: ubuntu-latest
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,7 +38,7 @@ jobs:
           fi
 
       - name: Fabriquer le zip
-        if: steps.version.outputs.nouvelle == 'oui'
+        if: steps.version.outputs.nouvelle == 'oui' || github.event_name == 'workflow_dispatch'
         run: |
           mkdir -p build
           cp -r CraftCore QuestCore MapCore LegacyCore build/
@@ -50,3 +54,36 @@ jobs:
           if [ -f "$NOTES" ]; then ARGS=(--notes-file "$NOTES"); else ARGS=(--generate-notes); fi
           gh release create "v${{ steps.version.outputs.version }}" --target "$GITHUB_SHA" "build/ForeverSagaCore-${{ steps.version.outputs.version }}-forever.zip" \
             --title "Forever SagaCore ${{ steps.version.outputs.version }}" "${ARGS[@]}"
+
+      # CurseForge : le fichier part avec la meme version du jeu que la 1.1.0
+      # (1.60.1). Le jeton CF_API_KEY est un secret du depot.
+      - name: Envoyer sur CurseForge
+        if: (steps.version.outputs.nouvelle == 'oui' || github.event_name == 'workflow_dispatch') && env.CF_API_KEY != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VER: ${{ steps.version.outputs.version }}
+        run: |
+          set -u
+          PROJET=1817365
+          VERSION_JEU="1.60.1"
+          ID=$(curl -sf -H "X-Api-Token: $CF_API_KEY" https://wow.curseforge.com/api/game/versions \
+            | jq -r --arg v "$VERSION_JEU" '[.[] | select(.name == $v)][0].id // empty')
+          if [ -z "$ID" ]; then RESULTAT="CurseForge : version du jeu $VERSION_JEU introuvable, rien envoye."
+          else
+            NOTES="notes/$VER.md"
+            if [ -f "$NOTES" ]; then CHANGELOG=$(cat "$NOTES"); else CHANGELOG="Forever SagaCore $VER"; fi
+            CHANGELOG="$CHANGELOG"$'\n\n'"La version la plus a jour est toujours celle de GitHub : https://github.com/ForeverSagaCore/SagaCore"
+            META=$(jq -n --arg c "$CHANGELOG" --arg n "Forever SagaCore $VER" --argjson id "$ID" \
+              '{changelog: $c, changelogType: "markdown", displayName: $n, gameVersions: [$id], releaseType: "release"}')
+            REPONSE=$(curl -s -w "\n%{http_code}" -H "X-Api-Token: $CF_API_KEY" \
+              --form-string "metadata=$META" -F "file=@build/ForeverSagaCore-$VER-forever.zip" \
+              "https://wow.curseforge.com/api/projects/$PROJET/upload-file")
+            CODE=$(echo "$REPONSE" | tail -1)
+            if [ "$CODE" = "200" ]; then RESULTAT="CurseForge : envoye."
+            else RESULTAT="CurseForge : echec $CODE $(echo "$REPONSE" | head -1 | cut -c1-200)"; fi
+          fi
+          echo "$RESULTAT"
+          # Le resultat est ajoute en bas des notes de la release, lisible sur GitHub.
+          gh release view "v$VER" --json body -q .body > corps.md || true
+          printf '\n\n%s\n' "$RESULTAT" >> corps.md
+          gh release edit "v$VER" --notes-file corps.md || true
