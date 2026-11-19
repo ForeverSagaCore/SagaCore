@@ -204,6 +204,7 @@ local DessinerArbres, PoserVisage
 local TAILLE_MAX, ECART_ARBRES = 44, 24
 local ESPACE = 1.8           -- pas entre deux talents, en tailles de talent (comme le jeu)
 local COULEUR_FLECHE = { 0.30, 0.27, 0.23, 1 }
+local VERT_VALIDE = { 0.18, 0.62, 0.24 }
 
 -- Les cadres de talents du jeu (carre a coins coupes, ou octogone d'un
 -- choix), s'ils existent dans ce client.
@@ -266,8 +267,14 @@ local function Case(contenu, rang)
         case:SetBackdropBorderColor(0.62, 0.50, 0.28, 1)
     end
     c.caseRang = case
-    c.rang = case:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    -- Les chiffres sur un calque a part, au-dessus du fond de la case.
+    local texte = CreateFrame("Frame", nil, case)
+    texte:SetAllPoints()
+    texte:SetFrameLevel(case:GetFrameLevel() + 2)
+    c.rang = texte:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     c.rang:SetPoint("CENTER", case, "CENTER", 0, 0)
+    c.rang:SetShadowOffset(1, -1)
+    c.rang:SetShadowColor(0, 0, 0, 1)
     c:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
     c:SetScript("OnLeave", function() GameTooltip:Hide() end)
     contenu.cases[rang] = c
@@ -283,11 +290,12 @@ local function Dimensionner(c, n)
     c.cadre:ClearAllPoints()
     c.cadre:SetPoint("TOPLEFT", -d, d)
     c.cadre:SetPoint("BOTTOMRIGHT", d, -d)
-    c.caseRang:SetSize(math.max(24, math.floor(n * 0.66)), math.max(17, math.floor(n * 0.48)))
+    -- La case du rang deborde du coin bas droit, comme dans le jeu.
+    c.caseRang:SetSize(math.max(30, math.floor(n * 0.86)), math.max(20, math.floor(n * 0.58)))
     c.caseRang:ClearAllPoints()
-    c.caseRang:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", math.floor(n * 0.22), -math.floor(n * 0.14))
+    c.caseRang:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", math.floor(n * 0.36 + 0.5), -math.floor(n * 0.28 + 0.5))
     local police = c.rang:GetFont()
-    if police then c.rang:SetFont(police, math.max(10, math.floor(n * 0.3 + 0.5)), "") end
+    if police then c.rang:SetFont(police, math.max(12, math.floor(n * 0.37 + 0.5)), "") end
 end
 
 local function TitreDArbre(contenu, rang)
@@ -313,7 +321,7 @@ local function Fleche(l, depuis, vers, actif)
     else
         return
     end
-    local k = actif and { 0.31, 0.82, 0.41, 1 } or COULEUR_FLECHE
+    local k = actif and { VERT_VALIDE[1], VERT_VALIDE[2], VERT_VALIDE[3], 1 } or COULEUR_FLECHE
     local marge = 3
     -- Le trait, jusqu'a la base de la pointe.
     l.trait:SetThickness(2)
@@ -376,9 +384,10 @@ DessinerArbres = function(contenu, arbres, y, disponibles)
         local t = TitreDArbre(contenu, nTitre)
         t:ClearAllPoints()
         t:SetPoint("BOTTOM", contenu, "TOPLEFT", gauche + colonnePage / 2, -(y + 20))
+        -- Un peu plus petit que le titre de section (Mes arbres).
         t:SetFontObject("GameFontNormal")
-        local fichier, tPolice, options = t:GetFont()
-        if fichier then t:SetFont(fichier, (tPolice or 12) + 2, options) end
+        local fichier, _, options = t:GetFont()
+        if fichier then t:SetFont(fichier, (NS.charte.TAILLE_TITRE or 15) - 2, options) end
         t:SetText((a.nom or L[NOMS_ARBRES[a.genre] or ""] or "?") .. "  |cffffffff" .. NS.base.Depenses(a) .. "|r")
         t:Show()
         if t.bandeau then t.bandeau:Hide() end
@@ -402,21 +411,25 @@ DessinerArbres = function(contenu, arbres, y, disponibles)
             local ouvrable = not pris and (disponibles or 0) > 0 and not (n.dispo == false or n.verrou)
             c.icone:SetDesaturated(not pris)
             if pris then c.icone:SetVertexColor(1, 1, 1) else c.icone:SetVertexColor(0.55, 0.55, 0.55) end
-            local etat = (pris and "green") or (ouvrable and "yellow") or "gray"
+            -- Pris : le cadre gris du jeu teinte du vert des validations
+            -- (plus dense que le vert vif du jeu).
+            local etat = (ouvrable and "yellow") or "gray"
             local atlas = Atlas(n.choix and "choice" or "square", etat)
             if atlas then
                 c.cadre:SetAtlas(atlas)
+                if pris then c.cadre:SetVertexColor(VERT_VALIDE[1], VERT_VALIDE[2], VERT_VALIDE[3])
+                else c.cadre:SetVertexColor(1, 1, 1) end
                 c.cadre:Show()
                 c.bord:Hide()
             else
                 c.cadre:Hide()
-                if pris then c.bord:SetColorTexture(0.31, 0.82, 0.41, 1)
+                if pris then c.bord:SetColorTexture(VERT_VALIDE[1], VERT_VALIDE[2], VERT_VALIDE[3], 1)
                 elseif ouvrable then c.bord:SetColorTexture(1, 0.82, 0, 1)
                 else c.bord:SetColorTexture(0.38, 0.38, 0.38, 1) end
                 c.bord:Show()
             end
             c.rang:SetText(r .. "/" .. maxi)
-            if pris then c.rang:SetTextColor(0.31, 0.82, 0.41) else c.rang:SetTextColor(1, 1, 1) end
+            if pris then c.rang:SetTextColor(0.45, 0.9, 0.5) else c.rang:SetTextColor(1, 1, 1) end
             local noeud = n
             c:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")

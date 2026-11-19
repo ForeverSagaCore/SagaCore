@@ -12,7 +12,7 @@ local _, NS = ...
 --   - dans chaque fenetre, les icones en haut a droite : on passe d'un
 --     add-on a l'autre, la nouvelle fenetre prend la place exacte de l'ancienne.
 
-local VERSION = 19
+local VERSION = 20
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -310,6 +310,56 @@ local function OngletLateral(parent, info, auClic)
     return b
 end
 
+-- Point d'attache des onglets lateraux : au ras du bord de la fenetre, a la
+-- hauteur du trait qui separe l'en-tete du contenu. Les deux colonnes
+-- (suite a gauche, add-on a droite) partent de la meme ligne.
+-- Le dessin de l'onglet depasse de 7 points au-dessus de son icone.
+Suite.HAUT_ONGLET = -7
+Suite.ECART_ENTRE_ONGLETS = 14
+function Suite.AncreHaut(cadre, cote)
+    cadre.suiteAncres = cadre.suiteAncres or {}
+    local a = cadre.suiteAncres[cote]
+    if a then return a, cote == "gauche" and "BOTTOMLEFT" or "BOTTOMRIGHT" end
+    local ref = cadre.fond or cadre.zone or cadre
+    a = CreateFrame("Frame", nil, cadre)
+    if cote == "gauche" then
+        a:SetPoint("TOPLEFT", cadre, "TOPLEFT", 0, 0)
+        a:SetPoint("BOTTOMRIGHT", ref, "TOPLEFT", 0, 0)
+    else
+        a:SetPoint("TOPRIGHT", cadre, "TOPRIGHT", 0, 0)
+        a:SetPoint("BOTTOMLEFT", ref, "TOPRIGHT", 0, 0)
+    end
+    cadre.suiteAncres[cote] = a
+    return a, cote == "gauche" and "BOTTOMLEFT" or "BOTTOMRIGHT"
+end
+
+-- Icone d'un bouton de la manette : celle du jeu, a defaut son nom en or.
+local GLYPHES_PAD = { PADLSTICK = { "LStickIn", "L3" }, PADRSTICK = { "RStickIn", "R3" } }
+local function GlyphePad(touche)
+    local g = GLYPHES_PAD[touche] or { touche, touche }
+    if GetBindingText then
+        local ok, texte = pcall(GetBindingText, touche)
+        if ok and type(texte) == "string" and string.find(texte, "|A:", 1, true) then
+            return (string.gsub(texte, "|A:([^:|]+)[^|]*|a", "|A:%1:20:20|a"))
+        end
+    end
+    local info = C_Texture and C_Texture.GetAtlasInfo
+    if info then
+        for _, nom in ipairs({ "Gamepad_Gen_" .. g[1] .. "_64", "Gamepad_Ltr_" .. g[1] .. "_64",
+            "Gamepad_Shp_" .. g[1] .. "_64" }) do
+            local ok, existe = pcall(info, nom)
+            if ok and existe then return "|A:" .. nom .. ":20:20|a" end
+        end
+    end
+    return "|cffffd100" .. g[2] .. "|r"
+end
+local function ManetteActive()
+    local pad = _G.C_GamePad
+    if type(pad) ~= "table" or type(pad.IsEnabled) ~= "function" then return false end
+    local ok, actif = pcall(pad.IsEnabled)
+    return ok and actif == true
+end
+
 -- Les add-ons de la suite en onglets lateraux, sur le bord GAUCHE de la
 -- fenetre : le bord droit reste aux onglets propres a chaque add-on
 -- (metiers, equipement, carte...). LT / RT passent d'un add-on a l'autre au
@@ -325,11 +375,19 @@ function Suite.Entete(cadre, cleCourante)
         end)
         b.courante = cleCourante
         b:ClearAllPoints()
-        if precedent then b:SetPoint("TOPRIGHT", precedent, "BOTTOMRIGHT", 0, -14)
-        else b:SetPoint("TOPRIGHT", cadre, "TOPLEFT", 0, -60) end
+        if precedent then b:SetPoint("TOPRIGHT", precedent, "BOTTOMRIGHT", 0, -Suite.ECART_ENTRE_ONGLETS)
+        else
+            local a, point = Suite.AncreHaut(cadre, "gauche")
+            b:SetPoint("TOPRIGHT", a, point, 0, Suite.HAUT_ONGLET)
+        end
         table.insert(rangee.boutons, b)
         precedent = b
     end
+    -- L3 au-dessus de la colonne, R3 dessous : add-on precedent / suivant.
+    rangee.l3 = cadre:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    rangee.l3:SetPoint("BOTTOM", rangee.boutons[1], "TOP", 0, 12)
+    rangee.r3 = cadre:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    rangee.r3:SetPoint("TOP", rangee.boutons[#rangee.boutons], "BOTTOM", 0, -10)
     cadre.suiteEntete = rangee
     cadre:HookScript("OnShow", function(self)
         Suite.PrendrePlace(cleCourante, self)
@@ -593,7 +651,14 @@ function Suite.Actualiser()
     if Suite.barre then
         Suite.barre:Hide()
     end
+    local pad = ManetteActive()
     for _, rangee in ipairs(Suite.entetes) do
+        if rangee.l3 then
+            rangee.l3:SetText(GlyphePad("PADLSTICK"))
+            rangee.r3:SetText(GlyphePad("PADRSTICK"))
+            rangee.l3:SetShown(pad)
+            rangee.r3:SetShown(pad)
+        end
         for _, b in ipairs(rangee.boutons) do
             local installe = Suite.Installe(b.cle)
             local courant = b.cle == rangee.courante

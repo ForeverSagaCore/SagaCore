@@ -1692,6 +1692,17 @@ end
 -- Halo de case cochee du jeu, le meme repere que CraftCore.
 MarquerSelection = function(element, choisi, ancre)
     if not element then return end
+    -- Onglet : en retrait (plus sombre) quand il n'est pas ouvert ; pas de
+    -- transparence.
+    if element.estOnglet then
+        element.choisi = choisi and true or false
+        element:SetAlpha(1)
+        if element.Icon then
+            local v = choisi and 1 or 0.55
+            element.Icon:SetVertexColor(v, v, v)
+        end
+        return
+    end
     if not element.haloSelection and element.CreateTexture then
         local halo = element:CreateTexture(nil, "OVERLAY")
         halo:SetTexture("Interface\\Buttons\\CheckButtonHilight")
@@ -1707,87 +1718,78 @@ MarquerSelection = function(element, choisi, ancre)
     element:SetAlpha(choisi and 1 or 0.5)
 end
 
--- Modele natif d'onglet lateral, et a defaut l'onglet du grimoire.
+-- Onglet du grimoire du jeu, meme taille et meme dessin que les onglets de
+-- la suite (a gauche) et ceux de CraftCore. Celui qui n'est pas ouvert
+-- reste en retrait (plus sombre), et s'eclaire au survol.
+local TAILLE_ONGLET = 34
 local function CreerOngletLateral(fenetreMere, icone, auClic)
-    local ok, onglet = pcall(CreateFrame, "Frame", nil, fenetreMere, "LargeSideTabButtonTemplate")
-    onglet = ok and onglet or nil
-    if onglet and onglet.Icon and onglet.SetChecked and onglet.SetCustomOnMouseUpHandler then
-        onglet.Icon:SetTexture(icone)
-        if onglet.SetFillToInterior then onglet:SetFillToInterior(true) end
-        onglet:SetCustomOnMouseUpHandler(function(_, bouton, dedans)
-            if bouton == "LeftButton" and dedans then auClic() end
-        end)
-        onglet.natif = true
-        return onglet
-    end
-    if onglet then onglet:Hide() end
-
-    onglet = CreateFrame("CheckButton", nil, fenetreMere)
-    onglet:SetSize(32, 32)
+    local onglet = CreateFrame("CheckButton", nil, fenetreMere)
+    onglet:SetSize(TAILLE_ONGLET, TAILLE_ONGLET)
     local fond = onglet:CreateTexture(nil, "BACKGROUND")
     fond:SetTexture("Interface\\SpellBook\\SpellBook-SkillLineTab")
-    fond:SetSize(64, 64)
-    fond:SetPoint("TOPLEFT", -3, 11)
+    fond:SetSize(TAILLE_ONGLET * 2, TAILLE_ONGLET * 2)
+    fond:SetPoint("TOPLEFT", -3, 12)
     local face = onglet:CreateTexture(nil, "ARTWORK")
     face:SetAllPoints()
     face:SetTexture(icone)
+    onglet.Icon = face
+    onglet.estOnglet = true
     onglet:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
     onglet:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
     local halo = onglet:GetCheckedTexture()
     if halo then halo:SetBlendMode("ADD") end
-    onglet:SetScript("OnClick", function()
+    onglet:SetScript("OnClick", function(self)
         if PlaySound and SOUNDKIT then PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB) end
+        self:SetChecked(self.choisi and true or false)
         auClic()
     end)
     onglet:SetScript("OnEnter", function(self)
+        self.Icon:SetVertexColor(1, 1, 1)
         if not self.tooltipText then return end
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(self.tooltipText)
         GameTooltip:Show()
     end)
-    onglet:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    onglet:SetScript("OnLeave", function(self)
+        if not self.choisi then self.Icon:SetVertexColor(0.55, 0.55, 0.55) end
+        GameTooltip:Hide()
+    end)
     return onglet
 end
 
--- Hauteur de l'onglet : exactement celle de l'onglet Equipement de CraftCore.
--- On la lit sur sa fenetre quand elle est la ; sinon on la recalcule comme
--- CraftCore la pose : onglets de metier depuis -60 (2 px entre eux), 22 px
--- de plus pour la progression, puis l'equipement juste dessous.
-local function DecalageDeCraftCore(onglet)
+-- Hauteur de l'onglet Equipement : exactement celle de CraftCore, comptee
+-- depuis le trait sous l'en-tete. On la lit sur sa fenetre quand elle est la ;
+-- sinon on la recalcule comme CraftCore la pose : onglets de metier depuis le
+-- trait, puis un ecart plus grand, la progression, et l'equipement dessous.
+local function DecalageDeCraftCore()
     local cc = _G.CraftCoreWindow
     local sien = cc and cc.ongletEquipement
-    if sien and sien.IsShown and sien:IsShown() and sien.GetTop and cc.GetTop then
-        local a, b = sien:GetTop(), cc:GetTop()
+    local ref = cc and (cc.fond or cc.zone)
+    if sien and sien.IsShown and sien:IsShown() and sien.GetTop and ref and ref.GetTop then
+        local a, b = sien:GetTop(), ref:GetTop()
         if a and b then return a - b end
     end
-    local natif = onglet.natif
-    local h = (onglet.GetHeight and onglet:GetHeight()) or 0
-    if h <= 0 then h = 32 end
-    local depart, ecart = natif and -60 or -66, natif and 2 or 17
+    local haut = (NS.suite and NS.suite.HAUT_ONGLET) or -7
+    local ecart = (NS.suite and NS.suite.ECART_ENTRE_ONGLETS) or 14
     local metiers = cc and cc.ordreOnglets and #cc.ordreOnglets or 0
     if metiers < 1 then metiers = 2 end
-    local progression = depart - (metiers - 1) * (h + ecart) - h - (natif and 22 or 22)
-    return progression - h - ecart
+    return haut - metiers * TAILLE_ONGLET - (metiers - 1) * ecart - 30 - TAILLE_ONGLET - ecart
 end
 
 PoserOnglet = function()
     local onglet = cadre and cadre.ongletEquipement
     if not onglet then return end
-    -- Sous les onglets de la suite (QuestCore, CraftCore, MapCore,
-    -- LegacyCore), avec un ecart ; a defaut, a la hauteur de CraftCore.
-    local suite = cadre.suiteDernierOnglet
-    if suite then
-        if onglet.dernierY == "suite" then return end
-        onglet.dernierY = "suite"
-        onglet:ClearAllPoints()
-        onglet:SetPoint("TOPLEFT", suite, "BOTTOMLEFT", 0, -((NS.suite and NS.suite.ECART_ONGLETS) or 22))
-        return
-    end
-    local y = DecalageDeCraftCore(onglet)
+    -- A la hauteur de l'onglet Equipement de CraftCore.
+    local y = DecalageDeCraftCore()
     if onglet.dernierY == y then return end
     onglet.dernierY = y
     onglet:ClearAllPoints()
-    onglet:SetPoint("TOPLEFT", cadre, "TOPRIGHT", 0, y)
+    if NS.suite and NS.suite.AncreHaut then
+        local ancre, point = NS.suite.AncreHaut(cadre, "droite")
+        onglet:SetPoint("TOPLEFT", ancre, point, 0, y)
+    else
+        onglet:SetPoint("TOPLEFT", cadre, "TOPRIGHT", 0, y - 60)
+    end
 end
 
 local PAGES = {
@@ -2024,7 +2026,7 @@ local function Construire()
         fen.Rendre()
     end)
     ongletCarte.tooltipText = L.NAV_MAP
-    ongletCarte:SetPoint("TOPLEFT", onglet, "BOTTOMLEFT", 0, onglet.natif and -2 or -17)
+    ongletCarte:SetPoint("TOPLEFT", onglet, "BOTTOMLEFT", 0, -((NS.suite and NS.suite.ECART_ENTRE_ONGLETS) or 14))
     cadre.ongletCarte = ongletCarte
 
     cadre:SetScript("OnShow", function() fen.Rendre() end)

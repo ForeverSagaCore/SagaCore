@@ -564,8 +564,8 @@ function manette.Indices(win, premiereLigne, derniereLigne, onglet, dernierPortr
     end
     Marque(win, "lb", "PADLSHOULDER", premiereLigne, "RIGHT", "RIGHT", -2, 0)
     Marque(win, "rb", "PADRSHOULDER", derniereLigne, "RIGHT", "RIGHT", -2, 0)
-    Marque(win, "lt", "PADLTRIGGER", onglet, "BOTTOM", "TOP", 0, 4)
-    Marque(win, "rt", "PADRTRIGGER", dernierOnglet or onglet, "TOP", "BOTTOM", 0, -4)
+    Marque(win, "lt", "PADLTRIGGER", onglet, "BOTTOM", "TOP", 0, 12)
+    Marque(win, "rt", "PADRTRIGGER", dernierOnglet or onglet, "TOP", "BOTTOM", 0, -10)
     Marque(win, "dg", "PADDLEFT", dernierPortrait, "LEFT", "RIGHT", 10, 0)
     Marque(win, "dd", "PADDRIGHT", win.marquesManette.dg, "LEFT", "RIGHT", 2, 0)
     local actions

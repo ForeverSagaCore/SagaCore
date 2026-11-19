@@ -50,6 +50,17 @@ end
 -- d'equipement ou de caisses. Halo de case cochee du jeu, teinte commune.
 local function MarquerSelection(element, choisi, ancre)
     if not element then return end
+    -- Onglet : en retrait (plus sombre) quand il n'est pas ouvert, comme les
+    -- onglets de la suite ; pas de transparence.
+    if element.estOnglet then
+        element.choisi = choisi and true or false
+        element:SetAlpha(1)
+        if element.Icon then
+            local v = choisi and 1 or 0.55
+            element.Icon:SetVertexColor(v, v, v)
+        end
+        return
+    end
     if not element.haloSelection and element.CreateTexture then
         local halo = element:CreateTexture(nil, "OVERLAY")
         halo:SetTexture("Interface\\Buttons\\CheckButtonHilight")
@@ -173,55 +184,50 @@ local function CreerLigneDeMenu(parent, cheminIcone)
     return bouton
 end
 
--- Onglet d'icone sur le bord droit, sous `precedent` s'il y en a un avant lui.
--- Patron repris mot pour mot de Lueur, installe sur ce client : modele natif
--- d'onglet lateral, et a defaut l'onglet du grimoire.
+-- Onglet d'icone sur le bord droit : l'onglet du grimoire du jeu, de la
+-- meme taille et du meme dessin que les onglets de la suite a gauche (qui
+-- en sont le reflet). Celui qui n'est pas ouvert reste en retrait (plus
+-- sombre), et s'eclaire au survol.
+local TAILLE_ONGLET = 34
 local function CreerOngletLateral(fenetreMere, precedent, icone, auClic)
-    local ok, onglet = pcall(CreateFrame, "Frame", nil, fenetreMere, "LargeSideTabButtonTemplate")
-    onglet = ok and onglet or nil
-    if onglet and onglet.Icon and onglet.SetChecked and onglet.SetCustomOnMouseUpHandler then
-        onglet.Icon:SetTexture(icone)
-        if onglet.SetFillToInterior then onglet:SetFillToInterior(true) end
-        onglet:SetCustomOnMouseUpHandler(function(_, bouton, dedans)
-            if bouton == "LeftButton" and dedans then auClic() end
-        end)
-        if precedent then
-            onglet:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -2)
-        else
-            onglet:SetPoint("TOPLEFT", fenetreMere, "TOPRIGHT", 0, -60)
-        end
-        return onglet
-    end
-    if onglet then onglet:Hide() end
-
-    onglet = CreateFrame("CheckButton", nil, fenetreMere)
-    onglet:SetSize(32, 32)
+    local onglet = CreateFrame("CheckButton", nil, fenetreMere)
+    onglet:SetSize(TAILLE_ONGLET, TAILLE_ONGLET)
     local fond = onglet:CreateTexture(nil, "BACKGROUND")
     fond:SetTexture("Interface\\SpellBook\\SpellBook-SkillLineTab")
-    fond:SetSize(64, 64)
-    fond:SetPoint("TOPLEFT", -3, 11)
+    fond:SetSize(TAILLE_ONGLET * 2, TAILLE_ONGLET * 2)
+    fond:SetPoint("TOPLEFT", -3, 12)
     local face = onglet:CreateTexture(nil, "ARTWORK")
     face:SetAllPoints()
     face:SetTexture(icone)
+    onglet.Icon = face
+    onglet.estOnglet = true
     onglet:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
     onglet:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
     local halo = onglet:GetCheckedTexture()
     if halo then halo:SetBlendMode("ADD") end
-    onglet:SetScript("OnClick", function()
+    onglet:SetScript("OnClick", function(self)
         if PlaySound and SOUNDKIT then PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB) end
+        self:SetChecked(self.choisi and true or false)
         auClic()
     end)
     onglet:SetScript("OnEnter", function(self)
+        self.Icon:SetVertexColor(1, 1, 1)
         if not self.tooltipText then return end
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(self.tooltipText)
         GameTooltip:Show()
     end)
-    onglet:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    onglet:SetScript("OnLeave", function(self)
+        if not self.choisi then self.Icon:SetVertexColor(0.55, 0.55, 0.55) end
+        GameTooltip:Hide()
+    end)
     if precedent then
-        onglet:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -17)
+        onglet:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -((NS.suite and NS.suite.ECART_ENTRE_ONGLETS) or 14))
+    elseif NS.suite and NS.suite.AncreHaut then
+        local ancre, point = NS.suite.AncreHaut(fenetreMere, "droite")
+        onglet:SetPoint("TOPLEFT", ancre, point, 0, NS.suite.HAUT_ONGLET or -7)
     else
-        onglet:SetPoint("TOPLEFT", fenetreMere, "TOPRIGHT", 0, -66)
+        onglet:SetPoint("TOPLEFT", fenetreMere, "TOPRIGHT", 0, -60)
     end
     return onglet
 end
@@ -3432,11 +3438,12 @@ SynchroniserOnglets = function(win)
         if onglet.ClearAllPoints then
             onglet:ClearAllPoints()
             if precedent then
-                onglet:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -2)
-            elseif win.suiteDernierOnglet then
-                -- Sous les onglets de la suite, avec un ecart.
-                onglet:SetPoint("TOPLEFT", win.suiteDernierOnglet, "BOTTOMLEFT", 0,
-                    -((NS.suite and NS.suite.ECART_ONGLETS) or 22))
+                onglet:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -((NS.suite and NS.suite.ECART_ENTRE_ONGLETS) or 14))
+            elseif NS.suite and NS.suite.AncreHaut then
+                -- Le premier : a la hauteur du premier onglet de la suite, a
+                -- gauche, au ras du trait sous l'en-tete.
+                local ancre, point = NS.suite.AncreHaut(win, "droite")
+                onglet:SetPoint("TOPLEFT", ancre, point, 0, NS.suite.HAUT_ONGLET or -7)
             else
                 onglet:SetPoint("TOPLEFT", win, "TOPRIGHT", 0, -60)
             end
@@ -3458,7 +3465,7 @@ SynchroniserOnglets = function(win)
     -- pas avec eux. La progression couvre tous les metiers a la fois.
     if win.ongletProgression and precedent and win.ongletProgression.ClearAllPoints then
         win.ongletProgression:ClearAllPoints()
-        win.ongletProgression:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -22)
+        win.ongletProgression:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -30)
     end
     if not win.ongletProgression and precedent then
         local onglet = CreerOngletLateral(win, precedent,
@@ -3467,7 +3474,7 @@ SynchroniserOnglets = function(win)
             end)
         if onglet.ClearAllPoints then
             onglet:ClearAllPoints()
-            onglet:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -22)
+            onglet:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -30)
         end
         onglet.libelleParDefaut = L.NAV_PROGRESSION
         onglet.tooltipText = L.NAV_PROGRESSION
@@ -3724,8 +3731,8 @@ local function PoserIndicesManette(win)
     -- LT / RT : au dessus du premier onglet de droite, sous le dernier.
     local premierOnglet = win.onglets and win.ordreOnglets and win.onglets[win.ordreOnglets[1] or ""]
     premierOnglet = premierOnglet or win.ongletEquipement
-    Marque(win, "lt", "PADLTRIGGER", premierOnglet, "BOTTOM", "TOP", 0, 4)
-    Marque(win, "rt", "PADRTRIGGER", win.ongletCaisses, "TOP", "BOTTOM", 0, -4)
+    Marque(win, "lt", "PADLTRIGGER", premierOnglet, "BOTTOM", "TOP", 0, 12)
+    Marque(win, "rt", "PADRTRIGGER", win.ongletCaisses, "TOP", "BOTTOM", 0, -10)
     -- Croix gauche / droite : apres le dernier portrait de personnage.
     Marque(win, "dg", "PADDLEFT", win.dernierPortrait, "LEFT", "RIGHT", 10, 0)
     Marque(win, "dd", "PADDRIGHT", win.marquesManette.dg, "LEFT", "RIGHT", 2, 0)
