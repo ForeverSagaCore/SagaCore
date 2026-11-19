@@ -199,6 +199,32 @@ local DessinerArbres, PoserVisage
 
 local CASE, ICONE, ECART_ARBRES = 50, 38, 28
 
+-- Les cadres de talents du jeu (carre a coins coupes, ou octogone d'un
+-- choix), s'ils existent dans ce client.
+local function AtlasExiste(nom)
+    local f = _G.C_Texture and _G.C_Texture.GetAtlasInfo
+    if not f then return false end
+    local ok, info = pcall(f, nom)
+    return ok and info ~= nil
+end
+local atlasVus = {}
+local function Atlas(forme, etat)
+    local nom = "talents-node-" .. forme .. "-" .. etat
+    if atlasVus[nom] == nil then atlasVus[nom] = AtlasExiste(nom) end
+    return atlasVus[nom] and nom or nil
+end
+
+local function Lien(contenu, rang)
+    contenu.liens = contenu.liens or {}
+    local l = contenu.liens[rang]
+    if l then return l end
+    if not contenu.CreateLine then return nil end
+    l = contenu:CreateLine(nil, "BACKGROUND")
+    l:SetThickness(3)
+    contenu.liens[rang] = l
+    return l
+end
+
 local function Case(contenu, rang)
     contenu.cases = contenu.cases or {}
     local c = contenu.cases[rang]
@@ -209,8 +235,13 @@ local function Case(contenu, rang)
     c.bord:SetPoint("TOPLEFT", -2, 2)
     c.bord:SetPoint("BOTTOMRIGHT", 2, -2)
     c.icone = c:CreateTexture(nil, "ARTWORK")
-    c.icone:SetAllPoints()
+    c.icone:SetPoint("TOPLEFT", 3, -3)
+    c.icone:SetPoint("BOTTOMRIGHT", -3, 3)
     c.icone:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    -- Le cadre du jeu (coins coupes), par-dessus l'icone.
+    c.cadre = c:CreateTexture(nil, "OVERLAY", nil, -1)
+    c.cadre:SetPoint("TOPLEFT", -7, 7)
+    c.cadre:SetPoint("BOTTOMRIGHT", 7, -7)
     c.fondRang = c:CreateTexture(nil, "OVERLAY")
     c.fondRang:SetColorTexture(0, 0, 0, 0.75)
     c.fondRang:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", 3, -3)
@@ -235,9 +266,16 @@ end
 
 DessinerArbres = function(contenu, arbres, y)
     local largeur = contenu:GetWidth() or 760
-    local nCase, nTitre = 0, 0
+    local nCase, nTitre, nLien = 0, 0, 0
     local x, hauteurLigne = 0, 0
+    -- Dans l'ordre du jeu, sans les arbres vides.
+    local ORDRE = { aventure = 1, ressources = 2, metiers = 3 }
+    local tries = {}
+    for _, a in ipairs(arbres) do if #(a.noeuds or {}) > 0 then table.insert(tries, a) end end
+    table.sort(tries, function(p, q) return (ORDRE[p.genre] or 9) < (ORDRE[q.genre] or 9) end)
+    arbres = tries
     for _, a in ipairs(arbres) do
+        local parId = {}
         -- Colonnes et rangees : les positions du jeu, dans l'ordre.
         local xs, ys, vusX, vusY = {}, {}, {}, {}
         for _, n in ipairs(a.noeuds) do
@@ -280,6 +318,18 @@ DessinerArbres = function(contenu, arbres, y)
                 c.rang:SetTextColor(1, 0.82, 0)
             end
             c.icone:SetAlpha((r == 0 and (n.dispo == false or n.verrou)) and 0.5 or 1)
+            -- Le cadre du jeu : vert pris, jaune prenable, gris verrouille.
+            local etat = (r > 0 and "green") or ((n.dispo == false or n.verrou) and "gray") or "yellow"
+            local atlas = Atlas(n.choix and "choice" or "square", etat)
+            if atlas then
+                c.cadre:SetAtlas(atlas)
+                c.cadre:Show()
+                c.bord:Hide()
+            else
+                c.cadre:Hide()
+                c.bord:Show()
+            end
+            if n.id then parId[n.id] = c end
             c.rang:SetText(r .. "/" .. maxi)
             local noeud = n
             c:SetScript("OnEnter", function(self)
@@ -290,6 +340,24 @@ DessinerArbres = function(contenu, arbres, y)
                 GameTooltip:Show()
             end)
             c:Show()
+        end
+        -- Les liens entre talents, comme dans le jeu.
+        for _, n in ipairs(a.noeuds) do
+            local depuis = n.id and parId[n.id]
+            for _, cible in ipairs(n.liens or {}) do
+                local vers = parId[cible]
+                if depuis and vers then
+                    nLien = nLien + 1
+                    local l = Lien(contenu, nLien)
+                    if l then
+                        l:SetStartPoint("CENTER", depuis)
+                        l:SetEndPoint("CENTER", vers)
+                        if (tonumber(n.rang) or 0) > 0 then l:SetColorTexture(0.31, 0.82, 0.41, 0.9)
+                        else l:SetColorTexture(0.5, 0.5, 0.5, 0.7) end
+                        l:Show()
+                    end
+                end
+            end
         end
         x = x + largeurArbre + ECART_ARBRES
         hauteurLigne = math.max(hauteurLigne, hauteurArbre)
@@ -324,6 +392,24 @@ local function RendreArbres(contenu, p, index, y)
     y = Poser(contenu, index, y, { texte = string.format(L.POINTS_SPENT, depenses, NS.base.POINTS_MAX),
         droite = disponibles and string.format(L.POINTS_FREE, disponibles) or nil,
         couleurDroite = (disponibles or 0) > 0 and VERT or GRIS, apres = 4 })
+    -- Des points a depenser, sur le personnage connecte : la fenetre du jeu.
+    if (disponibles or 0) > 0 and p.cle == NS.ClePersonnage() then
+        if not contenu.boutonHeritage then
+            local b = CreateFrame("Button", nil, contenu, "UIPanelButtonTemplate")
+            b:SetHeight(22)
+            b:SetScript("OnClick", function()
+                if not NS.OuvrirHeritageDuJeu() then NS.Dire(L.OPEN_LEGACY_FAIL) end
+            end)
+            contenu.boutonHeritage = b
+        end
+        local b = contenu.boutonHeritage
+        b:SetText(L.OPEN_LEGACY)
+        b:SetWidth((b:GetTextWidth() or 120) + 30)
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", contenu, "TOPLEFT", 2, -y)
+        b:Show()
+        y = y + 30
+    end
     if releve.quand then
         index = index + 1
         y = Poser(contenu, index, y, { texte = string.format(L.READ_ON, releve.quand), couleur = SECONDAIRE,
@@ -438,7 +524,11 @@ local function RendrePersos(contenu, index, y)
         local detail
         if p.releve and p.releve.arbres and #p.releve.arbres > 0 then
             local morceaux = {}
-            for _, a in ipairs(p.releve.arbres) do
+            local ORDRE = { aventure = 1, ressources = 2, metiers = 3 }
+            local tries = {}
+            for _, a in ipairs(p.releve.arbres) do if #(a.noeuds or {}) > 0 then table.insert(tries, a) end end
+            table.sort(tries, function(u, v) return (ORDRE[u.genre] or 9) < (ORDRE[v.genre] or 9) end)
+            for _, a in ipairs(tries) do
                 table.insert(morceaux, (L[NOMS_ARBRES[a.genre] or ""] or "?") .. " |cffffffff" .. NS.base.Depenses(a) .. "|r")
             end
             detail = table.concat(morceaux, "     ")
@@ -846,8 +936,10 @@ function fen.Rendre()
             if l.icone then l.icone:SetTexCoord(0, 1, 0, 1) end
         end
         for _, c in ipairs(contenu.cases or {}) do c:Hide() end
+        for _, l in ipairs(contenu.liens or {}) do l:Hide() end
         for _, t in ipairs(contenu.titresArbres or {}) do t:Hide() end
         if contenu.histo then contenu.histo:Hide() end
+        if contenu.boutonHeritage then contenu.boutonHeritage:Hide() end
         local p = etat.cle and NS.base.Personnage(etat.cle)
         local index, y = 0, 0
         if cadre.titre then

@@ -4,7 +4,7 @@ local _, NS = ...
 -- l'heritage (systeme Legacy de WoW Forever) du personnage connecte.
 -- Lecture seule : LegacyCore ne depense ni ne modifie jamais rien.
 
-NS.VERSION = "0.2.1"
+NS.VERSION = "0.2.2"
 NS.base = {}
 local base = NS.base
 
@@ -120,11 +120,12 @@ local function DescriptionDeSort(id)
 end
 
 -- Genre d'un arbre d'apres le nom de sa constante.
+-- Dans l'ordre de la fenetre du jeu : Aventure, Ingeniosite, Metiers.
 local function GenreArbre(nom)
     nom = string.upper(tostring(nom))
-    if string.find(nom, "PROFESSION") then return "metiers", 1 end
-    if string.find(nom, "ADVENTURE") then return "aventure", 2 end
-    return "ressources", 3
+    if string.find(nom, "PROFESSION") then return "metiers", 3 end
+    if string.find(nom, "ADVENTURE") then return "aventure", 1 end
+    return "ressources", 2
 end
 
 -- Les arbres que le jeu declare : constantes, sinon la table de l'interface.
@@ -147,7 +148,10 @@ local function Arbres()
             end
         end
     end
-    table.sort(liste, function(a, b) return a.ordre < b.ordre end)
+    table.sort(liste, function(a, b)
+        if a.ordre ~= b.ordre then return a.ordre < b.ordre end
+        return a.treeID < b.treeID
+    end)
     return liste
 end
 
@@ -173,8 +177,13 @@ function base.Releve()
                 for _, nodeID in ipairs(NS.Appeler(traits.GetTreeNodes, a.treeID) or {}) do
                     local info = NS.Appeler(traits.GetNodeInfo, configID, nodeID)
                     if type(info) == "table" and info.isVisible ~= false and info.entryIDs and #info.entryIDs > 0 then
-                        local n = { x = info.posX or 0, y = info.posY or 0, rang = info.currentRank or info.ranksPurchased or 0,
-                            maxi = info.maxRanks or 1, dispo = info.isAvailable, verrou = info.isLocked }
+                        local n = { id = nodeID, x = info.posX or 0, y = info.posY or 0, rang = info.currentRank or info.ranksPurchased or 0,
+                            maxi = info.maxRanks or 1, dispo = info.isAvailable, verrou = info.isLocked,
+                            choix = info.type == 2 or nil, liens = {} }
+                        -- Les liens vers les talents suivants, comme les traits du jeu.
+                        for _, lien in ipairs(type(info.visibleEdges) == "table" and info.visibleEdges or {}) do
+                            if type(lien) == "table" and lien.targetNode then table.insert(n.liens, lien.targetNode) end
+                        end
                         local entryID = (info.activeEntry and info.activeEntry.entryID) or info.entryIDs[1]
                         local entree = NS.Appeler(traits.GetEntryInfo, configID, entryID)
                         if type(entree) == "table" and entree.definitionID then
@@ -194,7 +203,9 @@ function base.Releve()
                 if p.y ~= q.y then return p.y < q.y end
                 return p.x < q.x
             end)
-            table.insert(r.arbres, arbre)
+            -- Un identifiant d'arbre sans aucun talent (une constante du jeu qui
+            -- n'est pas un arbre) n'est pas garde.
+            if #arbre.noeuds > 0 then table.insert(r.arbres, arbre) end
         end
     end
     -- Un releve vide (jeu pas encore pret) n'efface pas le precedent.
@@ -380,4 +391,23 @@ function NS.Duree(secondes)
     if j > 0 then return string.format(NS.L.DUR_DAYS, j, h) end
     if h > 0 then return string.format(NS.L.DUR_HOURS, h, m) end
     return string.format(NS.L.DUR_MINUTES, math.max(m, secondes > 0 and 1 or 0))
+end
+
+-- Ouvre la fenetre d'heritage du jeu (pour depenser les points) : par le
+-- raccourci du jeu qui l'ouvre, sinon par sa fonction d'ouverture.
+function NS.OuvrirHeritageDuJeu()
+    local nombre = NS.Appeler(_G.GetNumBindings) or 0
+    for i = 1, nombre do
+        local commande = NS.Appeler(_G.GetBinding, i)
+        if type(commande) == "string" and string.find(string.upper(commande), "LEGACY") and _G.RunBinding then
+            if pcall(_G.RunBinding, commande) then return true end
+        end
+    end
+    for nom, valeur in pairs(_G) do
+        if type(valeur) == "function" and type(nom) == "string" and string.find(nom, "Legacy")
+            and string.find(nom, "Toggle") then
+            if pcall(valeur) then return true end
+        end
+    end
+    return false
 end
