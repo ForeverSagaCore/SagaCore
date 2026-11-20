@@ -160,3 +160,43 @@ cadre:SetScript("OnEvent", function(_, ev)
         end)
     end
 end)
+
+-- Nom de la touche (Echap, Options, Raccourcis, Add-ons).
+BINDING_HEADER_CRAFTCORE = "CraftCore"
+BINDING_NAME_CRAFTCORE_PILOTER_SUIVI = (GetLocale and GetLocale() == "frFR") and "Naviguer dans le suivi" or "Navigate the tracker"
+
+-- Reglages de CraftCore dans Options, Add-ons, Forever SagaCore.
+do
+    local function T(fr, en)
+        local S = _G.CoreSuite
+        local langue = (S and S.Langue and S.Langue()) or (GetLocale and GetLocale())
+        return langue == "frFR" and fr or en
+    end
+    local function G() return NS.base.ReglagesGeneraux() end
+    _G.SagaCoreOptions = type(_G.SagaCoreOptions) == "table" and _G.SagaCoreOptions or {}
+    _G.SagaCoreOptions.CraftCore = { titre = "CraftCore", ordre = 1, elements = function()
+        return {
+            { "section", function() return T("Affichage et aides", "Display and help") end },
+            { "case", function() return T("Recettes non apprises", "Unlearned recipes") end,
+              function() return NS.base.Reglages().afficherNonApprises end,
+              function(v) NS.base.Reglages().afficherNonApprises = v end },
+            { "case", function() return T("Didacticiel guidé", "Guided tutorial") end,
+              function() return NS.aide and NS.aide.GuideActif() end,
+              function(v) if NS.aide then NS.aide.PoserGuide(v) end end },
+            { "case", function() return T("Infobulles sur les objets", "Item tooltips") end,
+              function() return G().infobulles end, function(v) G().infobulles = v end },
+            { "case", function() return T("Assistant banque et courrier", "Bank and mail assistant") end,
+              function() return G().assistant end,
+              function(v) G().assistant = v if NS.courrier then pcall(NS.courrier.Actualiser) end end },
+            { "section", function() return T("Suivi des fabrications", "Crafting tracker") end },
+            { "case", function() return T("Afficher le suivi", "Show the tracker") end,
+              function() return G().suiviRecolte ~= false end, function(v) G().suiviRecolte = v end },
+            { "case", function() return T("Toujours visible", "Always visible") end,
+              function() return G().suiviPermanent end,
+              function(v) G().suiviPermanent = v if v and NS.suivi then pcall(NS.suivi.Montrer) end end },
+            { "case", function() return T("Ancré", "Locked") end,
+              function() return NS.suite and NS.suite.Ancree and NS.suite.Ancree("CraftCoreSuivi") end,
+              function(v) if NS.suite and NS.suite.PoserAncre then NS.suite.PoserAncre("CraftCoreSuivi", v) end end },
+        }
+    end }
+end

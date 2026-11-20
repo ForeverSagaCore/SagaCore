@@ -76,7 +76,7 @@ L.SET_GROUP_STATE = "État"
 L.NAV_QUESTS = "Quêtes"
 L.SET_WINDOW = "Fenêtre"
 L.SET_BACKGROUND = "Fond de la fenêtre"
-L.SET_BG_DARK = "Noir"
+L.SET_BG_DARK = "Roche grise"
 L.SET_BG_PARCHMENT = "Parchemin"
 
 -- Equipement (repris de CraftCore)

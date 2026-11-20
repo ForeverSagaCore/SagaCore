@@ -1,0 +1,5 @@
+<Bindings>
+    <Binding name="QUESTCORE_PILOTER_SUIVI" header="QUESTCORE" category="ADDONS">
+        CoreSuite_PiloterSuivi("QuestCoreSuivi")
+    </Binding>
+</Bindings>

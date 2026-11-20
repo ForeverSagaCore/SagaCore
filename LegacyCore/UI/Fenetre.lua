@@ -485,6 +485,8 @@ local function RendreArbres(contenu, p, index, y)
     -- passer de l'un a l'autre ne fait rien bouger.
     local debloque = (p.niveau or 0) >= NS.base.NIVEAU_HERITAGE
     index = index + 1
+    y = Titre(contenu, index, y, L.NAV_TREES)
+    index = index + 1
     y = Poser(contenu, index, y, { texte = debloque and string.format(L.UNLOCKED_LEVEL, p.niveau or 0)
         or string.format(L.LOCKED_LEVEL, NS.base.NIVEAU_HERITAGE, p.niveau or 0), couleur = debloque and VERT or BLANC })
     local arbres = releve and releve.arbres or {}
@@ -575,6 +577,8 @@ local ICONES_METIERS = {
 
 local function RendreDefis(contenu, index, y)
     local d = NS.base.Defis()
+    index = index + 1
+    y = Titre(contenu, index, y, L.NAV_CHALLENGES)
     index = index + 1
     y = Poser(contenu, index, y, { texte = L.CHALLENGES_NOTE, couleur = SECONDAIRE, multi = true, apres = 4 })
     index = index + 1
@@ -834,6 +838,8 @@ end
 
 -- Les choix les plus repandus, d'apres les guides de la communaute.
 local function RendreConseils(contenu, index, y)
+    index = index + 1
+    y = Titre(contenu, index, y, L.NAV_ADVICE)
     index = index + 1
     y = Poser(contenu, index, y, { texte = L.ADVICE_NOTE, couleur = SECONDAIRE, multi = true, apres = 4 })
     for _, bloc in ipairs(L.ADVICE) do

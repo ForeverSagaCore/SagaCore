@@ -1513,8 +1513,10 @@ local function RendreMenu(idCarte)
         t:ClearAllPoints()
         t:SetPoint("TOPLEFT", menu.liste, "TOPLEFT", 6, -y)
         t:SetText(texte)
+        -- La police des titres de la suite.
+        if NS.charte and NS.charte.TitreDeSection then pcall(NS.charte.TitreDeSection, t) end
         t:Show()
-        y = y + 20
+        y = y + 24
     end
     local function Ligne(texte, case, choisie, auClic, couleur, survol)
         n = n + 1
@@ -2203,4 +2205,16 @@ function page.Editer(r)
     editeur.saisie:SetText(r.note or "")
     page.MarquerEditeur()
     editeur:Show()
+end
+
+-- Reglages de MapCore dans Options, Add-ons, Forever SagaCore.
+do
+    _G.SagaCoreOptions = type(_G.SagaCoreOptions) == "table" and _G.SagaCoreOptions or {}
+    _G.SagaCoreOptions.MapCore = { titre = "MapCore", ordre = 3, elements = function()
+        return {
+            { "section", NS.L.OPTIONS },
+            { "case", NS.L.OPT_REVEAL, function() return Reglages().reveler end,
+              function(v) Reglages().reveler = v pcall(page.Rendre) end },
+        }
+    end }
 end

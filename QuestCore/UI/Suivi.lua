@@ -3067,3 +3067,6 @@ do
         end
     end)
 end
+
+-- Pour les raccourcis de la suite : montrer ou cacher le suivi des quetes.
+if _G.QuestCoreAPI then _G.QuestCoreAPI.BasculerSuivi = function() suivi.Basculer() end end

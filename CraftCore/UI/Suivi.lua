@@ -1256,3 +1256,12 @@ ecouteAnnonce:SetScript("OnUpdate", function(_, ecoule)
     if not okV and NS.base.NoterIncident then NS.base.NoterIncident("annonce d'objectif", souci) end
 end)
 suivi.VerifierAnnonces = Verifier
+
+-- Pour les raccourcis de la suite : montrer ou cacher le suivi de mes
+-- fabrications, et ouvrir la page Monter un metier.
+_G.CraftCoreAPI = _G.CraftCoreAPI or {}
+_G.CraftCoreAPI.BasculerSuivi = function()
+    local cadre = _G.CraftCoreSuivi
+    if cadre and cadre:IsShown() then cadre:Hide() else suivi.Montrer() end
+end
+_G.CraftCoreAPI.MonterUnMetier = function() if NS.ecran then NS.ecran.Montrer("progression") end end

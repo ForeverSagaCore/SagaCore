@@ -1,17 +1,5 @@
 <Bindings>
-    <Binding name="CRAFTCORE_TOGGLE" category="CraftCore">
-        CraftCore_Basculer()
-    </Binding>
-    <Binding name="CRAFTCORE_NEXTPAGE" category="CraftCore">
-        CraftCore_PageSuivante()
-    </Binding>
-    <Binding name="CRAFTCORE_PREVPAGE" category="CraftCore">
-        CraftCore_PagePrecedente()
-    </Binding>
-    <Binding name="CRAFTCORE_NEXTTRADE" category="CraftCore">
-        CraftCore_MetierSuivant()
-    </Binding>
-    <Binding name="CRAFTCORE_PREVTRADE" category="CraftCore">
-        CraftCore_MetierPrecedent()
+    <Binding name="CRAFTCORE_PILOTER_SUIVI" header="CRAFTCORE" category="ADDONS">
+        CoreSuite_PiloterSuivi("CraftCoreSuivi")
     </Binding>
 </Bindings>

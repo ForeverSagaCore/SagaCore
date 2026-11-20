@@ -201,7 +201,11 @@ local function Poser(contenu, index, y, options)
     l.boutons = l.boutons or {}
     for _, b in ipairs(l.boutons) do b:Hide() end
     local bx = x
-    for rang, def in ipairs(options.boutons or {}) do
+    local defs = options.boutons or {}
+    -- A droite (sur la ligne d'un titre) : du dernier au premier.
+    local aDroite = options.boutonsADroite == true
+    local suivant
+    for rang, def in ipairs(defs) do
         local b = l.boutons[rang]
         if not b then
             b = CreateFrame("Button", nil, l, "UIPanelButtonTemplate")
@@ -211,11 +215,26 @@ local function Poser(contenu, index, y, options)
         b:SetText(def[1])
         b:SetWidth(math.max(60, (b.GetTextWidth and b:GetTextWidth() or 50) + 24))
         b:ClearAllPoints()
-        b:SetPoint("LEFT", l, "LEFT", bx, 0)
         b:SetScript("OnClick", def[2])
         b:SetEnabled(def[3] ~= false)
         b:Show()
         bx = bx + b:GetWidth() + 6
+    end
+    -- Placement : de gauche a droite, ou cale a droite en partant du dernier.
+    if aDroite then
+        for rang = #defs, 1, -1 do
+            local b = l.boutons[rang]
+            if suivant then b:SetPoint("RIGHT", suivant, "LEFT", -6, 0) else b:SetPoint("RIGHT", l, "RIGHT", -4, 2) end
+            suivant = b
+        end
+        l.gauche:SetPoint("RIGHT", suivant or l.droite, "LEFT", -12, 0)
+    else
+        local px = x
+        for rang = 1, #defs do
+            local b = l.boutons[rang]
+            b:SetPoint("LEFT", l, "LEFT", px, 0)
+            px = px + b:GetWidth() + 6
+        end
     end
     l:SetScript("OnClick", options.auClic)
     l:EnableMouse(options.auClic ~= nil or options.survol ~= nil)
@@ -227,9 +246,11 @@ local function Poser(contenu, index, y, options)
     return y + hauteurLigne
 end
 
-local function Titre(contenu, index, y, texte)
+-- Titre de page ou de section, dans la police des titres ; ses boutons
+-- d'action (un a trois) sur la meme ligne, cales a droite.
+local function Titre(contenu, index, y, texte, boutons)
     if y > 0 then y = y + ESPACE_SECTION end
-    y = Poser(contenu, index, y, { texte = texte, section = true, filet = true })
+    y = Poser(contenu, index, y, { texte = texte, section = true, filet = true, boutons = boutons, boutonsADroite = true })
     return y + 6
 end
 
@@ -269,15 +290,14 @@ local function RendreQuetes(contenu, p, index, y)
     -- Filtre : toutes les quetes, ou seulement celles a rendre.
     local filtre = NS.base.FiltreARendre()
     local nRendre = NS.base.NombreARendre(p)
-    index = index + 1
-    y = Poser(contenu, index, y + 2, { retrait = 0, boutons = {
+    local boutonsTitre = {
         { L.TURNIN_ALL, function() NS.base.PoserFiltreARendre(false) end, filtre },
         { string.format(L.TURNIN_TAB, nRendre), function() NS.base.PoserFiltreARendre(true) end, not filtre },
         { L.TURNIN_SHOW_MAP, function()
             etat.page = "carte"
             NS.base.PoserFiltreARendre(true)
         end, nRendre > 0 },
-    } }) + 4
+    }
     for id, q in pairs(p.quetes or {}) do
       if not filtre or q.complete == true then
         local zone = q.zone or L.ZONE_OTHER
@@ -288,7 +308,7 @@ local function RendreQuetes(contenu, p, index, y)
     end
     table.sort(zones)
     index = index + 1
-    y = Titre(contenu, index, y, string.format(filtre and L.TURNIN_TITLE or L.ACTIVE, total))
+    y = Titre(contenu, index, y, string.format(filtre and L.TURNIN_TITLE or L.ACTIVE, total), boutonsTitre)
     if total == 0 then
         index = index + 1
         y = Poser(contenu, index, y, { retrait = RETRAIT, texte = filtre and L.TURNIN_NONE or L.NONE_ACTIVE,
@@ -692,13 +712,11 @@ end
 
 local function RendreParcours(contenu, p, index, y)
     local liste = NS.parcours.Liste(p.cle)
-    index = index + 1
-    y = Titre(contenu, index, y, string.format(L.ROUTE_TITLE, #liste))
     -- Progression : seulement pour le personnage connecte (son experience).
     local connecte = p.cle == NS.ClePersonnage()
     local manque = connecte and NS.disponibles.XPManquante() or 0
     index = index + 1
-    y = Poser(contenu, index, y + 2, { retrait = 0, boutons = {
+    y = Titre(contenu, index, y, string.format(L.ROUTE_TITLE, #liste), {
         { connecte and string.format(L.ROUTE_MAKE_LEVEL, (p.niveau or 0) + 1, manque) or L.ROUTE_MAKE_LEVEL_OFF,
             function()
                 local ok, pc, raison = pcall(NS.disponibles.CreerProgression, p.cle, p)
@@ -711,7 +729,7 @@ local function RendreParcours(contenu, p, index, y)
                 end
                 ParcoursChange()
             end, connecte and manque > 0 },
-    } }) + 6
+    })
     if #liste == 0 then
         index = index + 1
         y = Poser(contenu, index, y, { retrait = RETRAIT, texte = L.ROUTE_NONE, couleur = { 0.6, 0.6, 0.6 } })
@@ -905,12 +923,7 @@ local function RendreHistoire(contenu, p, index, y)
     local pct = total > 0 and math.floor(faites * 100 / total) or 0
     local zoneIci = NS.Appeler(NS.Lecture("GetRealZoneText"))
     index = index + 1
-    -- Meme alignement que les noms de zones (apres le +), un peu d'air en haut.
-    y = Poser(contenu, index, y + 8, { retrait = 18, texte = L.STORY_ALL,
-        couleur = { 1, 1, 1 }, barre = total > 0 and (faites / total) or 0,
-        texteBarre = string.format(L.STORY_BAR, faites, total, pct) }) + 6
-    index = index + 1
-    y = Poser(contenu, index, y, { retrait = 18, boutons = {
+    y = Titre(contenu, index, y, L.NAV_STORY, {
         { etat.histoireToutes and L.STORY_ONLY_STARTED or L.STORY_ALL_ZONES, function()
             etat.histoireToutes = not etat.histoireToutes
             fen.Rendre()
@@ -920,7 +933,12 @@ local function RendreHistoire(contenu, p, index, y)
             NS.histoire.PoserAvecRetirees(not NS.histoire.AvecRetirees())
             fen.Rendre()
         end },
-    } }) + 6
+    })
+    index = index + 1
+    -- Meme alignement que les noms de zones (apres le +).
+    y = Poser(contenu, index, y + 2, { retrait = 18, texte = L.STORY_ALL,
+        couleur = { 1, 1, 1 }, barre = total > 0 and (faites / total) or 0,
+        texteBarre = string.format(L.STORY_BAR, faites, total, pct) }) + 6
     if #liste == 0 then
         index = index + 1
         y = Poser(contenu, index, y, { retrait = RETRAIT, texte = L.STORY_NONE, couleur = { 0.6, 0.6, 0.6 } })
@@ -1250,15 +1268,16 @@ local function RendreDonjons(contenu, p, index, y)
         return index, y
     end
     index = index + 1
-    y = Poser(contenu, index, y + 8, { retrait = 18, texte = L.DUNGEON_HELP, couleur = { 0.7, 0.7, 0.7 } }) + 4
+    y = Titre(contenu, index, y, L.NAV_DUNGEONS)
+    index = index + 1
+    y = Poser(contenu, index, y, { retrait = 18, texte = L.DUNGEON_HELP, couleur = { 0.7, 0.7, 0.7 } }) + 4
     local zoneIci = NS.Appeler(NS.Lecture("GetRealZoneText"))
     local raids = false
     for _, d in ipairs(liste) do
         if d.raid and not raids then
             raids = true
             index = index + 1
-            y = Poser(contenu, index, y + 8, { retrait = 0, texte = L.DUNGEON_RAIDS, couleur = { 1, 0.82, 0 },
-                police = "GameFontNormal" }) + 2
+            y = Titre(contenu, index, y, L.DUNGEON_RAIDS)
         end
         local cleOuverte = "donjon" .. d.zone
         local ouverte = etat.ouvertes[cleOuverte] == true
@@ -1314,14 +1333,12 @@ local function RendreDisponibles(contenu, p, index, y)
         return a.nom < b.nom
     end)
     index = index + 1
-    y = Titre(contenu, index, y, string.format(L.AVAIL_TITLE, total))
-    index = index + 1
-    y = Poser(contenu, index, y + 2, { retrait = 0, boutons = {
+    y = Titre(contenu, index, y, string.format(L.AVAIL_TITLE, total), {
         { etat.disposGrises and L.AVAIL_HIDE_GRAY or L.AVAIL_SHOW_GRAY, function()
             etat.disposGrises = not etat.disposGrises
             fen.Rendre()
         end },
-    } }) + 6
+    })
     if total == 0 then
         index = index + 1
         y = Poser(contenu, index, y, { retrait = RETRAIT, texte = L.AVAIL_NONE, couleur = { 0.6, 0.6, 0.6 } })
@@ -1335,7 +1352,8 @@ local function RendreDisponibles(contenu, p, index, y)
             texte = z.nom .. " (" .. #z.ids .. ")" .. ((z.nom == ici) and ("   |cff4fd16a" .. L.STORY_HERE .. "|r") or ""),
             police = "GameFontNormalSmall", couleur = { 1, 0.82, 0 }, surligne = z.nom == ici,
             auClic = function()
-                etat.ouvertes[cleZone] = not fermee and false or true
+                -- Ouverte : on la ferme ; fermee : on l'ouvre.
+                if fermee then etat.ouvertes[cleZone] = true else etat.ouvertes[cleZone] = false end
                 fen.Rendre()
             end })
         if not fermee then
@@ -1523,9 +1541,11 @@ local function ConstruireReglages(parent)
         local filet = panneau:CreateTexture(nil, "ARTWORK")
         filet:SetHeight(1)
         filet:SetColorTexture(0.54, 0.39, 0.17, 0.6)
-        filet:SetPoint("TOPLEFT", panneau, "TOPLEFT", 0, -(y + 18))
+        filet:SetPoint("TOPLEFT", panneau, "TOPLEFT", 0, -(y + 22))
         filet:SetPoint("RIGHT", panneau, "RIGHT", 0, 0)
-        y = y + 28
+        -- La police des titres de la suite, comme les autres pages.
+        table.insert(panneau.lignes, function() pcall(NS.charte.TitreDeSection, f, filet) end)
+        y = y + 34
     end
     local function Libelle(texte)
         local f = panneau:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -1547,6 +1567,16 @@ local function ConstruireReglages(parent)
     -- Une valeur reglable par - et + : `lire` et `poser` la tiennent.
     local function Reglage(texte, lire, poser, pas, mini, maxi, format)
         local libelle = Libelle(texte)
+        -- La valeur entre deux fleches, le controle commun de la suite.
+        local S = _G.CoreSuite
+        if S and S.Curseur then
+            local cu = S.Curseur(panneau, mini, maxi, pas, lire, function(v) poser(v) NS.suivi.Appliquer() end, format)
+            cu:SetPoint("TOPRIGHT", panneau, "TOPRIGHT", -8, -y)
+            cu.surParchemin = function() return NS.charte.Fond and NS.charte.Fond() == "parchemin" end
+            table.insert(panneau.lignes, cu.Rendre)
+            y = y + 30
+            return
+        end
         local moins = Bouton("-", 26, libelle, 8)
         local valeur = panneau:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         valeur:SetWidth(64)
@@ -1566,9 +1596,29 @@ local function ConstruireReglages(parent)
         y = y + 30
     end
     -- Un choix parmi plusieurs : le bouton en place est grise.
-    local function Choix(texte, cle, options, table_, apres)
+    local function Choix(texte, cle, options, table_, apres, actif)
         table_ = table_ or function() return NS.suivi.Reglages() end
         local libelle = Libelle(texte)
+        -- La liste deroulante commune de la suite.
+        local S = _G.CoreSuite
+        if S and S.ListeDeroulante then
+            local li = S.ListeDeroulante(panneau, options, function() return table_()[cle] end,
+                function(v)
+                    if apres then apres(v) else table_()[cle] = v end
+                    NS.suivi.Appliquer()
+                end, function() pcall(fen.Rendre) end)
+            li:SetPoint("TOPRIGHT", panneau, "TOPRIGHT", -8, -y)
+            table.insert(panneau.lignes, li.Rendre)
+            if actif then
+                table.insert(panneau.lignes, function()
+                    local libre = actif()
+                    S.ActiverListe(li, libre)
+                    libelle:SetAlpha(libre and 1 or 0.5)
+                end)
+            end
+            y = y + 30
+            return
+        end
         local boutons, ancre = {}, libelle
         for rang, o in ipairs(options) do
             local b = Bouton(o[2], 70, ancre, rang == 1 and 8 or 6)
@@ -1591,8 +1641,24 @@ local function ConstruireReglages(parent)
     local function S() return NS.suivi.Reglages() end
 
     Titre(L.SET_WINDOW)
-    Choix(L.SET_BACKGROUND, "fond", { { "noir", L.SET_BG_DARK }, { "parchemin", L.SET_BG_PARCHMENT } },
-        function() return { fond = NS.charte.Fond() } end, function(v) NS.charte.PoserFond(v) end)
+    -- Parametrage par defaut de la suite : une case ; cochee, les fonds sont grises.
+    local function Libre() local S = _G.CoreSuite return not (S and S.ParDefaut and S.ParDefaut()) end
+    do
+        local libelle = Libelle((GetLocale and GetLocale() == "frFR") and "Paramétrage par défaut" or "Default setup")
+        local case = CreateFrame("CheckButton", nil, panneau, "UICheckButtonTemplate")
+        case:SetSize(24, 24)
+        case:SetPoint("TOPRIGHT", panneau, "TOPRIGHT", -8, -y)
+        case:SetScript("OnClick", function(self)
+            local S = _G.CoreSuite
+            if S and S.PoserParDefaut then S.PoserParDefaut(self:GetChecked() and true or false) end
+            for _, f in ipairs(panneau.lignes) do pcall(f) end
+            pcall(fen.Rendre)
+        end)
+        table.insert(panneau.lignes, function() case:SetChecked(not Libre()) end)
+        y = y + 30
+    end
+    Choix(L.SET_BACKGROUND, "fond", function() return NS.charte.OptionsDeFond() end,
+        function() return { fond = NS.charte.FondComplet() } end, function(v) NS.charte.PoserFondComplet(v) end, Libre)
     y = y + 8
     Titre(L.SET_MAP)
     local function OptionCarte(texte, cle)
@@ -1616,10 +1682,9 @@ local function ConstruireReglages(parent)
     y = y + 8
     Titre(L.SET_TRACKER)
     -- Fond des suivis (quetes et recolte), commun a la suite.
-    Choix(L.SET_TRACK_BG, "fondSuivis", { { "gris", L.SET_BG_GREY }, { "parchemin", L.SET_BG_PARCHMENT_T },
-        { "illustre", L.SET_BG_ILLUSTRATED } },
+    Choix(L.SET_TRACK_BG, "fondSuivis", { { "gris", L.SET_BG_GREY }, { "parchemin", L.SET_BG_PARCHMENT_T } },
         function() return { fondSuivis = NS.charte.FondDesSuivis() } end,
-        function(v) NS.charte.PoserFondDesSuivis(v) end)
+        function(v) NS.charte.PoserFondDesSuivis(v) end, Libre)
     Reglage(L.SET_FONT, function() return S().taille end, function(v) S().taille = v end, 1, 9, 20,
         function(v) return tostring(v) end)
     Choix(L.SET_REST_MODE, "modeRepos", { { "visible", L.SET_REST_VISIBLE }, { "survol", L.SET_REST_HOVER } })
@@ -2142,4 +2207,81 @@ function fen.OuvrirQuete(cle, id)
     etat.page = "quetes"
     if id then etat.ouvertes[id] = true end
     if cadre:IsShown() then fen.Rendre() else cadre:Show() end
+end
+
+-- Reglages de QuestCore dans Options, Add-ons, Forever SagaCore : les memes
+-- que la page Reglages de la fenetre.
+do
+    local function Apres() pcall(NS.suivi.Appliquer) pcall(fen.Rendre) end
+    local function S() return NS.suivi.Reglages() end
+    local function B() return NS.bandeau.Reglages() end
+    local function OuiNon() return { { true, L.YES }, { false, L.NO } } end
+    local function Carte(texte, cle)
+        return { "case", texte, function() return NS.pageCarte.Reglages()[cle] end,
+            function(v) NS.pageCarte.Reglages()[cle] = v pcall(NS.carte.Invalider) pcall(NS.pageCarte.Rendre) end }
+    end
+    local function Case(texte, lire, poser) return { "case", texte, lire, function(v) poser(v) Apres() end } end
+    local function Choix(texte, options, lire, poser) return { "choix", texte, options, lire, function(v) poser(v) Apres() end } end
+    local function Valeur(texte, lire, poser, pas, mini, maxi, format)
+        return { "valeur", texte, lire, function(v) poser(v) Apres() end, pas, mini, maxi, format }
+    end
+    local function Secondes(v)
+        local t = string.format("%.2f", v):gsub("0+$", ""):gsub("%.$", "")
+        if NS.langue and NS.langue ~= "enUS" and NS.langue ~= "zhCN" then t = t:gsub("%.", ",") end
+        return string.format(L.SET_BANNER_SECONDS, t)
+    end
+    _G.SagaCoreOptions = type(_G.SagaCoreOptions) == "table" and _G.SagaCoreOptions or {}
+    _G.SagaCoreOptions.QuestCore = { titre = "QuestCore", ordre = 2, elements = function()
+        local liste = {
+            { "section", L.SET_MAP },
+            Carte(L.MAPPAGE_OPT_REVEAL, "reveler"),
+            Carte(L.MAPPAGE_OPT_OTHERS, "autres"),
+            Carte(L.MAPPAGE_OPT_FADE, "fondu"),
+            Carte(L.MAPPAGE_OPT_AVAILABLE, "disponibles"),
+            Carte(L.MAPPAGE_OPT_ETA, "temps"),
+            { "section", L.SET_STORY },
+            Case(L.SET_STORY_RETIRED, function() return NS.histoire.AvecRetirees() end, function(v) NS.histoire.PoserAvecRetirees(v) end),
+            { "section", L.SET_TRACKER },
+            Valeur(L.SET_FONT, function() return S().taille end, function(v) S().taille = v end, 1, 9, 20),
+            Choix(L.SET_REST_MODE, { { "visible", L.SET_REST_VISIBLE }, { "survol", L.SET_REST_HOVER } },
+                function() return S().modeRepos end, function(v) S().modeRepos = v end),
+            Valeur(L.SET_ALPHA_REST, function() return S().alphaRepos end, function(v) S().alphaRepos = v end, 0.05, 0, 1, PctTexte),
+            Valeur(L.SET_ALPHA_MOVE, function() return S().alphaMouvement end, function(v) S().alphaMouvement = v end, 0.05, 0, 1, PctTexte),
+            Valeur(L.SET_ALPHA_HOVER, function() return S().alphaSurvol end, function(v) S().alphaSurvol = v end, 0.05, 0.1, 1, PctTexte),
+            Choix(L.SET_ADJUST, { { true, L.SET_ADJUST_AUTO }, { false, L.SET_ADJUST_ASK } },
+                function() return NS.base.ReglagesGeneraux().ajustementAuto ~= false end,
+                function(v) NS.base.ReglagesGeneraux().ajustementAuto = v end),
+            Case(L.SET_PARTY, function() return NS.groupe.Actif() end, function(v) NS.groupe.PoserActif(v) end),
+            Choix(L.SET_GIFT, { { "violet", L.SET_GIFT_PURPLE }, { "bleu", L.SET_GIFT_BLUE }, { "orange", L.SET_GIFT_ORANGE },
+                { "rouge", L.SET_GIFT_RED }, { "jaune", L.SET_GIFT_YELLOW } },
+                function() return S().couleurDon or "violet" end, function(v) S().couleurDon = v pcall(NS.suivi.Rendre) end),
+            Choix(L.SET_DONE_PLACE, { { false, L.SET_DONE_TURNIN_ONLY }, { true, L.SET_DONE_BOTH } },
+                function() return S().termineesDansQuetes == true end, function(v) S().termineesDansQuetes = v end),
+            Choix(L.SET_GROUP, { { "zone", L.SET_GROUP_ZONE }, { "etat", L.SET_GROUP_STATE } },
+                function() return S().regroupement or "zone" end, function(v) S().regroupement = v end),
+            Choix(L.SET_COMBAT, { { "normal", L.SET_COMBAT_NORMAL }, { "estompe", L.SET_COMBAT_FADE }, { "cache", L.SET_COMBAT_HIDE } },
+                function() return S().modeCombat or "normal" end, function(v) S().modeCombat = v end),
+            Choix(L.SET_NATIVE, { { false, L.SET_NATIVE_SHOW }, { true, L.SET_NATIVE_HIDE } },
+                function() return S().masquerNatif == true end, function(v) NS.suivi.MasquerNatif(v) end),
+        }
+        if NS.suivi.CraftCorePresent() then
+            table.insert(liste, Case(L.SET_WELD, function() return S().souder end, function(v) NS.suivi.Souder(v) end))
+            table.insert(liste, Case(L.SET_SAME_ALPHA, function() return S().memeOpacite end, function(v) S().memeOpacite = v end))
+        end
+        table.insert(liste, { "case", L.SET_LOCK,
+            function() return NS.suite and NS.suite.Ancree and NS.suite.Ancree("QuestCoreSuivi") end,
+            function(v) if NS.suite and NS.suite.PoserAncre then NS.suite.PoserAncre("QuestCoreSuivi", v) end end })
+        table.insert(liste, { "bouton", L.SET_CENTER, L.SET_CENTER_BUTTON, function() NS.suivi.Centrer() end })
+        table.insert(liste, { "section", L.SET_BANNER })
+        table.insert(liste, { "case", L.SET_BANNER_SHOW, function() return B().actif end, function(v) B().actif = v end })
+        table.insert(liste, { "valeur", L.SET_BANNER_DURATION, function() return B().duree end, function(v) B().duree = v end, 0.5, 1, 15, Secondes })
+        table.insert(liste, { "choix", L.SET_BANNER_HIDE, { { "fondu", L.SET_BANNER_FADE }, { "net", L.SET_BANNER_CUT } },
+            function() return B().disparition end, function(v) B().disparition = v end })
+        table.insert(liste, { "valeur", L.SET_BANNER_FADE_TIME, function() return B().fondu end, function(v) B().fondu = v end, 0.25, 0.25, 3, Secondes })
+        table.insert(liste, { "bouton", L.SET_BANNER_TRY, L.SET_BANNER_PREVIEW, function() NS.bandeau.Apercu() end })
+        table.insert(liste, { "bouton", L.SET_BANNER_PLACE,
+            function() return NS.bandeau.EnPlacement() and L.SET_BANNER_LOCK or L.SET_BANNER_MOVE end, function() NS.bandeau.Placer() end })
+        table.insert(liste, { "bouton", "", L.SET_BANNER_CENTER, function() NS.bandeau.Recentrer() end })
+        return liste
+    end }
 end

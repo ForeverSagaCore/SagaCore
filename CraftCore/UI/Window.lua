@@ -581,6 +581,36 @@ local function TitreDeSection(contenu, index, y, texte, droite)
     return index, y + HAUTEUR_LIGNE + 2
 end
 
+-- Titre de page : le titre dans la police des titres, et ses controles
+-- d'action (bouton, case) cales a droite sur la meme ligne.
+local function EnTeteDePage(contenu, index, y, texte, droite)
+    index, y = TitreDeSection(contenu, index, y, texte, droite)
+    return index, y, contenu.lignes and contenu.lignes[index]
+end
+
+-- Style de titre pour un texte isole (pages de reglages).
+local function StyleDeTitre(fs)
+    -- Le meme filet que sous les titres des autres pages.
+    if not fs.filet then
+        local parent = fs:GetParent()
+        fs.filet = parent:CreateTexture(nil, "ARTWORK")
+        fs.filet:SetHeight(1)
+        fs.filet:SetPoint("TOPLEFT", fs, "BOTTOMLEFT", 0, -5)
+        fs.filet:SetPoint("RIGHT", parent, "RIGHT", -10, 0)
+    end
+    if NS.charte.Fond() == "parchemin" then
+        PoliceDeTitre(fs)
+        fs.agrandir = false
+        fs:SetTextColor(0.42, 0.18, 0.02)
+        fs.filet:SetColorTexture(0.42, 0.18, 0.02, 0.45)
+    else
+        fs:SetFontObject("GameFontNormal")
+        fs:SetTextColor(1, 0.82, 0)
+        fs.filet:SetColorTexture(1, 0.82, 0, 0.25)
+    end
+    fs.filet:SetShown(fs:IsShown())
+end
+
 -- Ligne simple sous un titre, au premier retrait.
 local function LigneSimple(contenu, index, y, icone, texte, droite, auClic, police)
     index = index + 1
@@ -742,19 +772,10 @@ local function RendreStocks(contenu)
     local y = 0
 
     local tous = base.TousLesPersonnages()
-    if #tous > 1 then
-        index = index + 1
-        local barre = LigneDeTableau(contenu, index)
-        barre:ClearAllPoints()
-        barre:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
-        barre:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
-        PoserLigne(barre, 0, false, false, nil)
-        barre.icone:Hide()
-        barre.nom:SetFontObject("GameFontDisableSmall")
-        barre.nom:SetText(choix == "tous" and L.STOCKS_ALL_CHARS
-            or string.format(L.STOCKS_THIS_CHAR, choix))
-        barre.sacs:SetText("") barre.banque:SetText("") barre.total:SetText("")
-        PoserBoutonDeLigne(barre, choix == "tous" and L.STOCKS_THIS_CHAR_SHORT or L.STOCKS_ALL_SHORT,
+    local titre
+    index, y, titre = EnTeteDePage(contenu, index, y, L.NAV_STOCKS)
+    if #tous > 1 and titre then
+        PoserBoutonDeLigne(titre, choix == "tous" and L.STOCKS_THIS_CHAR_SHORT or L.STOCKS_ALL_SHORT,
             function()
                 if choix == "tous" then
                     base.PoserPersonnageAffiche(courant)
@@ -762,9 +783,12 @@ local function RendreStocks(contenu)
                     base.PoserPersonnageAffiche("tous")
                 end
                 ecran.Montrer("stocks")
-            end)
-        barre:Show()
-        y = y + HAUTEUR_LIGNE + 4
+            end, 130)
+    end
+    if titre and titre.plus and titre.plus:IsShown() then
+        -- Tout a droite, au bord de la page.
+        titre.plus:ClearAllPoints()
+        titre.plus:SetPoint("RIGHT", titre, "RIGHT", -4, 0)
     end
 
     local fiches = {}
@@ -957,6 +981,8 @@ local function RendreReglages(contenu)
         contenu.libelleNonApprises = libelle
     end
 
+    contenu.titreAffichage:Show()
+    StyleDeTitre(contenu.titreAffichage)
     contenu.caseNonApprises:SetChecked(NS.base.Reglages().afficherNonApprises and true or false)
     contenu.caseNonApprises:Show()
     contenu.libelleNonApprises:Show()
@@ -1045,6 +1071,82 @@ local function RendreReglages(contenu)
     contenu.caseAncre:Show()
     contenu.caseAncre.libelle:Show()
     contenu.libelleFond:Show()
+    -- Les deux fonds : la liste deroulante commune de la suite.
+    local S = _G.CoreSuite
+    if S and S.ListeDeroulante then
+        if not contenu.listeFond then
+            contenu.listeFond = S.ListeDeroulante(contenu, function() return NS.charte.OptionsDeFond() end,
+                function() return NS.charte.FondComplet() end, function(v) NS.charte.PoserFondComplet(v) end,
+                function() ecran.Montrer("reglages") end)
+            contenu.listeFond:SetPoint("LEFT", contenu.libelleFond, "RIGHT", 10, 0)
+            contenu.listeFondSuivis = S.ListeDeroulante(contenu, { { "gris", L.SETTING_BG_GREY }, { "parchemin", L.SETTING_BG_PARCHMENT } },
+                function() return NS.charte.FondDesSuivis and NS.charte.FondDesSuivis() or "gris" end,
+                function(v) if NS.charte.PoserFondDesSuivis then NS.charte.PoserFondDesSuivis(v) end end,
+                function() ecran.Montrer("reglages") end)
+            contenu.listeFondSuivis:SetPoint("LEFT", contenu.libelleFondSuivis, "RIGHT", 10, 0)
+            -- Le panneau du menu de gauche, commun a la suite.
+            contenu.libellePanneau = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            contenu.listePanneau = S.ListeDeroulante(contenu, function() return S.OptionsPanneau() end,
+                function() return S.PanneauChoisi() end, function(v) S.PoserPanneau(v) end,
+                function() ecran.Montrer("reglages") end)
+            -- Parametrage de l'interface : un titre, et la case du reglage par defaut.
+            contenu.titreInterface = contenu:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            contenu.caseDefaut = CreateFrame("CheckButton", nil, contenu, "UICheckButtonTemplate")
+            contenu.caseDefaut:SetSize(24, 24)
+            contenu.caseDefaut.libelle = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            contenu.caseDefaut:SetScript("OnClick", function(self)
+                S.PoserParDefaut(self:GetChecked() and true or false)
+                ecran.Montrer("reglages")
+            end)
+            -- Compositions : fond, fond des suivis et panneau, enregistres ensemble.
+            contenu.libelleCompo = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            contenu.listeCompo = S.ListeDeroulante(contenu, function() return S.OptionsComposition() end,
+                function() return S.CompositionChoisie() end, function(v) S.AppliquerComposition(v) end,
+                function() ecran.Montrer("reglages") end)
+            contenu.libelleSauver = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            contenu.sauverCompo = CreateFrame("Button", nil, contenu, "UIPanelButtonTemplate")
+            contenu.sauverCompo:SetHeight(24)
+            contenu.sauverCompo:SetScript("OnClick", function() S.SauverComposition() ecran.Montrer("reglages") end)
+        end
+        contenu.listeFond:Show()
+        contenu.listeFondSuivis:Show()
+        contenu.listeFond.Rendre()
+        contenu.listeFondSuivis.Rendre()
+        if contenu.caseDefaut then
+            local fr = S.Langue and S.Langue() == "frFR"
+            contenu.titreInterface:SetText(fr and "Paramétrage de l'interface" or "Interface setup")
+            contenu.titreInterface:Show()
+            StyleDeTitre(contenu.titreInterface)
+            contenu.caseDefaut.libelle:SetText(fr and "Paramétrage par défaut" or "Default setup")
+            contenu.caseDefaut:SetChecked(S.ParDefaut())
+            contenu.caseDefaut:Show()
+            contenu.caseDefaut.libelle:Show()
+        end
+        if contenu.listeCompo then
+            local fr = S.Langue and S.Langue() == "frFR"
+            contenu.libelleCompo:SetText(fr and "Composition" or "Setup")
+            contenu.libelleSauver:SetText(fr and "Fond et panneau actuels" or "Current background and panel")
+            contenu.sauverCompo:SetText(fr and "Sauvegarder la configuration" or "Save the setup")
+            contenu.sauverCompo:SetWidth((contenu.sauverCompo:GetTextWidth() or 180) + 28)
+            for _, x in ipairs({ contenu.libelleCompo, contenu.listeCompo, contenu.libelleSauver, contenu.sauverCompo }) do x:Show() end
+            contenu.listeCompo.Rendre()
+        end
+        if contenu.listePanneau then
+            contenu.libellePanneau:SetText((S.Langue and S.Langue() == "frFR") and "Panneau du menu" or "Menu panel")
+            contenu.libellePanneau:Show()
+            contenu.listePanneau:Show()
+            contenu.listePanneau.Rendre()
+        end
+        -- Parametrage par defaut : les choix sont grises ; decoche, ils s'ouvrent.
+        local libre = not (S.ParDefaut and S.ParDefaut())
+        for _, li in ipairs({ contenu.listeFond, contenu.listeFondSuivis, contenu.listePanneau, contenu.listeCompo }) do
+            if li and S.ActiverListe then S.ActiverListe(li, libre) end
+        end
+        if contenu.sauverCompo then contenu.sauverCompo:SetEnabled(libre) end
+        for _, l in ipairs({ contenu.libelleFond, contenu.libelleFondSuivis, contenu.libellePanneau, contenu.libelleCompo, contenu.libelleSauver }) do
+            if l then l:SetAlpha(libre and 1 or 0.5) end
+        end
+    else
     local fondActuel = NS.charte.Fond()
     local precedentFond
     for _, choix in ipairs({ { "noir", L.SETTING_BG_DARK }, { "parchemin", L.SETTING_BG_PARCHMENT } }) do
@@ -1085,33 +1187,63 @@ local function RendreReglages(contenu)
         b:Show()
         precedentSuivis = b
     end
-    contenu.titreTutos:SetText(L.SETTING_TUTORIALS)
-    contenu.titreTutos:Show()
-
-    -- Revoir l'accueil, puis un bouton par didacticiel, sur une colonne.
-    local precedent = contenu.titreTutos
-    local function Poser(cle, libelle, auClic, actif)
-        local bouton = BoutonAction(contenu, cle, libelle)
-        bouton:ClearAllPoints()
-        if precedent == contenu.titreTutos then
-            bouton:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", RETRAIT_PAR_NIVEAU - 2, -8)
-        else
-            bouton:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -6)
+    end
+    -- Mise en page : les textes a gauche, les cases et les listes calees au
+    -- bord droit, a la meme hauteur que leur texte.
+    do
+        local largeur = (contenu:GetWidth() or 700)
+        local yy = 0
+        contenu.titreAffichage:ClearAllPoints()
+        contenu.titreAffichage:SetPoint("TOPLEFT", contenu, "TOPLEFT", 2, 0)
+        yy = yy + 40
+        local paires = {
+            { contenu.caseNonApprises, contenu.libelleNonApprises }, { contenu.caseGuide, contenu.libelleGuide },
+            { contenu.caseInfobulles, contenu.caseInfobulles.libelle }, { contenu.caseAssistant, contenu.caseAssistant.libelle },
+            { contenu.caseSuivi, contenu.caseSuivi.libelle }, { contenu.casePermanent, contenu.casePermanent.libelle },
+            { contenu.caseAncre, contenu.caseAncre.libelle },
+        }
+        for _, pr in ipairs(paires) do
+            local c, l = pr[1], pr[2]
+            c:ClearAllPoints()
+            c:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -yy)
+            l:ClearAllPoints()
+            l:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 6))
+            l:SetWidth(math.max(200, largeur - RETRAIT_PAR_NIVEAU - 60))
+            -- Le texte fait partie de la case : cliquer dessus coche aussi.
+            c:SetHitRectInsets(-(largeur - RETRAIT_PAR_NIVEAU - 40), 0, 0, 0)
+            yy = yy + 30
         end
-        bouton:SetWidth(260)
-        bouton:SetScript("OnClick", auClic)
-        bouton:SetEnabled(actif ~= false)
-        bouton:Show()
-        precedent = bouton
+        if contenu.titreInterface then
+            contenu.titreInterface:ClearAllPoints()
+            contenu.titreInterface:SetPoint("TOPLEFT", contenu, "TOPLEFT", 2, -(yy + 18))
+            yy = yy + 18 + 40
+            contenu.caseDefaut:ClearAllPoints()
+            contenu.caseDefaut:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -yy)
+            contenu.caseDefaut.libelle:ClearAllPoints()
+            contenu.caseDefaut.libelle:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 6))
+            contenu.caseDefaut:SetHitRectInsets(-(largeur - RETRAIT_PAR_NIVEAU - 40), 0, 0, 0)
+            yy = yy + 32
+        end
+        for _, pr in ipairs({ { contenu.libelleFond, contenu.listeFond }, { contenu.libelleFondSuivis, contenu.listeFondSuivis },
+            { contenu.libellePanneau, contenu.listePanneau }, { contenu.libelleCompo, contenu.listeCompo },
+            { contenu.libelleSauver, contenu.sauverCompo } }) do
+          if pr[1] then
+            pr[1]:ClearAllPoints()
+            pr[1]:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 7))
+            if pr[2] then
+                pr[2]:ClearAllPoints()
+                pr[2]:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -yy)
+            end
+            yy = yy + 32
+          end
+        end
     end
-    Poser("accueil", L.HELP_SHOW_WELCOME, function() if NS.aide then NS.aide.Montrer("accueil") end end)
-    local hauteur = 360
-    for _, tuto in ipairs((NS.didacticiel and NS.didacticiel.Liste()) or {}) do
-        local cle = tuto.cle
-        Poser("tuto:" .. cle, tuto.titre, function() NS.didacticiel.Lancer(cle) end, guide)
-        hauteur = hauteur + 26
-    end
-    -- Hauteur reelle quand le jeu la connait : le bas du dernier bouton.
+    -- Les didacticiels ne sont plus dans cette page (ils iront ailleurs).
+    contenu.titreTutos:Hide()
+    if contenu.titreTutos.filet then contenu.titreTutos.filet:Hide() end
+    local precedent = contenu.sauverCompo or contenu.listeFondSuivis or contenu.libelleFondSuivis
+    local hauteur = 520
+    -- Hauteur reelle quand le jeu la connait : le bas du dernier bloc.
     local haut, bas = contenu:GetTop(), precedent and precedent.GetBottom and precedent:GetBottom()
     if haut and bas and haut > bas then hauteur = haut - bas + 12 end
     contenu:SetHeight(hauteur)
@@ -1183,13 +1315,19 @@ local function RendreCaisses(contenu)
     end
     local case = contenu.caseCaissesAutres
     local ailleurs = NS.caisses.ChezLesAutres(cle)
-    case:ClearAllPoints()
-    case:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
+    local titreC
+    index, y, titreC = EnTeteDePage(contenu, index, y, L.NAV_CRATES)
     case.libelle:SetText(string.format(L.CRATES_SHOW_OTHERS, ailleurs))
+    case:ClearAllPoints()
+    if titreC then
+        case:SetPoint("RIGHT", titreC, "RIGHT", -((case.libelle:GetStringWidth() or 100) + 8), 2)
+    else
+        case:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
+    end
     case:SetChecked(ecran.caissesDesAutres == true)
     case:SetEnabled(ailleurs > 0 or ecran.caissesDesAutres == true)
     case:Show() case.libelle:Show()
-    y = y + 28
+    y = y + 4
 
     local liste = NS.caisses.Connues(cle, ecran.caissesDesAutres == true)
 
@@ -1894,21 +2032,25 @@ local function RendreListeDeProjets(contenu, progressions)
     local index, y = 0, 0
     local gardees = {}
     if progressions then
+        local titreG
+        index, y, titreG = EnTeteDePage(contenu, index, y, L.NAV_PROGRESSIONS)
         local ouvrir = BoutonAction(contenu, "ouvrirProgression", L.PROGRESSIONS_OPEN)
         ouvrir:ClearAllPoints()
-        ouvrir:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
+        if titreG then ouvrir:SetPoint("RIGHT", titreG, "RIGHT", -4, 2) else ouvrir:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y) end
         ouvrir:SetScript("OnClick", function() ecran.Montrer("progression") end)
         ouvrir:Show()
         gardees.ouvrirProgression = true
-        y = y + 22 + 8
+        y = y + 4
         y = Paragraphe(contenu, y, L.PROGRESSIONS_INTRO, "GameFontDisableSmall")
         y = y + ESPACE_SECTION - 6
         index, y = RendreRangsVises(contenu, index, y, gardees)
     else
 
+    local titreP
+    index, y, titreP = EnTeteDePage(contenu, index, y, L.NAV_PROJECTS)
     local nouveau = BoutonAction(contenu, "nouveau", L.PROJECTS_NEW)
     nouveau:ClearAllPoints()
-    nouveau:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
+    if titreP then nouveau:SetPoint("RIGHT", titreP, "RIGHT", -4, 2) else nouveau:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y) end
     nouveau:SetScript("OnClick", function()
         local projet = NS.projets.Creer(nil)
         if projet then
@@ -1924,7 +2066,7 @@ local function RendreListeDeProjets(contenu, progressions)
     end)
     nouveau:Show()
     gardees.nouveau = true
-    y = y + 22 + 8
+    y = y + 4
     -- Ce qui distingue les deux, dit une fois en haut de la page.
     y = Paragraphe(contenu, y, L.PROJECTS_INTRO, "GameFontDisableSmall")
     y = y + ESPACE_SECTION - 6
@@ -2777,27 +2919,11 @@ local function RendreRecettes(contenu)
     caseNonConnues:Show()
     caseNonConnues.libelle:Show()
 
-    index = index + 1
-    local entete = LigneDeTableau(contenu, index)
-    entete:ClearAllPoints()
-    entete:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
-    entete:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
-    -- Remise a zero : une ligne reutilisee garderait le clic d'une autre page.
-    PoserLigne(entete, 0, false, false, nil)
-    entete.icone:Hide()
-    entete.nom:SetFontObject("GameFontNormal")
-    -- Le metier choisi et son niveau en tete, puis la date du releve.
+    -- Le metier choisi et son niveau en titre ; la date du releve a droite.
     local ongletChoisi = fenetre and ecran.metier and fenetre.onglets[ecran.metier]
     local releve = string.format(L.RECIPES_READ_AT, (CraftCoreDB and CraftCoreDB.recettesReleveLe) or "?")
-    if ongletChoisi and ongletChoisi.tooltipText and ongletChoisi.tooltipText ~= "" then
-        releve = ongletChoisi.tooltipText .. "     " .. releve
-    end
-    entete.nom:SetText(releve)
-    entete.sacs:SetText("")
-    entete.banque:SetText("")
-    entete.total:SetText("")
-    entete:Show()
-    y = y + HAUTEUR_LIGNE + 2
+    local titreMetier = (ongletChoisi and ongletChoisi.tooltipText and ongletChoisi.tooltipText ~= "") and ongletChoisi.tooltipText or L.NAV_RECIPES
+    index, y = EnTeteDePage(contenu, index, y, titreMetier, releve)
 
     -- Les cases sur leur propre ligne, a gauche : un libelle entier ne se
     -- coupe jamais, et il y a toute la largeur pour les deux.
@@ -4257,6 +4383,7 @@ function ecran.Montrer(cle)
         end
         if fenetre.contenu.titreAffichage and ecran.page ~= "reglages" then
             fenetre.contenu.titreAffichage:Hide()
+            if fenetre.contenu.titreAffichage.filet then fenetre.contenu.titreAffichage.filet:Hide() end
         end
         if fenetre.contenu.caseNonApprises and ecran.page ~= "reglages" then
             fenetre.contenu.caseNonApprises:Hide()
@@ -4266,8 +4393,20 @@ function ecran.Montrer(cle)
             fenetre.contenu.caseGuide:Hide()
             fenetre.contenu.libelleGuide:Hide()
             fenetre.contenu.titreTutos:Hide()
+            if fenetre.contenu.titreTutos.filet then fenetre.contenu.titreTutos.filet:Hide() end
             if fenetre.contenu.libelleFond then fenetre.contenu.libelleFond:Hide() end
             if fenetre.contenu.libelleFondSuivis then fenetre.contenu.libelleFondSuivis:Hide() end
+            if fenetre.contenu.listeFond then fenetre.contenu.listeFond:Hide() end
+            if fenetre.contenu.listePanneau then fenetre.contenu.listePanneau:Hide() fenetre.contenu.libellePanneau:Hide() end
+            if fenetre.contenu.titreInterface then
+                fenetre.contenu.titreInterface:Hide()
+                if fenetre.contenu.titreInterface.filet then fenetre.contenu.titreInterface.filet:Hide() end
+            end
+            for _, x in ipairs({ fenetre.contenu.libelleCompo, fenetre.contenu.listeCompo, fenetre.contenu.libelleSauver, fenetre.contenu.sauverCompo,
+                fenetre.contenu.caseDefaut, fenetre.contenu.caseDefaut and fenetre.contenu.caseDefaut.libelle }) do
+                if x then x:Hide() end
+            end
+            if fenetre.contenu.listeFondSuivis then fenetre.contenu.listeFondSuivis:Hide() end
             for _, c in ipairs({ fenetre.contenu.caseInfobulles, fenetre.contenu.caseAssistant, fenetre.contenu.caseSuivi,
                 fenetre.contenu.casePermanent, fenetre.contenu.caseAncre }) do
                 c:Hide()

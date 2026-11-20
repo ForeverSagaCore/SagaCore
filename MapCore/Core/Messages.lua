@@ -13,7 +13,7 @@ local _, NS = ...
 -- (sauf l'urgent) : le message attend la fin du combat. Un meme message ne
 -- revient pas avant son delai.
 
-local VERSION = 3
+local VERSION = 5
 
 local M = _G.SagaCoreMessages
 if M and (M.version or 0) >= VERSION then
@@ -122,6 +122,9 @@ function M.Definir(addon, liste)
         table.insert(M.ordre[addon], def.cle)
     end
 end
+
+M.DESTINATIONS = DESTINATIONS
+function M.NomDestination(ou) return TX(ou) end
 
 function M.Texte(addon, cle)
     local def = Def(addon, cle)
@@ -419,25 +422,29 @@ local function Fenetre()
     -- Le detail du message choisi.
     f.detail = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     f.detail:SetPoint("TOPLEFT", f.lignes[LIGNES], "BOTTOMLEFT", 0, -18)
-    f.actif = Bouton(f, 110)
+    -- Ou va le message (ou coupe) : la liste deroulante commune de la suite.
+    local S = _G.CoreSuite
+    local function Lire()
+        if not (f.addon and f.choisi) then return nil end
+        local ou = M.Destination(f.addon, f.choisi)
+        if not M.Actif(f.addon, f.choisi) or ou == "rien" then return "coupe" end
+        return ou
+    end
+    local function Poser(v)
+        local r = Reglage(f.addon, f.choisi)
+        if v == "coupe" then r.coupe = true else r.coupe = nil r.ou = v end
+    end
+    local options = function() return { { "onglet", TX("onglet") }, { "general", TX("general") }, { "deux", TX("deux") }, { "coupe", TX("inactif") } } end
+    if S and S.ListeDeroulante then
+        f.actif = S.ListeDeroulante(f, options, Lire, Poser, function() M.RendreReglages() end)
+    else
+        f.actif = CreateFrame("Frame", nil, f)
+        f.actif:SetSize(200, 26)
+    end
     f.actif:SetPoint("TOPLEFT", f.detail, "BOTTOMLEFT", 0, -8)
-    f.actif:SetScript("OnClick", function()
-        local r = Reglage(f.addon, f.choisi)
-        r.coupe = not r.coupe or nil
-        M.RendreReglages()
-    end)
-    f.ou = Bouton(f, 200)
-    f.ou:SetPoint("LEFT", f.actif, "RIGHT", 8, 0)
-    f.ou:SetScript("OnClick", function()
-        local r = Reglage(f.addon, f.choisi)
-        local actuel = M.Destination(f.addon, f.choisi)
-        local rang = 1
-        for i, d in ipairs(DESTINATIONS) do if d == actuel then rang = i end end
-        r.ou = DESTINATIONS[rang % #DESTINATIONS + 1]
-        M.RendreReglages()
-    end)
+    f.ou = f.actif
     f.essayer = Bouton(f, 110)
-    f.essayer:SetPoint("LEFT", f.ou, "RIGHT", 8, 0)
+    f.essayer:SetPoint("LEFT", f.actif, "RIGHT", 8, 0)
     f.essayer:SetScript("OnClick", function() M.Essayer(f.addon, f.choisi) end)
     f.libelleTexte = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f.libelleTexte:SetPoint("TOPLEFT", f.actif, "BOTTOMLEFT", 0, -12)
@@ -490,7 +497,7 @@ local function Fenetre()
             local liste = { f.onglet }
             for _, b in ipairs(f.addons) do if b:IsShown() then table.insert(liste, b) end end
             for _, l in ipairs(f.lignes) do if l:IsShown() then table.insert(liste, l) end end
-            for _, b in ipairs({ f.actif, f.ou, f.essayer, f.saisie, f.origine, f.fermerBas }) do table.insert(liste, b) end
+            for _, b in ipairs({ f.actif.bouton, f.essayer, f.saisie, f.origine, f.fermerBas }) do if b then table.insert(liste, b) end end
             return liste
         end
         f.Elements = Elements
@@ -582,8 +589,7 @@ function M.RendreReglages()
     end
     if def then
         f.detail:SetText(def.libelle or f.choisi)
-        f.actif:SetText(M.Actif(f.addon, f.choisi) and TX("actif") or TX("inactif"))
-        f.ou:SetText(string.format(TX("ou"), TX(M.Destination(f.addon, f.choisi))))
+        if f.actif.Rendre then f.actif.Rendre() end
         f.essayer:SetText(TX("essai"))
         f.libelleTexte:SetText(TX("texte"))
         if not f.saisie:HasFocus() then f.saisie:SetText(M.Texte(f.addon, f.choisi)) f.saisie:SetCursorPosition(0) end

@@ -130,3 +130,7 @@ cadre:SetScript("OnEvent", function(_, ev, a1)
         end
     end
 end)
+
+-- Nom de la touche (Echap, Options, Raccourcis, Add-ons).
+BINDING_HEADER_QUESTCORE = "QuestCore"
+BINDING_NAME_QUESTCORE_PILOTER_SUIVI = (GetLocale and GetLocale() == "frFR") and "Naviguer dans le suivi" or "Navigate the tracker"

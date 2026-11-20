@@ -159,7 +159,19 @@ end
 
 -- Le fond est commun a toute la suite (CraftCore, QuestCore, MapCore) : choisi
 -- dans l'un, il vaut pour les autres. Sans choix commun, celui de l'add-on.
+-- Parametrage par defaut de la suite (case cochee) : fond, parchemin et
+-- panneau fixes, selon la faction.
+local function ParDefaut()
+    local S = _G.CoreSuite
+    return S and S.ParDefaut and S.ParDefaut() or false
+end
+local function EstHorde()
+    local S = _G.CoreSuite
+    return S and S.Theme and S.Theme() == "horde"
+end
+
 function charte.Fond()
+    if ParDefaut() then return "parchemin" end
     local g = NS.base and NS.base.ReglagesGeneraux and NS.base.ReglagesGeneraux() or {}
     local suite = _G.CoreSuiteDB
     if type(suite) == "table" then
@@ -301,11 +313,12 @@ end
 -- ---------------------------------------------------------------------------
 
 function charte.FondDesSuivis()
+    if ParDefaut() then return "gris" end
     local d = _G.CoreSuiteDB
     local v = type(d) == "table" and d.fondSuivis
-    if v == "parchemin" or v == "gris" then return v end
-    -- Par defaut : l'illustration, avec le logo de la faction.
-    return "illustre"
+    -- Deux choix : le gris du jeu, ou une bande de parchemin sans sceau.
+    if v == "parchemin" then return v end
+    return "gris"
 end
 
 -- Chaque add-on y inscrit le rendu de son suivi.
@@ -331,6 +344,15 @@ function charte.HabillerSuivi(cadre)
     local choix = charte.FondDesSuivis()
     if choix == "parchemin" and not cadre.parchemin then
         charte.Parchemin(cadre, { "TOPLEFT", fond, "TOPLEFT", 3, -3 }, { "BOTTOMRIGHT", fond, "BOTTOMRIGHT", -3, 3 }, fond)
+        -- Le parchemin d'un suivi suit son propre reglage (fond des suivis).
+        if cadre.parchemin then
+            cadre.parchemin.suivi = true
+            -- Une bande de parchemin sans sceau (images de CraftCore).
+            local bande = { fichier = "Interface\\AddOns\\CraftCore\\Media\\suivi_parchemin" }
+            if not charte.PoserTextureDeParchemin(cadre.parchemin.grain, bande) then
+                charte.PoserTextureDeParchemin(cadre.parchemin.grain, charte.TEXTURES_PARCHEMIN[1])
+            end
+        end
     end
     if cadre.parchemin then cadre.parchemin.Montrer(choix == "parchemin") end
     if choix == "illustre" and not cadre.illustration then
@@ -374,10 +396,120 @@ end
 -- Le parchemin derriere une zone (entre deux ancres). Un aplat couleur
 -- papier dessous : lisible meme si la texture manque au client.
 local PAPIER = { 0.87, 0.79, 0.62 }
-local FICHIERS_PARCHEMIN = {
-    "Interface\\AchievementFrame\\UI-Achievement-Parchment-Horizontal",
-    "Interface\\QuestFrame\\QuestBG",
+-- Textures de parchemin possibles (atlas ou fichiers du jeu) ; seules
+-- celles que le client possede sont proposees. Choix commun a la suite.
+charte.TEXTURES_PARCHEMIN = {
+    -- Le parchemin du jeu : seulement en secours, si les images manquent.
+    { cle = "journal", nom = "Parchemin", en = "Parchment", atlas = "QuestBG-Parchment", secours = true },
+    -- Parchemin dessine pour la suite (dossier Media de CraftCore).
+    { cle = "clair", nom = "Parchemin clair", en = "Light parchment", fichier = "Interface\\AddOns\\CraftCore\\Media\\parchemin_clair" },
+    { cle = "alliance", nom = "Alliance naturel", en = "Alliance natural", fichier = "Interface\\AddOns\\CraftCore\\Media\\parchemin_alliance" },
+    { cle = "alliancegris", nom = "Alliance gris", en = "Alliance grey", fichier = "Interface\\AddOns\\CraftCore\\Media\\parchemin_alliance_gris" },
+    { cle = "alliancejaune", nom = "Alliance doré", en = "Alliance golden", fichier = "Interface\\AddOns\\CraftCore\\Media\\parchemin_alliance_jaune" },
+    { cle = "horde", nom = "Horde naturel", en = "Horde natural", fichier = "Interface\\AddOns\\CraftCore\\Media\\parchemin_horde" },
+    { cle = "hordegris", nom = "Horde gris", en = "Horde grey", fichier = "Interface\\AddOns\\CraftCore\\Media\\parchemin_horde_gris" },
+    { cle = "hordejaune", nom = "Horde doré", en = "Horde golden", fichier = "Interface\\AddOns\\CraftCore\\Media\\parchemin_horde_jaune" },
 }
+
+local function Francais()
+    local S = _G.CoreSuite
+    local langue = (S and S.Langue and S.Langue()) or (GetLocale and GetLocale())
+    return langue == "frFR"
+end
+
+-- Le choix complet du fond, pour une seule liste : la roche grise, ou un
+-- des parchemins que le client possede.
+function charte.OptionsDeFond()
+    local o = { { "noir", Francais() and "Roche grise" or "Grey stone" } }
+    local dispo = charte.TexturesDisponibles()
+    for _, def in ipairs(dispo) do
+        if not def.secours or #dispo == 1 then
+            table.insert(o, { "parchemin:" .. def.cle, Francais() and def.nom or (def.en or def.nom) })
+        end
+    end
+    return o
+end
+
+function charte.FondComplet()
+    if charte.Fond() ~= "parchemin" then return "noir" end
+    return "parchemin:" .. charte.TextureChoisie().cle
+end
+
+function charte.PoserFondComplet(v)
+    if v == "noir" then charte.PoserFond("noir")
+    else
+        charte.PoserFond("parchemin")
+        local cle = type(v) == "string" and v:match("^parchemin:(.+)$")
+        if cle then charte.ChoisirTexture(cle) end
+    end
+    -- Toutes les fenetres de la suite se redessinent avec le nouveau fond.
+    local parchemin = v ~= "noir"
+    for _, p in ipairs(_G.SagaCoreParchemins) do if not p.suivi then pcall(p.Montrer, parchemin) end end
+    local S = _G.CoreSuite
+    if S and S.Actualiser then pcall(S.Actualiser) end
+    if S and S.RedessinerTout then pcall(S.RedessinerTout) end
+end
+-- Le fond sombre : la roche grise du jeu, en motif repete (jamais etiree).
+local ROCHE = "Interface\\FrameGeneral\\UI-Background-Rock"
+
+-- Pose une texture du tableau sur `tex`. Rend vrai si le client l'a.
+function charte.PoserTextureDeParchemin(tex, def)
+    if not (tex and def) then return false end
+    if def.atlas then
+        if C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(def.atlas) then
+            return (pcall(tex.SetAtlas, tex, def.atlas))
+        end
+        return false
+    end
+    tex:SetTexCoord(0, 1, 0, 1)
+    if pcall(tex.SetTexture, tex, def.fichier) and type(tex:GetTexture()) == "number" then return true end
+    return false
+end
+
+-- Les textures que ce client possede (essayees une fois).
+function charte.TexturesDisponibles()
+    if charte.texturesDispo then return charte.texturesDispo end
+    local essai = UIParent:CreateTexture(nil, "BACKGROUND")
+    essai:Hide()
+    local liste = {}
+    for _, def in ipairs(charte.TEXTURES_PARCHEMIN) do
+        if charte.PoserTextureDeParchemin(essai, def) then table.insert(liste, def) end
+    end
+    charte.texturesDispo = liste
+    return liste
+end
+
+function charte.TextureChoisie()
+    local cle = type(CoreSuiteDB) == "table" and CoreSuiteDB.textureParchemin or nil
+    local dispo = charte.TexturesDisponibles()
+    -- Le parchemin du jeu n'est plus propose : le parchemin clair le remplace.
+    -- Par defaut : le parchemin gris de la faction.
+    if ParDefaut() or cle == nil or cle == "journal" then
+        cle = EstHorde() and "hordegris" or "alliancegris"
+    end
+    for _, def in ipairs(dispo) do if def.cle == cle then return def end end
+    return dispo[1] or charte.TEXTURES_PARCHEMIN[1]
+end
+
+-- Registre commun a toute la suite : changer de parchemin dans un add-on
+-- le change aussitot dans toutes les fenetres ouvertes des autres.
+_G.SagaCoreParchemins = type(_G.SagaCoreParchemins) == "table" and _G.SagaCoreParchemins or {}
+charte.parchemins = _G.SagaCoreParchemins
+function charte.ChoisirTexture(cle)
+    CoreSuiteDB = type(CoreSuiteDB) == "table" and CoreSuiteDB or {}
+    CoreSuiteDB.textureParchemin = cle
+    charte.RafraichirParchemins()
+end
+
+-- Repose la texture choisie sur tous les parchemins de fenetre de la suite.
+function charte.RafraichirParchemins()
+    for _, p in ipairs(_G.SagaCoreParchemins) do
+        if not p.suivi and not charte.PoserTextureDeParchemin(p.grain, charte.TextureChoisie()) then
+            charte.PoserTextureDeParchemin(p.grain, charte.TEXTURES_PARCHEMIN[1])
+        end
+        if not p.suivi then pcall(p.Montrer, charte.Fond() == "parchemin") end
+    end
+end
 
 -- `porteur` : le cadre qui porte les textures, celui du fond interieur, pour
 -- que le parchemin se dessine par dessus son fond sombre et sous le contenu.
@@ -388,24 +520,33 @@ function charte.Parchemin(cadre, haut, bas, porteur)
     p.aplat = porteur:CreateTexture(nil, "BACKGROUND", nil, 6)
     p.aplat:SetColorTexture(PAPIER[1], PAPIER[2], PAPIER[3], 1)
     p.grain = porteur:CreateTexture(nil, "BACKGROUND", nil, 7)
-    local atlas = "QuestBG-Parchment"
-    local ok = false
-    if C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(atlas) then
-        ok = pcall(p.grain.SetAtlas, p.grain, atlas)
-    end
-    if not ok then
-        for _, fichier in ipairs(FICHIERS_PARCHEMIN) do
-            if pcall(p.grain.SetTexture, p.grain, fichier) and type(p.grain:GetTexture()) == "number" then
-                ok = true
-                break
-            end
-        end
-    end
+    -- La texture choisie (le journal de quetes par defaut).
+    local ok = charte.PoserTextureDeParchemin(p.grain, charte.TextureChoisie())
+    if not ok then ok = charte.PoserTextureDeParchemin(p.grain, charte.TEXTURES_PARCHEMIN[1]) end
     if not ok then p.grain:SetTexture(nil) end
+    table.insert(charte.parchemins, p)
+    -- Fond sombre : roche grise, repetee en motif.
+    p.roche = porteur:CreateTexture(nil, "BACKGROUND", nil, 5)
+    if not pcall(p.roche.SetTexture, p.roche, ROCHE, "REPEAT", "REPEAT") then pcall(p.roche.SetTexture, p.roche, ROCHE) end
+    if p.roche.SetHorizTile then p.roche:SetHorizTile(true) p.roche:SetVertTile(true) end
+    p.roche:SetVertexColor(0.75, 0.75, 0.75, 1)
+    p.roche:SetPoint(haut[1], haut[2], haut[3], haut[4], haut[5])
+    p.roche:SetPoint(bas[1], bas[2], bas[3], bas[4], bas[5])
+    p.roche:Hide()
     for _, t in ipairs({ p.aplat, p.grain }) do
         t:SetPoint(haut[1], haut[2], haut[3], haut[4], haut[5])
         t:SetPoint(bas[1], bas[2], bas[3], bas[4], bas[5])
     end
+    -- Une ombre douce vers le bas de la page, comme un papier ancien.
+    p.ombre = porteur:CreateTexture(nil, "BACKGROUND", nil, 7)
+    p.ombre:SetColorTexture(1, 1, 1, 1)
+    p.ombre:SetPoint("BOTTOMLEFT", p.aplat, "BOTTOMLEFT", 0, 0)
+    p.ombre:SetPoint("BOTTOMRIGHT", p.aplat, "BOTTOMRIGHT", 0, 0)
+    p.ombre:SetHeight(140)
+    local brun1, brun0 = { 0.30, 0.18, 0.06, 0.2 }, { 0.30, 0.18, 0.06, 0 }
+    local okG = _G.CreateColor and pcall(p.ombre.SetGradient, p.ombre, "VERTICAL", _G.CreateColor(unpack(brun1)), _G.CreateColor(unpack(brun0)))
+    if not okG then okG = pcall(p.ombre.SetGradientAlpha, p.ombre, "VERTICAL", brun1[1], brun1[2], brun1[3], brun1[4], brun0[1], brun0[2], brun0[3], brun0[4]) end
+    if not okG then p.ombre:Hide() p.ombre = nil end
     -- Un liseré brun autour, comme le bord d'une page.
     p.bords = {}
     for _, cote in ipairs({ "TOP", "BOTTOM", "LEFT", "RIGHT" }) do
@@ -424,6 +565,8 @@ function charte.Parchemin(cadre, haut, bas, porteur)
     end
     function p.Montrer(visible)
         for _, t in ipairs({ p.aplat, p.grain }) do t:SetShown(visible) end
+        if p.ombre then p.ombre:SetShown(visible) end
+        if p.roche then p.roche:SetShown(not visible and not p.suivi) end
         for _, b in ipairs(p.bords) do b:SetShown(visible) end
     end
     cadre.parchemin = p
@@ -446,6 +589,20 @@ function charte.FondDuJournal(texture)
     if texture.SetVertexColor then texture:SetVertexColor(1, 1, 1) end
     if texture.SetDesaturated then texture:SetDesaturated(false) end
     if texture.SetTexCoord then texture:SetTexCoord(0, 1, 0, 1) end
+    -- Le panneau de menu choisi dans la suite (images de CraftCore), sinon
+    -- le fond du journal du jeu. Garde pour changer en direct.
+    _G.SagaCoreMenus = type(_G.SagaCoreMenus) == "table" and _G.SagaCoreMenus or {}
+    if not texture.reappliquer then
+        texture.reappliquer = function() charte.FondDuJournal(texture) end
+        table.insert(_G.SagaCoreMenus, texture)
+    end
+    local S = _G.CoreSuite
+    local fichier = S and S.PanneauMenu and S.PanneauMenu()
+    if fichier and pcall(texture.SetTexture, texture, fichier) and texture:GetTexture() then
+        texture:SetTexCoord(0, 1, 0, 1)
+        texture:Show()
+        return true
+    end
     -- 1. Le fond tel que la carte l'affiche.
     local sources = {}
     local qs = _G.QuestScrollFrame

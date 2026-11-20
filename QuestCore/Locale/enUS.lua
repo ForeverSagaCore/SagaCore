@@ -75,7 +75,7 @@ L.SET_GROUP_STATE = "State"
 L.NAV_QUESTS = "Quests"
 L.SET_WINDOW = "Window"
 L.SET_BACKGROUND = "Background"
-L.SET_BG_DARK = "Dark"
+L.SET_BG_DARK = "Grey stone"
 L.SET_BG_PARCHMENT = "Parchment"
 
 -- Gear (same as CraftCore)
