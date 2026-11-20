@@ -1026,6 +1026,8 @@ local function DessinerObjectifs(y, objectifs, vue)
                 -- Tout est reuni et il y a plusieurs etapes : elles s'affichent
                 -- dessous, dans l'ordre, chacune avec son etat.
                 if (o.pct or 0) >= 1 and etapes and #etapes > 1 then
+                    -- De l'air sous la ligne (et son bouton) avant les etapes.
+                    y = y + 4
                     for rangE, e in ipairs(etapes) do
                         local t = T(LIGNE, TAILLE_LIGNE - 1)
                         t:ClearAllPoints()
@@ -1045,6 +1047,7 @@ local function DessinerObjectifs(y, objectifs, vue)
                         elseif rangE == rangP then
                             t:SetTextColor(1, 1, 1)
                             etat:SetText(L.CRAFT_STEP_NOW)
+                            -- (le bouton Creer de la ligne lance cette etape)
                             etat:SetTextColor(1, 0.82, 0)
                         else
                             t:SetTextColor(0.7, 0.7, 0.7)
@@ -1067,13 +1070,30 @@ local function DessinerObjectifs(y, objectifs, vue)
                 end
                 if estOuvert then
                     if o.detail then
+                        -- L'objectif (rang actuel, rang vise), puis un petit
+                        -- filet avant les matieres.
+                        y = y + 4
                         local t = T(LIGNE, TAILLE_LIGNE - 1)
                         t:ClearAllPoints()
-                        t:SetPoint("TOPLEFT", zone, "TOPLEFT", 28, -y)
-                        t:SetWidth(largeur - 28)
+                        t:SetPoint("TOPLEFT", zone, "TOPLEFT", 24, -y)
+                        t:SetWidth(largeur - 24)
                         t:SetText(o.detail)
                         t:SetTextColor(0.8, 0.8, 0.8)
-                        y = y + (t:GetStringHeight() or 14) + 2
+                        y = y + (t:GetStringHeight() or 14) + 5
+                        nf = nf + 1
+                        cadreSuivi.filets = cadreSuivi.filets or {}
+                        local f = cadreSuivi.filets[nf]
+                        if not f then
+                            f = cadreSuivi:CreateTexture(nil, "ARTWORK")
+                            cadreSuivi.filets[nf] = f
+                        end
+                        f:ClearAllPoints()
+                        f:SetPoint("TOPLEFT", zone, "TOPLEFT", 24, -y)
+                        f:SetPoint("TOPRIGHT", zone, "TOPRIGHT", -40, -y)
+                        if _G.PixelUtil and _G.PixelUtil.SetHeight then _G.PixelUtil.SetHeight(f, 1, 1) else f:SetHeight(1) end
+                        f:SetColorTexture(0.8, 0.65, 0.35, 0.22)
+                        f:Show()
+                        y = y + 6
                     end
                     if #(o.matieres or {}) == 0 then
                         local t = T(LIGNE, TAILLE_LIGNE)
