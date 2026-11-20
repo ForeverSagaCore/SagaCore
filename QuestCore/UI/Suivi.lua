@@ -156,7 +156,7 @@ local function Ligne(index)
     l.pion:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText(self.actif and L.ROUTE_TURNIN_REMOVE or L.ROUTE_TURNIN_ADD, 1, 0.82, 0)
-        GameTooltip:AddLine(self.afaire and L.ROUTE_TODO_HELP or L.ROUTE_TURNIN_HELP, 1, 1, 1, true)
+        GameTooltip:AddLine(self.aide or (self.afaire and L.ROUTE_TODO_HELP or L.ROUTE_TURNIN_HELP), 1, 1, 1, true)
         GameTooltip:Show()
     end)
     l.pion:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -292,6 +292,7 @@ local function Poser(index, y, texte, options)
     end
     if options.pion then
         l.pion.actif, l.pion.auClic, l.pion.afaire = options.pion.actif, options.pion.auClic, options.pion.afaire
+        l.pion.aide = options.pion.aide
         l.pion.t:SetDesaturated(not options.pion.actif)
         l.pion:SetAlpha(options.pion.actif and 1 or 0.55)
         l.pion:ClearAllPoints()
@@ -1146,7 +1147,7 @@ end
 -- niveau a la couleur du jeu, titre, recompense connue (XP de la base ;
 -- l'argent n'y est pas), objectifs de la base, puis chez qui la prendre (un
 -- clic : sur la carte). Le survol donne tout ce que la base en sait.
-local function RendreEtapeBase(moi, id, rang, e, index, y)
+local function RendreEtapeBase(moi, id, rang, e, index, y, pion)
     local s = Reglages()
     local niveau = tonumber(NS.ref.Lire("QuestDB", id, "questLevel")) or 0
     local r, g, b = NS.ref.CouleurDeNiveau(niveau, moi.niveau)
@@ -1158,6 +1159,7 @@ local function RendreEtapeBase(moi, id, rang, e, index, y)
         math.floor(g * 255), math.floor(b * 255), niveau, NS.ref.NomDeQuete(id, moi)), { uneLigne = true,
         police = Police("ObjectiveTrackerHeaderFont", "GameFontNormal"), titre = true,
         couleur = attente and { 0.6, 0.6, 0.6 } or { 1, 0.82, 0 },
+        pion = pion,
         survol = function(tt)
             NS.ref.InfobulleDeLaBase(tt, idE, moi)
             local textes = NS.ref.Lire("QuestDB", idE, "objectivesText")
@@ -1287,13 +1289,37 @@ RendreVueParcours = function(moi, index, y)
             else
                 -- Les etapes faites disparaissent ; le numero reste celui du
                 -- parcours.
+                -- La petite carte d'une etape : la garder dans l'itineraire
+                -- (guidage et carte) ou l'en retirer ; retiree, elle reste en
+                -- bas, grisee, pour la remettre.
                 for rang, id in ipairs(pc.etapes) do
                     local e = NS.parcours.EtatEtape(moi, id)
                     if (e == "cours" or e == "rendre") and moi.quetes[id] then
                         index, y = RendreQuete(moi, moi.quetes, id, index, y, rang .. ". ")
                     elseif e ~= "faite" then
-                        index, y = RendreEtapeBase(moi, id, rang, e, index, y)
+                        local idQ = id
+                        index, y = RendreEtapeBase(moi, id, rang, e, index, y, { actif = true, aide = L.ROUTE_STEP_HELP,
+                            auClic = function()
+                                if suivi.PasserEtape then suivi.PasserEtape(idP, idQ) end
+                                suivi.Rendre()
+                            end })
                     end
+                end
+                local retirees = {}
+                for idR in pairs(type(pc.ignorees) == "table" and pc.ignorees or {}) do
+                    if NS.parcours.EtatEtape(moi, idR) ~= "faite" then table.insert(retirees, idR) end
+                end
+                table.sort(retirees)
+                for _, idR in ipairs(retirees) do
+                    local idQ = idR
+                    index = index + 1
+                    y = Poser(index, y, NS.ref.NomDeQuete(idR, moi), { uneLigne = true, couleur = { 0.5, 0.5, 0.5 },
+                        police = "GameFontNormalSmall", petit = true,
+                        pion = { actif = false, aide = L.ROUTE_STEP_HELP, auClic = function()
+                            NS.parcours.RemettreEtape(cle, idP, idQ)
+                            if suivi.RafraichirTrajet then pcall(suivi.RafraichirTrajet) end
+                            suivi.Rendre()
+                        end } }) + 4
                 end
             end
             y = y + 4

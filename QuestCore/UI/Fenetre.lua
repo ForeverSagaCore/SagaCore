@@ -2011,6 +2011,13 @@ local function Construire()
     cadre = NS.charte.Fenetre("QuestCoreFenetre", LARGEUR, HAUTEUR, {})
     cadre:SetPoint("CENTER")
     cadre:Hide()
+    -- Le guidage d'un parcours vit avec sa carte : fenetre fermee, il
+    -- s'arrete, et le bouton du suivi redevient Guider.
+    cadre:HookScript("OnHide", function()
+        if NS.guidage and NS.guidage.Actif() and NS.guidage.ParcoursGuide and NS.guidage.ParcoursGuide() then
+            pcall(NS.guidage.Basculer, false)
+        end
+    end)
     table.insert(UISpecialFrames, "QuestCoreFenetre")
     if cadre.portrait or (cadre.PortraitContainer and cadre.PortraitContainer.portrait) then
         local portrait = cadre.portrait or cadre.PortraitContainer.portrait
