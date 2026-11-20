@@ -544,6 +544,10 @@ L.TUTO_MANETTE_5 = "Y opens the page help. B closes help, quits a tutorial, or c
 
 -- Gathering tracker: tabs and goals
 L.NAV_PROGRESSIONS = "My progressions"
+L.TRACK_GROUP_FOR = "For %s"
+L.TRACK_GROUP_RANKS = "Target ranks"
+L.TRACK_GROUP_PLANS = "Progression plans"
+L.TRACK_GROUP_PROJECTS = "Projects"
 L.TRACK_TAB_ORDERS = "Orders"
 L.TRACK_TAB_CRAFTS = "Crafts"
 L.TRACK_TAB_CRAFTS_N = "Crafts (%d)"

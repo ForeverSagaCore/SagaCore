@@ -543,6 +543,10 @@ L.TUTO_MANETTE_5 = "Y ouvre l'aide de la page. B ferme l'aide, quitte un didacti
 
 -- Suivi de recolte : onglets et objectifs
 L.NAV_PROGRESSIONS = "Mes progressions"
+L.TRACK_GROUP_FOR = "Pour %s"
+L.TRACK_GROUP_RANKS = "Rangs visés"
+L.TRACK_GROUP_PLANS = "Plans de progression"
+L.TRACK_GROUP_PROJECTS = "Projets"
 L.TRACK_TAB_ORDERS = "Commandes"
 L.TRACK_TAB_CRAFTS = "Fabrications"
 L.TRACK_TAB_CRAFTS_N = "Fabrications (%d)"

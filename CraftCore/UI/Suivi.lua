@@ -223,7 +223,12 @@ local function ObjectifsDeProjets(liste)
             local deProg = not projet.rapides and NS.projets.EstDeProgression(projet)
             local commande = not projet.rapides and projet.commande ~= nil
             if commande then deProg = false end
-            table.insert(liste, { groupe = deProg and "progression" or "projets", commande = commande or nil,
+            local pour
+            if commande and NS.commandes and NS.commandes.Par then
+                local c = NS.commandes.Par(projet.commande)
+                pour = c and c.demandeur and NS.inventaire.NomCourt(c.demandeur) or nil
+            end
+            table.insert(liste, { groupe = deProg and "progression" or "projets", commande = commande or nil, pour = pour,
                 cle = "projet" .. tostring(projet.id), genre = "projet", rapides = projet.rapides,
                 titreAnnonce = nomBloc, fabriquer = fabriquer, nLignes = #lignes, lignes = lignes,
                 nom = (projet.rapides or deProg or commande) and nomBloc or string.format(L.GOAL_PROJECT, nomBloc), pct = pct, atteint = pct >= 1,
@@ -538,17 +543,41 @@ function suivi.ToutOuvrir(oui)
     suivi.Dessiner()
 end
 
--- Objectifs : chacun sur une ligne avec son pourcentage (la synthese) ; un
--- seul deplie a la fois, avec ses matieres.
-local function DessinerObjectifs(y, objectifs)
+-- Le groupe d'un objectif dans son onglet, comme les zones du suivi des
+-- quetes : cle et titre.
+local function GroupeDe(o, vue)
+    local L = NS.L
+    if vue == "commandes" then return "pour:" .. tostring(o.pour or "?"), string.format(L.TRACK_GROUP_FOR, o.pour or "?") end
+    if vue == "progressions" then
+        if o.genre == "progression" then return "rangs", L.TRACK_GROUP_RANKS end
+        return "plans", L.TRACK_GROUP_PLANS
+    end
+    if o.rapides then return "rapides", L.NAV_QUICK end
+    return "projets", L.TRACK_GROUP_PROJECTS
+end
+
+local function GroupesReplies()
+    local g = NS.base.ReglagesGeneraux()
+    if type(g.groupesReplies) ~= "table" then g.groupesReplies = {} end
+    return g.groupesReplies
+end
+
+-- Les objectifs de l'onglet, presentes comme le suivi des quetes : des
+-- groupes (comme les zones) separes d'un filet, qui se replient ; dedans,
+-- chaque objectif comme une quete, son pourcentage a droite ; deplie, ses
+-- matieres comme des objectifs de quete.
+local function DessinerObjectifs(y, objectifs, vue)
     local L = NS.L
     local zone = cadreSuivi.zone
     local largeur = LARGEUR_SUIVI - 2 * NS.charte.MARGE - 10
-    local g = NS.base.ReglagesGeneraux()
-    local nt, ni, nb, nbo = 0, 0, 0, 0
-    local function T(police)
+    local nt, ni, nbo, ne, nf = 0, 0, 0, 0, 0
+    local LIGNE = Police("ObjectiveTrackerLineFont", "GameFontHighlightSmall")
+    local TITRE = Police("ObjectiveTrackerHeaderFont", "GameFontNormal")
+    local function T(police, taille)
         nt = nt + 1
-        return Texte(nt, police)
+        local t = Texte(nt, police)
+        if taille then Taille(t, taille) end
+        return t
     end
     local function Icone()
         ni = ni + 1
@@ -563,151 +592,201 @@ local function DessinerObjectifs(y, objectifs)
         icone:Show()
         return icone
     end
-    if #objectifs == 0 then
-        local t = T("GameFontHighlightSmall")
-        t:ClearAllPoints()
-        t:SetPoint("TOPLEFT", zone, "TOPLEFT", 0, -y)
-        t:SetWidth(largeur)
-        t:SetText(L.GOAL_NONE)
-        t:SetTextColor(1, 1, 1)
-        return y + (t:GetStringHeight() or 14) + 8
+    local function Filet(yF)
+        nf = nf + 1
+        cadreSuivi.filets = cadreSuivi.filets or {}
+        local f = cadreSuivi.filets[nf]
+        if not f then
+            f = cadreSuivi:CreateTexture(nil, "ARTWORK")
+            cadreSuivi.filets[nf] = f
+        end
+        f:ClearAllPoints()
+        f:SetPoint("TOPLEFT", zone, "TOPLEFT", 0, -yF)
+        f:SetPoint("TOPRIGHT", zone, "TOPRIGHT", 0, -yF)
+        if _G.PixelUtil and _G.PixelUtil.SetHeight then _G.PixelUtil.SetHeight(f, 1, 1) else f:SetHeight(1) end
+        f:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+        f:Show()
     end
-    -- Plusieurs objectifs peuvent etre ouverts a la fois.
-    local ouverts = Ouverts()
-    local avantCommandes, titreCommandes = false, false
-    for _, o in ipairs(objectifs) do
-        local estOuvert = ouverts[o.cle] == true
-        -- Ligne d'en-tete, cliquable pour deplier.
-        nbo = nbo + 1
-        local b = cadreSuivi.boutons[nbo]
+    local function Ligne(pool)
+        cadreSuivi[pool] = cadreSuivi[pool] or {}
+        local liste = cadreSuivi[pool]
+        local rang = (pool == "entetes") and (ne + 1) or (nbo + 1)
+        if pool == "entetes" then ne = rang else nbo = rang end
+        local b = liste[rang]
         if not b then
             b = CreateFrame("Button", nil, cadreSuivi)
             b:SetHeight(18)
             b.marqueur = b:CreateTexture(nil, "ARTWORK")
             b.marqueur:SetSize(14, 14)
             b.marqueur:SetPoint("LEFT", b, "LEFT", 0, 0)
-            b.nom = b:CreateFontString(nil, "OVERLAY", Police("ObjectiveTrackerHeaderFont", "GameFontNormal"))
+            b.nom = b:CreateFontString(nil, "OVERLAY", TITRE)
             b.nom:SetPoint("LEFT", b.marqueur, "RIGHT", 4, 0)
             b.nom:SetJustifyH("LEFT")
             b.nom:SetWordWrap(false)
+            b.droite = b:CreateFontString(nil, "OVERLAY", TITRE)
+            b.droite:SetPoint("RIGHT", b, "RIGHT", 0, 0)
+            b.droite:SetJustifyH("RIGHT")
             b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-            cadreSuivi.boutons[nbo] = b
+            liste[rang] = b
         end
         b:ClearAllPoints()
-        b:SetPoint("TOPLEFT", zone, "TOPLEFT", 0, -y)
-        b:SetWidth(largeur)
-        b.marqueur:SetTexture(estOuvert and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up")
-        b.nom:SetFontObject(Police("ObjectiveTrackerHeaderFont", "GameFontNormal"))
-        Taille(b.nom, TAILLE_LIGNE + 1)
-        b.nom:SetText(o.nom)
-        if o.atteint then b.nom:SetTextColor(0.31, 0.82, 0.41) else b.nom:SetTextColor(1, 0.82, 0) end
-        local cle = o.cle
-        b:SetScript("OnClick", function()
-            ouverts[cle] = not ouverts[cle] or nil
+        if b.creer then b.creer:Hide() end
+        b:Show()
+        return b
+    end
+    if #objectifs == 0 then
+        local t = T(LIGNE, TAILLE_LIGNE)
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", zone, "TOPLEFT", 0, -y)
+        t:SetWidth(largeur)
+        t:SetText(L.GOAL_NONE)
+        t:SetTextColor(0.8, 0.8, 0.8)
+        return y + (t:GetStringHeight() or 14) + 8
+    end
+    -- Les groupes, dans l'ordre ou ils apparaissent.
+    local groupes, ordre = {}, {}
+    for _, o in ipairs(objectifs) do
+        local cleG, titreG = GroupeDe(o, vue)
+        if not groupes[cleG] then
+            groupes[cleG] = { titre = titreG, liste = {} }
+            table.insert(ordre, cleG)
+        end
+        table.insert(groupes[cleG].liste, o)
+    end
+    local ouverts, replies = Ouverts(), GroupesReplies()
+    for rangG, cleG in ipairs(ordre) do
+        local gr = groupes[cleG]
+        local replie = replies[cleG] == true
+        if rangG > 1 then
+            y = y + 8
+            Filet(y)
+            y = y + 6
+        end
+        -- En-tete du groupe : comme une zone du suivi des quetes.
+        local e = Ligne("entetes")
+        e:SetPoint("TOPLEFT", zone, "TOPLEFT", 0, -y)
+        e:SetWidth(largeur)
+        e:SetHeight(20)
+        e.marqueur:SetTexture(replie and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+        e.nom:SetFontObject("GameFontNormal")
+        Taille(e.nom, TAILLE_LIGNE + 3)
+        e.nom:SetText(gr.titre)
+        e.nom:SetTextColor(1, 0.82, 0)
+        e.droite:SetFontObject("GameFontNormal")
+        Taille(e.droite, TAILLE_LIGNE)
+        e.droite:SetText(tostring(#gr.liste))
+        e.droite:SetTextColor(0.8, 0.8, 0.8)
+        e.nom:SetPoint("RIGHT", e.droite, "LEFT", -6, 0)
+        e:SetScript("OnClick", function()
+            replies[cleG] = not replies[cleG] or nil
             suivi.Dessiner()
         end)
-        b:Show()
-        nb = nb + 1
-        local barre = cadreSuivi.barres[nb]
-        if not barre then
-            barre = Barre(cadreSuivi)
-            cadreSuivi.barres[nb] = barre
-        end
-        barre:ClearAllPoints()
-        barre:SetPoint("RIGHT", b, "RIGHT", -2, 0)
-        barre:SetFrameLevel(b:GetFrameLevel() + 2)
-        barre:SetValue(o.pct)
-        if o.pct >= 1 then barre:SetStatusBarColor(0.31, 0.82, 0.41)
-        else barre:SetStatusBarColor(1, 0.7, 0) end
-        barre.texte:SetText(math.floor(o.pct * 100 + 0.5) .. " %")
-        barre:Show()
-        b.nom:SetPoint("RIGHT", barre, "LEFT", -8, 0)
-        -- Tout est reuni : un bouton Creer sur la ligne, comme la petite
-        -- carte et l'etoile du suivi des quetes. Un clic lance la premiere
-        -- fabrication prete (le premier ouvre le metier s'il ne l'est pas).
-        if not b.creer then
-            b.creer = CreateFrame("Button", nil, b, "UIPanelButtonTemplate")
-            b.creer:SetSize(52, 16)
-        end
-        b.creer:Hide()
-        local recettePrete, fois
-        if NS.actions and NS.actions.EtatPourFabriquer then
-            local catalogue = CraftCoreDB and CraftCoreDB.recettes or {}
-            for _, l in ipairs(o.lignes or {}) do
-                local rec = catalogue[tostring(l.recette)] or catalogue[l.recette]
-                if type(rec) == "table" and NS.actions.EtatPourFabriquer(rec) == true then
-                    recettePrete = rec
-                    fois = math.min(l.quantite or 1, NS.actions.NombrePossible(rec))
-                    break
+        y = y + 24
+        if not replie then
+            for _, o in ipairs(gr.liste) do
+                local estOuvert = ouverts[o.cle] == true
+                local b = Ligne("boutons")
+                b:SetPoint("TOPLEFT", zone, "TOPLEFT", 6, -y)
+                b:SetWidth(largeur - 6)
+                b:SetHeight(18)
+                b.marqueur:SetTexture(estOuvert and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up")
+                b.nom:SetFontObject(TITRE)
+                Taille(b.nom, TAILLE_LIGNE + 1)
+                b.nom:SetText(o.nom)
+                if o.atteint then b.nom:SetTextColor(0.31, 0.82, 0.41) else b.nom:SetTextColor(1, 0.82, 0) end
+                -- Le pourcentage, comme celui des quetes.
+                local pct = math.floor((o.pct or 0) * 100 + 0.5)
+                b.droite:SetFontObject(TITRE)
+                Taille(b.droite, TAILLE_LIGNE)
+                b.droite:SetText(pct .. " %")
+                if pct >= 100 then b.droite:SetTextColor(0.31, 0.82, 0.41) else b.droite:SetTextColor(0.8, 0.8, 0.8) end
+                b.nom:SetPoint("RIGHT", b.droite, "LEFT", -8, 0)
+                local cle = o.cle
+                b:SetScript("OnClick", function()
+                    ouverts[cle] = not ouverts[cle] or nil
+                    suivi.Dessiner()
+                end)
+                -- Tout est reuni : un bouton Creer sur la ligne, comme la petite
+                -- carte et l'etoile du suivi des quetes. Un clic lance la
+                -- premiere fabrication prete (le premier ouvre le metier).
+                local recettePrete, fois
+                if NS.actions and NS.actions.EtatPourFabriquer then
+                    local catalogue = CraftCoreDB and CraftCoreDB.recettes or {}
+                    for _, l in ipairs(o.lignes or {}) do
+                        local rec = catalogue[tostring(l.recette)] or catalogue[l.recette]
+                        if type(rec) == "table" and NS.actions.EtatPourFabriquer(rec) == true then
+                            recettePrete = rec
+                            fois = math.min(l.quantite or 1, NS.actions.NombrePossible(rec))
+                            break
+                        end
+                    end
+                end
+                if recettePrete then
+                    if not b.creer then
+                        b.creer = CreateFrame("Button", nil, b, "UIPanelButtonTemplate")
+                        b.creer:SetSize(52, 16)
+                    end
+                    b.creer:ClearAllPoints()
+                    b.creer:SetPoint("RIGHT", b.droite, "LEFT", -6, 0)
+                    b.creer:SetText(L.CRAFT_BUTTON)
+                    NS.actions.PreparerBoutonFabriquer(b.creer, recettePrete, fois)
+                    local txt = b.creer:GetFontString()
+                    if txt then Taille(txt, 10) end
+                    b.creer:SetFrameLevel(b:GetFrameLevel() + 3)
+                    b.nom:SetPoint("RIGHT", b.creer, "LEFT", -6, 0)
+                end
+                y = y + 20
+                if estOuvert then
+                    if o.detail then
+                        local t = T(LIGNE, TAILLE_LIGNE - 1)
+                        t:ClearAllPoints()
+                        t:SetPoint("TOPLEFT", zone, "TOPLEFT", 28, -y)
+                        t:SetWidth(largeur - 28)
+                        t:SetText(o.detail)
+                        t:SetTextColor(0.8, 0.8, 0.8)
+                        y = y + (t:GetStringHeight() or 14) + 2
+                    end
+                    if #(o.matieres or {}) == 0 then
+                        local t = T(LIGNE, TAILLE_LIGNE)
+                        t:ClearAllPoints()
+                        t:SetPoint("TOPLEFT", zone, "TOPLEFT", 28, -y)
+                        t:SetWidth(largeur - 28)
+                        t:SetText(L.GOAL_NOTHING_TO_GATHER)
+                        t:SetTextColor(0.8, 0.8, 0.8)
+                        y = y + 16
+                    end
+                    for _, m in ipairs(o.matieres or {}) do
+                        local icone = Icone()
+                        icone:SetPoint("TOPLEFT", zone, "TOPLEFT", 28, -y)
+                        icone:SetTexture(NS.Appeler(NS.jeu.iconeObjet, m.objet) or "Interface\\Icons\\INV_Misc_QuestionMark")
+                        icone:SetDesaturated(m.possede == 0)
+                        local nom = T(LIGNE, TAILLE_LIGNE)
+                        nom:ClearAllPoints()
+                        nom:SetPoint("LEFT", icone, "RIGHT", 6, 0)
+                        nom:SetWidth(largeur - 28 - 22 - 60)
+                        nom:SetWordWrap(false)
+                        nom:SetText(NS.inventaire.NomDObjet(m.objet))
+                        local compte = T(LIGNE, TAILLE_LIGNE)
+                        compte:ClearAllPoints()
+                        compte:SetPoint("RIGHT", icone, "LEFT", largeur - 2 - 28, 0)
+                        compte:SetWidth(60)
+                        compte:SetJustifyH("RIGHT")
+                        compte:SetText(math.min(m.possede, m.requis) .. " / " .. m.requis)
+                        if m.manque == 0 then
+                            nom:SetTextColor(0.5, 0.5, 0.5)
+                            compte:SetTextColor(0.31, 0.82, 0.41)
+                        elseif m.possede == 0 then
+                            nom:SetTextColor(0.6, 0.6, 0.6)
+                            compte:SetTextColor(0.6, 0.6, 0.6)
+                        else
+                            nom:SetTextColor(0.85, 0.85, 0.85)
+                            compte:SetTextColor(1, 1, 1)
+                        end
+                        y = y + 18
+                    end
+                    y = y + 4
                 end
             end
-        end
-        if recettePrete then
-            b.creer:ClearAllPoints()
-            b.creer:SetPoint("RIGHT", barre, "LEFT", -6, 0)
-            b.creer:SetText(L.CRAFT_BUTTON)
-            NS.actions.PreparerBoutonFabriquer(b.creer, recettePrete, fois)
-            local txt = b.creer:GetFontString()
-            if txt then Taille(txt, 10) end
-            b.creer:SetFrameLevel(b:GetFrameLevel() + 3)
-            b.nom:SetPoint("RIGHT", b.creer, "LEFT", -6, 0)
-        end
-        y = y + 20
-        if estOuvert then
-            if o.detail then
-                local t = T(Police("ObjectiveTrackerLineFont", "GameFontHighlightSmall"))
-                Taille(t, TAILLE_LIGNE - 1)
-                t:ClearAllPoints()
-                t:SetPoint("TOPLEFT", zone, "TOPLEFT", 18, -y)
-                t:SetWidth(largeur - 18)
-                t:SetText(o.detail)
-                t:SetTextColor(0.8, 0.8, 0.8)
-                y = y + 16
-            end
-            if #o.matieres == 0 then
-                local t = T(Police("ObjectiveTrackerLineFont", "GameFontHighlightSmall"))
-                Taille(t, TAILLE_LIGNE)
-                t:ClearAllPoints()
-                t:SetPoint("TOPLEFT", zone, "TOPLEFT", 18, -y)
-                t:SetWidth(largeur - 18)
-                t:SetText(L.GOAL_NOTHING_TO_GATHER)
-                t:SetTextColor(0.8, 0.8, 0.8)
-                y = y + 16
-            end
-            for _, m in ipairs(o.matieres) do
-                local icone = Icone()
-                icone:SetPoint("TOPLEFT", zone, "TOPLEFT", 18, -y)
-                icone:SetTexture(NS.Appeler(NS.jeu.iconeObjet, m.objet) or "Interface\\Icons\\INV_Misc_QuestionMark")
-                -- Pas encore recoltee : grisee.
-                icone:SetDesaturated(m.possede == 0)
-                local nom = T(Police("ObjectiveTrackerLineFont", "GameFontHighlightSmall"))
-                Taille(nom, TAILLE_LIGNE)
-                nom:ClearAllPoints()
-                nom:SetPoint("LEFT", icone, "RIGHT", 6, 0)
-                nom:SetWidth(largeur - 18 - 22 - 70)
-                nom:SetWordWrap(false)
-                nom:SetText(NS.inventaire.NomDObjet(m.objet))
-                local compte = T(Police("ObjectiveTrackerLineFont", "GameFontHighlightSmall"))
-                Taille(compte, TAILLE_LIGNE)
-                compte:ClearAllPoints()
-                -- Centre sur l'icone, cale au bord droit de la zone.
-                compte:SetPoint("RIGHT", icone, "LEFT", largeur - 2 - 18, 0)
-                compte:SetWidth(70)
-                compte:SetJustifyH("RIGHT")
-                compte:SetText(math.min(m.possede, m.requis) .. " / " .. m.requis)
-                if m.manque == 0 then
-                    nom:SetTextColor(0.31, 0.82, 0.41)
-                    compte:SetTextColor(0.31, 0.82, 0.41)
-                elseif m.possede == 0 then
-                    nom:SetTextColor(0.6, 0.6, 0.6)
-                    compte:SetTextColor(0.6, 0.6, 0.6)
-                else
-                    nom:SetTextColor(1, 1, 1)
-                    compte:SetTextColor(1, 1, 1)
-                end
-                y = y + 18
-            end
-            y = y + 4
         end
     end
     return y + 4
@@ -720,6 +799,8 @@ function suivi.Dessiner()
     for _, i in ipairs(cadreSuivi.icones) do i:Hide() end
     for _, b in ipairs(cadreSuivi.barres) do b:Hide() end
     for _, b in ipairs(cadreSuivi.boutons) do b:Hide() end
+    for _, b in ipairs(cadreSuivi.entetes or {}) do b:Hide() end
+    for _, f in ipairs(cadreSuivi.filets or {}) do f:Hide() end
     if cadreSuivi.filetCommandes then cadreSuivi.filetCommandes:Hide() end
     local vue = Vue()
     local objectifs = suivi.Objectifs()
@@ -755,7 +836,7 @@ function suivi.Dessiner()
     end
     if cadreSuivi.filetHaut then cadreSuivi.filetHaut:Show() end
     local y = HAUT_ONGLETS
-    y = DessinerObjectifs(y, deLOnglet)
+    y = DessinerObjectifs(y, deLOnglet, vue)
     -- Tout ouvrir / tout fermer : selon ce qui est deja ouvert.
     local ouverts, tousOuverts = Ouverts(), #deLOnglet > 0
     for _, o in ipairs(deLOnglet) do if not ouverts[o.cle] then tousOuverts = false end end
