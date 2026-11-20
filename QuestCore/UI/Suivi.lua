@@ -1366,7 +1366,11 @@ function suivi.Rendre()
         local tournee = TourneeRecolte()
         local nRecolte = tournee and 1 or 0
         nParcours = nParcours + nRecolte
-        s.routeCategorie = s.routeCategorie or "divers"
+        -- Premiere fois : la sorte du dernier parcours choisi.
+        if not s.routeCategorie then
+            local choisi = NS.parcours and NS.parcours.Trouver(NS.ClePersonnage(), s.parcoursChoisi)
+            s.routeCategorie = choisi and CategorieDe(choisi) or (nDivers == 0 and nDonjons > 0 and "donjons") or "divers"
+        end
         for cleR, b in pairs(cadre.vuesRoute or {}) do
             b:SetShown(not s.replie and enItineraire)
             b:Choisir(cleR == s.routeCategorie)
