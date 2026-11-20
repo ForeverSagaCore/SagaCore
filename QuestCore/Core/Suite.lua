@@ -3824,46 +3824,39 @@ function Suite.Curseur(parent, mini, maxi, pas, lire, poser, format, boutons, gr
             -- Avec une fleche double : les quatre boutons sont dessines pareil,
             -- le cadre du bouton du grimoire et une ou deux pointes dorees,
             -- toutes dans le meme carre.
-            local tex = b:CreateTexture(nil, "OVERLAY", nil, 1)
-            local essai = tex.SetVertexOffset ~= nil
-            if essai then
-                local fond = b:CreateTexture(nil, "OVERLAY", nil, 0)
-                fond:SetPoint("TOPLEFT", 6, -6)
-                fond:SetPoint("BOTTOMRIGHT", -6, 6)
-                fond:SetColorTexture(0.11, 0.1, 0.09, 1)
-                b.pointes = {}
-                local n = (saut ~= pas) and 2 or 1
-                for k = 1, n do
-                    local t = (k == 1) and tex or b:CreateTexture(nil, "OVERLAY", nil, 1)
-                    local largeur, hauteur = (n == 2) and 6 or 8, (n == 2) and 10 or 12
-                    t:SetColorTexture(1, 0.82, 0, 1)
-                    t:SetSize(largeur, hauteur)
-                    local dx = (n == 2) and ((k == 1) and -3.5 or 3.5) or 0
-                    t:SetPoint("CENTER", dx, 0)
-                    -- La pointe : les deux coins du cote du sens se rejoignent.
-                    if sens > 0 then
-                        t:SetVertexOffset(3, 0, -hauteur / 2) t:SetVertexOffset(4, 0, hauteur / 2)
-                    else
-                        t:SetVertexOffset(1, 0, -hauteur / 2) t:SetVertexOffset(2, 0, hauteur / 2)
-                    end
-                    t.dx = dx
-                    table.insert(b.pointes, t)
-                end
-                hooksecurefunc(b, "SetEnabled", function(self, oui)
-                    for _, t in ipairs(self.pointes) do
-                        if oui then t:SetColorTexture(1, 0.82, 0, 1) else t:SetColorTexture(0.45, 0.45, 0.45, 1) end
-                    end
-                end)
-                b:HookScript("OnMouseDown", function(self)
-                    if not self:IsEnabled() then return end
-                    for _, t in ipairs(self.pointes) do t:SetPoint("CENTER", t.dx + 1, -1) end
-                end)
-                b:HookScript("OnMouseUp", function(self)
-                    for _, t in ipairs(self.pointes) do t:SetPoint("CENTER", t.dx, 0) end
-                end)
-            else
-                tex:Hide()
+            -- Les fleches du jeu (celles des pages de l'interface moderne,
+            -- a defaut celles de la saisie de monnaie), toutes de la meme
+            -- taille : une pour avancer de 1, deux qui se chevauchent pour
+            -- avancer d'un grand pas.
+            local fond = b:CreateTexture(nil, "OVERLAY", nil, 0)
+            fond:SetPoint("TOPLEFT", 6, -6)
+            fond:SetPoint("BOTTOMRIGHT", -6, 6)
+            fond:SetColorTexture(0.11, 0.1, 0.09, 1)
+            local atlas = sens > 0 and "common-icon-forwardarrow" or "common-icon-backarrow"
+            local fichier = sens > 0 and "Interface\\MoneyFrame\\Arrow-Right-Up" or "Interface\\MoneyFrame\\Arrow-Left-Up"
+            b.pointes = {}
+            local n = (saut ~= pas) and 2 or 1
+            for k = 1, n do
+                local t = b:CreateTexture(nil, "OVERLAY", nil, 1)
+                if not (t.SetAtlas and pcall(t.SetAtlas, t, atlas) and t:GetAtlas()) then t:SetTexture(fichier) end
+                t:SetSize(12, 12)
+                t.dx = (n == 2) and ((k == 1) and -3 or 3) or 0
+                t:SetPoint("CENTER", t.dx, 0)
+                table.insert(b.pointes, t)
             end
+            hooksecurefunc(b, "SetEnabled", function(self, oui)
+                for _, t in ipairs(self.pointes) do
+                    t:SetDesaturated(not oui)
+                    t:SetAlpha(oui and 1 or 0.45)
+                end
+            end)
+            b:HookScript("OnMouseDown", function(self)
+                if not self:IsEnabled() then return end
+                for _, t in ipairs(self.pointes) do t:SetPoint("CENTER", t.dx + 1, -1) end
+            end)
+            b:HookScript("OnMouseUp", function(self)
+                for _, t in ipairs(self.pointes) do t:SetPoint("CENTER", t.dx, 0) end
+            end)
         end
         b:SetScript("OnClick", function()
             local okL, v = pcall(lire)
