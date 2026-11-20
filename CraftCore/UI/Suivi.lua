@@ -333,7 +333,10 @@ function suivi.Objectifs()
         ObjectifsDeProjets(liste)
         local rangs = {}
         ObjectifsDeProgression(rangs)
-        for _, o in ipairs(rangs) do o.groupe = "progression" table.insert(liste, o) end
+        -- Rang atteint : l'objectif quitte le suivi (felicitations a la place).
+        for _, o in ipairs(rangs) do
+            if not o.atteint then o.groupe = "progression" table.insert(liste, o) end
+        end
         -- Les rangs vises avant les projets de progression ; les commandes
         -- pour mes autres personnages apres mes propres fabrications.
         local avant, apres = {}, {}
@@ -704,6 +707,31 @@ function suivi.FabricationPreteIci()
     return false
 end
 
+-- La fabrication `idRec` sert-elle encore l'objectif `cle` ? Non si
+-- l'objectif est atteint (rang vise, projet fini) ou si l'etape en cours a
+-- deja ce qu'il lui faut, compte en direct dans les sacs.
+function suivi.EncoreUtile(cle, idRec)
+    local ok, objectifs = pcall(suivi.Objectifs)
+    if not ok then return true end
+    producteurs = nil
+    for _, o in ipairs(objectifs or {}) do
+        if o.cle == cle then
+            if o.atteint then return false end
+            for _, e in ipairs(EtapesDeFabrication(o.lignes)) do
+                if e.recette and tostring(e.recette.id) == tostring(idRec) then
+                    if e.finale then return true end
+                    local compter = NS.Lecture("C_Item.GetItemCount", "GetItemCount")
+                    local n = compter and NS.Appeler(compter, e.objet, false) or nil
+                    if type(n) == "number" then return n < (e.besoin or 0) end
+                    return not e.faite
+                end
+            end
+            return false
+        end
+    end
+    return false
+end
+
 -- Le groupe d'un objectif dans son onglet, comme les zones du suivi des
 -- quetes : cle et titre.
 local function GroupeDe(o, vue)
@@ -977,7 +1005,10 @@ local function DessinerObjectifs(y, objectifs, vue)
                     b.creer:SetPoint("RIGHT", b.droite, "LEFT", -6, 0)
                     b.creer:SetSize(60, 16)
                     b.creer:SetText((etapes and #etapes > 1) and L.CRAFT_STEP_NOW or L.CRAFT_BUTTON)
-                    NS.actions.PreparerBoutonFabriquer(b.creer, recettePrete, fois)
+                    local cleO, idRec = o.cle, recettePrete.id
+                    NS.actions.PreparerBoutonFabriquer(b.creer, recettePrete, fois, function()
+                        return suivi.EncoreUtile(cleO, idRec)
+                    end)
                     -- L'infobulle dit quelle etape le clic va lancer.
                     b.creer.etape = (etapes and #etapes > 1 and etapeP) and string.format(L.CRAFT_STEP_TIP, rangP, #etapes,
                         NS.inventaire.NomDObjet(etapeP.objet), fois or 1) or nil

@@ -44,7 +44,7 @@ end
 
 -- Lance la fabrication. Toujours depuis un clic : le jeu l'exige.
 -- `nombre` = "tout" : autant que les sacs le permettent, compte au clic.
-function actions.Fabriquer(recette, nombre)
+function actions.Fabriquer(recette, nombre, garde)
     local L = NS.L
     if nombre == "tout" then nombre = actions.NombrePossible(recette) end
     -- Metier deja ouvert : ce qu'il faut a proximite (forge, enclume, feu
@@ -67,7 +67,11 @@ function actions.Fabriquer(recette, nombre)
         end
     end
     -- Serie en cours, pour la barre de fabrication ("3 / 12").
-    actions.serie = { total = tonumber(nombre) or 1, faits = 0 }
+    -- `garde` dit si la fabrication sert encore (etape finie, rang atteint) :
+    -- la serie s'arrete des qu'elle ne sert plus.
+    actions.serie = { total = tonumber(nombre) or 1, faits = 0, garde = garde }
+    -- Le metier va s'ouvrir en cache : sans le bruit d'ouverture.
+    if not (NS.recettes.PretALancer and NS.recettes.PretALancer(recette)) and actions.Silence then actions.Silence() end
     local resultat = NS.recettes.Fabriquer(recette, nombre or 1)
     if resultat == "ouverture" then
         -- Ouvert par notre bouton : la fenetre du metier reste invisible.
@@ -87,7 +91,7 @@ end
 -- Pose sur un bouton du jeu tout ce qu'il faut pour fabriquer `recette` :
 -- grise s'il manque quelque chose dans les sacs, et au survol, chaque
 -- composant, ce qu'on en a et ou est le reste.
-function actions.PreparerBoutonFabriquer(bouton, recette, nombre)
+function actions.PreparerBoutonFabriquer(bouton, recette, nombre, garde)
     local L = NS.L
     local pret, manques = actions.EtatPourFabriquer(recette)
     if pret == nil then
@@ -101,7 +105,7 @@ function actions.PreparerBoutonFabriquer(bouton, recette, nombre)
     -- Un bouton grise ne recoit pas le survol par defaut : sans cela,
     -- l'infobulle qui dit ce qui manque et ou c'est ne s'affichait jamais.
     if bouton.SetMotionScriptsWhileDisabled then pcall(bouton.SetMotionScriptsWhileDisabled, bouton, true) end
-    bouton:SetScript("OnClick", function() actions.Fabriquer(recette, nombre or 1) end)
+    bouton:SetScript("OnClick", function() actions.Fabriquer(recette, nombre or 1, garde) end)
     bouton:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         if pret then
@@ -266,9 +270,50 @@ local function Cacher()
     end
 end
 
+-- Coupe les bruitages un court instant (ouverture et fermeture du metier en
+-- cache), puis les remet comme ils etaient.
+local sonCoupe
+function actions.Silence()
+    local lire = NS.Lecture("C_CVar.GetCVar", "GetCVar")
+    local poser = NS.Lecture("C_CVar.SetCVar", "SetCVar")
+    if not (lire and poser) then return end
+    if not sonCoupe then
+        local avant = NS.Appeler(lire, "Sound_EnableSFX")
+        if avant ~= "1" then return end
+        sonCoupe = avant
+        NS.Appeler(poser, "Sound_EnableSFX", "0")
+    end
+    local plusTard = NS.Lecture("C_Timer.After")
+    local function Remettre()
+        if sonCoupe then NS.Appeler(poser, "Sound_EnableSFX", sonCoupe) sonCoupe = nil end
+    end
+    if plusTard then NS.Appeler(plusTard, 0.6, Remettre) else Remettre() end
+end
+do
+    local f = CreateFrame("Frame")
+    pcall(f.RegisterEvent, f, "PLAYER_LOGOUT")
+    f:SetScript("OnEvent", function()
+        local poser = NS.Lecture("C_CVar.SetCVar", "SetCVar")
+        if sonCoupe and poser then NS.Appeler(poser, "Sound_EnableSFX", sonCoupe) sonCoupe = nil end
+    end)
+end
+
+-- La serie sert-elle encore ? Sinon on arrete de repeter la fabrication.
+function actions.VerifierSerie()
+    local serie = actions.serie
+    if not (serie and serie.garde) then return end
+    local ok, utile = pcall(serie.garde)
+    if ok and utile == false then
+        actions.serie = nil
+        local arreter = NS.Lecture("C_TradeSkillUI.StopRecipeRepeat")
+        if arreter then NS.Appeler(arreter) end
+    end
+end
+
 local function Fermer()
     if not fantome.actif then return end
     fantome.actif = nil
+    actions.Silence()
     local j = NS.jeu
     if j and j.fermerMetier then pcall(j.fermerMetier) end
     for _, f in ipairs(Fenetres()) do
@@ -286,11 +331,19 @@ end
 do
     local f = CreateFrame("Frame")
     for _, e in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_LIST_UPDATE", "UNIT_SPELLCAST_STOP",
-        "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_INTERRUPTED", "PLAYER_REGEN_DISABLED" }) do
+        "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_INTERRUPTED", "PLAYER_REGEN_DISABLED",
+        "UNIT_SPELLCAST_SUCCEEDED", "BAG_UPDATE_DELAYED", "SKILL_LINES_CHANGED" }) do
         pcall(f.RegisterEvent, f, e)
     end
     local fermerDans
     f:SetScript("OnEvent", function(_, evenement, unite)
+        if evenement == "UNIT_SPELLCAST_SUCCEEDED" or evenement == "BAG_UPDATE_DELAYED" or evenement == "SKILL_LINES_CHANGED" then
+            if evenement ~= "UNIT_SPELLCAST_SUCCEEDED" or unite == "player" then
+                local plusTard = NS.Lecture("C_Timer.After")
+                if plusTard then NS.Appeler(plusTard, 0.1, actions.VerifierSerie) else actions.VerifierSerie() end
+            end
+            return
+        end
         if evenement == "TRADE_SKILL_SHOW" or evenement == "TRADE_SKILL_LIST_UPDATE" then
             local quand = actions.fantomeDemande
             if quand and (NS.Appeler(GetTime) or 0) - quand < 5 then

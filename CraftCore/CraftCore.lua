@@ -318,6 +318,8 @@ cadre:SetScript("OnEvent", function(_, evenement, argument1)
     elseif evenement == "NEW_RECIPE_LEARNED" or evenement == "SKILL_LINES_CHANGED" then
         if evenement == "SKILL_LINES_CHANGED" and NS.recettes.ReleverNiveaux then
             pcall(NS.recettes.ReleverNiveaux)
+            -- Un point de metier gagne : rangs vises a jour tout de suite.
+            if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
         end
         -- Une recette tout juste apprise est notee aussitot, sans attendre
         -- que la fenetre du metier soit ouverte.
