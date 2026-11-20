@@ -3044,8 +3044,12 @@ end
 -- ferait le joueur avec sa commande /way.
 -- ---------------------------------------------------------------------------
 
--- La commande de l'add-on de trajet, ou nil s'il n'est pas la.
+-- La commande de l'add-on de trajet, ou nil s'il n'est pas la. HubCore,
+-- s'il est installe, choisit l'add-on (reglages) ; sinon, Shortest Path
+-- Forever directement.
 function suivi.Passerelle()
+    local hub = _G.HubCoreAPI
+    if hub and hub.Disponible then return hub.Disponible() and hub or nil end
     local h = _G.hash_SlashCmdList
     local f = type(h) == "table" and h["/PATH"] or nil
     if type(f) ~= "function" and type(_G.SlashCmdList) == "table" then
@@ -3064,6 +3068,7 @@ function suivi.EnvoyerEtape(idParcours)
     local moi = cle and NS.base.Perso(cle)
     local pc = moi and NS.parcours.Trouver(cle, idParcours)
     if not (commande and pc) then return end
+    local hub = type(commande) == "table" and commande or nil
     for _, id in ipairs(pc.etapes) do
         local e = NS.parcours.EtatEtape(moi, id)
         if e ~= "faite" and e ~= "attente" then
@@ -3075,8 +3080,12 @@ function suivi.EnvoyerEtape(idParcours)
                 local titre = string.gsub(NS.ref.NomDeQuete(id, moi) or "", "[\r\n]", " ")
                 local texte = string.format("way %s%.1f %.1f %s", zone and (zone .. " ") or "", pt.x * 100, pt.y * 100, titre)
                 if NS.Trace then NS.Trace("passerelle : " .. texte) end
-                pcall(commande, texte)
-                NS.Dire(string.format(L.ROUTE_DETAILED_SENT, titre))
+                if hub then
+                    pcall(hub.Trajet, { carte = pt.carte, x = pt.x, y = pt.y, titre = titre })
+                else
+                    pcall(commande, texte)
+                end
+                NS.Dire(string.format(L.ROUTE_DETAILED_SENT, (hub and hub.NomTrajet and hub.NomTrajet()) or "Shortest Path Forever", titre))
                 return
             end
         end
