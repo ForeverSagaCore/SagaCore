@@ -190,6 +190,17 @@ function F.Construire()
                       b.lien:ClearAllPoints()
                       b.lien:SetPoint("LEFT", b.rLien, "LEFT", 16, 0)
                       b.lien:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+                      -- Le jeu ne laisse pas un add-on ecrire dans le presse-papiers :
+                      -- Copier selectionne l'adresse, Cmd+C (ou Ctrl+C) la copie.
+                      local champ = b.lien
+                      b.copier = O.Bouton(b.rLien, 80, function()
+                          champ:SetFocus()
+                          champ:HighlightText()
+                          print("|cffffd100HubCore|r " .. T("Adresse sélectionnée : Cmd+C (ou Ctrl+C) pour la copier.",
+                              "Address selected: Cmd+C (or Ctrl+C) to copy it."))
+                      end)
+                      b.copier:ClearAllPoints()
+                      b.copier:SetPoint("LEFT", b.lien, "RIGHT", 10, 0)
                       b.role = O.Detail(30)
                       b.etat = O.Detail(16)
                       if rang < #NS.ADDONS then
@@ -200,7 +211,8 @@ function F.Construire()
                           filet:SetHeight(1)
                           filet:SetPoint("LEFT", f, "LEFT", 0, 0)
                           filet:SetPoint("RIGHT", f, "RIGHT", 0, 0)
-                          filet:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+                          -- Le filet des pages de LegacyCore : brun, bien visible.
+                          filet:SetColorTexture(0.54, 0.39, 0.17, 0.8)
                       end
                       table.insert(page.blocs, b)
                   end
@@ -210,8 +222,17 @@ function F.Construire()
                   page.intro:SetText(T("Des add-ons d'autres auteurs que la suite sait utiliser. Installés, ils prennent le relais avec leur propre interface ; absents, rien ne change. Le jeu ne peut pas ouvrir de lien : copiez l'adresse, ou cherchez le nom dans l'app CurseForge.",
                       "Add-ons by other authors that the suite can use. Installed, they take over with their own interface; missing, nothing changes. The game cannot open links: copy the address, or search the name in the CurseForge app."))
                   for _, b in ipairs(page.blocs) do
-                      local texte, couleur = ETATS[NS.Etat(b.a)]()
-                      b.rang.nom:SetText(b.a.nom)
+                      local etat = NS.Etat(b.a)
+                      local texte, couleur = ETATS[etat]()
+                      -- Installe et actif : le nom en vert, une coche a cote.
+                      if etat == "actif" then
+                          b.rang.nom:SetText(b.a.nom .. "  |TInterface\\RaidFrame\\ReadyCheck-Ready:14|t")
+                          b.rang.nom:SetTextColor(0.31, 0.82, 0.41)
+                      else
+                          b.rang.nom:SetText(b.a.nom)
+                          b.rang.nom:SetTextColor(1, 0.82, 0)
+                      end
+                      b.copier:SetText(T("Copier", "Copy"))
                       b.rLien.nom:SetText("")
                       if b.a.url then
                           b.lien:SetText(b.a.url)
@@ -220,7 +241,7 @@ function F.Construire()
                       end
                       b.lien:SetCursorPosition(0)
                       b.role:SetText(b.a.role() .. "\n" .. b.a.sert())
-                      b.etat:SetText(texte)
+                      b.etat:SetText(etat == "actif" and "" or texte)
                       b.etat:SetTextColor(couleur[1], couleur[2], couleur[3])
                   end
               end },
