@@ -50,7 +50,36 @@ local function BesoinsDe(cle)
     return NS.base.AvecPersonnage(cle, function()
         local _, _, rapatries, pris = NS.projets.CalculerTout(
             NS.projets.StocksDuPersonnage(), NS.projets.StocksDesAutres())
-        return rapatries or {}, pris or {}
+        rapatries = rapatries or {}
+        -- Les rangs vises (Monter un metier) sans projet : ce que la
+        -- progression prend dans les stocks du compte et qui n'est pas chez
+        -- lui se rapatrie aussi.
+        local fiche = NS.base.FicheAffichee()
+        local catalogue = NS.recettes
+        if fiche and type(fiche.objectifsProgression) == "table" and catalogue and catalogue.Progression then
+            local avecProjet = {}
+            for _, projet in ipairs(NS.projets.Tous and NS.projets.Tous(false) or {}) do
+                if projet.progression then avecProjet[tostring(projet.progression)] = true end
+            end
+            local chezLui = NS.projets.StocksDuPersonnage()
+            local deja = {}
+            for cleM, vise in pairs(fiche.objectifsProgression) do
+                local ligne = tonumber(cleM)
+                local sien = type(fiche.metiers) == "table" and fiche.metiers[tostring(cleM)]
+                if ligne and type(sien) == "table" and sien.rang and not avecProjet[tostring(cleM)] then
+                    local ok, plan = pcall(catalogue.Progression, ligne, sien.rang, sien.rangMax, vise)
+                    for objet, n in pairs(ok and plan and plan.utilises or {}) do
+                        objet = tonumber(objet)
+                        if objet then deja[objet] = (deja[objet] or 0) + (tonumber(n) or 0) end
+                    end
+                end
+            end
+            for objet, total in pairs(deja) do
+                local manque = total - (chezLui[objet] or 0)
+                if manque > 0 then rapatries[objet] = math.max(rapatries[objet] or 0, manque) end
+            end
+        end
+        return rapatries, pris or {}
     end)
 end
 
@@ -578,7 +607,7 @@ end
 
 local HAUT_DU_CONTENU = 24 + 12  -- barre de titre, puis la marge de la charte
 local BAS_DU_CONTENU = 12 + 4
-local LIGNES_MAX = 8              -- par section ; au-dela, "et N autres"
+local LIGNES_MAX = 500            -- tout est montre ; le panneau defile au besoin
 -- Fenetres du jeu que le panneau accompagne, selon le lieu, et l'ecart a
 -- laisser a leur droite (la banque a des onglets lateraux).
 local FENETRES = {
@@ -593,10 +622,17 @@ local function Construire()
     local cadre = NS.charte.Fenetre("CraftCoreAssistant", LARGEUR, 100,
         { portrait = false, deplacable = false, strate = "MEDIUM", sansPied = true })
     if cadre.titre then cadre.titre:SetText("CraftCore") end
-    local contenu = CreateFrame("Frame", nil, cadre)
-    contenu:SetPoint("TOPLEFT", cadre.zone, "TOPLEFT", 0, 0)
-    contenu:SetPoint("TOPRIGHT", cadre.zone, "TOPRIGHT", 0, 0)
-    contenu:SetHeight(1)
+    -- Le contenu defile quand il depasse la hauteur du panneau (toute la
+    -- hauteur de l'hotel des ventes, ou celle de la fenetre accompagnee).
+    local defil = CreateFrame("ScrollFrame", nil, cadre, "UIPanelScrollFrameTemplate")
+    defil:SetPoint("TOPLEFT", cadre.zone, "TOPLEFT", 0, 0)
+    defil:SetPoint("BOTTOMRIGHT", cadre.zone, "BOTTOMRIGHT", 0, 0)
+    local contenu = CreateFrame("Frame", nil, defil)
+    -- La place de la barre de defilement est toujours gardee : rien ne bouge
+    -- quand elle apparait.
+    contenu:SetSize(LARGEUR - 2 * NS.charte.MARGE - 10 - 22, 1)
+    defil:SetScrollChild(contenu)
+    cadre.defil = defil
     cadre.contenu = contenu
     cadre.textes, cadre.icones, cadre.boutons = {}, {}, {}
     -- A la banque : le fond cuir de la banque du jeu, en mosaique.
@@ -702,9 +738,7 @@ local function LierManette(actif)
         -- Y, pas A : A reste au jeu pour prendre et poser les objets de la
         -- banque et des sacs.
         pcall(_G.SetOverrideBindingClick, panneau, true, "PAD4", "CraftCoreAssistantManette", "LeftButton")
-        local b = panneau.boutons[1]
-        local texte = b:GetText() or ""
-        if not string.find(texte, "(Y)", 1, true) then b:SetText(texte .. " (Y)") end
+
     end
 end
 courrier.LierManette = LierManette
@@ -779,10 +813,10 @@ local function Remplir(plan)
         local b = Bouton(nb)
         b:ClearAllPoints()
         b:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 0, -(y + 4))
-        -- La premiere action se fait aussi a la manette (touche A) : l'icone
+        -- La premiere action se fait aussi a la manette (touche Y) : l'icone
         -- du jeu devant le libelle.
         if nb == 1 and courrier.ToucheManette() then
-            local ok, g = pcall(NS.manette.Glyphe, "PAD1", 14)
+            local ok, g = pcall(NS.manette.Glyphe, "PAD4", 14)
             if ok and g then libelle = g .. " " .. libelle end
         end
         b:SetText(libelle)
@@ -972,8 +1006,26 @@ local function Remplir(plan)
     end
     panneau.contenu:SetHeight(math.max(1, y))
     LierManetteBientot(nb > 0)
-    -- Hauteur exacte du contenu : ni vide, ni debordement.
-    panneau:SetHeight(HAUT_DU_CONTENU + y + BAS_DU_CONTENU)
+    -- Hauteur : a l'hotel des ventes, toute la sienne ; ailleurs, celle du
+    -- contenu, sans depasser la fenetre accompagnee. Au-dela, ca defile.
+    local voulu = HAUT_DU_CONTENU + y + BAS_DU_CONTENU
+    local cible = panneau.hauteurCible
+    local hauteur = voulu
+    if cible and cible > 120 then
+        hauteur = (lieu == "encheres") and cible or math.min(voulu, cible)
+    else
+        hauteur = math.min(voulu, (UIParent:GetHeight() or 800) * 0.8)
+    end
+    panneau:SetHeight(hauteur)
+    local defile = voulu > hauteur + 1
+    if panneau.defil then
+        panneau.defil:ClearAllPoints()
+        panneau.defil:SetPoint("TOPLEFT", panneau.zone, "TOPLEFT", 0, 0)
+        panneau.defil:SetPoint("BOTTOMRIGHT", panneau.zone, "BOTTOMRIGHT", defile and -22 or 0, 0)
+        local barre = panneau.defil.ScrollBar
+        if barre then barre:SetShown(defile) end
+        if not defile then panneau.defil:SetVerticalScroll(0) end
+    end
     return not vide
 end
 
@@ -981,22 +1033,23 @@ end
 -- de l'interface. Plusieurs cadres peuvent la composer (banque de compte,
 -- onglets) : on prend leur enveloppe.
 local function Bornes(noms)
-    local gauche, droite, bas
+    local gauche, droite, bas, haut
     local echelleUI = UIParent:GetEffectiveScale()
     for _, nom in ipairs(noms) do
         local f = _G[nom]
         if f and f.IsVisible and f:IsVisible() then
-            local l, r, b = f:GetLeft(), f:GetRight(), f:GetBottom()
+            local l, r, b, t = f:GetLeft(), f:GetRight(), f:GetBottom(), f:GetTop()
             if l and r and b then
                 local s = f:GetEffectiveScale() / echelleUI
                 l, r, b = l * s, r * s, b * s
                 gauche = gauche and math.min(gauche, l) or l
                 droite = droite and math.max(droite, r) or r
                 bas = bas and math.min(bas, b) or b
+                if t then t = t * s haut = haut and math.max(haut, t) or t end
             end
         end
     end
-    return gauche, droite, bas
+    return gauche, droite, bas, haut
 end
 
 -- A droite de la fenetre accompagnee, aligne sur son bas.
@@ -1008,7 +1061,8 @@ Placer = function()
     panneau:ClearAllPoints()
     panneau:SetWidth(LARGEUR)
     if panneau.cuir then panneau.cuir:SetShown(lieu == "banque") end
-    local gauche, droite, bas = Bornes(FENETRES[lieu] or {})
+    local gauche, droite, bas, haut = Bornes(FENETRES[lieu] or {})
+    panneau.hauteurCible = (haut and bas) and (haut - bas) or nil
     if not gauche then
         panneau:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 190)
         -- La fenetre du jeu s'affiche parfois juste apres l'evenement
