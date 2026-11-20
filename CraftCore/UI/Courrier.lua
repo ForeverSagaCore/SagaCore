@@ -1088,6 +1088,9 @@ local function EnvoiReussi()
     e.objets = e.objets or {}
     for objet, n in pairs(enAttente.objets) do e.objets[objet] = (e.objets[objet] or 0) + n end
     if NS.commandes then pcall(NS.commandes.Envoye, enAttente.cle, enAttente.objets) end
+    -- Compte dans les stocks du destinataire, au courrier, jusqu'a ce qu'il
+    -- ouvre sa boite.
+    if NS.inventaire.NoterEnvoi then pcall(NS.inventaire.NoterEnvoi, enAttente.cle, enAttente.objets) end
     enAttente = nil
     statut = nil
     courrier.Actualiser()

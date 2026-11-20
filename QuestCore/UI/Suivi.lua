@@ -1062,10 +1062,28 @@ local function OngletVue(cle, icone, nom, aide)
     return b
 end
 
+-- Une boussole : la premiere des icones du jeu qui existe dans ce client.
+local boussole
+local function IconeBoussole()
+    if boussole then return boussole end
+    local candidates = {
+        "Interface\\Icons\\inv_10_dungeonjewelry_explorer_trinket_1compass_color2",
+        "Interface\\Icons\\inv_10_dungeonjewelry_explorer_trinket_1compass_color1",
+        "Interface\\Icons\\inv_10_dungeonjewelry_explorer_trinket_1compass_color3",
+        "Interface\\Icons\\INV_Misc_Map_01",
+    }
+    local existe = NS.Lecture("GetFileIDFromPath")
+    for _, c in ipairs(candidates) do
+        if not existe or NS.Appeler(existe, c) then boussole = c return c end
+    end
+    boussole = candidates[#candidates]
+    return boussole
+end
+
 PoserOngletsVues = function(replie, nParcours)
     local s = Reglages()
     local quetes = OngletVue("quetes", "Interface\\Icons\\INV_Misc_Book_08", L.TRACK_SIDE_QUESTS, L.TRACK_SIDE_QUESTS_TIP)
-    local route = OngletVue("itineraire", "Interface\\Icons\\Ability_Tracking", L.TRACK_SIDE_ROUTE, L.TRACK_SIDE_ROUTE_TIP)
+    local route = OngletVue("itineraire", IconeBoussole(), L.TRACK_SIDE_ROUTE, L.TRACK_SIDE_ROUTE_TIP)
     local avecRoute = (nParcours or 0) > 0
     -- Plus de trajet : retour au suivi des quetes.
     if not avecRoute and s.vue == "parcours" then s.vue = "quetes" end
@@ -1112,6 +1130,66 @@ end
 local ETATS_COULEUR = { faite = { 0.5, 0.5, 0.5 }, rendre = { 0.31, 0.82, 0.41 }, cours = { 1, 0.82, 0 },
     prendre = { 1, 0.82, 0 }, attente = { 0.6, 0.6, 0.6 } }
 
+-- Une etape pas encore au journal, presentee comme une quete du suivi :
+-- niveau a la couleur du jeu, titre, recompense connue (XP de la base ;
+-- l'argent n'y est pas), objectifs de la base, puis chez qui la prendre (un
+-- clic : sur la carte). Le survol donne tout ce que la base en sait.
+local function RendreEtapeBase(moi, id, rang, e, index, y)
+    local s = Reglages()
+    local niveau = tonumber(NS.ref.Lire("QuestDB", id, "questLevel")) or 0
+    local r, g, b = NS.ref.CouleurDeNiveau(niveau, moi.niveau)
+    local attente = e == "attente"
+    local replieE = s.replies[id] == true
+    local idE = id
+    index = index + 1
+    y = Poser(index, y, rang .. ". " .. string.format("|cff%02x%02x%02x[%d]|r %s", math.floor(r * 255),
+        math.floor(g * 255), math.floor(b * 255), niveau, NS.ref.NomDeQuete(id, moi)), { uneLigne = true,
+        police = Police("ObjectiveTrackerHeaderFont", "GameFontNormal"), titre = true,
+        couleur = attente and { 0.6, 0.6, 0.6 } or { 1, 0.82, 0 },
+        survol = function(tt)
+            NS.ref.InfobulleDeLaBase(tt, idE, moi)
+            local textes = NS.ref.Lire("QuestDB", idE, "objectivesText")
+            if type(textes) == "table" and #textes > 0 then
+                tt:AddLine(" ")
+                tt:AddLine(L.QUEST_GOAL, 1, 0.82, 0)
+                for _, t in ipairs(textes) do tt:AddLine(tostring(t), 1, 1, 1, true) end
+            end
+        end,
+        auClic = function()
+            s.replies[idE] = not s.replies[idE] or nil
+            suivi.Rendre()
+        end })
+    if not replieE then
+        local xp = NS.ref.XPDeLaBase(id, moi.niveau)
+        if xp and xp > 0 then
+            index = index + 1
+            y = Poser(index, y, string.format(L.REWARD_LINE, string.format(L.REWARD_XP, xp)), { retrait = 22,
+                couleur = { 1, 0.82, 0 }, police = "GameFontNormalSmall", petit = true, uneLigne = true })
+        end
+        local textes = NS.ref.Lire("QuestDB", id, "objectivesText")
+        if type(textes) == "table" then
+            for _, t in ipairs(textes) do
+                index = index + 1
+                y = Poser(index, y, "- " .. tostring(t), { retrait = 22, couleur = { 0.85, 0.85, 0.85 } })
+            end
+        end
+        local detail, couleurDetail
+        if e == "prendre" then
+            local donneurs = NS.ref.Donneurs(id)
+            detail = donneurs[1] and string.format(L.TRACK_PICK_UP, donneurs[1]) or L.ROUTE_TO_TAKE
+            couleurDetail = { 1, 0.82, 0 }
+        else
+            local requis = tonumber(NS.ref.Lire("QuestDB", id, "requiredLevel")) or 0
+            detail = (moi.niveau and requis > moi.niveau) and string.format(L.ROUTE_LEVEL, requis) or L.DUNGEON_LOCKED
+            couleurDetail = { 0.6, 0.6, 0.6 }
+        end
+        index = index + 1
+        y = Poser(index, y, detail, { retrait = 22, couleur = couleurDetail,
+            auClic = (NS.fenetre and NS.fenetre.VoirQuete) and function() NS.fenetre.VoirQuete(idE, moi, true) end or nil })
+    end
+    return index, y + 6
+end
+
 RendreVueParcours = function(moi, index, y)
     local s = Reglages()
     local cle = NS.ClePersonnage()
@@ -1121,61 +1199,46 @@ RendreVueParcours = function(moi, index, y)
         y = Poser(index, y, L.TRACK_NO_ROUTE, { couleur = { 0.6, 0.6, 0.6 } })
         return index, y
     end
-    -- Le parcours choisi d'abord ; a defaut le premier.
+    -- Plusieurs parcours peuvent etre ouverts a la fois ; le dernier choisi
+    -- est celui du bouton Guider.
     local choisi = NS.parcours.Trouver(cle, s.parcoursChoisi) or liste[1]
     s.parcoursChoisi = choisi.id
+    s.parcoursOuverts = type(s.parcoursOuverts) == "table" and s.parcoursOuverts or {}
+    if next(s.parcoursOuverts) == nil then s.parcoursOuverts[choisi.id] = true end
     for _, pc in ipairs(liste) do
-        local _, _, pct = NS.parcours.Avancement(moi, pc)
-        local estChoisi = pc == choisi
+        local faites, total, pct = NS.parcours.Avancement(moi, pc)
+        local ouvert = s.parcoursOuverts[pc.id] == true
         local idP = pc.id
         index = index + 1
         -- Meme hierarchie que l'onglet Quetes : le parcours comme une zone,
         -- ses etapes comme des quetes.
         y = Poser(index, y, pc.nom, { police = "GameFontNormal", zone = true, uneLigne = true,
-            couleur = estChoisi and { 1, 0.82, 0 } or { 0.7, 0.7, 0.7 },
-            marqueTexture = estChoisi and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up",
+            couleur = ouvert and { 1, 0.82, 0 } or { 0.7, 0.7, 0.7 },
+            marqueTexture = ouvert and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up",
             droite = pct .. " %", couleurDroite = pct >= 100 and { 0.31, 0.82, 0.41 } or { 1, 1, 1 },
             separateur = index > 1, apres = 4,
             auClic = function(_, bouton)
                 if bouton == "RightButton" then NS.fenetre.OuvrirParcours() return end
+                s.parcoursOuverts[idP] = not s.parcoursOuverts[idP] or nil
                 s.parcoursChoisi = idP
                 suivi.Rendre()
             end })
-        if estChoisi then
-            for rang, id in ipairs(pc.etapes) do
-                local e = NS.parcours.EtatEtape(moi, id)
-                if (e == "cours" or e == "rendre") and moi.quetes[id] then
-                    -- Quete en cours : comme dans l'onglet Quetes, objectifs compris.
-                    -- Numero pose avant le calcul de la hauteur : plus de chevauchement.
-                    index, y = RendreQuete(moi, moi.quetes, id, index, y, rang .. ". ")
-                else
-                    local texte = rang .. ". " .. NS.ref.NomDeQuete(id, moi)
-                    local detail
-                    if e == "prendre" then
-                        local donneurs = NS.ref.Donneurs(id)
-                        detail = donneurs[1] and string.format(L.TRACK_PICK_UP, donneurs[1]) or L.ROUTE_TO_TAKE
-                    elseif e == "attente" then
-                        local niveau = tonumber(NS.ref.Lire("QuestDB", id, "requiredLevel")) or 0
-                        detail = (moi.niveau and niveau > moi.niveau) and string.format(L.ROUTE_LEVEL, niveau) or nil
+        if ouvert then
+            if total > 0 and faites >= total then
+                -- Tout est fait : plus rien a montrer, le bouton Supprimer
+                -- est en bas du suivi.
+                index = index + 1
+                y = Poser(index, y, L.ROUTE_ALL_DONE, { retrait = 22, couleur = { 0.31, 0.82, 0.41 } }) + 6
+            else
+                -- Les etapes faites disparaissent ; le numero reste celui du
+                -- parcours.
+                for rang, id in ipairs(pc.etapes) do
+                    local e = NS.parcours.EtatEtape(moi, id)
+                    if (e == "cours" or e == "rendre") and moi.quetes[id] then
+                        index, y = RendreQuete(moi, moi.quetes, id, index, y, rang .. ". ")
+                    elseif e ~= "faite" then
+                        index, y = RendreEtapeBase(moi, id, rang, e, index, y)
                     end
-                    index = index + 1
-                    local marques = { faite = "Interface\\RaidFrame\\ReadyCheck-Ready",
-                        prendre = "Interface\\GossipFrame\\AvailableQuestIcon",
-                        attente = "Interface\\GossipFrame\\AvailableQuestIcon" }
-                    -- Un clic : chez qui la prendre, sur la carte.
-                    local idE = id
-                    local voir = (e == "prendre" or e == "attente") and NS.fenetre and NS.fenetre.VoirQuete
-                        and function() NS.fenetre.VoirQuete(idE, moi, true) end or nil
-                    y = Poser(index, y, texte, { uneLigne = true, titre = true,
-                        police = Police("ObjectiveTrackerHeaderFont", "GameFontNormal"),
-                        couleur = ETATS_COULEUR[e], marqueTexture = marques[e], auClic = voir,
-                        droite = (e == "faite") and L.STATE_DONE or nil, couleurDroite = ETATS_COULEUR.faite })
-                    if detail then
-                        index = index + 1
-                        y = Poser(index, y, detail, { retrait = 22,
-                            couleur = (e == "prendre") and { 1, 0.82, 0 } or { 0.6, 0.6, 0.6 } })
-                    end
-                    y = y + 6
                 end
             end
             y = y + 4
@@ -1339,6 +1402,27 @@ function suivi.Rendre()
             pcVue = NS.parcours.Trouver(NS.ClePersonnage(), s.parcoursChoisi) or liste[1]
         end
         local actif = NS.guidage and NS.guidage.Actif()
+        -- Un parcours ouvert entierement fait : Supprimer, et il disparait.
+        local fini
+        if s.vue == "parcours" and NS.parcours and moi then
+            for _, pc in ipairs(NS.parcours.Liste(NS.ClePersonnage())) do
+                local f, t = NS.parcours.Avancement(moi, pc)
+                if not fini and t > 0 and f >= t and type(s.parcoursOuverts) == "table" and s.parcoursOuverts[pc.id] then
+                    fini = pc
+                end
+            end
+        end
+        if fini then
+            local idF, nomF = fini.id, fini.nom
+            table.insert(boutons, { L.ROUTE_DELETE, function()
+                if NS.guidage and NS.guidage.Actif() and NS.guidage.ParcoursGuide() == idF then NS.guidage.Basculer(false) end
+                NS.parcours.Supprimer(NS.ClePersonnage(), idF)
+                if type(s.parcoursOuverts) == "table" then s.parcoursOuverts[idF] = nil end
+                if NS.carte then NS.carte.Invalider() end
+                suivi.Rendre()
+            end, string.format(L.ROUTE_DELETE_TIP, nomF or "") })
+            pcVue = nil
+        end
         if pcVue then
             local guide = NS.guidage.ParcoursGuide()
             local ici = actif and (guide == pcVue.id or (guide == nil and pcVue.genre == "rendu"))
@@ -2357,6 +2441,8 @@ function suivi.MontrerParcours(idParcours)
     local s = Reglages()
     s.vue = "parcours"
     s.parcoursChoisi = idParcours
+    s.parcoursOuverts = type(s.parcoursOuverts) == "table" and s.parcoursOuverts or {}
+    s.parcoursOuverts[idParcours] = true
     s.afficher = true
     cadre:Show()
     suivi.Rendre()
@@ -2844,6 +2930,35 @@ end
 -- d'abord) : la fleche, les numeros et les pointilles de la carte restent
 -- d'accord.
 local dernierReordre = 0
+
+-- Prochaine etape hors de portee de la fleche (autre continent) : sa quete,
+-- puis la zone et le continent ou aller, sous "hors de portee".
+local function OuAller(moi, trajet)
+    local info = NS.Lecture("C_Map.GetMapInfo")
+    for _, id in ipairs(trajet.etapes or {}) do
+        local e = NS.parcours.EtatEtape(moi, id)
+        if e ~= "faite" and e ~= "attente" then
+            local ok, points = pcall(NS.carte.PointsPour, id, moi)
+            local pt = ok and points and points[1]
+            local titre = NS.ref.NomDeQuete(id, moi)
+            if not (pt and pt.carte and info) then return titre end
+            local zone = NS.Appeler(info, pt.carte)
+            local nomZone = type(zone) == "table" and zone.name or nil
+            local continent
+            local parent = type(zone) == "table" and zone.parentMapID
+            for _ = 1, 4 do
+                local z = parent and NS.Appeler(info, parent)
+                if type(z) ~= "table" then break end
+                if z.mapType == 2 then continent = z.name break end
+                parent = z.parentMapID
+            end
+            local ou = nomZone and (continent and string.format("%s (%s)", nomZone, continent) or nomZone)
+            return ou and (titre .. "\n|cffb3b3b3" .. string.format(L.GUIDE_GO_TO, ou) .. "|r") or titre
+        end
+    end
+    return nil
+end
+
 local function Cible()
     local cle = NS.ClePersonnage()
     local moi = cle and NS.base.Perso(cle)
@@ -2859,9 +2974,9 @@ local function Cible()
     -- etapes faisables maintenant (a prendre, en cours, a rendre) sont visees.
     local tournee = trajet.genre == "rendu"
     local continent = Continent()
-    if not continent then return nil, "loin" end
+    if not continent then return nil, "loin", OuAller(moi, trajet) end
     local pos = NS.Appeler(NS.Lecture("C_Map.GetPlayerMapPosition"), continent, "player")
-    if type(pos) ~= "table" or not pos.GetXY then return nil, "loin" end
+    if type(pos) ~= "table" or not pos.GetXY then return nil, "loin", OuAller(moi, trajet) end
     local jx, jy = pos:GetXY()
     local faites, restantes, enAttente = {}, {}, 0
     for _, id in ipairs(trajet.etapes) do
@@ -2893,7 +3008,7 @@ local function Cible()
             table.insert(restantes, { id = id, lieu = lieu })
         end
     end
-    if #restantes == 0 then return nil, (enAttente > 0) and "loin" or "fini" end
+    if #restantes == 0 then return nil, (enAttente > 0) and "loin" or "fini", OuAller(moi, trajet) end
     -- Ordre depuis ici : le plus proche, puis le plus proche du precedent...
     local ordre, ici, reste = {}, { x = jx, y = jy }, {}
     for _, r in ipairs(restantes) do table.insert(reste, r) end
@@ -2917,7 +3032,7 @@ local function Cible()
         RafraichirTrajet()
     end
     local cible = ordre[1].lieu
-    if not cible then return nil, "loin" end
+    if not cible then return nil, "loin", OuAller(moi, trajet) end
     -- Sous la fleche : "1/4", la quete, puis quoi y faire. L'etape visee est
     -- toujours la plus proche de ce qui reste (numero 1 sur la carte).
     local idV = ordre[1].id
@@ -3050,7 +3165,7 @@ end
 -- La fleche demande sa cible vingt fois par seconde (elle suit l'orientation
 -- du personnage) ; l'etape visee n'est recalculee que toutes les 4 secondes,
 -- ou tout de suite quand le trajet change.
-local cibleCache, raisonCache, cibleQuand = nil, nil, -1
+local cibleCache, raisonCache, detailCache, cibleQuand = nil, nil, nil, -1
 function suivi.OublierCible() cibleQuand = -1 end
 
 -- Passer une etape d'un trajet (clic droit sur son numero, ou "Passer
@@ -3071,11 +3186,11 @@ end
 local fournisseur = {
     Cible = function()
         local maintenant = NS.Appeler(GetTime) or 0
-        if maintenant - cibleQuand < 4 then return cibleCache, raisonCache end
-        local c, raison = Cible()
+        if maintenant - cibleQuand < 4 then return cibleCache, raisonCache, detailCache end
+        local c, raison, detail = Cible()
         if c then c.carte = c.continent end
-        cibleCache, raisonCache, cibleQuand = c, raison, maintenant
-        return c, raison
+        cibleCache, raisonCache, detailCache, cibleQuand = c, raison, detail, maintenant
+        return c, raison, detail
     end,
     Clic = function()
         if NS.pageCarte and NS.pageCarte.Filigrane then pcall(NS.pageCarte.Filigrane) end
@@ -3096,6 +3211,26 @@ local fournisseur = {
 function guidage.Actif()
     local S = NS.suite or _G.CoreSuite
     return ReglagesGuidage().actif == true and S ~= nil and S.GuidageActif and S.GuidageActif("QuestCore")
+end
+
+-- Carte de QuestCore sur la premiere etape faisable du parcours guide.
+function guidage.MontrerItineraire(idParcours)
+    local cle = NS.ClePersonnage()
+    local moi = cle and NS.base.Perso(cle)
+    local pc = moi and NS.parcours.Trouver(cle, idParcours)
+    if not pc then return end
+    for _, id in ipairs(pc.etapes) do
+        local e = NS.parcours.EtatEtape(moi, id)
+        if e ~= "faite" and e ~= "attente" then
+            local ok, points = pcall(NS.carte.PointsPour, id, moi)
+            local pt = ok and points and points[1]
+            if pt and pt.carte and NS.pageCarte and NS.pageCarte.MontrerQuete then
+                NS.pageCarte.MontrerQuete(id, pt.carte, pt.x, pt.y, NS.ref.NomDeQuete(id, moi), pt.quoi, true)
+            end
+            break
+        end
+    end
+    if NS.fenetre and NS.fenetre.OuvrirCarte then NS.fenetre.OuvrirCarte() end
 end
 
 function guidage.Basculer(oui, idParcours)
@@ -3120,7 +3255,11 @@ function guidage.Basculer(oui, idParcours)
             end
         end
         pcall(suivi.AdapterTrajet)
+        -- Un parcours precis (kit de donjon, suite...) : la carte de QuestCore
+        -- s'ouvre sur sa premiere etape, avec tout l'itineraire numerote.
+        fournisseur.carte = idParcours and false or nil
         S.Guider("QuestCore", fournisseur)
+        if idParcours then pcall(guidage.MontrerItineraire, idParcours) end
         -- La carte ne montre plus que le trajet guide.
         if NS.carte then NS.carte.Invalider() end
         if NS.pageCarte and NS.pageCarte.EnFiligrane and NS.pageCarte.EnFiligrane() then pcall(NS.pageCarte.Rendre)

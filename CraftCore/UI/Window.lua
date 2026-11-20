@@ -312,6 +312,13 @@ local function LigneDeTableau(contenu, index)
 
     ligne.coche:SetPoint("RIGHT", ligne.total, "LEFT", -4, 0)
 
+    -- Colonne du courrier : seulement sur la page des stocks.
+    ligne.courrier = ligne:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    ligne.courrier:SetPoint("RIGHT", ligne.total, "LEFT", -12, 0)
+    ligne.courrier:SetJustifyH("RIGHT")
+    ligne.courrier:SetWidth(45)
+    ligne.courrier:Hide()
+
     ligne.sacs = ligne:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     ligne.sacs:SetPoint("RIGHT", ligne.banque, "LEFT", -12, 0)
     ligne.sacs:SetJustifyH("RIGHT")
@@ -410,10 +417,25 @@ local function AncrerLibelle(ligne, butee)
     ligne.nom:SetPoint("RIGHT", butee, "LEFT", -8, 0)
 end
 
+-- La colonne du courrier, entre la banque et la colonne de droite.
+local function ColonneCourrier(ligne, oui)
+    if not ligne.courrier then return end
+    ligne.courrier:SetText("")
+    ligne.courrier:SetShown(oui == true)
+    ligne.courrier:SetWidth(ligne.banque:GetWidth() or 45)
+    ligne.banque:ClearAllPoints()
+    if oui then
+        ligne.banque:SetPoint("RIGHT", ligne.courrier, "LEFT", -12, 0)
+    else
+        ligne.banque:SetPoint("RIGHT", ligne.total, "LEFT", -12, 0)
+    end
+end
+
 local function PoserLigne(ligne, retrait, depliable, deplie, auClic)
     -- Une ligne reutilisee ne garde jamais l'infobulle de sa page precedente.
     ligne:SetScript("OnEnter", nil)
     ligne:SetScript("OnLeave", nil)
+    ColonneCourrier(ligne, false)
     ligne.moins:Hide()
     ligne.plus:Hide()
     if ligne.fabriquer then ligne.fabriquer:Hide() end
@@ -814,8 +836,10 @@ local function RendreStocks(contenu)
             base.ReleveDe(fiche) or "?"))
         -- Trois colonnes, toujours les memes : sacs du personnage, sa banque,
         -- et ce que ses autres personnages du meme camp detiennent.
+        ColonneCourrier(entete, true)
         entete.sacs:SetText(L.COL_BAGS)
         entete.banque:SetText(L.COL_BANK)
+        entete.courrier:SetText(L.COL_MAIL)
         entete.total:SetText(L.COL_OTHERS)
         entete:Show()
         y = y + HAUTEUR_LIGNE + 4
@@ -826,10 +850,12 @@ local function RendreStocks(contenu)
         -- tout se repeterait d'un bloc a l'autre.
         local objetsVus = {}
         for cle in pairs(base.StocksDe(fiche)) do objetsVus[cle] = true end
+        for cle in pairs(inventaire.ObjetsAuCourrier and inventaire.ObjetsAuCourrier(fiche) or {}) do objetsVus[cle] = true end
         if #fiches == 1 then
             for _, autre in ipairs(tous) do
                 if autre.cle ~= fiche.cle and ((not fiche.faction) or (not autre.faction) or autre.faction == fiche.faction) then
                     for cle in pairs(base.StocksDe(autre)) do objetsVus[cle] = true end
+                    for cle in pairs(inventaire.ObjetsAuCourrier and inventaire.ObjetsAuCourrier(autre) or {}) do objetsVus[cle] = true end
                 end
             end
         end
@@ -837,11 +863,12 @@ local function RendreStocks(contenu)
         local lignes = {}
         for cle in pairs(objetsVus) do
           if (not lies) or lies[tonumber(cle)] then
-            local sacs, banque = inventaire.SacsEtBanque(fiche, cle)
+            local sacs, banque, courrier = inventaire.SacsEtBanque(fiche, cle)
+            courrier = courrier or 0
             local autres, detail = inventaire.DetailChezLesAutres(fiche, cle)
-            if sacs + banque + autres > 0 then
-                table.insert(lignes, { objet = cle, sacs = sacs, banque = banque,
-                    autres = autres, detail = detail, total = sacs + banque })
+            if sacs + banque + courrier + autres > 0 then
+                table.insert(lignes, { objet = cle, sacs = sacs, banque = banque, courrier = courrier,
+                    autres = autres, detail = detail, total = sacs + banque + courrier })
             end
           end
         end
@@ -861,6 +888,7 @@ local function RendreStocks(contenu)
             PoserLigne(vide, 0, false, false, nil)
             vide.icone:Hide()
             vide.nom:SetFontObject("GameFontDisableSmall")
+            ColonneCourrier(vide, true)
             vide.nom:SetText(lies and L.STOCKS_NONE_FOR_TRADE or L.STOCKS_EMPTY)
             vide.sacs:SetText("")
             vide.banque:SetText("")
@@ -888,24 +916,27 @@ local function RendreStocks(contenu)
             else
                 ligne.icone:Hide()
             end
+            ColonneCourrier(ligne, true)
             ligne.sacs:SetText(l.sacs > 0 and tostring(l.sacs) or "")
             ligne.banque:SetText(l.banque > 0 and tostring(l.banque) or "")
+            ligne.courrier:SetText(l.courrier > 0 and tostring(l.courrier) or "")
             ligne.total:SetText(l.autres > 0 and tostring(l.autres) or "")
 
-            -- Au survol, qui detient combien, personnage par personnage.
+            -- Au survol, qui detient combien, personnage par personnage, et
+            -- dans quelle boite aux lettres.
             local objet, detail, nomFiche = tonumber(l.objet), l.detail, fiche.cle
-            local sacsIci, banqueIci = l.sacs, l.banque
+            local sacsIci, banqueIci, courrierIci = l.sacs, l.banque, l.courrier
             ligne:EnableMouse(true)
             ligne:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(inventaire.NomDObjet(objet))
-                local function Ligne(cle, sacs, banque)
+                local function Ligne(cle, sacs, banque, courrier)
                     local nom = NS.inventaire.NomCourt(cle)
-                    GameTooltip:AddDoubleLine(nom, string.format(L.STOCKS_TIP_SPLIT, sacs, banque),
+                    GameTooltip:AddDoubleLine(nom, NS.inventaire.TexteSacsBanque(sacs, banque, courrier),
                         1, 1, 1, 1, 1, 1)
                 end
-                if sacsIci + banqueIci > 0 then Ligne(nomFiche, sacsIci, banqueIci) end
-                for _, d in ipairs(detail) do Ligne(d.cle, d.sacs, d.banque) end
+                if sacsIci + banqueIci + courrierIci > 0 then Ligne(nomFiche, sacsIci, banqueIci, courrierIci) end
+                for _, d in ipairs(detail) do Ligne(d.cle, d.sacs, d.banque, d.courrier) end
                 GameTooltip:Show()
             end)
             ligne:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -922,6 +953,7 @@ local function RendreStocks(contenu)
             PoserLigne(avis, RETRAIT_PAR_NIVEAU, false, false, nil)
             avis.icone:Hide()
             avis.nom:SetFontObject("GameFontDisableSmall")
+            ColonneCourrier(avis, true)
             avis.nom:SetText(L.STOCKS_UNCERTAIN)
             avis.sacs:SetText("")
             avis.banque:SetText("")

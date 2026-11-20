@@ -52,6 +52,12 @@ function actions.Fabriquer(recette, nombre)
     local resultat = NS.recettes.Fabriquer(recette, nombre or 1)
     if resultat == "ouverture" then
         NS.Dire(L.CRAFT_OPENED)
+        -- Le bouton devient "Lancer" : on redessine des que le metier est la.
+        local plusTard = NS.Lecture("C_Timer.After")
+        if plusTard and NS.ecran and NS.ecran.Actualiser then
+            NS.Appeler(plusTard, 0.3, function() pcall(NS.ecran.Actualiser) end)
+            NS.Appeler(plusTard, 1, function() pcall(NS.ecran.Actualiser) end)
+        end
     elseif resultat == "impossible" then
         NS.Dire(L.CRAFT_IMPOSSIBLE)
     end
@@ -68,6 +74,9 @@ function actions.PreparerBoutonFabriquer(bouton, recette, nombre)
         return false
     end
     bouton:SetEnabled(pret)
+    -- Deux temps, deux libelles : "Creer" ouvre le metier, "Lancer" fabrique.
+    local lancer = NS.recettes.PretALancer and NS.recettes.PretALancer(recette)
+    if lancer then bouton:SetText(L.CRAFT_BUTTON_GO) end
     -- Un bouton grise ne recoit pas le survol par defaut : sans cela,
     -- l'infobulle qui dit ce qui manque et ou c'est ne s'affichait jamais.
     if bouton.SetMotionScriptsWhileDisabled then pcall(bouton.SetMotionScriptsWhileDisabled, bouton, true) end
@@ -75,7 +84,7 @@ function actions.PreparerBoutonFabriquer(bouton, recette, nombre)
     bouton:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         if pret then
-            GameTooltip:SetText(L.CRAFT_TIP, 1, 1, 1, 1, true)
+            GameTooltip:SetText(lancer and L.CRAFT_TIP_GO or L.CRAFT_TIP, 1, 1, 1, 1, true)
         else
             GameTooltip:SetText(L.GEAR_CRAFT_MISSING, 1, 0.82, 0)
             NS.inventaire.ComposantsDansLInfobulle(GameTooltip, recette)

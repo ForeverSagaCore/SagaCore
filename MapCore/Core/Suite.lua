@@ -2230,8 +2230,9 @@ end
 --   Suite.Guider(cle, fournisseur) ; Suite.ArreterGuidage(cle) ;
 --   Suite.GuidageActif(cle).
 -- fournisseur = {
---   Cible = function() -> { carte, x, y, qui, rang, total, titre } ou nil, raison
---           (raison "fini" : le trajet est termine, le guidage s'arrete),
+--   Cible = function() -> { carte, x, y, qui, rang, total, titre } ou nil, raison, detail
+--           (raison "fini" : le trajet est termine, le guidage s'arrete ;
+--           detail : texte affiche sous "hors de portee", ou aller),
 --   Arrivee = function(cible) (facultatif : le personnage est arrive),
 --   Clic = function() (facultatif : clic sur la fleche),
 --   Fin = function() (le guidage s'arrete, quelle qu'en soit la raison) }
@@ -2329,13 +2330,14 @@ local function CadreGuidage()
         attente = 0.05
         local f = Suite.guide.fournisseur
         if not f then self:Hide() return end
-        local ok, cible, raison = pcall(f.Cible)
+        local ok, cible, raison, detail = pcall(f.Cible)
         if not ok then return end
         if not cible then
             if raison == "fini" then Suite.ArreterGuidage() return end
             self.fleche:Hide() self.arrivee:Hide()
             self.distance:SetText(TG.loin)
-            self.qui:SetText("")
+            -- Hors de portee (autre continent...) : ou aller, si on le sait.
+            self.qui:SetText(type(detail) == "string" and detail or "")
             return
         end
         self.titre = cible.titre

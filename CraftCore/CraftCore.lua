@@ -290,6 +290,13 @@ cadre:SetScript("OnEvent", function(_, evenement, argument1)
     elseif evenement == "BANKFRAME_CLOSED" then
         BanqueOuverte(false)
         if NS.courrier then NS.courrier.Ferme("banque") end
+    elseif evenement == "MAIL_INBOX_UPDATE" then
+        -- La boite ouverte est relevee (le jeu l'a remplie) : ses objets
+        -- comptent dans les stocks.
+        if ecran.courrierOuvert and inventaire.ReleverBoite then
+            pcall(inventaire.ReleverBoite)
+            RedessinerBientot()
+        end
     elseif evenement == "MAIL_SHOW" then
         ecran.courrierOuvert = true
         if NS.courrier then NS.courrier.Ouvert("courrier") end
@@ -337,6 +344,7 @@ Brancher("GET_ITEM_INFO_RECEIVED")
 Brancher("PLAYER_EQUIPMENT_CHANGED")
 Brancher("MAIL_SHOW")
 Brancher("MAIL_CLOSED")
+Brancher("MAIL_INBOX_UPDATE")
 
 SLASH_CRAFTCORE1 = "/craftcore"
 SLASH_CRAFTCORE2 = "/cc"

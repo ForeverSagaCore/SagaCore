@@ -1086,6 +1086,13 @@ local function Noter(essai)
 end
 
 -- Rend "fabrique", "ouverture", "impossible" ou "refus", et un detail.
+-- Le metier de la recette est-il deja ouvert ? Alors un clic sur le bouton
+-- lance la fabrication (sinon, le premier clic ouvre le metier).
+function recettes.PretALancer(recette)
+    local ligne = recettes.MetierDe and recettes.MetierDe(recette)
+    return ligne ~= nil and MetierOuvert() == ligne
+end
+
 function recettes.Fabriquer(recette, nombre)
     local j = NS.jeu
     nombre = math.max(1, tonumber(nombre) or 1)

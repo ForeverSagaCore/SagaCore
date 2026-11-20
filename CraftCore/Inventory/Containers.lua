@@ -29,18 +29,103 @@ function inventaire.NomCourt(cle)
     return string.match(cle or "", "^(.-)%s*%-") or cle or "?"
 end
 
+-- ---------------------------------------------------------------------------
+-- Boites aux lettres
+-- ---------------------------------------------------------------------------
+-- Ce qui attend dans la boite de chaque personnage : releve a chaque
+-- ouverture de sa boite (tout ce qu'elle contient, d'ou que ca vienne), plus
+-- ce que mes autres personnages lui ont envoye depuis (connu a l'envoi). Un
+-- courrier recu d'un inconnu n'est connu qu'a l'ouverture de la boite.
+local JOURS_COURRIER = 30
+
+local function Boites()
+    local d = CraftCoreDB
+    if type(d) ~= "table" then return {} end
+    d.boites = type(d.boites) == "table" and d.boites or {}
+    return d.boites
+end
+
+local function Boite(cle)
+    local b = Boites()
+    if type(b[cle]) ~= "table" then b[cle] = { objets = {}, envois = {} } end
+    b[cle].objets = type(b[cle].objets) == "table" and b[cle].objets or {}
+    b[cle].envois = type(b[cle].envois) == "table" and b[cle].envois or {}
+    return b[cle]
+end
+
+-- Boite du personnage connecte, ouverte : tout ce qu'elle contient.
+function inventaire.ReleverBoite()
+    local cle = NS.ClePersonnage()
+    local nombre, objetJoint = NS.Lecture("GetInboxNumItems"), NS.Lecture("GetInboxItem")
+    if not (cle and nombre and objetJoint) then return end
+    local n = tonumber((NS.Appeler(nombre))) or 0
+    local objets = {}
+    for i = 1, n do
+        for j = 1, tonumber(_G.ATTACHMENTS_MAX_RECEIVE) or 16 do
+            local _, idObjet, _, quantite = NS.Appeler(objetJoint, i, j)
+            idObjet = tonumber(idObjet)
+            if idObjet then objets[idObjet] = (objets[idObjet] or 0) + (tonumber(quantite) or 1) end
+        end
+    end
+    local b = Boite(cle)
+    b.objets = objets
+    b.releve = NS.Appeler(_G.time) or 0
+    -- Tout ce qui lui avait ete envoye est desormais dans le releve.
+    b.envois = {}
+end
+
+-- Envoi reussi d'un de mes personnages a un autre : { [objet] = n }.
+function inventaire.NoterEnvoi(cle, objets)
+    if not cle or type(objets) ~= "table" then return end
+    local copie = {}
+    for objet, n in pairs(objets) do copie[tonumber(objet)] = tonumber(n) or 0 end
+    table.insert(Boite(cle).envois, { quand = NS.Appeler(_G.time) or 0, objets = copie })
+end
+
+-- Quantite d'un objet qui attend dans la boite d'un personnage.
+function inventaire.Courrier(fiche, objet)
+    local cle = type(fiche) == "table" and fiche.cle or fiche
+    local b = cle and Boites()[cle]
+    if type(b) ~= "table" then return 0 end
+    local id = tonumber(objet)
+    if not id then return 0 end
+    local total = tonumber(type(b.objets) == "table" and b.objets[id]) or 0
+    local maintenant = NS.Appeler(_G.time) or 0
+    for _, e in ipairs(type(b.envois) == "table" and b.envois or {}) do
+        if maintenant - (e.quand or 0) <= JOURS_COURRIER * 86400 then
+            total = total + (tonumber(e.objets and e.objets[id]) or 0)
+        end
+    end
+    return total
+end
+
+-- Objets qui attendent dans la boite d'un personnage : { ["id"] = true }.
+function inventaire.ObjetsAuCourrier(fiche)
+    local cle = type(fiche) == "table" and fiche.cle or fiche
+    local b = cle and Boites()[cle]
+    local liste = {}
+    if type(b) ~= "table" then return liste end
+    for id in pairs(type(b.objets) == "table" and b.objets or {}) do liste[tostring(id)] = true end
+    for _, e in ipairs(type(b.envois) == "table" and b.envois or {}) do
+        for id in pairs(e.objets or {}) do liste[tostring(id)] = true end
+    end
+    return liste
+end
+
 -- Tous les personnages du meme camp que `ref` qui detiennent un objet, `ref`
--- compris, du plus fourni au moins fourni : { cle, nom, sacs, banque, total }.
+-- compris, du plus fourni au moins fourni : { cle, nom, sacs, banque,
+-- courrier, total }.
 function inventaire.Detenteurs(objet, ref)
     ref = ref or NS.base.FicheAffichee()
     local liste = {}
     for _, fiche in ipairs(NS.base.TousLesPersonnages()) do
         local memeCamp = (not ref) or (not ref.faction) or (not fiche.faction) or fiche.faction == ref.faction
         if memeCamp then
-            local sacs, banque = inventaire.SacsEtBanque(fiche, objet)
-            if sacs + banque > 0 then
+            local sacs, banque, courrier = inventaire.SacsEtBanque(fiche, objet)
+            if sacs + banque + courrier > 0 then
                 table.insert(liste, { cle = fiche.cle, nom = inventaire.NomCourt(fiche.cle),
-                    sacs = sacs, banque = banque, total = sacs + banque, estRef = ref and fiche.cle == ref.cle })
+                    sacs = sacs, banque = banque, courrier = courrier, total = sacs + banque + courrier,
+                    estRef = ref and fiche.cle == ref.cle })
             end
         end
     end
@@ -52,11 +137,15 @@ function inventaire.Detenteurs(objet, ref)
 end
 
 -- "3 en sacs, 2 en banque", ou "10 en banque".
-function inventaire.TexteSacsBanque(sacs, banque)
+function inventaire.TexteSacsBanque(sacs, banque, courrier)
     local L = NS.L
-    if sacs > 0 and banque > 0 then return string.format(L.STOCKS_TIP_SPLIT, sacs, banque) end
-    if banque > 0 then return string.format(L.WHERE_BANK, banque) end
-    return string.format(L.WHERE_BAGS, sacs)
+    courrier = tonumber(courrier) or 0
+    local morceaux = {}
+    if sacs > 0 then table.insert(morceaux, string.format(L.WHERE_BAGS, sacs)) end
+    if banque > 0 then table.insert(morceaux, string.format(L.WHERE_BANK, banque)) end
+    if courrier > 0 then table.insert(morceaux, string.format(L.WHERE_MAIL or "%d au courrier", courrier)) end
+    if #morceaux == 0 then return string.format(L.WHERE_BAGS, 0) end
+    return table.concat(morceaux, ", ")
 end
 
 -- Ou se trouve un objet, en une ligne : d'abord le personnage `ref`, puis les
@@ -69,6 +158,10 @@ function inventaire.TexteOuEst(objet, ref)
         if d.estRef then
             if d.sacs > 0 then table.insert(morceaux, 1, string.format(L.WHERE_BAGS, d.sacs)) end
             if d.banque > 0 then table.insert(morceaux, d.sacs > 0 and 2 or 1, string.format(L.WHERE_BANK, d.banque)) end
+            if (d.courrier or 0) > 0 then
+                table.insert(morceaux, (d.sacs > 0 and 1 or 0) + (d.banque > 0 and 1 or 0) + 1,
+                    string.format(L.WHERE_MAIL or "%d au courrier", d.courrier))
+            end
         else
             table.insert(morceaux, d.nom .. " " .. d.total)
         end
@@ -371,7 +464,7 @@ function inventaire.APortee(objet)
     local fiche = NS.base.FicheAffichee()
     if not fiche then return 0 end
     local ligne = NS.base.StocksDe(fiche)[tostring(objet)]
-    return (ligne and ligne.total) or 0
+    return ((ligne and ligne.total) or 0) + inventaire.Courrier(fiche, objet)
 end
 
 -- Ce que les autres personnages de la meme faction detiennent.
@@ -382,24 +475,26 @@ function inventaire.ChezLesAutres(objet)
         if fiche.cle ~= courant then
             if inventaire.MemeCamp(fiche) then
                 local ligne = NS.base.StocksDe(fiche)[tostring(objet)]
-                total = total + ((ligne and ligne.total) or 0)
+                total = total + ((ligne and ligne.total) or 0) + inventaire.Courrier(fiche, objet)
             end
         end
     end
     return total
 end
 
--- Sacs et banque d'un objet chez un personnage donne.
+-- Sacs et banque d'un objet chez un personnage donne, puis ce qui attend
+-- dans sa boite aux lettres.
 function inventaire.SacsEtBanque(fiche, objet)
+    local courrier = inventaire.Courrier(fiche, objet)
     local ligne = NS.base.StocksDe(fiche)[tostring(objet)]
-    if not ligne then return 0, 0 end
+    if not ligne then return 0, 0, courrier end
     local conteneurs = NS.base.ConteneursDe(fiche)
     local sacs, banque = 0, 0
     for idConteneur, quantite in pairs(ligne.parConteneur or {}) do
         local fc = conteneurs[idConteneur]
         if fc and fc.source == "banque" then banque = banque + quantite else sacs = sacs + quantite end
     end
-    return sacs, banque
+    return sacs, banque, courrier
 end
 
 -- Ce que les autres personnages du meme camp que `ref` detiennent d'un objet,
