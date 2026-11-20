@@ -12,7 +12,7 @@ local _, NS = ...
 --   - dans chaque fenetre, les icones en haut a droite : on passe d'un
 --     add-on a l'autre, la nouvelle fenetre prend la place exacte de l'ancienne.
 
-local VERSION = 27
+local VERSION = 28
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -368,6 +368,11 @@ SlashCmdList.FOREVERSAGACORE = function(arg)
         if ReloadUI then ReloadUI() end
         return
     end
+    -- /sagacore oui | non : la reponse au dernier message de la suite.
+    local M = _G.SagaCoreMessages
+    if M and (arg:match("^%s*oui%s*$") or arg:match("^%s*yes%s*$")) then M.Repondre(true) return end
+    if M and (arg:match("^%s*non%s*$") or arg:match("^%s*no%s*$")) then M.Repondre(false) return end
+    if M and arg:match("^%s*messages%s*$") then M.OuvrirReglages() return end
     if arg:match("^%s*$") then
         local S = _G.CoreSuite
         if S and S.BasculerDernier then
@@ -971,7 +976,7 @@ function Suite.OuvrirReglagesGeneraux()
     if not c then
         local charte = NS.charte
         if charte and charte.Fenetre then
-            c = charte.Fenetre("CoreSuiteReglages", 360, 380, { portrait = false })
+            c = charte.Fenetre("CoreSuiteReglages", 360, 430, { portrait = false })
         else
             c = CreateFrame("Frame", "CoreSuiteReglages", UIParent, "BasicFrameTemplateWithInset")
             c:SetSize(360, 500)
@@ -1033,6 +1038,14 @@ function Suite.OuvrirReglagesGeneraux()
         end
         c.fermerBas = Bouton(TX("Close"), 110)
         c.fermerBas:SetScript("OnClick", function() c:Hide() end)
+        -- Les messages de la suite dans la discussion.
+        c.messages = CreateFrame("Button", nil, c, "UIPanelButtonTemplate")
+        c.messages:SetSize(220, 22)
+        c.messages:SetPoint("TOPLEFT", c.choix[#c.choix], "BOTTOMLEFT", -4, -24)
+        c.messages:SetScript("OnClick", function()
+            local M = _G.SagaCoreMessages
+            if M and M.OuvrirReglages then c:Hide() M.OuvrirReglages() end
+        end)
         c.appliquer = Bouton(TX("Apply (reloads the interface)"), 220, c.fermerBas)
         c.appliquer:SetScript("OnClick", function()
             CoreSuiteDB = type(CoreSuiteDB) == "table" and CoreSuiteDB or {}
@@ -1045,6 +1058,7 @@ function Suite.OuvrirReglagesGeneraux()
             local function Elements()
                 local liste = {}
                 for _, b in ipairs(c.choix) do table.insert(liste, b) end
+                table.insert(liste, c.messages)
                 table.insert(liste, c.appliquer)
                 table.insert(liste, c.fermerBas)
                 return liste
@@ -1070,7 +1084,7 @@ function Suite.OuvrirReglagesGeneraux()
     c.focus = 1
     if c.MarquerFocus then c.MarquerFocus() end
     c.enAttente = nil
-    c:SetHeight(380)
+    c:SetHeight(430)
     Suite.RendreReglagesGeneraux()
     c:Show()
     if c.Raise then c:Raise() end
@@ -1083,6 +1097,11 @@ function Suite.RendreReglagesGeneraux()
     if c.TitleText then c.TitleText:SetText(TX("General settings")) end
     c.description:SetText(TX("Common to the whole suite."))
     c.titreLangue:SetText(TX("Language"))
+    if c.messages then
+        local M = _G.SagaCoreMessages
+        c.messages:SetText(M and M.TX and M.TX("titre") or "Chat messages")
+        if M then c.messages:Show() else c.messages:Hide() end
+    end
     local enregistre = type(CoreSuiteDB) == "table" and CoreSuiteDB.langue or nil
     local choisi = enregistre
     if c.enAttente ~= nil then choisi = c.enAttente or nil end
@@ -1218,6 +1237,8 @@ function Suite.ManetteBas(cleCourante, bouton)
     -- Reglages generaux ouverts : la manette est a eux.
     local r = Suite.reglagesGeneraux
     if r and r:IsShown() then return true end
+    local m = _G.SagaCoreMessages and _G.SagaCoreMessages.fenetre
+    if m and m:IsShown() then return true end
     -- Menu (Start) : les reglages generaux.
     if bouton == "PADFORWARD" then
         Suite.OuvrirReglagesGeneraux()
@@ -1950,6 +1971,13 @@ local function CadreGuidage()
             self.fleche:Hide()
             self.arrivee:Show()
             if f.Arrivee then pcall(f.Arrivee, cible) end
+            -- Message de la suite, une fois par destination.
+            local cleArrivee = tostring(cible.carte) .. ":" .. math.floor((cible.x or 0) * 1000) .. ":" .. math.floor((cible.y or 0) * 1000)
+            if Suite.guide.arrivee ~= cleArrivee then
+                Suite.guide.arrivee = cleArrivee
+                local M = _G.SagaCoreMessages
+                if M and M.Dire then pcall(M.Dire, "MapCore", "arrivee", { lieu = cible.qui or cible.titre or "" }, nil, cleArrivee) end
+            end
             return
         end
         self.arrivee:Hide()
@@ -1994,8 +2022,11 @@ function Suite.ArreterGuidage(cle)
     if cle and g.cle ~= cle then return end
     local f = g.fournisseur
     g.cle, g.fournisseur = nil, nil
+    g.arrivee = nil
     if g.cadre then g.cadre:Hide() end
     if f and f.Fin then pcall(f.Fin) end
+    local M = _G.SagaCoreMessages
+    if f and M and M.Dire then pcall(M.Dire, "MapCore", "arret") end
 end
 
 -- Une fois tous les add-ons charges : bouton de minicarte et barre.

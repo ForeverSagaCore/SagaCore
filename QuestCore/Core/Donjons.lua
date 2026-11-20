@@ -54,7 +54,8 @@ local function Index()
             for _, autre in ipairs(type(d[2]) == "table" and d[2] or {}) do parZone[autre] = entree end
         end
     end
-    local ids = _G.QuestDB and _G.QuestDB.GetAllIds and _G.QuestDB.GetAllIds() or {}
+    local base = NS.ref.Base("QuestDB")
+    local ids = base and base.GetAllIds and base.GetAllIds() or {}
     for _, id in ipairs(ids) do
         local zone = tonumber(Lire("QuestDB", id, "zoneOrSort"))
         local d = zone and parZone[zone]

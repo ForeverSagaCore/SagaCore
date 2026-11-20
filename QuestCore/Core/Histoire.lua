@@ -98,7 +98,7 @@ function histoire.PoserAvecRetirees(v) NS.base.ReglagesGeneraux().histoireRetire
 local function Zones(p)
     local cle = tostring(p.race) .. ":" .. tostring(p.classe) .. ":" .. tostring(p.faction)
     if cache[cle] then return cache[cle] end
-    local base = _G.QuestDB
+    local base = NS.ref.Base("QuestDB")
     local ids = base and base.GetAllIds and base.GetAllIds() or {}
     local zones = {}
     for _, id in ipairs(ids) do

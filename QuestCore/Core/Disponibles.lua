@@ -64,7 +64,7 @@ function dispo.Liste(p)
     if not p then return {} end
     local cle = p.cle .. ":" .. tostring(p.niveau)
     if cache and cleCache == cle then return cache end
-    local base = _G.QuestDB
+    local base = NS.ref.Base("QuestDB")
     local ids = base and base.GetAllIds and base.GetAllIds() or {}
     local liste = {}
     for _, id in ipairs(ids) do

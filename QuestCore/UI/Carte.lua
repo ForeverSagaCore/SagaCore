@@ -53,6 +53,9 @@ end
 function carte.CarteDeZone(zone)
     local idCarte = TableDesCartes()[zone]
     if idCarte and idCarte > 0 then return idCarte end
+    -- Sans Questie : la carte gardee par la base personnelle.
+    idCarte = NS.memoire and NS.memoire.Carte and NS.memoire.Carte(zone)
+    if idCarte and idCarte > 0 then return idCarte end
     return nil
 end
 
@@ -62,7 +65,7 @@ local niveauxParCarte
 function carte.NiveauDeCarte(idCarte)
     if not niveauxParCarte then
         niveauxParCarte = {}
-        local base = _G.QuestDB
+        local base = NS.ref.Base("QuestDB")
         local ids = base and base.GetAllIds and base.GetAllIds() or {}
         local listes = {}
         for _, id in ipairs(ids) do
@@ -96,7 +99,18 @@ local Lire = function(...) return NS.ref.Lire(...) end
 
 -- Ajoute les apparitions d'une entite ("NpcDB" ou "ObjectDB") a la liste.
 local function Apparitions(entite, id, ajouter)
+    -- Releve en jeu sur WoW Forever : il passe avant Questie.
+    -- Un PNJ fixe (trois places au plus dans Questie) se montre la ou on
+    -- l'a vu ; une cible qui apparait partout garde aussi les places Questie.
+    local releves = NS.memoire and NS.memoire.Releves and NS.memoire.Releves(entite, id)
     local spawns = Lire(entite, id, "spawns")
+    if releves then
+        local nom = Lire(entite, id, "name")
+        for _, pt in ipairs(releves) do ajouter(pt[1], pt[2], pt[3], nom) end
+        local n = 0
+        for _, points in pairs(type(spawns) == "table" and spawns or {}) do n = n + (type(points) == "table" and #points or 0) end
+        if n <= 3 then return end
+    end
     if type(spawns) ~= "table" then return end
     local nom = Lire(entite, id, "name")
     for zone, points in pairs(spawns) do

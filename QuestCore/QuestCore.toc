@@ -3,7 +3,7 @@
 ## Notes: Quests of all your characters: active quests, chains and prerequisites, items to send to each other.
 ## Notes-frFR: Les quêtes de tous vos personnages : quêtes en cours, suites et prérequis, objets à vous envoyer.
 ## Author: QuestCore
-## Version: 0.30.2
+## Version: 0.31.0
 ## IconTexture: Interface\Icons\INV_Misc_Book_08
 ## OptionalDeps: QuestieDB, CraftCore
 ## SavedVariables: QuestCoreDB, CoreSuiteDB
@@ -19,12 +19,14 @@ Locale\Langue.lua
 Core\Mouchard.lua
 Core\Core.lua
 Core\Suite.lua
+Core\Messages.lua
 Data\Reveal.lua
 Core\Objets.lua
 Core\Emplacements.lua
 Core\Equipement.lua
 Core\Journal.lua
 Core\Base.lua
+Core\Memoire.lua
 Core\Parcours.lua
 Core\Histoire.lua
 Core\Donjons.lua
@@ -39,4 +41,5 @@ UI\Carte.lua
 UI\CartePage.lua
 UI\Suivi.lua
 UI\Courrier.lua
+Core\Annonces.lua
 QuestCore.lua

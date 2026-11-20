@@ -2119,6 +2119,14 @@ function fen.OuvrirCarte()
     if cadre:IsShown() then fen.Rendre() else cadre:Show() end
 end
 
+-- Ouvre la fenetre sur une page, pour le personnage connecte (messages).
+function fen.OuvrirPage(page)
+    if not cadre then Construire() end
+    ChoisirPerso(NS.ClePersonnage() or etat.cle)
+    etat.page = page
+    if cadre:IsShown() then fen.Rendre() else cadre:Show() end
+end
+
 -- Ouvre la fenetre sur les parcours du personnage connecte.
 function fen.OuvrirParcours()
     if not cadre then Construire() end

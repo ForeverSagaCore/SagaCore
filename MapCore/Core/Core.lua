@@ -2,7 +2,7 @@ local _, NS = ...
 
 -- Socle de MapCore : lectures sous filet, base de sauvegarde.
 
-NS.VERSION = "0.8.0"
+NS.VERSION = "0.9.0"
 NS.base = {}
 local base = NS.base
 

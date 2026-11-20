@@ -7,12 +7,19 @@ local _, NS = ...
 NS.ref = {}
 local ref = NS.ref
 
+-- Une base de Questie, ou a defaut la copie personnelle du compte (Memoire).
+function ref.Base(entite)
+    local e = _G[entite]
+    if type(e) == "table" and type(e.Get) == "function" then return e end
+    return NS.memoire and NS.memoire.Base and NS.memoire.Base(entite) or nil
+end
+
 function ref.Disponible()
-    return type(_G.QuestDB) == "table" and type(_G.QuestDB.Get) == "function"
+    return ref.Base("QuestDB") ~= nil
 end
 
 local function Lire(entite, id, champ)
-    local e = _G[entite]
+    local e = ref.Base(entite)
     if type(e) ~= "table" or type(e.Get) ~= "function" or not id then return nil end
     local ok, v = pcall(e.Get, id, champ)
     if ok then return v end
