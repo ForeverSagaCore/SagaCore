@@ -193,6 +193,14 @@ local function FabricationFaite(idSort)
     for _, cible in ipairs(cibles) do
         for _, entree in ipairs(NS.projets.Contenu(cible) or {}) do
             if tostring(entree.recette) == cle then
+                -- Projet destine a un autre personnage : ce qui sort de la
+                -- fabrication est a lui envoyer.
+                local projet = cible ~= "rapides" and NS.projets.Par(cible)
+                if projet and not projet.commande and projet.pour and projet.pour ~= NS.ClePersonnage() and NS.commandes
+                    and NS.commandes.AEnvoyerPour then
+                    local r = CraftCoreDB.recettes[cle]
+                    pcall(NS.commandes.AEnvoyerPour, projet.pour, cle, math.max(1, tonumber(r and r.quantiteMin) or 1))
+                end
                 NS.projets.ChangerQuantite(cible, entree.recette, -1)
                 if cible ~= "rapides" and NS.commandes then pcall(NS.commandes.ProjetVide, NS.projets.Par(cible)) end
                 if NS.Trace then NS.Trace("fabrique : " .. cle .. " dans " .. tostring(cible)) end

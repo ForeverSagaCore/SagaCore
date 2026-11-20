@@ -606,6 +606,34 @@ function commandes.ProjetVide(projet)
     NS.Dire(string.format(NS.L.ORDER_CRAFTED, NomDeRecette(c.recette), NomCourt(c.demandeur)))
 end
 
+-- Une fabrication faite pour un autre personnage, dans un projet qui lui
+-- est destine (sans commande en bonne et due forme) : l'objet est a lui
+-- envoyer. Le courrier le proposera, comme pour une commande.
+function commandes.AEnvoyerPour(demandeur, recette, quantite)
+    local moi = NS.ClePersonnage()
+    local d = CraftCoreDB
+    if type(d) ~= "table" or not demandeur or not moi or demandeur == moi then return end
+    local r = d.recettes and d.recettes[tostring(recette)]
+    local objet = r and r.objetProduit
+    if not objet then return end
+    quantite = math.max(1, tonumber(quantite) or 1)
+    for _, c in pairs(Toutes()) do
+        if c.etat == "envoyer" and c.fabricant == moi and c.demandeur == demandeur and c.objet == objet then
+            c.quantite = (c.quantite or 0) + quantite
+            return c
+        end
+    end
+    d.prochaineCommande = (tonumber(d.prochaineCommande) or 1)
+    local id = d.prochaineCommande
+    d.prochaineCommande = id + 1
+    local c = { id = id, recette = tonumber(recette) or recette, objet = objet, quantite = quantite,
+        demandeur = demandeur, fabricant = moi, etat = "envoyer", cree = NS.Appeler(_G.time) }
+    c.envoyer = c.cree
+    Toutes()[tostring(id)] = c
+    NS.Dire(string.format(NS.L.ORDER_CRAFTED, NomDeRecette(c.recette), NomCourt(demandeur)))
+    return c
+end
+
 -- Un courrier est parti vers `cle` avec ces objets : les commandes qu'il
 -- contient sont envoyees.
 function commandes.Envoye(cle, objets)
