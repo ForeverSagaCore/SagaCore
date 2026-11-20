@@ -47,6 +47,25 @@ end
 function actions.Fabriquer(recette, nombre)
     local L = NS.L
     if nombre == "tout" then nombre = actions.NombrePossible(recette) end
+    -- Metier deja ouvert : ce qu'il faut a proximite (forge, enclume, feu
+    -- de camp...) est dit au moment de lancer, s'il manque.
+    if NS.recettes.PretALancer and NS.recettes.PretALancer(recette) then
+        local f = NS.Lecture("C_TradeSkillUI.GetRecipeRequirements")
+        local ok, besoins = false, nil
+        if f then ok, besoins = pcall(f, tonumber(recette.id) or recette.id) end
+        if ok and type(besoins) == "table" then
+            local manquent = {}
+            for _, b in ipairs(besoins) do
+                if type(b) == "table" and b.name and b.met == false then table.insert(manquent, b.name) end
+            end
+            if #manquent > 0 then
+                local texte = string.format(L.CRAFT_NEEDS, table.concat(manquent, ", "))
+                NS.Dire(texte)
+                if _G.UIErrorsFrame and _G.UIErrorsFrame.AddMessage then pcall(_G.UIErrorsFrame.AddMessage, _G.UIErrorsFrame, texte, 1, 0.82, 0) end
+                return
+            end
+        end
+    end
     -- Serie en cours, pour la barre de fabrication ("3 / 12").
     actions.serie = { total = tonumber(nombre) or 1, faits = 0 }
     local resultat = NS.recettes.Fabriquer(recette, nombre or 1)

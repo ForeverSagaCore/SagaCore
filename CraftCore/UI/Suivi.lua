@@ -615,43 +615,70 @@ function suivi.ToutOuvrir(oui)
     suivi.Dessiner()
 end
 
--- La premiere fabrication prete d'un projet : sa recette si tout est dans
--- les sacs, sinon ce qu'il faut fabriquer d'abord pour elle (une barre a
--- fondre, un catalyseur...). Rend la recette et le nombre de fois.
-local function PremiereFabricationPrete(lignes)
-    local A = NS.actions
-    if not (A and A.EtatPourFabriquer) then return nil end
-    local catalogue = CraftCoreDB and CraftCoreDB.recettes or {}
-    local producteurs
-    local function Producteur(objet)
-        if not producteurs then
-            producteurs = {}
-            for _, rec in pairs(catalogue) do
-                if type(rec) == "table" and rec.objetProduit and NS.recettes.EstApprise and NS.recettes.EstApprise(rec.id) then
-                    producteurs[rec.objetProduit] = producteurs[rec.objetProduit] or rec
-                end
+-- Recette qui fabrique un objet (apprise), cherchee une fois par dessin.
+local producteurs
+local function Producteur(objet)
+    if not producteurs then
+        producteurs = {}
+        for _, rec in pairs(CraftCoreDB and CraftCoreDB.recettes or {}) do
+            if type(rec) == "table" and rec.objetProduit and NS.recettes.EstApprise and NS.recettes.EstApprise(rec.id) then
+                producteurs[rec.objetProduit] = producteurs[rec.objetProduit] or rec
             end
         end
-        return producteurs[objet]
     end
+    return producteurs[objet]
+end
+
+-- Les etapes de fabrication d'un projet, dans l'ordre : d'abord ce qu'il
+-- faut fabriquer en route (barres, catalyseurs...), puis l'objet lui-meme.
+-- Chaque etape : recette, objet, combien de fois, faite ou non.
+local function EtapesDeFabrication(lignes)
+    local etapes = {}
+    local catalogue = CraftCoreDB and CraftCoreDB.recettes or {}
     for _, l in ipairs(lignes or {}) do
         local rec = catalogue[tostring(l.recette)] or catalogue[l.recette]
         if type(rec) == "table" then
             local quantite = l.quantite or 1
-            if A.EtatPourFabriquer(rec) == true then
-                return rec, math.min(quantite, A.NombrePossible(rec))
-            end
             for _, comp in ipairs(rec.composants or {}) do
-                local manque = comp.quantite * quantite - (NS.inventaire.DisponibleDansLesSacs(comp.objet) or 0)
-                local sous = manque > 0 and Producteur(comp.objet)
-                if sous and A.EtatPourFabriquer(sous) == true then
+                local sous = Producteur(comp.objet)
+                if sous and sous ~= rec then
+                    local besoin = comp.quantite * quantite
+                    local avoir = NS.inventaire.DisponibleDansLesSacs(comp.objet) or 0
                     local parFois = math.max(1, tonumber(sous.quantiteMin) or 1)
-                    return sous, math.min(math.ceil(manque / parFois), A.NombrePossible(sous))
+                    table.insert(etapes, { recette = sous, objet = comp.objet, besoin = besoin,
+                        fois = math.max(1, math.ceil(math.max(0, besoin - avoir) / parFois)), faite = avoir >= besoin })
                 end
             end
+            table.insert(etapes, { recette = rec, objet = rec.objetProduit, besoin = quantite, fois = quantite, faite = false, finale = true })
+        end
+    end
+    return etapes
+end
+
+-- La prochaine etape : la premiere pas faite. Rend l'etape, son rang, et
+-- si elle peut etre lancee maintenant (tout dans les sacs).
+local function ProchaineEtape(etapes)
+    local A = NS.actions
+    for rang, e in ipairs(etapes) do
+        if not e.faite then
+            local pret = A and A.EtatPourFabriquer and A.EtatPourFabriquer(e.recette) == true
+            return e, rang, pret
         end
     end
     return nil
+end
+
+-- La premiere fabrication prete d'un projet. Rend la recette, le nombre de
+-- fois, l'etape et son rang.
+local function PremiereFabricationPrete(lignes)
+    local A = NS.actions
+    if not (A and A.EtatPourFabriquer) then return nil end
+    local etapes = EtapesDeFabrication(lignes)
+    local e, rang, pret = ProchaineEtape(etapes)
+    if e and pret then
+        return e.recette, math.min(e.fois, A.NombrePossible(e.recette)), e, rang, etapes
+    end
+    return nil, nil, nil, nil, etapes
 end
 
 -- Le groupe d'un objectif dans son onglet, comme les zones du suivi des
@@ -866,7 +893,17 @@ local function DessinerObjectifs(y, objectifs, vue)
                 -- Tout est reuni : un bouton Creer sur la ligne, comme la petite
                 -- carte et l'etoile du suivi des quetes. Un clic lance la
                 -- premiere fabrication prete (le premier ouvre le metier).
-                local recettePrete, fois = PremiereFabricationPrete(o.lignes)
+                local recettePrete, fois, etapeP, rangP, etapes = PremiereFabricationPrete(o.lignes)
+                -- Une etape vient de se terminer : on le dit, et on invite a la suivante.
+                local suiviEtapes = NS.base.ReglagesGeneraux()
+                suiviEtapes.etapesFab = type(suiviEtapes.etapesFab) == "table" and suiviEtapes.etapesFab or {}
+                if rangP then
+                    local avant = suiviEtapes.etapesFab[o.cle]
+                    if avant and rangP > avant and etapes and #etapes > 1 then
+                        NS.Dire(string.format(L.CRAFT_STEP_DONE, avant, rangP))
+                    end
+                    suiviEtapes.etapesFab[o.cle] = rangP
+                end
                 if recettePrete then
                     if not b.creer then
                         b.creer = CreateFrame("Button", nil, b, "UIPanelButtonTemplate")
@@ -876,6 +913,19 @@ local function DessinerObjectifs(y, objectifs, vue)
                     b.creer:SetPoint("RIGHT", b.droite, "LEFT", -6, 0)
                     b.creer:SetText(L.CRAFT_BUTTON)
                     NS.actions.PreparerBoutonFabriquer(b.creer, recettePrete, fois)
+                    -- L'infobulle dit quelle etape le clic va lancer.
+                    b.creer.etape = (etapes and #etapes > 1 and etapeP) and string.format(L.CRAFT_STEP_TIP, rangP, #etapes,
+                        NS.inventaire.NomDObjet(etapeP.objet), fois or 1) or nil
+                    if not b.creer.etapeAccroche then
+                        b.creer.etapeAccroche = true
+                        b.creer:HookScript("OnEnter", function(self)
+                            if self.etape and GameTooltip:IsOwned(self) then
+                                GameTooltip:AddLine(" ")
+                                GameTooltip:AddLine(self.etape, 1, 0.82, 0, true)
+                                GameTooltip:Show()
+                            end
+                        end)
+                    end
                     local txt = b.creer:GetFontString()
                     if txt then Taille(txt, 10) end
                     b.creer:SetFrameLevel(b:GetFrameLevel() + 3)
@@ -922,6 +972,37 @@ local function DessinerObjectifs(y, objectifs, vue)
                     b.pion:Hide()
                 end
                 y = y + 20
+                -- Tout est reuni et il y a plusieurs etapes : elles s'affichent
+                -- dessous, dans l'ordre, chacune avec son etat.
+                if (o.pct or 0) >= 1 and etapes and #etapes > 1 then
+                    for rangE, e in ipairs(etapes) do
+                        local t = T(LIGNE, TAILLE_LIGNE - 1)
+                        t:ClearAllPoints()
+                        t:SetPoint("TOPLEFT", zone, "TOPLEFT", 24, -(y - 2))
+                        t:SetWidth(largeur - 24 - 70)
+                        t:SetWordWrap(false)
+                        t:SetText(string.format(L.CRAFT_STEP_LINE, rangE, NS.inventaire.NomDObjet(e.objet), e.finale and e.besoin or e.fois))
+                        local etat = T(LIGNE, TAILLE_LIGNE - 1)
+                        etat:ClearAllPoints()
+                        etat:SetPoint("TOPRIGHT", zone, "TOPLEFT", largeur, -(y - 2))
+                        etat:SetWidth(70)
+                        etat:SetJustifyH("RIGHT")
+                        if e.faite then
+                            t:SetTextColor(0.5, 0.5, 0.5)
+                            etat:SetText(L.GUIDE_DONE)
+                            etat:SetTextColor(0.31, 0.82, 0.41)
+                        elseif rangE == rangP then
+                            t:SetTextColor(1, 1, 1)
+                            etat:SetText(L.CRAFT_STEP_NOW)
+                            etat:SetTextColor(1, 0.82, 0)
+                        else
+                            t:SetTextColor(0.7, 0.7, 0.7)
+                            etat:SetText("")
+                        end
+                        y = y + 14
+                    end
+                    y = y + 2
+                end
                 -- Commande : pour qui, en dessous, comme l'XP sous une zone.
                 if o.pourQui then
                     local t = T(LIGNE, TAILLE_LIGNE - 1)
@@ -1001,6 +1082,7 @@ function suivi.Dessiner()
     if cadreSuivi.filetCommandes then cadreSuivi.filetCommandes:Hide() end
     local vue = Vue()
     TAILLE_LIGNE = TailleDesQuetes()
+    producteurs = nil
     local objectifs = suivi.Objectifs()
     local g = NS.base.ReglagesGeneraux()
     cadreSuivi.replier:SetNormalTexture(g.suiviReplie and "Interface\\Buttons\\UI-PlusButton-Up"
