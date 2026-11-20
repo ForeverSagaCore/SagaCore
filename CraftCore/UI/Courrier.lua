@@ -50,7 +50,36 @@ local function BesoinsDe(cle)
     return NS.base.AvecPersonnage(cle, function()
         local _, _, rapatries, pris = NS.projets.CalculerTout(
             NS.projets.StocksDuPersonnage(), NS.projets.StocksDesAutres())
-        return rapatries or {}, pris or {}
+        rapatries = rapatries or {}
+        -- Les rangs vises (Monter un metier) sans projet : ce que la
+        -- progression prend dans les stocks du compte et qui n'est pas chez
+        -- lui se rapatrie aussi.
+        local fiche = NS.base.FicheAffichee()
+        local catalogue = NS.recettes
+        if fiche and type(fiche.objectifsProgression) == "table" and catalogue and catalogue.Progression then
+            local avecProjet = {}
+            for _, projet in ipairs(NS.projets.Tous and NS.projets.Tous(false) or {}) do
+                if projet.progression then avecProjet[tostring(projet.progression)] = true end
+            end
+            local chezLui = NS.projets.StocksDuPersonnage()
+            local deja = {}
+            for cleM, vise in pairs(fiche.objectifsProgression) do
+                local ligne = tonumber(cleM)
+                local sien = type(fiche.metiers) == "table" and fiche.metiers[tostring(cleM)]
+                if ligne and type(sien) == "table" and sien.rang and not avecProjet[tostring(cleM)] then
+                    local ok, plan = pcall(catalogue.Progression, ligne, sien.rang, sien.rangMax, vise)
+                    for objet, n in pairs(ok and plan and plan.utilises or {}) do
+                        objet = tonumber(objet)
+                        if objet then deja[objet] = (deja[objet] or 0) + (tonumber(n) or 0) end
+                    end
+                end
+            end
+            for objet, total in pairs(deja) do
+                local manque = total - (chezLui[objet] or 0)
+                if manque > 0 then rapatries[objet] = math.max(rapatries[objet] or 0, manque) end
+            end
+        end
+        return rapatries, pris or {}
     end)
 end
 
@@ -702,9 +731,7 @@ local function LierManette(actif)
         -- Y, pas A : A reste au jeu pour prendre et poser les objets de la
         -- banque et des sacs.
         pcall(_G.SetOverrideBindingClick, panneau, true, "PAD4", "CraftCoreAssistantManette", "LeftButton")
-        local b = panneau.boutons[1]
-        local texte = b:GetText() or ""
-        if not string.find(texte, "(Y)", 1, true) then b:SetText(texte .. " (Y)") end
+
     end
 end
 courrier.LierManette = LierManette
@@ -779,10 +806,10 @@ local function Remplir(plan)
         local b = Bouton(nb)
         b:ClearAllPoints()
         b:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 0, -(y + 4))
-        -- La premiere action se fait aussi a la manette (touche A) : l'icone
+        -- La premiere action se fait aussi a la manette (touche Y) : l'icone
         -- du jeu devant le libelle.
         if nb == 1 and courrier.ToucheManette() then
-            local ok, g = pcall(NS.manette.Glyphe, "PAD1", 14)
+            local ok, g = pcall(NS.manette.Glyphe, "PAD4", 14)
             if ok and g then libelle = g .. " " .. libelle end
         end
         b:SetText(libelle)
