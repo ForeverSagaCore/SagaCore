@@ -597,6 +597,8 @@ local function SourisSur(fenetre)
 end
 
 local function Fondu(ecoule)
+    -- La suite efface toutes ses fenetres quand on marche : rien a faire ici.
+    do return end
     local fenetre = _G.QuestCoreFenetre
     if not fenetre then return end
     local cible = 1

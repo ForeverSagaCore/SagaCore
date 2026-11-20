@@ -5270,6 +5270,59 @@ _G.SagaCoreOptions.Messages = { titre = function() return TR("Messages", "Messag
     return L
 end }
 
+-- ---------------------------------------------------------------------------
+-- Fenetres en sous-brillance quand le personnage se deplace : toutes les
+-- fenetres de la suite ouvertes s'effacent presque entierement des qu'il
+-- marche, et reviennent des qu'il s'arrete. Toujours, sans reglage. Les
+-- suivis gardent leur propre regle.
+-- ---------------------------------------------------------------------------
+
+Suite.FENETRES_FONDU = { "CraftCoreWindow", "QuestCoreFenetre", "MapCoreFenetre", "LegacyCoreFenetre",
+    "TradeCoreFenetre", "ImproveCoreFenetre", "CoreSuiteReglages", "CoreSuiteMacros", "SagaCoreMessages" }
+local ALPHA_MARCHE = 0.1
+
+local function FenetresAFondre()
+    local liste, vues = {}, {}
+    for _, nom in ipairs(Suite.FENETRES_FONDU) do
+        local f = _G[nom]
+        if f and f.IsShown and f:IsShown() and not vues[f] then vues[f] = true table.insert(liste, f) end
+    end
+    for _, w in ipairs(Suite.fenetresAPages or {}) do
+        local f = w.cadre
+        if f and f:IsShown() and not vues[f] then vues[f] = true table.insert(liste, f) end
+    end
+    return liste
+end
+
+do
+    local veille = CreateFrame("Frame")
+    local attente = 0
+    veille:SetScript("OnUpdate", function(_, ecoule)
+        if _G.CoreSuite ~= Suite then return end
+        attente = attente - (ecoule or 0)
+        local fenetres
+        -- Toutes les 0,1 s : la vitesse ; a chaque image : le fondu lui-meme.
+        local ok, vitesse = pcall(GetUnitSpeed, "player")
+        if not ok or (_G.issecretvalue and _G.issecretvalue(vitesse)) then vitesse = 0 end
+        local cible = ((tonumber(vitesse) or 0) > 0) and ALPHA_MARCHE or 1
+        if attente > 0 and veille.cible == cible and not veille.enCours then return end
+        attente = 0.1
+        veille.cible = cible
+        fenetres = FenetresAFondre()
+        local enCours = false
+        local pas = 4 * (ecoule or 0.05)
+        for _, f in ipairs(fenetres) do
+            local actuel = f:GetAlpha() or 1
+            if math.abs(actuel - cible) >= 0.01 then
+                if actuel < cible then actuel = math.min(cible, actuel + pas) else actuel = math.max(cible, actuel - pas) end
+                f:SetAlpha(actuel)
+                enCours = true
+            end
+        end
+        veille.enCours = enCours
+    end)
+end
+
 do
     local depart = CreateFrame("Frame")
     depart:RegisterEvent("PLAYER_LOGIN")
