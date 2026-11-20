@@ -180,17 +180,28 @@ function F.Construire()
                   page.titre = O.Section()
                   page.intro = O.Detail(40)
                   page.blocs = {}
-                  for _, a in ipairs(NS.ADDONS) do
+                  -- Par add-on : son nom, son adresse, ce qu'il fait, son etat,
+                  -- puis un filet avant le suivant.
+                  for rang, a in ipairs(NS.ADDONS) do
                       local b = { a = a }
                       b.rang = O.Rangee(24, "GameFontNormal")
-                      b.etat = b.rang:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-                      b.etat:SetPoint("RIGHT", b.rang, "RIGHT", -10, 0)
-                      b.role = O.Detail(30)
                       b.rLien = O.Rangee(24, "GameFontHighlightSmall")
-                      b.lien = O.Saisie(b.rLien, 330, function() end)
-                      b.lien:SetPoint("RIGHT", b.rLien, "RIGHT", -10, 0)
-                      -- Champ a copier : un clic selectionne tout.
+                      b.lien = O.Saisie(b.rLien, 360, function() end)
+                      b.lien:ClearAllPoints()
+                      b.lien:SetPoint("LEFT", b.rLien, "LEFT", 16, 0)
                       b.lien:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+                      b.role = O.Detail(30)
+                      b.etat = O.Detail(16)
+                      if rang < #NS.ADDONS then
+                          local f = CreateFrame("Frame", nil, page.cadre)
+                          f:SetSize(O.LARGEUR - 10, 12)
+                          O.Placer(f, 12, 4)
+                          local filet = f:CreateTexture(nil, "ARTWORK")
+                          filet:SetHeight(1)
+                          filet:SetPoint("LEFT", f, "LEFT", 0, 0)
+                          filet:SetPoint("RIGHT", f, "RIGHT", 0, 0)
+                          filet:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+                      end
                       table.insert(page.blocs, b)
                   end
               end,
@@ -201,17 +212,16 @@ function F.Construire()
                   for _, b in ipairs(page.blocs) do
                       local texte, couleur = ETATS[NS.Etat(b.a)]()
                       b.rang.nom:SetText(b.a.nom)
-                      b.etat:SetText(texte)
-                      b.etat:SetTextColor(couleur[1], couleur[2], couleur[3])
-                      b.role:SetText(b.a.role() .. "\n" .. b.a.sert())
+                      b.rLien.nom:SetText("")
                       if b.a.url then
-                          b.rLien.nom:SetText(T("Adresse", "Address"))
                           b.lien:SetText(b.a.url)
                       else
-                          b.rLien.nom:SetText(T("À chercher dans l'app CurseForge", "Search in the CurseForge app"))
-                          b.lien:SetText(b.a.recherche or b.a.nom)
+                          b.lien:SetText(T("Dans l'app CurseForge : ", "In the CurseForge app: ") .. (b.a.recherche or b.a.nom))
                       end
                       b.lien:SetCursorPosition(0)
+                      b.role:SetText(b.a.role() .. "\n" .. b.a.sert())
+                      b.etat:SetText(texte)
+                      b.etat:SetTextColor(couleur[1], couleur[2], couleur[3])
                   end
               end },
             { cle = "trajets", icone = "Interface\\Icons\\INV_Misc_Map_01",
