@@ -68,7 +68,7 @@ end
 -- composant, ce qu'on en a et ou est le reste.
 function actions.PreparerBoutonFabriquer(bouton, recette, nombre)
     local L = NS.L
-    local pret = actions.EtatPourFabriquer(recette)
+    local pret, manques = actions.EtatPourFabriquer(recette)
     if pret == nil then
         bouton:Hide()
         return false
@@ -93,7 +93,7 @@ function actions.PreparerBoutonFabriquer(bouton, recette, nombre)
     end)
     bouton:SetScript("OnLeave", function() GameTooltip:Hide() end)
     bouton:Show()
-    return true
+    return true, pret, manques
 end
 
 -- Ou ajouter une recette : les projets en cours, les fabrications rapides,

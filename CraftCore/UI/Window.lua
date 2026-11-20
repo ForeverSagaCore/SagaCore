@@ -439,6 +439,7 @@ local function PoserLigne(ligne, retrait, depliable, deplie, auClic)
     ligne.moins:Hide()
     ligne.plus:Hide()
     if ligne.fabriquer then ligne.fabriquer:Hide() end
+    if ligne.manque then ligne.manque:Hide() end
     if ligne.palier then ligne.palier:Hide() end
     ligne.quantite:Hide()
     AncrerLibelle(ligne, ligne.sacs)
@@ -517,8 +518,29 @@ local function PoserBoutonFabriquer(ligne, recette, nombre)
     local voisin = (ligne.plus:IsShown() and ligne.plus) or ligne.total
     b:SetPoint("RIGHT", voisin, "LEFT", voisin == ligne.total and -6 or -4, 0)
     b:SetText(L.CRAFT_BUTTON)
-    if NS.actions.PreparerBoutonFabriquer(b, recette, nombre) then
-        AncrerLibelle(ligne, b)
+    -- Grise : ce qui manque dans les sacs, ecrit a cote, sans avoir a survoler.
+    if not ligne.manque then
+        ligne.manque = ligne:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        ligne.manque:SetJustifyH("RIGHT")
+        ligne.manque:SetWordWrap(false)
+    end
+    ligne.manque:Hide()
+    local montre, pret, manques = NS.actions.PreparerBoutonFabriquer(b, recette, nombre)
+    if montre then
+        local butee = b
+        if pret == false and type(manques) == "table" and #manques > 0 then
+            local noms = {}
+            for _, m in ipairs(manques) do
+                table.insert(noms, NS.inventaire.NomDObjet(m.objet) .. (m.manque > 1 and (" x" .. m.manque) or ""))
+            end
+            ligne.manque:ClearAllPoints()
+            ligne.manque:SetPoint("RIGHT", b, "LEFT", -6, 0)
+            ligne.manque:SetText(L.GEAR_CRAFT_MISSING .. " " .. table.concat(noms, ", "))
+            ligne.manque:SetTextColor(0.9, 0.3, 0.3)
+            ligne.manque:Show()
+            butee = ligne.manque
+        end
+        AncrerLibelle(ligne, butee)
     end
 end
 
@@ -654,7 +676,7 @@ end
 
 -- Texte sur plusieurs lignes au besoin, jamais tronque. Meme retrait que les
 -- lignes simples. `couleur` : { r, g, b } facultatif.
-local function Paragraphe(contenu, y, texte, police, couleur)
+local function Paragraphe(contenu, y, texte, police, couleur, x)
     contenu.paragraphes = contenu.paragraphes or {}
     contenu.nbParagraphes = (contenu.nbParagraphes or 0) + 1
     local p = contenu.paragraphes[contenu.nbParagraphes]
@@ -670,8 +692,9 @@ local function Paragraphe(contenu, y, texte, police, couleur)
     if largeur < 100 then largeur = LARGEUR - LARGEUR_MENU - MARGE * 2 - ECART * 2 - 40 end
     p:SetFontObject(police or "GameFontHighlight")
     p:ClearAllPoints()
-    p:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU + retraitCourant + 2, -(y + 2))
-    p:SetWidth(largeur - RETRAIT_PAR_NIVEAU - retraitCourant - 10)
+    local gaucheP = x or (RETRAIT_PAR_NIVEAU + retraitCourant + 2)
+    p:SetPoint("TOPLEFT", contenu, "TOPLEFT", gaucheP, -(y + 2))
+    p:SetWidth(largeur - gaucheP - 8)
     p:SetText(texte)
     if couleur then p:SetTextColor(couleur[1], couleur[2], couleur[3]) else p:SetTextColor(1, 1, 1) end
     p:Show()
@@ -2534,64 +2557,72 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     end
     local gauche = RETRAIT_PAR_NIVEAU + retraitCourant
 
+    -- Tout le bloc s'aligne sur le nom du metier (apres son marqueur et son
+    -- icone), dans une seule taille de texte.
+    local aligne = 2 + 14 + 4 + 16 + 6
+    local POLICE = "GameFontHighlightSmall"
+
     -- Ce que les composants du compte donnent deja, a coup sur.
     local okStock, planStock = pcall(catalogue.Progression, ligneMetier, rang, rangMax, nil)
     if okStock and planStock and (planStock.pointsSurs or 0) > 0 then
-        y = Paragraphe(contenu, y + 4, string.format(L.GUIDE_ALREADY, rang + planStock.pointsSurs), "GameFontHighlightSmall", VERT)
+        y = Paragraphe(contenu, y + 4, string.format(L.GUIDE_ALREADY, rang + planStock.pointsSurs), POLICE, VERT, aligne)
     end
 
-    -- Le rang vise, aux boutons : rien a taper, jouable a la manette.
-    y = y + 6
-    contenu.libelleObjectif = contenu.libelleObjectif or contenu:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    -- Le rang vise : la valeur entre deux fleches, au bord droit, comme
+    -- partout dans la suite. Jouable a la manette.
+    y = y + 4
+    contenu.libelleObjectif = contenu.libelleObjectif or contenu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    contenu.libelleObjectif:SetFontObject("GameFontNormalSmall")
     contenu.libelleObjectif:ClearAllPoints()
-    contenu.libelleObjectif:SetPoint("TOPLEFT", contenu, "TOPLEFT", gauche, -(y + 4))
+    contenu.libelleObjectif:SetPoint("TOPLEFT", contenu, "TOPLEFT", aligne, -(y + 7))
     contenu.libelleObjectif:SetText(L.GUIDE_TARGET)
     contenu.libelleObjectif:Show()
-    local precedent
-    for _, pas in ipairs({ -5, -1, 1, 5 }) do
-        local b = BoutonAction(contenu, "progPas" .. pas, (pas > 0 and "+" or "") .. pas)
-        b:SetWidth(44)
-        b:ClearAllPoints()
-        if precedent then
-            b:SetPoint("LEFT", precedent, "RIGHT", pas == 1 and 60 or 4, 0)
-        else
-            b:SetPoint("LEFT", contenu.libelleObjectif, "RIGHT", 10, 0)
+    contenu.etatObjectif = { valeur = objectif, mini = rang + 1, maxi = rangMax or (rang + 75) }
+    local S = NS.suite or _G.CoreSuite
+    if S and S.Curseur then
+        if not contenu.curseurObjectif then
+            contenu.curseurObjectif = S.Curseur(contenu, 0, 1000, 5,
+                function() return contenu.etatObjectif and contenu.etatObjectif.valeur end,
+                function(v)
+                    local e = contenu.etatObjectif
+                    if not e then return end
+                    v = math.max(e.mini, math.min(e.maxi, v))
+                    e.valeur = v
+                    if e.poser then e.poser(v) end
+                    ecran.Montrer(ecran.page)
+                end)
+            contenu.curseurObjectif.surParchemin = function() return NS.charte.Fond and NS.charte.Fond() == "parchemin" end
         end
-        b:SetScript("OnClick", function()
-            local cible = math.max(rang + 1, math.min(rangMax or (objectif + pas), objectif + pas))
-            PoserObjectif(cible)
-            ecran.Montrer(ecran.page)
-        end)
-        b:Show()
-        if pas == -1 then
-            contenu.valeurObjectif = contenu.valeurObjectif or contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-            contenu.valeurObjectif:ClearAllPoints()
-            contenu.valeurObjectif:SetPoint("LEFT", b, "RIGHT", 6, 0)
-            contenu.valeurObjectif:SetWidth(48)
-            contenu.valeurObjectif:SetJustifyH("CENTER")
-            contenu.valeurObjectif:SetText(tostring(objectif))
-            contenu.valeurObjectif:Show()
+        contenu.etatObjectif.poser = PoserObjectif
+        local c = contenu.curseurObjectif
+        c:ClearAllPoints()
+        c:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -y)
+        c:Show()
+        c.Rendre()
+        -- Bornes du metier : fleches grisees au bout.
+        if c.boutonsPM then
+            c.boutonsPM[1]:SetEnabled(objectif > contenu.etatObjectif.mini)
+            c.boutonsPM[2]:SetEnabled(objectif < contenu.etatObjectif.maxi)
         end
-        precedent = b
+        if enregistre then
+            local oublier = BoutonAction(contenu, "progOublier", L.PROGRESSIONS_STOP)
+            oublier:ClearAllPoints()
+            oublier:SetPoint("RIGHT", c, "LEFT", -8, 0)
+            oublier:SetScript("OnClick", function() PoserObjectif(nil) ecran.Montrer(ecran.page) end)
+            oublier:Show()
+        end
     end
-    if enregistre then
-        local oublier = BoutonAction(contenu, "progOublier", L.PROGRESSIONS_STOP)
-        oublier:ClearAllPoints()
-        oublier:SetPoint("LEFT", precedent, "RIGHT", 12, 0)
-        oublier:SetScript("OnClick", function() PoserObjectif(nil) ecran.Montrer(ecran.page) end)
-        oublier:Show()
-    end
-    y = y + 28
+    y = y + 30
 
     local plan = catalogue.Progression(ligneMetier, rang, rangMax, objectif)
     if plan.atteint >= objectif then
-        y = Paragraphe(contenu, y, string.format(L.PROG_GOAL_OK, objectif), "GameFontHighlight", VERT)
+        y = Paragraphe(contenu, y, string.format(L.PROG_GOAL_OK, objectif), POLICE, VERT, aligne)
     else
-        y = Paragraphe(contenu, y, string.format(L.PROG_GOAL_PARTIAL, objectif, plan.atteint), "GameFontHighlight", OR)
+        y = Paragraphe(contenu, y, string.format(L.PROG_GOAL_PARTIAL, objectif, plan.atteint), POLICE, OR, aligne)
         local raisons = { aucuneRecette = L.PROG_STOP_NORECIPE, plusRien = L.PROG_STOP_NOORANGE,
             plafond = string.format(L.PROG_STOP_CAP, rangMax or 0) }
         if plan.arret and raisons[plan.arret] then
-            y = Paragraphe(contenu, y, raisons[plan.arret], "GameFontHighlightSmall", GRIS)
+            y = Paragraphe(contenu, y, raisons[plan.arret], POLICE, GRIS, aligne)
         end
     end
 
@@ -2772,6 +2803,7 @@ local function RendreProgression(contenu)
     CacherParagraphes(contenu)
     if contenu.valeurObjectif then contenu.valeurObjectif:Hide() end
     if contenu.libelleObjectif then contenu.libelleObjectif:Hide() end
+    if contenu.curseurObjectif then contenu.curseurObjectif:Hide() end
     MigrerProjetsDeProgression()
     ecran.deplie = ecran.deplie or {}
     local catalogue = NS.recettes
@@ -4399,6 +4431,9 @@ function ecran.Montrer(cle)
         end
         if fenetre.contenu.libelleObjectif and ecran.page ~= "progression" then
             fenetre.contenu.libelleObjectif:Hide()
+        end
+        if fenetre.contenu.curseurObjectif and ecran.page ~= "progression" then
+            fenetre.contenu.curseurObjectif:Hide()
         end
         -- Les paragraphes sont reposes par chaque page qui en a besoin.
         CacherParagraphes(fenetre.contenu)
