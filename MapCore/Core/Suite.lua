@@ -3803,15 +3803,16 @@ function Suite.ListeDeroulante(parent, options, lire, poser, apres, focus)
     return f
 end
 
-function Suite.Curseur(parent, mini, maxi, pas, lire, poser, format, boutons)
-    -- La valeur entre deux fleches, comme les pages du grimoire du jeu.
+function Suite.Curseur(parent, mini, maxi, pas, lire, poser, format, boutons, grandPas)
+    -- La valeur entre deux fleches, comme les pages du grimoire du jeu. Avec
+    -- grandPas : une fleche double de chaque cote, qui avance d'autant.
     local f = CreateFrame("Frame", nil, parent)
     -- Meme largeur que les listes : les bords des controles s'alignent.
     f:SetSize(200, 26)
     pas = pas or 1
     local function Arrondir(v) return mini + math.floor((v - mini) / pas + 0.5) * pas end
     local function Ecrire(v) return format and format(v) or tostring(v) end
-    local function Fleche(sens)
+    local function Fleche(sens, saut)
         local b = CreateFrame("Button", nil, f)
         b:SetSize(26, 26)
         local nom = sens < 0 and "PrevPage" or "NextPage"
@@ -3819,30 +3820,56 @@ function Suite.Curseur(parent, mini, maxi, pas, lire, poser, format, boutons)
         b:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-" .. nom .. "-Down")
         b:SetDisabledTexture("Interface\\Buttons\\UI-SpellbookIcon-" .. nom .. "-Disabled")
         b:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+        if saut ~= pas then
+            -- Fleche double : une seconde pointe, decalee dans le sens du saut.
+            for _, t in ipairs({ b:GetNormalTexture(), b:GetPushedTexture(), b:GetDisabledTexture() }) do
+                if t then t:ClearAllPoints() t:SetSize(22, 22) t:SetPoint("CENTER", -4 * sens, 0) end
+            end
+            b.deux = b:CreateTexture(nil, "ARTWORK")
+            b.deux:SetSize(22, 22)
+            b.deux:SetPoint("CENTER", 4 * sens, 0)
+            b.deux:SetTexture("Interface\\Buttons\\UI-SpellbookIcon-" .. nom .. "-Up")
+            hooksecurefunc(b, "SetEnabled", function(self, oui)
+                self.deux:SetTexture("Interface\\Buttons\\UI-SpellbookIcon-" .. nom .. (oui and "-Up" or "-Disabled"))
+            end)
+        end
         b:SetScript("OnClick", function()
             local okL, v = pcall(lire)
-            v = Arrondir((tonumber(okL and v) or mini) + sens * pas)
+            v = (tonumber(okL and v) or mini) + sens * saut
+            if saut == pas then v = Arrondir(v) end
             pcall(poser, math.max(mini, math.min(maxi, v)))
             f.Rendre()
         end)
         return b
     end
-    local moins, plus = Fleche(-1), Fleche(1)
-    moins:SetPoint("LEFT", 0, 0)
-    plus:SetPoint("RIGHT", 0, 0)
+    local moins, plus = Fleche(-1, pas), Fleche(1, pas)
+    local moinsVite, plusVite
+    if grandPas and grandPas ~= pas then
+        moinsVite, plusVite = Fleche(-1, grandPas), Fleche(1, grandPas)
+        moinsVite:SetPoint("LEFT", 0, 0)
+        moins:SetPoint("LEFT", moinsVite, "RIGHT", 0, 0)
+        plusVite:SetPoint("RIGHT", 0, 0)
+        plus:SetPoint("RIGHT", plusVite, "LEFT", 0, 0)
+    else
+        moins:SetPoint("LEFT", 0, 0)
+        plus:SetPoint("RIGHT", 0, 0)
+    end
     local valeur = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     valeur:SetPoint("LEFT", moins, "RIGHT", 2, 0)
     valeur:SetPoint("RIGHT", plus, "LEFT", -2, 0)
     valeur:SetJustifyH("CENTER")
-    f.boutonsPM = { moins, plus }
+    f.boutonsPM = { moins, plus, moinsVite, plusVite }
     function f.Rendre()
         local okL, v = pcall(lire)
         v = tonumber(okL and v)
         valeur:SetText(v and Ecrire(v) or "")
         -- Encre sur le parchemin, blanc sur fond sombre.
         if f.surParchemin and f.surParchemin() then valeur:SetTextColor(0.24, 0.14, 0.06) else valeur:SetTextColor(1, 1, 1) end
-        moins:SetEnabled(v == nil or v > mini + pas / 2)
-        plus:SetEnabled(v == nil or v < maxi - pas / 2)
+        local basOk = v == nil or v > mini + pas / 2
+        local hautOk = v == nil or v < maxi - pas / 2
+        moins:SetEnabled(basOk)
+        plus:SetEnabled(hautOk)
+        if moinsVite then moinsVite:SetEnabled(basOk) plusVite:SetEnabled(hautOk) end
     end
     return f
 end

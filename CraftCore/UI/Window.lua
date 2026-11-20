@@ -2581,7 +2581,7 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     local S = NS.suite or _G.CoreSuite
     if S and S.Curseur then
         if not contenu.curseurObjectif then
-            contenu.curseurObjectif = S.Curseur(contenu, 0, 1000, 5,
+            contenu.curseurObjectif = S.Curseur(contenu, 0, 1000, 1,
                 function() return contenu.etatObjectif and contenu.etatObjectif.valeur end,
                 function(v)
                     local e = contenu.etatObjectif
@@ -2590,7 +2590,7 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                     e.valeur = v
                     if e.poser then e.poser(v) end
                     ecran.Montrer(ecran.page)
-                end)
+                end, nil, nil, 5)
             contenu.curseurObjectif.surParchemin = function() return NS.charte.Fond and NS.charte.Fond() == "parchemin" end
         end
         contenu.etatObjectif.poser = PoserObjectif
@@ -2601,8 +2601,10 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         c.Rendre()
         -- Bornes du metier : fleches grisees au bout.
         if c.boutonsPM then
-            c.boutonsPM[1]:SetEnabled(objectif > contenu.etatObjectif.mini)
-            c.boutonsPM[2]:SetEnabled(objectif < contenu.etatObjectif.maxi)
+            local bas, haut = objectif > contenu.etatObjectif.mini, objectif < contenu.etatObjectif.maxi
+            c.boutonsPM[1]:SetEnabled(bas)
+            c.boutonsPM[2]:SetEnabled(haut)
+            if c.boutonsPM[3] then c.boutonsPM[3]:SetEnabled(bas) c.boutonsPM[4]:SetEnabled(haut) end
         end
         if enregistre then
             local oublier = BoutonAction(contenu, "progOublier", L.PROGRESSIONS_STOP)
