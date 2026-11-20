@@ -54,6 +54,12 @@ end
 local function ApresReleve()
     if NS.infobulles then NS.infobulles.Invalider() end
     if NS.courrier then NS.courrier.Actualiser() end
+    -- Le suivi (Mes fabrications, pourcentages) suit les sacs a chaque
+    -- releve : achat chez un marchand, banque, courrier, butin.
+    if NS.suivi and NS.suivi.Dessiner then
+        local ok, souci = pcall(NS.suivi.Dessiner)
+        if not ok and NS.base.NoterIncident then NS.base.NoterIncident("suivi apres releve", souci) end
+    end
 end
 
 local function ReleverBientot()
