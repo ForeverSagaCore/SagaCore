@@ -661,7 +661,7 @@ local function Bouton(rang)
     return b
 end
 
--- Touche A de la manette sur la premiere action du panneau (Tout sortir,
+-- Touche Y de la manette sur la premiere action du panneau (Tout sortir,
 -- Preparer l'envoi), le temps que le panneau est ouvert. Une liaison
 -- prioritaire, retiree des que le panneau se ferme ; jamais en combat.
 function courrier.ToucheManette()
@@ -699,7 +699,12 @@ local function LierManette(actif)
     if actif and courrier.ToucheManette() and panneau.boutons[1] and panneau.boutons[1]:IsShown()
         and panneau.boutons[1]:IsEnabled() then
         Relais()
-        pcall(_G.SetOverrideBindingClick, panneau, true, "PAD1", "CraftCoreAssistantManette", "LeftButton")
+        -- Y, pas A : A reste au jeu pour prendre et poser les objets de la
+        -- banque et des sacs.
+        pcall(_G.SetOverrideBindingClick, panneau, true, "PAD4", "CraftCoreAssistantManette", "LeftButton")
+        local b = panneau.boutons[1]
+        local texte = b:GetText() or ""
+        if not string.find(texte, "(Y)", 1, true) then b:SetText(texte .. " (Y)") end
     end
 end
 courrier.LierManette = LierManette
