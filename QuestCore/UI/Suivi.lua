@@ -1525,6 +1525,15 @@ function suivi.Rendre()
             end
         end
         local actif = NS.guidage and NS.guidage.Actif()
+        -- Passerelle : un add-on de trajet installe (Shortest Path Forever)
+        -- donne le chemin detaille jusqu'a la prochaine etape. Sans lui, rien.
+        if s.vue == "parcours" and pcVue and suivi.Passerelle then
+            local envoyer = suivi.Passerelle()
+            if envoyer then
+                local idV = pcVue.id
+                table.insert(boutons, { L.ROUTE_DETAILED, function() pcall(suivi.EnvoyerEtape, idV) end, L.ROUTE_DETAILED_HELP })
+            end
+        end
         -- Un parcours ouvert entierement fait : Supprimer, et il disparait.
         local fini
         if s.vue == "parcours" and NS.parcours and moi then
@@ -3025,6 +3034,54 @@ do
         e:HookScript("OnShow", function() pcall(Placement, true) end)
         e:HookScript("OnHide", function() pcall(Placement, false) end)
     end
+end
+
+-- ---------------------------------------------------------------------------
+-- Passerelle vers un add-on de trajet : Shortest Path Forever, s'il est
+-- installe, recoit la destination de la prochaine etape et prend la main avec
+-- sa propre interface (vols, bateaux, portails, chemin a pied). QuestCore ne
+-- reprend rien de son code ni de ses donnees : il lui passe un point, comme le
+-- ferait le joueur avec sa commande /way.
+-- ---------------------------------------------------------------------------
+
+-- La commande de l'add-on de trajet, ou nil s'il n'est pas la.
+function suivi.Passerelle()
+    local h = _G.hash_SlashCmdList
+    local f = type(h) == "table" and h["/PATH"] or nil
+    if type(f) ~= "function" and type(_G.SlashCmdList) == "table" then
+        for cle, fn in pairs(_G.SlashCmdList) do
+            if _G["SLASH_" .. cle .. "1"] == "/path" then f = fn break end
+        end
+    end
+    return type(f) == "function" and f or nil
+end
+
+-- Envoie la prochaine etape faisable du parcours : chez le donneur s'il
+-- faut la prendre, sinon la ou se fait l'objectif, ou chez le receveur.
+function suivi.EnvoyerEtape(idParcours)
+    local commande = suivi.Passerelle()
+    local cle = NS.ClePersonnage()
+    local moi = cle and NS.base.Perso(cle)
+    local pc = moi and NS.parcours.Trouver(cle, idParcours)
+    if not (commande and pc) then return end
+    for _, id in ipairs(pc.etapes) do
+        local e = NS.parcours.EtatEtape(moi, id)
+        if e ~= "faite" and e ~= "attente" then
+            local ok, points = pcall(NS.carte.PointsPour, id, moi)
+            local pt = ok and points and points[1]
+            if pt and pt.carte and pt.x and pt.y then
+                local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), pt.carte)
+                local zone = type(info) == "table" and info.name or nil
+                local titre = string.gsub(NS.ref.NomDeQuete(id, moi) or "", "[\r\n]", " ")
+                local texte = string.format("way %s%.1f %.1f %s", zone and (zone .. " ") or "", pt.x * 100, pt.y * 100, titre)
+                if NS.Trace then NS.Trace("passerelle : " .. texte) end
+                pcall(commande, texte)
+                NS.Dire(string.format(L.ROUTE_DETAILED_SENT, titre))
+                return
+            end
+        end
+    end
+    NS.Dire(L.ROUTE_DETAILED_NONE)
 end
 
 -- ---------------------------------------------------------------------------
