@@ -2,7 +2,7 @@ local _, NS = ...
 
 -- Socle : lectures sous filet, base de sauvegarde, cle du personnage.
 
-NS.VERSION = "0.31.0"
+NS.VERSION = "0.33.0"
 NS.base = {}
 local base = NS.base
 
