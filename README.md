@@ -44,4 +44,6 @@ Ouvrez un ticket dans l'onglet **Issues** avec une capture et ce que vous faisie
 
 ## Soutenir le projet
 
-Forever SagaCore est et restera gratuit, sans rien à acheter dans le jeu. Si la suite vous rend service, un café sur **[Ko-fi](https://ko-fi.com/foreversagacore)** m'aide à y passer plus de temps.
+Forever SagaCore est et restera gratuit, sans rien à acheter dans le jeu. Si la suite vous rend service, un café sur Ko-fi m'aide à y passer plus de temps.
+
+[![Soutenir sur Ko-fi](https://img.shields.io/badge/Soutenir%20sur-Ko--fi-72A4F2?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/foreversagacore)

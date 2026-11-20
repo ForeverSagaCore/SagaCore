@@ -73,6 +73,7 @@ jobs:
             NOTES="notes/$VER.md"
             if [ -f "$NOTES" ]; then CHANGELOG=$(cat "$NOTES"); else CHANGELOG="Forever SagaCore $VER"; fi
             CHANGELOG="$CHANGELOG"$'\n\n'"La version la plus a jour est toujours celle de GitHub : https://github.com/ForeverSagaCore/SagaCore"
+            CHANGELOG="$CHANGELOG"$'\n\n'"[![Soutenir sur Ko-fi](https://img.shields.io/badge/Soutenir%20sur-Ko--fi-72A4F2?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/foreversagacore)"
             META=$(jq -n --arg c "$CHANGELOG" --arg n "Forever SagaCore $VER" --argjson id "$ID" \
               '{changelog: $c, changelogType: "markdown", displayName: $n, gameVersions: [$id], releaseType: "release"}')
             REPONSE=$(curl -s -w "\n%{http_code}" -H "X-Api-Token: $CF_API_KEY" \
