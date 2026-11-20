@@ -33,7 +33,7 @@ end
 -- "Nom - Royaume", la meme cle que les autres add-ons de la suite.
 function NS.ClePersonnage()
     local nom = NS.Appeler(UnitName, "player")
-    local royaume = NS.Appeler(GetRealmName)
+    local royaume = NS.Appeler(_G.SagaCoreRoyaume or GetRealmName)
     if type(nom) ~= "string" or nom == "" or nom == _G.UNKNOWNOBJECT then return nil end
     if type(royaume) ~= "string" or royaume == "" then return nil end
     return nom .. " - " .. royaume

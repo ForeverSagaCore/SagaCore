@@ -84,7 +84,7 @@ function NS.ResoudreLectures()
     j.statsObjet = NS.Lecture("C_Item.GetItemStats", "GetItemStats")
 
     j.nomDuPersonnage = NS.Lecture("UnitName")
-    j.nomDuRoyaume = NS.Lecture("GetRealmName")
+    j.nomDuRoyaume = NS.Lecture("SagaCoreRoyaume", "GetRealmName")
     return j
 end
 

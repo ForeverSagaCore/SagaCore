@@ -12,6 +12,53 @@ local _, NS = ...
 --   - dans chaque fenetre, les icones en haut a droite : on passe d'un
 --     add-on a l'autre, la nouvelle fenetre prend la place exacte de l'ancienne.
 
+-- Royaume du personnage. Depuis une mise a jour du jeu, GetRealmName() peut
+-- rendre une chaine vide : on garde alors le dernier royaume connu, ou celui
+-- d'un personnage deja enregistre sous le meme nom. Sans cela, toutes les
+-- donnees rangees sous "Nom - Royaume" semblent disparaitre.
+if not _G.SagaCoreRoyaume then
+    local function Propre(r)
+        if type(r) ~= "string" then return nil end
+        r = r:match("^%s*(.-)%s*$")
+        if r == "" or r == "?" then return nil end
+        return r
+    end
+    function _G.SagaCoreRoyaume()
+        local ok, r = pcall(GetRealmName)
+        r = ok and Propre(r)
+        local db = type(_G.CoreSuiteDB) == "table" and _G.CoreSuiteDB or nil
+        if r then
+            if db then db.dernierRoyaume = r end
+            return r
+        end
+        if db and Propre(db.dernierRoyaume) then return db.dernierRoyaume end
+        local okn, nom = pcall(UnitName, "player")
+        if not okn or type(nom) ~= "string" or nom == "" then return "" end
+        local motif = "^" .. (nom:gsub("(%W)", "%%%1")) .. " %- (.+)$"
+        local trouve, double = nil, false
+        for _, base in ipairs({ _G.QuestCoreDB, _G.CraftCoreDB, _G.MapCoreDB, _G.LegacyCoreDB, _G.TradeCoreDB, db }) do
+            if type(base) == "table" then
+                for _, t in pairs(base) do
+                    if type(t) == "table" then
+                        for cle in pairs(t) do
+                            local roy = type(cle) == "string" and Propre(cle:match(motif))
+                            if roy then
+                                if trouve and trouve ~= roy then double = true end
+                                trouve = trouve or roy
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        if trouve and not double then
+            if db then db.dernierRoyaume = trouve end
+            return trouve
+        end
+        return ""
+    end
+end
+
 local VERSION = 61
 
 local Suite = _G.CoreSuite
@@ -2576,7 +2623,7 @@ Suite.ICONES_PERSO = { "INV_Misc_QuestionMark", "INV_Misc_Rune_01", "Ability_Mou
 
 -- Actif dans le panneau, pour ce personnage (par defaut : oui).
 local function ClePersoSuite()
-    local nom, royaume = UnitName("player"), GetRealmName and GetRealmName()
+    local nom, royaume = UnitName("player"), _G.SagaCoreRoyaume()
     return (nom or "?") .. " - " .. (royaume or "?")
 end
 function Suite.RaccourciActif(id)

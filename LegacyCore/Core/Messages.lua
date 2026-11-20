@@ -149,7 +149,8 @@ end
 
 local function ClePerso()
     local nom = UnitName and UnitName("player")
-    local royaume = GetRealmName and GetRealmName()
+    local royaume = _G.SagaCoreRoyaume and _G.SagaCoreRoyaume() or (GetRealmName and GetRealmName())
+    if royaume == "" then royaume = nil end
     if not nom or not royaume then return nil end
     return nom .. " - " .. royaume
 end
