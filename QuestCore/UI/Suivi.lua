@@ -1095,9 +1095,13 @@ RendreVueParcours = function(moi, index, y)
                     local marques = { faite = "Interface\\RaidFrame\\ReadyCheck-Ready",
                         prendre = "Interface\\GossipFrame\\AvailableQuestIcon",
                         attente = "Interface\\GossipFrame\\AvailableQuestIcon" }
+                    -- Un clic : chez qui la prendre, sur la carte.
+                    local idE = id
+                    local voir = (e == "prendre" or e == "attente") and NS.fenetre and NS.fenetre.VoirQuete
+                        and function() NS.fenetre.VoirQuete(idE, moi, true) end or nil
                     y = Poser(index, y, texte, { uneLigne = true, titre = true,
                         police = Police("ObjectiveTrackerHeaderFont", "GameFontNormal"),
-                        couleur = ETATS_COULEUR[e], marqueTexture = marques[e],
+                        couleur = ETATS_COULEUR[e], marqueTexture = marques[e], auClic = voir,
                         droite = (e == "faite") and L.STATE_DONE or nil, couleurDroite = ETATS_COULEUR.faite })
                     if detail then
                         index = index + 1
@@ -1260,10 +1264,22 @@ function suivi.Rendre()
         for _, pc in ipairs(NS.parcours and NS.parcours.Liste(NS.ClePersonnage()) or {}) do
             if pc.genre == "rendu" then avecTrajet = true end
         end
-        if avecTrajet then
-            local actif = NS.guidage and NS.guidage.Actif()
+        -- Onglet Parcours : le bouton guide le parcours affiche.
+        local pcVue
+        if s.vue == "parcours" and NS.parcours then
+            local liste = NS.parcours.Liste(NS.ClePersonnage())
+            pcVue = NS.parcours.Trouver(NS.ClePersonnage(), s.parcoursChoisi) or liste[1]
+        end
+        local actif = NS.guidage and NS.guidage.Actif()
+        if pcVue then
+            local guide = NS.guidage.ParcoursGuide()
+            local ici = actif and (guide == pcVue.id or (guide == nil and pcVue.genre == "rendu"))
+            local idV = pcVue.id
+            table.insert(boutons, { ici and L.GUIDE_STOP or L.GUIDE_START,
+                function() if NS.guidage then NS.guidage.Basculer(not ici, idV) end end, L.GUIDE_HELP })
+        elseif avecTrajet or actif then
             table.insert(boutons, { actif and L.GUIDE_STOP or L.GUIDE_START,
-                function() if NS.guidage then NS.guidage.Basculer() end end, L.GUIDE_HELP })
+                function() if NS.guidage then NS.guidage.Basculer(not actif) end end, L.GUIDE_HELP })
         end
         if #boutons > 0 then table.insert(rangs, { genre = "boutons", boutons = boutons }) end
 
@@ -2266,6 +2282,17 @@ function suivi.Basculer()
     if s.afficher then suivi.Rendre() end
 end
 
+-- Montrer un parcours dans le suivi : onglet Parcours, ce parcours deplie.
+function suivi.MontrerParcours(idParcours)
+    if not cadre then Construire() end
+    local s = Reglages()
+    s.vue = "parcours"
+    s.parcoursChoisi = idParcours
+    s.afficher = true
+    cadre:Show()
+    suivi.Rendre()
+end
+
 -- ---------------------------------------------------------------------------
 -- Fond du suivi (gris, parchemin ou illustre), commun a la suite : pose
 -- apres chaque rendu ; sur parchemin, les textes passent a l'encre.
@@ -2718,6 +2745,10 @@ end
 
 function guidage.Actif() return ReglagesGuidage().actif == true end
 
+-- Parcours guide : celui choisi (kit de donjon, suite, selection...), ou a
+-- defaut la tournee de rendu.
+function guidage.ParcoursGuide() return ReglagesGuidage().parcours end
+
 local function Continent()
     local carte = NS.Appeler(NS.Lecture("C_Map.GetBestMapForUnit"), "player")
     for _ = 1, 6 do
@@ -2749,17 +2780,27 @@ local function Cible()
     local moi = cle and NS.base.Perso(cle)
     if not moi or not NS.parcours then return nil end
     local trajet
-    for _, pc in ipairs(NS.parcours.Liste(cle)) do if pc.genre == "rendu" then trajet = pc end end
+    local idGuide = ReglagesGuidage().parcours
+    if idGuide then trajet = NS.parcours.Trouver(cle, idGuide) end
+    if not trajet then
+        for _, pc in ipairs(NS.parcours.Liste(cle)) do if pc.genre == "rendu" then trajet = pc end end
+    end
     if not trajet then return nil, "fini" end
+    -- Hors tournee de rendu, l'ordre du parcours est garde : seules les
+    -- etapes faisables maintenant (a prendre, en cours, a rendre) sont visees.
+    local tournee = trajet.genre == "rendu"
     local continent = Continent()
     if not continent then return nil, "loin" end
     local pos = NS.Appeler(NS.Lecture("C_Map.GetPlayerMapPosition"), continent, "player")
     if type(pos) ~= "table" or not pos.GetXY then return nil, "loin" end
     local jx, jy = pos:GetXY()
-    local faites, restantes = {}, {}
+    local faites, restantes, enAttente = {}, {}, 0
     for _, id in ipairs(trajet.etapes) do
-        if NS.parcours.EtatEtape(moi, id) == "faite" then
+        local etatE = NS.parcours.EtatEtape(moi, id)
+        if etatE == "faite" then
             table.insert(faites, id)
+        elseif etatE == "attente" and not tournee then
+            enAttente = enAttente + 1
         else
             local meilleur, lieu
             local ok, points = pcall(NS.carte.PointsPour, id, moi)
@@ -2783,7 +2824,7 @@ local function Cible()
             table.insert(restantes, { id = id, lieu = lieu })
         end
     end
-    if #restantes == 0 then return nil, "fini" end
+    if #restantes == 0 then return nil, (enAttente > 0) and "loin" or "fini" end
     -- Ordre depuis ici : le plus proche, puis le plus proche du precedent...
     local ordre, ici, reste = {}, { x = jx, y = jy }, {}
     for _, r in ipairs(restantes) do table.insert(reste, r) end
@@ -2798,7 +2839,7 @@ local function Cible()
         if r.lieu then ici = r.lieu end
     end
     local maintenant = NS.Appeler(GetTime) or 0
-    if ordre[1].id ~= restantes[1].id and maintenant - dernierReordre > 3 then
+    if tournee and ordre[1].id ~= restantes[1].id and maintenant - dernierReordre > 3 then
         dernierReordre = maintenant
         local etapes = {}
         for _, id in ipairs(faites) do table.insert(etapes, id) end
@@ -2824,7 +2865,7 @@ local function Cible()
         quoi = string.format(L.GUIDE_DO_PICKUP, cible.qui or "?")
     end
     cible.qui = titreV .. (quoi and quoi ~= "" and ("\n|cffb3b3b3" .. quoi .. "|r") or "")
-    cible.rang, cible.total, cible.titre = 1, #restantes, titreV
+    cible.rang, cible.total, cible.titre = 1, #restantes + enAttente, titreV
     cible.id, cible.idParcours = idV, trajet.id
     cible.continent, cible.jx, cible.jy = continent, jx, jy
     return cible
@@ -2973,6 +3014,7 @@ local fournisseur = {
     AideClic = L.GUIDE_CLICK,
     Fin = function()
         ReglagesGuidage().actif = nil
+        ReglagesGuidage().parcours = nil
         if NS.carte then NS.carte.Invalider() end
         if NS.pageCarte and NS.pageCarte.EnFiligrane and NS.pageCarte.EnFiligrane() then
             pcall(NS.pageCarte.Filigrane, false)
@@ -2987,13 +3029,15 @@ function guidage.Actif()
     return ReglagesGuidage().actif == true and S ~= nil and S.GuidageActif and S.GuidageActif("QuestCore")
 end
 
-function guidage.Basculer(oui)
+function guidage.Basculer(oui, idParcours)
     if NS.Trace then NS.Trace("guidage quetes : " .. tostring(oui)) end
     local S = NS.suite or _G.CoreSuite
     if not (S and S.Guider) then return end
     if oui == nil then oui = not guidage.Actif() end
     if oui then
         ReglagesGuidage().actif = true
+        ReglagesGuidage().parcours = idParcours
+        cibleQuand = -1
         -- Point de depart des quetes "nouvelles" pour l'ajustement en route.
         -- Les quetes deja au journal sont "vues" : seules celles prises ou
         -- terminees en route seront proposees (pas celles qu'on a laissees de

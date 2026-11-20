@@ -842,6 +842,8 @@ local function RendreParcours(contenu, p, index, y)
                 end
             end
             local confirmer = etat.confirmerParcours == idP
+            local guideIci = NS.guidage and NS.guidage.Actif() and (NS.guidage.ParcoursGuide() == idP
+                or (NS.guidage.ParcoursGuide() == nil and pc.genre == "rendu"))
             if etat.renommer == idP then
                 index = index + 1
                 local yLigne = y + 4
@@ -891,6 +893,11 @@ local function RendreParcours(contenu, p, index, y)
                     end
                     ParcoursChange()
                 end },
+                (p.cle == NS.ClePersonnage()) and { guideIci and L.ROUTE_GUIDE_STOP or L.ROUTE_GUIDE_START, function()
+                    if NS.guidage then NS.guidage.Basculer(not guideIci, idP) end
+                    if not guideIci and NS.suivi and NS.suivi.MontrerParcours then pcall(NS.suivi.MontrerParcours, idP) end
+                    fen.Rendre()
+                end } or nil,
             } }) + 4
         end
         y = y + 6
@@ -1110,6 +1117,11 @@ RendreDonjonOuvert = function(contenu, p, d, index, y)
             if pc then
                 etat.page = "parcours"
                 etat.ouvertes["pc" .. pc.id] = true
+                -- Comme tout nouveau trajet : le suivi le montre et la fleche part.
+                if cleP == NS.ClePersonnage() then
+                    if NS.suivi and NS.suivi.MontrerParcours then pcall(NS.suivi.MontrerParcours, pc.id) end
+                    if NS.guidage then pcall(NS.guidage.Basculer, true, pc.id) end
+                end
                 fen.Rendre()
             end
         end })
@@ -2168,11 +2180,12 @@ end
 
 -- "Voir sur la carte" d'une quete a prendre : la carte de la zone ou elle
 -- se prend, son point d'exclamation qui clignote (clic : guidage).
-function fen.VoirQuete(id, p)
+function fen.VoirQuete(id, p, sansFleche)
     local lieu = NS.donjons.LieuDuDonneur(id)
     if not lieu then return end
+    if sansFleche and not (NS.guidage and NS.guidage.Actif()) then sansFleche = nil end
     if NS.pageCarte and NS.pageCarte.MontrerQuete then
-        NS.pageCarte.MontrerQuete(id, lieu.carte, lieu.x, lieu.y, NS.ref.NomDeQuete(id, p), lieu.nom)
+        NS.pageCarte.MontrerQuete(id, lieu.carte, lieu.x, lieu.y, NS.ref.NomDeQuete(id, p), lieu.nom, sansFleche)
     end
     fen.OuvrirCarte()
 end

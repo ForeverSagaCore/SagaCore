@@ -264,13 +264,18 @@ function parcours.EtapesSurCarte(cle, p)
     local numeros = {}
     local guide = (NS.guidage and NS.guidage.Actif and NS.guidage.Actif())
         or (NS.pageCarte and NS.pageCarte.EnModeTrajet and NS.pageCarte.EnModeTrajet())
+    -- Un parcours precis guide (kit de donjon...) : lui seul.
+    local idGuide = NS.guidage and NS.guidage.Actif and NS.guidage.Actif()
+        and NS.guidage.ParcoursGuide and NS.guidage.ParcoursGuide()
     local liste = {}
     for _, pc in ipairs(parcours.Liste(cle)) do
-        if pc.genre == "rendu" then table.insert(liste, 1, pc)
+        if idGuide then
+            if pc.id == idGuide then table.insert(liste, pc) end
+        elseif pc.genre == "rendu" then table.insert(liste, 1, pc)
         elseif not guide then table.insert(liste, pc) end
     end
     for _, pc in ipairs(liste) do
-        if pc.carte or (guide and pc.genre == "rendu") then
+        if pc.carte or (guide and (pc.genre == "rendu" or pc.id == idGuide)) then
             -- Numerotees dans l'ordre de ce qui reste a faire : 1, 2, 3...
             local rang = 0
             for _, id in ipairs(pc.etapes) do

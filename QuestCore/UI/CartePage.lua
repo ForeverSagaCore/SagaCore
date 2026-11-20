@@ -72,14 +72,15 @@ end
 -- quete (le point d'exclamation, pas le PNJ), qui pulse doucement.
 local quetePointee
 
-function page.MontrerQuete(id, idCarte, x, y, nomQuete, nomDonneur)
+function page.MontrerQuete(id, idCarte, x, y, nomQuete, nomDonneur, sansFleche)
     modeTrajet = false
     entree = nil
     quetePointee = { carte = idCarte, x = x, y = y, quete = id, nom = nomQuete, donneur = nomDonneur }
     carteChoisie = idCarte
     -- Voir sur la carte : la fleche de guidage part aussi vers la quete.
+    -- Sauf pendant le guidage d'un parcours : sa fleche reste.
     local S = NS.suite or _G.CoreSuite
-    if S and S.Guider and x and y then
+    if S and S.Guider and x and y and not sansFleche then
         local point = { carte = idCarte, x = x, y = y, titre = nomQuete, qui = nomDonneur }
         S.Guider("QuestCorePointee", {
             carte = false,
