@@ -198,18 +198,71 @@ local function ObjectifsDeProjets(liste)
     -- projets suivis.
     local blocs = { { id = "rapides", rapides = true } }
     for _, projet in ipairs(NS.projets.Tous(false) or {}) do table.insert(blocs, projet) end
+    -- Les commandes (demandees par un autre personnage) : une meme
+    -- fabrication demandee par plusieurs personnages n'en fait qu'une, aux
+    -- quantites additionnees, avec la liste de ceux pour qui on la fait.
+    local moiCle = NS.ClePersonnage and NS.ClePersonnage()
+    local function DemandeurDe(projet)
+        if projet.rapides then return nil end
+        if projet.commande ~= nil then
+            local c = NS.commandes and NS.commandes.Par and NS.commandes.Par(projet.commande)
+            return (c and c.demandeur) or "?"
+        end
+        if projet.pour and projet.pour ~= moiCle then return projet.pour end
+        return nil
+    end
+    local rendus, fusions = {}, {}
     for _, projet in ipairs(blocs) do
       if not projet.horsSuivi then
-        local lignes = {}
+        local lignesP = {}
         for _, entree in ipairs(NS.projets.Contenu(projet.id) or {}) do
-            table.insert(lignes, { recette = tonumber(entree.recette) or entree.recette,
+            table.insert(lignesP, { recette = tonumber(entree.recette) or entree.recette,
                 quantite = tonumber(entree.quantite) or 1 })
         end
+        local demandeur = #lignesP > 0 and DemandeurDe(projet)
+        if demandeur then
+            local cles = {}
+            for _, l in ipairs(lignesP) do table.insert(cles, tostring(l.recette)) end
+            table.sort(cles)
+            local k = table.concat(cles, ",")
+            local f = fusions[k]
+            if f then
+                for _, l in ipairs(lignesP) do
+                    for _, fl in ipairs(f.lignes) do
+                        if tostring(fl.recette) == tostring(l.recette) then fl.quantite = fl.quantite + l.quantite end
+                    end
+                end
+                local deja = false
+                for _, p in ipairs(f.pour) do if p == demandeur then deja = true end end
+                if not deja then table.insert(f.pour, demandeur) end
+            else
+                f = { projet = projet, lignes = lignesP, pour = { demandeur } }
+                fusions[k] = f
+                table.insert(rendus, f)
+            end
+        else
+            table.insert(rendus, { projet = projet, lignes = lignesP })
+        end
+      end
+    end
+    for _, e in ipairs(rendus) do
+      local projet, lignes = e.projet, e.lignes
+      do
         if #lignes > 0 then
             -- Besoin complet (sans rien en stock), puis ce qui manque vraiment.
             local _, requis = NS.moteur.DecomposerPlusieurs(catalogue, {}, lignes, EstApprise)
             local arbres, manques = NS.moteur.DecomposerPlusieurs(catalogue, NS.projets.StocksDuCompte(), lignes, EstApprise)
             local pct = NS.moteur.Couverture(arbres) or 0
+            -- Le pourcentage dit ce qui est reuni, comme les comptes des
+            -- matieres (ce qui reste a fabriquer en route n'en fait pas partie).
+            local total, reuni = 0, 0
+            for objet, n in pairs(requis or {}) do
+                if n > 0 then
+                    total = total + n
+                    reuni = reuni + (n - math.max(0, math.min(n, (manques or {})[objet] or 0)))
+                end
+            end
+            if total > 0 then pct = reuni / total end
             -- Ce qu'il y aura a fabriquer une fois tout reuni.
             local fabriquer = {}
             for _, l in ipairs(lignes) do
@@ -221,15 +274,27 @@ local function ObjectifsDeProjets(liste)
             -- Projet tire d'un plan de progression : dans les progressions,
             -- sous son nom seul.
             local deProg = not projet.rapides and NS.projets.EstDeProgression(projet)
-            local commande = not projet.rapides and projet.commande ~= nil
+            local commande = e.pour ~= nil
             if commande then deProg = false end
-            local pour
-            if commande and NS.commandes and NS.commandes.Par then
-                local c = NS.commandes.Par(projet.commande)
-                pour = c and c.demandeur and NS.inventaire.NomCourt(c.demandeur) or nil
+            -- Pour qui : les noms, a la couleur de leur classe.
+            local pourQui
+            if commande then
+                local noms = {}
+                for _, cleP in ipairs(e.pour) do
+                    local nom = NS.inventaire.NomCourt(cleP)
+                    local fiche
+                    for _, f in ipairs(NS.base.TousLesPersonnages()) do if f.cle == cleP then fiche = f end end
+                    local jeton = type(fiche) == "table" and fiche.jetonClasse
+                    local c = jeton and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[jeton]
+                    if c and c.colorStr then nom = "|c" .. c.colorStr .. nom .. "|r"
+                    elseif c then nom = string.format("|cff%02x%02x%02x%s|r", c.r * 255, c.g * 255, c.b * 255, nom) end
+                    table.insert(noms, nom)
+                end
+                pourQui = string.format(L.TRACK_ORDER_FOR, table.concat(noms, ", "))
             end
-            table.insert(liste, { groupe = deProg and "progression" or "projets", commande = commande or nil, pour = pour,
-                cle = "projet" .. tostring(projet.id), genre = "projet", rapides = projet.rapides,
+            table.insert(liste, { groupe = deProg and "progression" or "projets", commande = commande or nil, pourQui = pourQui,
+                cle = commande and ("commande" .. table.concat((function() local t = {} for _, l in ipairs(lignes) do table.insert(t, tostring(l.recette)) end table.sort(t) return t end)(), ",")) or ("projet" .. tostring(projet.id)),
+                genre = "projet", rapides = projet.rapides,
                 titreAnnonce = nomBloc, fabriquer = fabriquer, nLignes = #lignes, lignes = lignes,
                 nom = (projet.rapides or deProg or commande) and nomBloc or string.format(L.GOAL_PROJECT, nomBloc), pct = pct, atteint = pct >= 1,
                 matieres = Matieres(requis or {}, manques or {}) })
@@ -310,7 +375,14 @@ end
 
 -- Memes polices et memes tailles que le suivi des quetes de QuestCore :
 -- titres un cran au-dessus, lignes a la taille du suivi.
+-- La taille du suivi des quetes (reglage de QuestCore, 12 par defaut).
 local TAILLE_LIGNE = 12
+local function TailleDesQuetes()
+    local d = _G.QuestCoreDB
+    local s = type(d) == "table" and type(d.reglages) == "table" and type(d.reglages.general) == "table"
+        and d.reglages.general.suivi
+    return tonumber(type(s) == "table" and s.taille) or 12
+end
 local function Police(nom, repli) return _G[nom] and nom or repli end
 local function Taille(fs, taille)
     local fichier, _, drapeaux = fs:GetFont()
@@ -543,17 +615,89 @@ function suivi.ToutOuvrir(oui)
     suivi.Dessiner()
 end
 
+-- Recette qui fabrique un objet (apprise), cherchee une fois par dessin.
+local producteurs
+local function Producteur(objet)
+    if not producteurs then
+        producteurs = {}
+        for _, rec in pairs(CraftCoreDB and CraftCoreDB.recettes or {}) do
+            if type(rec) == "table" and rec.objetProduit and NS.recettes.EstApprise and NS.recettes.EstApprise(rec.id) then
+                producteurs[rec.objetProduit] = producteurs[rec.objetProduit] or rec
+            end
+        end
+    end
+    return producteurs[objet]
+end
+
+-- Les etapes de fabrication d'un projet, dans l'ordre : d'abord ce qu'il
+-- faut fabriquer en route (barres, catalyseurs...), puis l'objet lui-meme.
+-- Chaque etape : recette, objet, combien de fois, faite ou non.
+local function EtapesDeFabrication(lignes)
+    local etapes = {}
+    local catalogue = CraftCoreDB and CraftCoreDB.recettes or {}
+    for _, l in ipairs(lignes or {}) do
+        local rec = catalogue[tostring(l.recette)] or catalogue[l.recette]
+        if type(rec) == "table" then
+            local quantite = l.quantite or 1
+            for _, comp in ipairs(rec.composants or {}) do
+                local sous = Producteur(comp.objet)
+                if sous and sous ~= rec then
+                    local besoin = comp.quantite * quantite
+                    local avoir = NS.inventaire.DisponibleDansLesSacs(comp.objet) or 0
+                    local parFois = math.max(1, tonumber(sous.quantiteMin) or 1)
+                    table.insert(etapes, { recette = sous, objet = comp.objet, besoin = besoin,
+                        fois = math.max(1, math.ceil(math.max(0, besoin - avoir) / parFois)), faite = avoir >= besoin })
+                end
+            end
+            table.insert(etapes, { recette = rec, objet = rec.objetProduit, besoin = quantite, fois = quantite, faite = false, finale = true })
+        end
+    end
+    return etapes
+end
+
+-- La prochaine etape : la premiere pas faite. Rend l'etape, son rang, et
+-- si elle peut etre lancee maintenant (tout dans les sacs).
+local function ProchaineEtape(etapes)
+    local A = NS.actions
+    for rang, e in ipairs(etapes) do
+        if not e.faite then
+            local pret = A and A.EtatPourFabriquer and A.EtatPourFabriquer(e.recette) == true
+            return e, rang, pret
+        end
+    end
+    return nil
+end
+
+-- La premiere fabrication prete d'un projet. Rend la recette, le nombre de
+-- fois, l'etape et son rang.
+local function PremiereFabricationPrete(lignes)
+    local A = NS.actions
+    if not (A and A.EtatPourFabriquer) then return nil end
+    local etapes = EtapesDeFabrication(lignes)
+    local e, rang, pret = ProchaineEtape(etapes)
+    if e and pret then
+        return e.recette, math.min(e.fois, A.NombrePossible(e.recette)), e, rang, etapes
+    end
+    return nil, nil, nil, nil, etapes
+end
+
 -- Le groupe d'un objectif dans son onglet, comme les zones du suivi des
 -- quetes : cle et titre.
 local function GroupeDe(o, vue)
     local L = NS.L
-    if vue == "commandes" then return "pour:" .. tostring(o.pour or "?"), string.format(L.TRACK_GROUP_FOR, o.pour or "?") end
+    if vue == "commandes" then return "commandes", L.TRACK_TAB_ORDERS end
     if vue == "progressions" then
         if o.genre == "progression" then return "rangs", L.TRACK_GROUP_RANKS end
         return "plans", L.TRACK_GROUP_PLANS
     end
     if o.rapides then return "rapides", L.NAV_QUICK end
     return "projets", L.TRACK_GROUP_PROJECTS
+end
+
+local function Favoris()
+    local g = NS.base.ReglagesGeneraux()
+    if type(g.favorisSuivi) ~= "table" then g.favorisSuivi = {} end
+    return g.favorisSuivi
 end
 
 local function GroupesReplies()
@@ -653,6 +797,14 @@ local function DessinerObjectifs(y, objectifs, vue)
         end
         table.insert(groupes[cleG].liste, o)
     end
+    -- Les favoris en tete de leur groupe.
+    local fav = Favoris()
+    for _, gr in pairs(groupes) do
+        local avant, apres = {}, {}
+        for _, o in ipairs(gr.liste) do if fav[o.cle] then table.insert(avant, o) else table.insert(apres, o) end end
+        for _, o in ipairs(apres) do table.insert(avant, o) end
+        gr.liste = avant
+    end
     local ouverts, replies = Ouverts(), GroupesReplies()
     for rangG, cleG in ipairs(ordre) do
         local gr = groupes[cleG]
@@ -701,6 +853,38 @@ local function DessinerObjectifs(y, objectifs, vue)
                 b.droite:SetText(pct .. " %")
                 if pct >= 100 then b.droite:SetTextColor(0.31, 0.82, 0.41) else b.droite:SetTextColor(0.8, 0.8, 0.8) end
                 b.nom:SetPoint("RIGHT", b.droite, "LEFT", -8, 0)
+                -- Etoile de favori, a droite, comme pour les quetes.
+                if not b.etoile then
+                    b.etoile = CreateFrame("Button", nil, b)
+                    b.etoile:SetSize(12, 12)
+                    b.etoile.t = b.etoile:CreateTexture(nil, "ARTWORK")
+                    b.etoile.t:SetAllPoints()
+                    b.etoile:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                end
+                local estFavori = Favoris()[o.cle] == true
+                local te = b.etoile.t
+                local atlas = estFavori and "auctionhouse-icon-favorite" or "auctionhouse-icon-favorite-off"
+                if not (te.SetAtlas and pcall(te.SetAtlas, te, atlas) and te:GetAtlas()) then
+                    te:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_1")
+                    te:SetDesaturated(not estFavori)
+                end
+                b.etoile:SetAlpha(estFavori and 1 or 0.6)
+                b.etoile:ClearAllPoints()
+                b.etoile:SetPoint("RIGHT", b, "RIGHT", 0, 1)
+                b.etoile:SetFrameLevel(b:GetFrameLevel() + 3)
+                local cleF = o.cle
+                b.etoile:SetScript("OnClick", function()
+                    Favoris()[cleF] = not Favoris()[cleF] or nil
+                    suivi.Dessiner()
+                end)
+                b.etoile:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText(estFavori and L.TRACK_FAV_REMOVE or L.TRACK_FAV_ADD, 1, 0.82, 0)
+                    GameTooltip:Show()
+                end)
+                b.etoile:Show()
+                b.droite:ClearAllPoints()
+                b.droite:SetPoint("RIGHT", b.etoile, "LEFT", -6, 0)
                 local cle = o.cle
                 b:SetScript("OnClick", function()
                     ouverts[cle] = not ouverts[cle] or nil
@@ -709,17 +893,16 @@ local function DessinerObjectifs(y, objectifs, vue)
                 -- Tout est reuni : un bouton Creer sur la ligne, comme la petite
                 -- carte et l'etoile du suivi des quetes. Un clic lance la
                 -- premiere fabrication prete (le premier ouvre le metier).
-                local recettePrete, fois
-                if NS.actions and NS.actions.EtatPourFabriquer then
-                    local catalogue = CraftCoreDB and CraftCoreDB.recettes or {}
-                    for _, l in ipairs(o.lignes or {}) do
-                        local rec = catalogue[tostring(l.recette)] or catalogue[l.recette]
-                        if type(rec) == "table" and NS.actions.EtatPourFabriquer(rec) == true then
-                            recettePrete = rec
-                            fois = math.min(l.quantite or 1, NS.actions.NombrePossible(rec))
-                            break
-                        end
+                local recettePrete, fois, etapeP, rangP, etapes = PremiereFabricationPrete(o.lignes)
+                -- Une etape vient de se terminer : on le dit, et on invite a la suivante.
+                local suiviEtapes = NS.base.ReglagesGeneraux()
+                suiviEtapes.etapesFab = type(suiviEtapes.etapesFab) == "table" and suiviEtapes.etapesFab or {}
+                if rangP then
+                    local avant = suiviEtapes.etapesFab[o.cle]
+                    if avant and rangP > avant and etapes and #etapes > 1 then
+                        NS.Dire(string.format(L.CRAFT_STEP_DONE, avant, rangP))
                     end
+                    suiviEtapes.etapesFab[o.cle] = rangP
                 end
                 if recettePrete then
                     if not b.creer then
@@ -730,12 +913,107 @@ local function DessinerObjectifs(y, objectifs, vue)
                     b.creer:SetPoint("RIGHT", b.droite, "LEFT", -6, 0)
                     b.creer:SetText(L.CRAFT_BUTTON)
                     NS.actions.PreparerBoutonFabriquer(b.creer, recettePrete, fois)
+                    -- L'infobulle dit quelle etape le clic va lancer.
+                    b.creer.etape = (etapes and #etapes > 1 and etapeP) and string.format(L.CRAFT_STEP_TIP, rangP, #etapes,
+                        NS.inventaire.NomDObjet(etapeP.objet), fois or 1) or nil
+                    if not b.creer.etapeAccroche then
+                        b.creer.etapeAccroche = true
+                        b.creer:HookScript("OnEnter", function(self)
+                            if self.etape and GameTooltip:IsOwned(self) then
+                                GameTooltip:AddLine(" ")
+                                GameTooltip:AddLine(self.etape, 1, 0.82, 0, true)
+                                GameTooltip:Show()
+                            end
+                        end)
+                    end
                     local txt = b.creer:GetFontString()
                     if txt then Taille(txt, 10) end
                     b.creer:SetFrameLevel(b:GetFrameLevel() + 3)
                     b.nom:SetPoint("RIGHT", b.creer, "LEFT", -6, 0)
                 end
+                -- Des matieres manquent et leurs lieux sont connus : la petite
+                -- carte du suivi des quetes lance le guidage de recolte.
+                local lieux = (not recettePrete) and suivi.LieuxManquants({ o }) or {}
+                if #lieux > 0 then
+                    if not b.pion then
+                        b.pion = CreateFrame("Button", nil, b)
+                        b.pion:SetSize(18, 18)
+                        b.pion.fond = b.pion:CreateTexture(nil, "BACKGROUND")
+                        b.pion.fond:SetSize(14, 14)
+                        b.pion.fond:SetPoint("CENTER")
+                        b.pion.fond:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+                        b.pion.t = b.pion:CreateTexture(nil, "ARTWORK")
+                        b.pion.t:SetSize(12, 12)
+                        b.pion.t:SetPoint("CENTER")
+                        b.pion.t:SetTexture("Interface\\Icons\\INV_Misc_Map_01")
+                        if b.pion.t.SetMask then pcall(b.pion.t.SetMask, b.pion.t, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+                        b.pion.anneau = b.pion:CreateTexture(nil, "OVERLAY")
+                        b.pion.anneau:SetSize(31, 31)
+                        b.pion.anneau:SetPoint("TOPLEFT", b.pion, "TOPLEFT", 0, 0)
+                        b.pion.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+                        b.pion:SetScript("OnClick", function() suivi.Guider() end)
+                        b.pion:SetScript("OnEnter", function(self)
+                            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                            GameTooltip:SetText(suivi.EnGuidage() and L.GUIDE_GOALS_STOP or L.GUIDE_GOALS, 1, 0.82, 0)
+                            GameTooltip:AddLine(L.GUIDE_GOALS_HELP, 1, 1, 1, true)
+                            GameTooltip:Show()
+                        end)
+                        b.pion:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                    end
+                    b.pion:ClearAllPoints()
+                    b.pion:SetPoint("RIGHT", b.droite, "LEFT", -4, 0)
+                    b.pion:SetFrameLevel(b:GetFrameLevel() + 3)
+                    local actif = suivi.EnGuidage()
+                    b.pion.t:SetDesaturated(not actif)
+                    b.pion.anneau:SetDesaturated(not actif)
+                    b.pion:Show()
+                    b.nom:SetPoint("RIGHT", b.pion, "LEFT", -4, 0)
+                elseif b.pion then
+                    b.pion:Hide()
+                end
                 y = y + 20
+                -- Tout est reuni et il y a plusieurs etapes : elles s'affichent
+                -- dessous, dans l'ordre, chacune avec son etat.
+                if (o.pct or 0) >= 1 and etapes and #etapes > 1 then
+                    for rangE, e in ipairs(etapes) do
+                        local t = T(LIGNE, TAILLE_LIGNE - 1)
+                        t:ClearAllPoints()
+                        t:SetPoint("TOPLEFT", zone, "TOPLEFT", 24, -(y - 2))
+                        t:SetWidth(largeur - 24 - 70)
+                        t:SetWordWrap(false)
+                        t:SetText(string.format(L.CRAFT_STEP_LINE, rangE, NS.inventaire.NomDObjet(e.objet), e.finale and e.besoin or e.fois))
+                        local etat = T(LIGNE, TAILLE_LIGNE - 1)
+                        etat:ClearAllPoints()
+                        etat:SetPoint("TOPRIGHT", zone, "TOPLEFT", largeur, -(y - 2))
+                        etat:SetWidth(70)
+                        etat:SetJustifyH("RIGHT")
+                        if e.faite then
+                            t:SetTextColor(0.5, 0.5, 0.5)
+                            etat:SetText(L.GUIDE_DONE)
+                            etat:SetTextColor(0.31, 0.82, 0.41)
+                        elseif rangE == rangP then
+                            t:SetTextColor(1, 1, 1)
+                            etat:SetText(L.CRAFT_STEP_NOW)
+                            etat:SetTextColor(1, 0.82, 0)
+                        else
+                            t:SetTextColor(0.7, 0.7, 0.7)
+                            etat:SetText("")
+                        end
+                        y = y + 14
+                    end
+                    y = y + 2
+                end
+                -- Commande : pour qui, en dessous, comme l'XP sous une zone.
+                if o.pourQui then
+                    local t = T(LIGNE, TAILLE_LIGNE - 1)
+                    t:ClearAllPoints()
+                    t:SetPoint("TOPLEFT", zone, "TOPLEFT", 24, -(y - 2))
+                    t:SetWidth(largeur - 24)
+                    t:SetWordWrap(false)
+                    t:SetText(o.pourQui)
+                    t:SetTextColor(0.8, 0.8, 0.8)
+                    y = y + 14
+                end
                 if estOuvert then
                     if o.detail then
                         local t = T(LIGNE, TAILLE_LIGNE - 1)
@@ -803,6 +1081,8 @@ function suivi.Dessiner()
     for _, f in ipairs(cadreSuivi.filets or {}) do f:Hide() end
     if cadreSuivi.filetCommandes then cadreSuivi.filetCommandes:Hide() end
     local vue = Vue()
+    TAILLE_LIGNE = TailleDesQuetes()
+    producteurs = nil
     local objectifs = suivi.Objectifs()
     local g = NS.base.ReglagesGeneraux()
     cadreSuivi.replier:SetNormalTexture(g.suiviReplie and "Interface\\Buttons\\UI-PlusButton-Up"
