@@ -15,6 +15,7 @@ local HAUTEUR_MINI = 180
 local HAUTEUR_TITRE = 28
 local HAUTEUR_REPLIE = 100
 local cadre
+local PoserOngletsVues
 
 local function Reglages()
     local g = NS.base.ReglagesGeneraux()
@@ -1016,6 +1017,72 @@ local function IconeDeClasse(tex, unite, classeConnue)
     end
 end
 
+-- Deux onglets lateraux, en bas a gauche du suivi (le haut est aux membres
+-- du groupe) : le suivi des quetes, et l'itineraire (boussole), grise tant
+-- qu'il n'y a aucun trajet. Memes petits onglets du grimoire.
+local function OngletVue(cle, icone, nom, aide)
+    cadre.ongletsVues = cadre.ongletsVues or {}
+    local b = cadre.ongletsVues[cle]
+    if b then return b end
+    b = CreateFrame("CheckButton", nil, cadre)
+    b:SetSize(26, 26)
+    b.fond = b:CreateTexture(nil, "BACKGROUND")
+    b.fond:SetTexture("Interface\\SpellBook\\SpellBook-SkillLineTab")
+    b.fond:SetTexCoord(1, 0, 0, 1)
+    b.fond:SetSize(52, 52)
+    b.fond:SetPoint("TOPRIGHT", b, "TOPRIGHT", 2, 9)
+    b.icone = b:CreateTexture(nil, "ARTWORK")
+    b.icone:SetAllPoints()
+    b.icone:SetTexture(icone)
+    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    b:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
+    local halo = b:GetCheckedTexture()
+    if halo then halo:SetBlendMode("ADD") end
+    if b.SetMotionScriptsWhileDisabled then b:SetMotionScriptsWhileDisabled(true) end
+    b.cle, b.nom, b.aide = cle, nom, aide
+    b:SetScript("OnClick", function(self)
+        local s = Reglages()
+        s.vuePerso = nil
+        if self.cle == "itineraire" then
+            if s.vue ~= "parcours" then s.vueAvantItineraire = s.vue end
+            s.vue = "parcours"
+        else
+            s.vue = (s.vueAvantItineraire == "favoris") and "favoris" or "quetes"
+        end
+        suivi.Rendre()
+    end)
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText(self.nom, 1, 0.82, 0)
+        GameTooltip:AddLine(self:IsEnabled() and self.aide or L.TRACK_SIDE_ROUTE_NONE, 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    cadre.ongletsVues[cle] = b
+    return b
+end
+
+PoserOngletsVues = function(replie, nParcours)
+    local s = Reglages()
+    local quetes = OngletVue("quetes", "Interface\\Icons\\INV_Misc_Book_08", L.TRACK_SIDE_QUESTS, L.TRACK_SIDE_QUESTS_TIP)
+    local route = OngletVue("itineraire", "Interface\\Icons\\Ability_Tracking", L.TRACK_SIDE_ROUTE, L.TRACK_SIDE_ROUTE_TIP)
+    local avecRoute = (nParcours or 0) > 0
+    -- Plus de trajet : retour au suivi des quetes.
+    if not avecRoute and s.vue == "parcours" then s.vue = "quetes" end
+    local enRoute = s.vue == "parcours" and not s.vuePerso
+    quetes:SetChecked(not enRoute and not s.vuePerso)
+    route:SetChecked(enRoute)
+    route:SetEnabled(avecRoute)
+    route.icone:SetDesaturated(not avecRoute)
+    route.icone:SetAlpha(avecRoute and 1 or 0.5)
+    quetes:ClearAllPoints()
+    route:ClearAllPoints()
+    route:SetPoint("BOTTOMRIGHT", cadre, "BOTTOMLEFT", -2, 40)
+    quetes:SetPoint("BOTTOM", route, "TOP", 0, 12)
+    quetes:SetShown(not replie)
+    route:SetShown(not replie)
+end
+
 local function PoserOngletsMembres(replie)
     local noms = (NS.groupe and not replie) and NS.groupe.Noms() or {}
     local s = Reglages()
@@ -1177,9 +1244,10 @@ function suivi.Rendre()
         local nParcours = NS.parcours and #NS.parcours.Liste(NS.ClePersonnage()) or 0
         cadre.vues.quetes:Compter(nCours)
         cadre.vues.rendre:Compter(nRendre)
-        cadre.vues.parcours:Compter(nParcours)
         cadre.vues.favoris:Compter(nFavoris)
-        for _, b in pairs(cadre.vues) do b:SetShown(not s.replie) end
+        -- Onglet Itineraire : les onglets du haut n'ont plus lieu d'etre.
+        local enItineraire = s.vue == "parcours" and not s.vuePerso
+        for _, b in pairs(cadre.vues) do b:SetShown(not s.replie and not enItineraire) end
         cadre.filetHaut:SetShown(not s.replie)
         cadre.tout:Hide()
         cadre.trier:Hide()
@@ -1365,6 +1433,7 @@ function suivi.Rendre()
             cadre.defilement:SetPoint("BOTTOMRIGHT", cadre.zone, "BOTTOMRIGHT", 0, bas + hauteurBilan + 4)
         end
         pcall(PoserOngletsMembres, s.replie)
+        pcall(PoserOngletsVues, s.replie, nParcours)
         if s.vuePerso and not s.replie and NS.groupe and NS.groupe.Etat(s.vuePerso) then
             cadre:SetHeight(math.min(math.max(s.hauteur or HAUTEUR, HAUTEUR_MINI), HauteurMaxi()))
             BasDeListe(false)
@@ -2031,11 +2100,11 @@ local function Construire()
     -- suite : l'icone du jeu et un compte a cote, le nom en infobulle. Celui
     -- qui est affiche est en couleur, les autres en gris.
     local largeurZone = LARGEUR - 2 * NS.charte.MARGE - 10
-    local pas = math.floor(largeurZone / 4)
+    -- Les parcours ont leur onglet lateral (Itineraire), en bas a gauche.
+    local pas = math.floor(largeurZone / 3)
     for rang, v in ipairs({
         { "quetes", L.TRACK_TAB_QUESTS, "QuestNormal", "Interface\\GossipFrame\\AvailableQuestIcon" },
         { "rendre", L.TRACK_TAB_TURNIN, "QuestTurnin", "Interface\\GossipFrame\\ActiveQuestIcon" },
-        { "parcours", L.TRACK_TAB_ROUTES, nil, "Interface\\Icons\\Ability_Tracking", true },
         { "favoris", L.TRACK_TAB_FAV, nil, "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1" } }) do
         local b = CreateFrame("Button", nil, cadre)
         b:SetSize(24, 24)

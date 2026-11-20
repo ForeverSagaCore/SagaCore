@@ -419,7 +419,11 @@ local function DessinerTrajet()
             local etapes = parParcours[pt.idParcours] or {}
             parParcours[pt.idParcours] = etapes
             local s = etapes[pt.numero] or { x = 0, y = 0, n = 0, attente = pt.attente }
-            s.x, s.y, s.n = s.x + b.ax, s.y + b.ay, s.n + 1
+            -- Au repere tel qu'il est pose (ecarte de ses voisins s'il le faut).
+            local e = vue.echelle or 1
+            local ex = (b.ecartX or 0) / math.max(1, vue.largeur * e)
+            local ey = (b.ecartY or 0) / math.max(1, vue.hauteur * e)
+            s.x, s.y, s.n = s.x + b.ax + ex, s.y + b.ay + ey, s.n + 1
             etapes[pt.numero] = s
         end
     end
@@ -515,37 +519,34 @@ local function Disposer()
     vue.toile:ClearAllPoints()
     vue.toile:SetPoint("TOPLEFT", vue.clip, "TOPLEFT", decX / echelle, -decY / echelle)
     vue.echelle = echelle
-    for i = 1, vue.enService do
-        local b = vue.reperes[i]
+    -- Tous les reperes affiches, poses ensemble : ceux qui tombent au meme
+    -- endroit sont mis cote a cote, jamais empiles.
+    local poses = {}
+    local function Prendre(b)
+        if not (b and b.ax and b.ay) then return end
         b:SetScale(1 / echelle)
-        b:ClearAllPoints()
-        b:SetPoint("CENTER", vue.toile, "TOPLEFT", b.ax * vue.largeur * echelle, -b.ay * vue.hauteur * echelle)
+        table.insert(poses, { b = b, x = b.ax * vue.largeur * echelle, y = b.ay * vue.hauteur * echelle,
+            taille = math.max(b:GetWidth() or 0, b:GetHeight() or 0, 16),
+            ordre = b.point and b.point.numero or nil })
     end
-    for _, b in ipairs(vue.lieux or {}) do
-        if b:IsShown() then
-            b:SetScale(1 / echelle)
-            b:ClearAllPoints()
-            b:SetPoint("CENTER", vue.toile, "TOPLEFT", b.ax * vue.largeur * echelle, -b.ay * vue.hauteur * echelle)
-        end
+    for i = 1, vue.enService do Prendre(vue.reperes[i]) end
+    for _, b in ipairs(vue.lieux or {}) do if b:IsShown() then Prendre(b) end end
+    if vue.pointee and vue.pointee:IsShown() then Prendre(vue.pointee) end
+    if vue.entree and vue.entree:IsShown() then Prendre(vue.entree) end
+    for _, b in ipairs(vue.mapcore or {}) do if b:IsShown() then Prendre(b) end end
+    -- Recalcule seulement si le zoom ou les reperes changent (pas en glissant).
+    local morceaux = { string.format("%.4f", echelle) }
+    for _, e in ipairs(poses) do morceaux[#morceaux + 1] = string.format("%.3f,%.3f", e.b.ax, e.b.ay) end
+    local cle = table.concat(morceaux, ":")
+    if cle ~= vue.cleEcart then
+        vue.cleEcart = cle
+        local Suite = NS.suite or _G.CoreSuite
+        if Suite and Suite.Ecarter then pcall(Suite.Ecarter, poses, 22) end
+        for _, e in ipairs(poses) do e.b.ecartX, e.b.ecartY = e.dx or 0, e.dy or 0 end
     end
-    if vue.pointee and vue.pointee:IsShown() then
-        vue.pointee:SetScale(1 / echelle)
-        vue.pointee:ClearAllPoints()
-        vue.pointee:SetPoint("CENTER", vue.toile, "TOPLEFT", vue.pointee.ax * vue.largeur * echelle,
-            -vue.pointee.ay * vue.hauteur * echelle)
-    end
-    if vue.entree and vue.entree:IsShown() then
-        vue.entree:SetScale(1 / echelle)
-        vue.entree:ClearAllPoints()
-        vue.entree:SetPoint("CENTER", vue.toile, "TOPLEFT", vue.entree.ax * vue.largeur * echelle,
-            -vue.entree.ay * vue.hauteur * echelle)
-    end
-    for _, b in ipairs(vue.mapcore or {}) do
-        if b:IsShown() then
-            b:SetScale(1 / echelle)
-            b:ClearAllPoints()
-            b:SetPoint("CENTER", vue.toile, "TOPLEFT", b.ax * vue.largeur * echelle, -b.ay * vue.hauteur * echelle)
-        end
+    for _, e in ipairs(poses) do
+        e.b:ClearAllPoints()
+        e.b:SetPoint("CENTER", vue.toile, "TOPLEFT", e.x + (e.b.ecartX or 0), -(e.y + (e.b.ecartY or 0)))
     end
     DessinerTrajet()
     page.PlacerJoueur()

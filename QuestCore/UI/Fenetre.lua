@@ -2030,7 +2030,8 @@ local function Construire()
     menu:SetWidth(LARGEUR_LISTE)
     cadre.menu = menu
     local trait = cadre:CreateTexture(nil, "ARTWORK")
-    trait:SetColorTexture(0.54, 0.39, 0.17, 0.6)
+    -- Plus de trait visible entre le menu et le contenu : il ne sert que de repere.
+    trait:SetColorTexture(0, 0, 0, 0)
     trait:SetWidth(1)
     trait:SetPoint("TOPLEFT", menu, "TOPRIGHT", ECART_MENU, 0)
     trait:SetPoint("BOTTOMLEFT", menu, "BOTTOMRIGHT", ECART_MENU, 0)

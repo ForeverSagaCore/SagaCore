@@ -3999,7 +3999,8 @@ local function Construire()
     -- Trait de separation entre le menu et le contenu. Texture d'un pixel,
     -- patron repris du journal de donjon qui separe ainsi sa liste de son detail.
     local trait = win:CreateTexture(nil, "ARTWORK")
-    trait:SetColorTexture(0.54, 0.39, 0.17, 0.6)
+    -- Plus de trait visible entre le menu et le contenu : il ne sert que de repere.
+    trait:SetColorTexture(0, 0, 0, 0)
     trait:SetWidth(1)
     trait:SetPoint("TOPLEFT", inset, "TOPLEFT", MARGE + LARGEUR_MENU + ECART, -MARGE)
     trait:SetPoint("BOTTOMLEFT", inset, "BOTTOMLEFT", MARGE + LARGEUR_MENU + ECART, MARGE)

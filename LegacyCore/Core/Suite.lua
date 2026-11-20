@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 61
+local VERSION = 62
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -1895,6 +1895,97 @@ end
 function Suite.PointVisible(pt)
     local cle = Suite.FiltreDuPoint(pt)
     return cle == nil or Suite.Filtre(cle)
+end
+
+-- Numero d'etape d'un itineraire, pose sur un repere de carte : un petit
+-- rond sombre, cercle comme les filtres sous la carte, le numero au centre.
+-- f:SetText(texte) le montre ; sans texte, il se cache.
+function Suite.PastilleNumero(parent, taille)
+    taille = taille or 18
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(taille, taille)
+    f:SetFrameLevel((parent:GetFrameLevel() or 1) + 4)
+    f.fond = f:CreateTexture(nil, "BACKGROUND")
+    f.fond:SetSize(taille * 0.84, taille * 0.84)
+    f.fond:SetPoint("CENTER")
+    f.fond:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    f.fond:SetVertexColor(0.55, 0.55, 0.55, 1)
+    f.anneau = f:CreateTexture(nil, "OVERLAY", nil, 1)
+    f.anneau:SetSize(taille * 1.7, taille * 1.7)
+    f.anneau:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    f.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    f.texte = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    f.texte:SetDrawLayer("OVERLAY", 2)
+    f.texte:SetPoint("CENTER", f, "CENTER", 0.5, 0)
+    local fichier = f.texte:GetFont()
+    if fichier then f.texte:SetFont(Suite.FichierPolice and Suite.FichierPolice(fichier) or fichier, math.floor(taille * 0.58 + 0.5), "OUTLINE") end
+    f.texte:SetTextColor(1, 1, 1)
+    f.SetText = function(self, texte)
+        self.texte:SetText(texte or "")
+        self:SetShown(texte ~= nil and texte ~= "")
+    end
+    f:Hide()
+    return f
+end
+
+-- Reperes au meme endroit d'une carte : jamais empiles. Ceux qui se
+-- touchent sont poses cote a cote, en cercle autour de leur centre commun
+-- (deux : l'un a cote de l'autre). Positions en pixels a l'ecran, y vers le
+-- bas ; chaque element recoit e.dx, e.dy, le decalage a appliquer.
+-- elements : { { x, y, taille, ordre } } ; ordre : le plus petit a gauche.
+function Suite.Ecarter(elements, tailleParDefaut)
+    local n = #elements
+    for _, e in ipairs(elements) do e.dx, e.dy = 0, 0 end
+    if n < 2 then return end
+    tailleParDefaut = tailleParDefaut or 22
+    local parent = {}
+    for i = 1, n do parent[i] = i end
+    local function Racine(i)
+        while parent[i] ~= i do parent[i] = parent[parent[i]] i = parent[i] end
+        return i
+    end
+    for i = 1, n - 1 do
+        local a = elements[i]
+        local ta = a.taille or tailleParDefaut
+        for j = i + 1, n do
+            local b = elements[j]
+            local seuil = (ta + (b.taille or tailleParDefaut)) * 0.42
+            if math.abs(a.x - b.x) < seuil and math.abs(a.y - b.y) < seuil then
+                local ra, rb = Racine(i), Racine(j)
+                if ra ~= rb then parent[rb] = ra end
+            end
+        end
+    end
+    local paquets = {}
+    for i = 1, n do
+        local r = Racine(i)
+        paquets[r] = paquets[r] or {}
+        table.insert(paquets[r], elements[i])
+    end
+    for _, p in pairs(paquets) do
+        local m = #p
+        if m > 1 then
+            local cx, cy, t = 0, 0, 0
+            for _, e in ipairs(p) do
+                cx, cy = cx + e.x, cy + e.y
+                t = math.max(t, e.taille or tailleParDefaut)
+            end
+            cx, cy = cx / m, cy / m
+            table.sort(p, function(a, b)
+                local oa, ob = a.ordre or 1000, b.ordre or 1000
+                if oa ~= ob then return oa < ob end
+                if a.x ~= b.x then return a.x < b.x end
+                return a.y < b.y
+            end)
+            -- Rayon : voisins qui se touchent a peine.
+            local r = (m == 2) and (t * 0.55) or ((t * 1.05) / (2 * math.sin(math.pi / m)))
+            for k, e in ipairs(p) do
+                local angle = math.pi + (k - 1) * 2 * math.pi / m
+                e.dx = cx + r * math.cos(angle) - e.x
+                e.dy = cy + r * math.sin(angle) - e.y
+            end
+        end
+    end
 end
 
 Suite.barresFiltres = Suite.barresFiltres or {}
@@ -3773,7 +3864,8 @@ function Suite.FenetreAPages(o)
     menu:SetPoint("BOTTOMLEFT", cadre.zone, "BOTTOMLEFT", 0, 0)
     menu:SetWidth(MENU_P)
     local trait = cadre:CreateTexture(nil, "ARTWORK")
-    trait:SetColorTexture(0.54, 0.39, 0.17, 0.6)
+    -- Plus de trait visible entre le menu et le contenu : il ne sert que de repere.
+    trait:SetColorTexture(0, 0, 0, 0)
     trait:SetWidth(1)
     trait:SetPoint("TOPLEFT", menu, "TOPRIGHT", ECART_P, 0)
     trait:SetPoint("BOTTOMLEFT", menu, "BOTTOMRIGHT", ECART_P, 0)

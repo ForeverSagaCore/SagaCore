@@ -319,23 +319,15 @@ local function CreerRepere(parent)
     b.symbole = b:CreateTexture(nil, "ARTWORK")
     b.symbole:SetPoint("CENTER")
     b.symbole:SetSize(TAILLE + 6, TAILLE + 6)
-    -- Numero d'etape du parcours, en coin, sur une pastille sombre pour qu'il
-    -- se lise sur toutes les cartes.
-    b.pastille = b:CreateTexture(nil, "OVERLAY", nil, 1)
-    b.pastille:SetSize(15, 15)
-    b.pastille:SetPoint("CENTER", b, "BOTTOMRIGHT", 3, -1)
-    b.pastille:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
-    b.pastille:SetVertexColor(0, 0, 0, 0.8)
-    b.numero = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    b.numero:SetPoint("CENTER", b.pastille, "CENTER", 0, 0)
-    local fichier, _, drapeaux = b.numero:GetFont()
-    if fichier then b.numero:SetFont(NS.Police(fichier), 11, "OUTLINE") end
-    b.numero:SetDrawLayer("OVERLAY", 2)
-    b.pastille:Hide()
-    local poser = b.numero.SetText
-    b.numero.SetText = function(self, texte)
-        poser(self, texte)
-        b.pastille:SetShown(texte ~= nil and texte ~= "")
+    -- Numero d'etape du parcours, en coin : un petit rond cercle comme les
+    -- filtres sous la carte (celui de la suite).
+    local S = NS.suite or _G.CoreSuite
+    if S and S.PastilleNumero then
+        b.numero = S.PastilleNumero(b, 17)
+        b.numero:SetPoint("CENTER", b, "BOTTOMRIGHT", 2, 0)
+    else
+        b.numero = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        b.numero:SetPoint("CENTER", b, "BOTTOMRIGHT", 2, 0)
     end
     b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     b:SetScript("OnEnter", function(self)

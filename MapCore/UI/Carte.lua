@@ -684,41 +684,35 @@ local function Disposer()
     vue.toile:ClearAllPoints()
     vue.toile:SetPoint("TOPLEFT", vue.clip, "TOPLEFT", decX / echelle, -decY / echelle)
     vue.echelle = echelle
-    for i = 1, vue.enService do
-        local b = vue.reperes[i]
+    -- Tous les reperes affiches, poses ensemble : ceux qui tombent au meme
+    -- endroit sont mis cote a cote, jamais empiles.
+    local poses = {}
+    local function Prendre(b)
+        if not (b and b.ax and b.ay) then return end
         b:SetScale(1 / echelle)
-        b:ClearAllPoints()
-        b:SetPoint("CENTER", vue.toile, "TOPLEFT", b.ax * vue.largeur * echelle, -b.ay * vue.hauteur * echelle)
+        table.insert(poses, { b = b, x = b.ax * vue.largeur * echelle, y = b.ay * vue.hauteur * echelle,
+            taille = math.max(b:GetWidth() or 0, b:GetHeight() or 0, 16),
+            ordre = b.point and b.point.numero or b.numeroEtape or nil })
     end
-    for i = 1, (vue.nLieux or 0) do
-        local b = vue.lieux[i]
-        b:SetScale(1 / echelle)
-        b:ClearAllPoints()
-        b:SetPoint("CENTER", vue.toile, "TOPLEFT", b.ax * vue.largeur * echelle, -b.ay * vue.hauteur * echelle)
+    for i = 1, vue.enService do Prendre(vue.reperes[i]) end
+    for i = 1, (vue.nLieux or 0) do Prendre(vue.lieux[i]) end
+    for i = 1, (vue.nPersos or 0) do Prendre(vue.persos[i]) end
+    if vue.clignote and vue.clignote:IsShown() then Prendre(vue.clignote) end
+    for i = 1, (vue.nServices or 0) do Prendre(vue.services[i]) end
+    for i = 1, (vue.nMiens or 0) do Prendre(vue.miens[i]) end
+    -- Recalcule seulement si le zoom ou les reperes changent (pas en glissant).
+    local morceaux = { string.format("%.4f", echelle) }
+    for _, e in ipairs(poses) do morceaux[#morceaux + 1] = string.format("%.3f,%.3f", e.b.ax, e.b.ay) end
+    local cle = table.concat(morceaux, ":")
+    if cle ~= vue.cleEcart then
+        vue.cleEcart = cle
+        local Suite = NS.suite or _G.CoreSuite
+        if Suite and Suite.Ecarter then pcall(Suite.Ecarter, poses, 22) end
+        for _, e in ipairs(poses) do e.b.ecartX, e.b.ecartY = e.dx or 0, e.dy or 0 end
     end
-    for i = 1, (vue.nPersos or 0) do
-        local b = vue.persos[i]
-        b:SetScale(1 / echelle)
-        b:ClearAllPoints()
-        b:SetPoint("CENTER", vue.toile, "TOPLEFT", b.ax * vue.largeur * echelle, -b.ay * vue.hauteur * echelle)
-    end
-    if vue.clignote and vue.clignote:IsShown() then
-        local b = vue.clignote
-        b:SetScale(1 / echelle)
-        b:ClearAllPoints()
-        b:SetPoint("CENTER", vue.toile, "TOPLEFT", b.ax * vue.largeur * echelle, -b.ay * vue.hauteur * echelle)
-    end
-    for i = 1, (vue.nServices or 0) do
-        local b = vue.services[i]
-        b:SetScale(1 / echelle)
-        b:ClearAllPoints()
-        b:SetPoint("CENTER", vue.toile, "TOPLEFT", b.ax * vue.largeur * echelle, -b.ay * vue.hauteur * echelle)
-    end
-    for i = 1, (vue.nMiens or 0) do
-        local b = vue.miens[i]
-        b:SetScale(1 / echelle)
-        b:ClearAllPoints()
-        b:SetPoint("CENTER", vue.toile, "TOPLEFT", b.ax * vue.largeur * echelle, -b.ay * vue.hauteur * echelle)
+    for _, e in ipairs(poses) do
+        e.b:ClearAllPoints()
+        e.b:SetPoint("CENTER", vue.toile, "TOPLEFT", e.x + (e.b.ecartX or 0), -(e.y + (e.b.ecartY or 0)))
     end
     page.PlacerJoueur()
 end
@@ -1167,8 +1161,13 @@ local function PoserReperes(idCarte)
                         page.ChoisirLieu(self.lieu, IsShiftKeyDown and IsShiftKeyDown())
                     end
                 end)
-                b.numero = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                b.numero:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 6, -4)
+                if Suite.PastilleNumero then
+                    b.numero = Suite.PastilleNumero(b, 17)
+                    b.numero:SetPoint("CENTER", b, "BOTTOMRIGHT", 2, 0)
+                else
+                    b.numero = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    b.numero:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 6, -4)
+                end
                 vue.lieux[vue.nLieux] = b
             end
             b:Poser(l)
