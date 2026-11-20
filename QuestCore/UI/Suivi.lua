@@ -1164,7 +1164,10 @@ local function RendreEtapeBase(moi, id, rang, e, index, y)
             if type(textes) == "table" and #textes > 0 then
                 tt:AddLine(" ")
                 tt:AddLine(L.QUEST_GOAL, 1, 0.82, 0)
-                for _, t in ipairs(textes) do tt:AddLine(tostring(t), 1, 1, 1, true) end
+                for _, t in ipairs(textes) do
+                    local ligne = tostring(t):match("^%s*(.-)%s*$")
+                    if ligne ~= "" then tt:AddLine(ligne, 1, 1, 1, true) end
+                end
             end
         end,
         auClic = function()
@@ -1180,9 +1183,13 @@ local function RendreEtapeBase(moi, id, rang, e, index, y)
         end
         local textes = NS.ref.Lire("QuestDB", id, "objectivesText")
         if type(textes) == "table" then
+            -- La base coupe ses textes en paragraphes, avec des lignes vides.
             for _, t in ipairs(textes) do
-                index = index + 1
-                y = Poser(index, y, "- " .. tostring(t), { retrait = 22, couleur = { 0.85, 0.85, 0.85 } })
+                local ligne = tostring(t):match("^%s*(.-)%s*$")
+                if ligne ~= "" then
+                    index = index + 1
+                    y = Poser(index, y, "- " .. ligne, { retrait = 22, couleur = { 0.85, 0.85, 0.85 } })
+                end
             end
         end
         local detail, couleurDetail
