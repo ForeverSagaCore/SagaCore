@@ -671,13 +671,35 @@ function courrier.ToucheManette()
     return ok and actif == true
 end
 
+-- La touche passe par un bouton cache, inscrit pour l'appui : le jeu
+-- declenche une touche liee a l'appui, et un bouton du jeu qui n'ecoute que le
+-- relachement (comme ceux du panneau) ne recevait rien.
+local relaisManette
+local function Relais()
+    if relaisManette then return relaisManette end
+    relaisManette = CreateFrame("Button", "CraftCoreAssistantManette", UIParent)
+    relaisManette:Hide()
+    pcall(relaisManette.RegisterForClicks, relaisManette, "AnyDown", "AnyUp")
+    local dernier = -1
+    relaisManette:SetScript("OnClick", function()
+        -- Appui et relachement : une seule action.
+        local maintenant = NS.Appeler(_G.GetTime) or 0
+        if maintenant - dernier < 0.4 then return end
+        dernier = maintenant
+        local b = panneau and panneau.boutons[1]
+        if b and b:IsShown() and b:IsEnabled() then b:Click("LeftButton") end
+    end)
+    return relaisManette
+end
+
 local function LierManette(actif)
     if not panneau then return end
     if NS.Appeler(NS.Lecture("InCombatLockdown")) then return end
     pcall(_G.ClearOverrideBindings, panneau)
     if actif and courrier.ToucheManette() and panneau.boutons[1] and panneau.boutons[1]:IsShown()
         and panneau.boutons[1]:IsEnabled() then
-        pcall(_G.SetOverrideBindingClick, panneau, true, "PAD1", "CraftCoreAssistantBouton1", "LeftButton")
+        Relais()
+        pcall(_G.SetOverrideBindingClick, panneau, true, "PAD1", "CraftCoreAssistantManette", "LeftButton")
     end
 end
 courrier.LierManette = LierManette

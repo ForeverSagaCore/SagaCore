@@ -16,6 +16,7 @@ local HAUTEUR_TITRE = 28
 local HAUTEUR_REPLIE = 100
 local cadre
 local PoserOngletsVues
+local CategorieDe, TourneeRecolte
 
 local function Reglages()
     local g = NS.base.ReglagesGeneraux()
@@ -1130,6 +1131,17 @@ end
 local ETATS_COULEUR = { faite = { 0.5, 0.5, 0.5 }, rendre = { 0.31, 0.82, 0.41 }, cours = { 1, 0.82, 0 },
     prendre = { 1, 0.82, 0 }, attente = { 0.6, 0.6, 0.6 } }
 
+-- Sorte d'un parcours, pour les onglets de l'itineraire.
+CategorieDe = function(pc) return (pc and pc.genre == "kit") and "donjons" or "divers" end
+
+-- La tournee de recolte de MapCore, s'il y en a une.
+TourneeRecolte = function()
+    local api = _G.MapCoreAPI
+    if not (api and api.Tournee) then return nil end
+    local ok, t = pcall(api.Tournee)
+    return ok and type(t) == "table" and t or nil
+end
+
 -- Une etape pas encore au journal, presentee comme une quete du suivi :
 -- niveau a la couleur du jeu, titre, recompense connue (XP de la base ;
 -- l'argent n'y est pas), objectifs de la base, puis chez qui la prendre (un
@@ -1190,10 +1202,45 @@ local function RendreEtapeBase(moi, id, rang, e, index, y)
     return index, y + 6
 end
 
+-- La tournee de recolte de MapCore : ses lieux par matiere, et ceux deja
+-- visites ce tour-ci.
+local function RendreTournee(index, y)
+    local t = TourneeRecolte()
+    if not t then
+        index = index + 1
+        y = Poser(index, y, L.TRACK_FARM_NONE, { couleur = { 0.6, 0.6, 0.6 } })
+        return index, y
+    end
+    local pct = t.total > 0 and math.floor(t.faits * 100 / t.total + 0.5) or 0
+    local info = NS.Lecture("C_Map.GetMapInfo")
+    local zone = info and NS.Appeler(info, t.carte)
+    index = index + 1
+    y = Poser(index, y, (type(zone) == "table" and zone.name) and string.format(L.TRACK_FARM_IN, zone.name) or L.TRACK_ROUTE_FARM,
+        { police = "GameFontNormal", zone = true, uneLigne = true, couleur = { 1, 0.82, 0 },
+        droite = pct .. " %", couleurDroite = { 1, 1, 1 }, apres = 4 })
+    local parObjet, ordre = {}, {}
+    for _, p in ipairs(t.points or {}) do
+        if not parObjet[p.objet] then parObjet[p.objet] = 0 table.insert(ordre, p.objet) end
+        parObjet[p.objet] = parObjet[p.objet] + 1
+    end
+    for _, objet in ipairs(ordre) do
+        index = index + 1
+        y = Poser(index, y, string.format("|T%s:14|t %s", tostring(NS.ref.IconeDObjet(objet)), NS.ref.NomDObjet(objet)),
+            { retrait = 22, couleur = { 1, 1, 1 }, uneLigne = true,
+            droite = string.format(L.TRACK_FARM_SPOTS, parObjet[objet]), couleurDroite = { 0.8, 0.8, 0.8 } })
+    end
+    return index, y + 6
+end
+
 RendreVueParcours = function(moi, index, y)
     local s = Reglages()
+    local categorie = s.routeCategorie or "divers"
+    if categorie == "recolte" then return RendreTournee(index, y) end
     local cle = NS.ClePersonnage()
-    local liste = (moi and NS.parcours) and NS.parcours.Liste(cle) or {}
+    local liste = {}
+    for _, pc in ipairs((moi and NS.parcours) and NS.parcours.Liste(cle) or {}) do
+        if CategorieDe(pc) == categorie then table.insert(liste, pc) end
+    end
     if #liste == 0 then
         index = index + 1
         y = Poser(index, y, L.TRACK_NO_ROUTE, { couleur = { 0.6, 0.6, 0.6 } })
@@ -1201,7 +1248,8 @@ RendreVueParcours = function(moi, index, y)
     end
     -- Plusieurs parcours peuvent etre ouverts a la fois ; le dernier choisi
     -- est celui du bouton Guider.
-    local choisi = NS.parcours.Trouver(cle, s.parcoursChoisi) or liste[1]
+    local choisi = NS.parcours.Trouver(cle, s.parcoursChoisi)
+    if not choisi or CategorieDe(choisi) ~= categorie then choisi = liste[1] end
     s.parcoursChoisi = choisi.id
     s.parcoursOuverts = type(s.parcoursOuverts) == "table" and s.parcoursOuverts or {}
     if next(s.parcoursOuverts) == nil then s.parcoursOuverts[choisi.id] = true end
@@ -1308,9 +1356,26 @@ function suivi.Rendre()
         cadre.vues.quetes:Compter(nCours)
         cadre.vues.rendre:Compter(nRendre)
         cadre.vues.favoris:Compter(nFavoris)
-        -- Onglet Itineraire : les onglets du haut n'ont plus lieu d'etre.
+        -- Onglet Itineraire : ses trois onglets a la place de ceux des quetes.
         local enItineraire = s.vue == "parcours" and not s.vuePerso
         for _, b in pairs(cadre.vues) do b:SetShown(not s.replie and not enItineraire) end
+        local nDivers, nDonjons = 0, 0
+        for _, pc in ipairs(NS.parcours and NS.parcours.Liste(NS.ClePersonnage()) or {}) do
+            if CategorieDe(pc) == "donjons" then nDonjons = nDonjons + 1 else nDivers = nDivers + 1 end
+        end
+        local tournee = TourneeRecolte()
+        local nRecolte = tournee and 1 or 0
+        nParcours = nParcours + nRecolte
+        s.routeCategorie = s.routeCategorie or "divers"
+        for cleR, b in pairs(cadre.vuesRoute or {}) do
+            b:SetShown(not s.replie and enItineraire)
+            b:Choisir(cleR == s.routeCategorie)
+        end
+        if cadre.vuesRoute then
+            cadre.vuesRoute.divers:Compter(nDivers)
+            cadre.vuesRoute.recolte:Compter(nRecolte)
+            cadre.vuesRoute.donjons:Compter(nDonjons)
+        end
         cadre.filetHaut:SetShown(not s.replie)
         cadre.tout:Hide()
         cadre.trier:Hide()
@@ -1397,9 +1462,30 @@ function suivi.Rendre()
         end
         -- Onglet Parcours : le bouton guide le parcours affiche.
         local pcVue
-        if s.vue == "parcours" and NS.parcours then
-            local liste = NS.parcours.Liste(NS.ClePersonnage())
-            pcVue = NS.parcours.Trouver(NS.ClePersonnage(), s.parcoursChoisi) or liste[1]
+        local categorie = s.routeCategorie or "divers"
+        if s.vue == "parcours" and NS.parcours and categorie ~= "recolte" then
+            pcVue = NS.parcours.Trouver(NS.ClePersonnage(), s.parcoursChoisi)
+            if not pcVue or CategorieDe(pcVue) ~= categorie then
+                pcVue = nil
+                for _, pc in ipairs(NS.parcours.Liste(NS.ClePersonnage())) do
+                    if not pcVue and CategorieDe(pc) == categorie then pcVue = pc end
+                end
+            end
+        end
+        -- Recolte : guider la tournee de MapCore, ou l'effacer.
+        if s.vue == "parcours" and categorie == "recolte" then
+            local t = TourneeRecolte()
+            local api = _G.MapCoreAPI
+            if t and api then
+                table.insert(boutons, { t.guide and L.GUIDE_STOP or L.GUIDE_START, function()
+                    if api.GuiderTournee then pcall(api.GuiderTournee, not t.guide) end
+                    suivi.Rendre()
+                end, L.GUIDE_HELP })
+                table.insert(boutons, { L.TRACK_FARM_CLEAR, function()
+                    if api.EffacerTournee then pcall(api.EffacerTournee) end
+                    suivi.Rendre()
+                end })
+            end
         end
         local actif = NS.guidage and NS.guidage.Actif()
         -- Un parcours ouvert entierement fait : Supprimer, et il disparait.
@@ -1429,7 +1515,7 @@ function suivi.Rendre()
             local idV = pcVue.id
             table.insert(boutons, { ici and L.GUIDE_STOP or L.GUIDE_START,
                 function() if NS.guidage then NS.guidage.Basculer(not ici, idV) end end, L.GUIDE_HELP })
-        elseif avecTrajet or actif then
+        elseif (avecTrajet or actif) and s.vue ~= "parcours" then
             table.insert(boutons, { actif and L.GUIDE_STOP or L.GUIDE_START,
                 function() if NS.guidage then NS.guidage.Basculer(not actif) end end, L.GUIDE_HELP })
         end
@@ -2186,10 +2272,8 @@ local function Construire()
     local largeurZone = LARGEUR - 2 * NS.charte.MARGE - 10
     -- Les parcours ont leur onglet lateral (Itineraire), en bas a gauche.
     local pas = math.floor(largeurZone / 3)
-    for rang, v in ipairs({
-        { "quetes", L.TRACK_TAB_QUESTS, "QuestNormal", "Interface\\GossipFrame\\AvailableQuestIcon" },
-        { "rendre", L.TRACK_TAB_TURNIN, "QuestTurnin", "Interface\\GossipFrame\\ActiveQuestIcon" },
-        { "favoris", L.TRACK_TAB_FAV, nil, "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1" } }) do
+    -- Un onglet rond du haut : icone du jeu, compte a cote, nom au survol.
+    local function OngletRond(rang, v)
         local b = CreateFrame("Button", nil, cadre)
         b:SetSize(24, 24)
         b:SetPoint("TOPLEFT", cadre.zone, "TOPLEFT", (rang - 1) * pas + 2, 0)
@@ -2226,6 +2310,13 @@ local function Construire()
             GameTooltip:Show()
         end)
         b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        return b
+    end
+    for rang, v in ipairs({
+        { "quetes", L.TRACK_TAB_QUESTS, "QuestNormal", "Interface\\GossipFrame\\AvailableQuestIcon" },
+        { "rendre", L.TRACK_TAB_TURNIN, "QuestTurnin", "Interface\\GossipFrame\\ActiveQuestIcon" },
+        { "favoris", L.TRACK_TAB_FAV, nil, "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1" } }) do
+        local b = OngletRond(rang, v)
         local cle = v[1]
         b:SetScript("OnClick", function()
             -- "A rendre" est le filtre partage avec la fenetre et la carte.
@@ -2241,6 +2332,23 @@ local function Construire()
         end)
         b.vue = cle
         cadre.vues[cle] = b
+    end
+    -- Onglet Itineraire : trois sortes de trajets, comme les trois onglets
+    -- des quetes. Divers (niveau, rendu, suites), recolte (la tournee de
+    -- MapCore) et donjons (prerequis).
+    cadre.vuesRoute = {}
+    for rang, v in ipairs({
+        { "divers", L.TRACK_ROUTE_MISC, nil, "Interface\\Icons\\INV_Misc_Map_01", true },
+        { "recolte", L.TRACK_ROUTE_FARM, nil, "Interface\\Icons\\Trade_Herbalism", true },
+        { "donjons", L.TRACK_ROUTE_DUNGEON, "Dungeon", "Interface\\Minimap\\Dungeon" } }) do
+        local b = OngletRond(rang, v)
+        local cle = v[1]
+        b:SetScript("OnClick", function()
+            Reglages().routeCategorie = cle
+            suivi.Rendre()
+        end)
+        b:Hide()
+        cadre.vuesRoute[cle] = b
     end
     -- Filet sous les onglets, puis de l'air avant la liste.
     local filetHaut = cadre:CreateTexture(nil, "ARTWORK")
@@ -2443,6 +2551,8 @@ function suivi.MontrerParcours(idParcours)
     s.parcoursChoisi = idParcours
     s.parcoursOuverts = type(s.parcoursOuverts) == "table" and s.parcoursOuverts or {}
     s.parcoursOuverts[idParcours] = true
+    local pc = NS.parcours and NS.parcours.Trouver(NS.ClePersonnage(), idParcours)
+    if pc then s.routeCategorie = CategorieDe(pc) end
     s.afficher = true
     cadre:Show()
     suivi.Rendre()

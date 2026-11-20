@@ -101,6 +101,20 @@ _G.MapCoreAPI = {
     end,
     -- Ouvre la carte sur un point { carte, x (0-1), y (0-1), nom, icone }.
     Montrer = function(dst) if NS.pageCarte and NS.pageCarte.Localiser then NS.pageCarte.Localiser(dst) end end,
+    -- La tournee de recolte, pour l'itineraire du suivi de QuestCore :
+    -- { carte, points, faits, total, guide }, ou nil s'il n'y en a pas.
+    Tournee = function()
+        local pg = NS.pageCarte
+        if not (pg and pg.Tournee) then return nil end
+        local t = pg.Tournee()
+        if not t.carte or #(t.points or {}) == 0 then return nil end
+        local faits = 0
+        for _ in pairs(t.faits or {}) do faits = faits + 1 end
+        return { carte = t.carte, points = t.points, faits = faits, total = #t.points,
+            guide = pg.EnGuidage and pg.EnGuidage() or false }
+    end,
+    GuiderTournee = function(oui) if NS.pageCarte and NS.pageCarte.Guider then NS.pageCarte.Guider(oui) end end,
+    EffacerTournee = function() if NS.pageCarte and NS.pageCarte.EffacerTournee then NS.pageCarte.EffacerTournee() end end,
 }
 
 -- ---------------------------------------------------------------------------
