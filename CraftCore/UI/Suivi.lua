@@ -645,6 +645,15 @@ end
 -- Les etapes de fabrication d'un projet, dans l'ordre : d'abord ce qu'il
 -- faut fabriquer en route (barres, catalyseurs...), puis l'objet lui-meme.
 -- Chaque etape : recette, objet, combien de fois, faite ou non.
+-- Combien on en a sur soi, lu en direct dans le jeu (le releve des sacs a
+-- une seconde de retard).
+local function SurSoi(objet)
+    local compter = NS.Lecture("C_Item.GetItemCount", "GetItemCount")
+    local n = compter and NS.Appeler(compter, objet, false) or nil
+    if type(n) == "number" then return n end
+    return NS.inventaire.DisponibleDansLesSacs(objet) or 0
+end
+
 local function EtapesDeFabrication(lignes)
     local etapes = {}
     local catalogue = CraftCoreDB and CraftCoreDB.recettes or {}
@@ -656,9 +665,9 @@ local function EtapesDeFabrication(lignes)
                 local sous = Producteur(comp.objet)
                 if sous and sous ~= rec then
                     local besoin = comp.quantite * quantite
-                    local avoir = NS.inventaire.DisponibleDansLesSacs(comp.objet) or 0
+                    local avoir = SurSoi(comp.objet)
                     local parFois = math.max(1, tonumber(sous.quantiteMin) or 1)
-                    table.insert(etapes, { recette = sous, objet = comp.objet, besoin = besoin,
+                    table.insert(etapes, { recette = sous, objet = comp.objet, besoin = besoin, avoir = math.min(avoir, besoin),
                         fois = math.max(1, math.ceil(math.max(0, besoin - avoir) / parFois)), faite = avoir >= besoin })
                 end
             end
@@ -720,10 +729,7 @@ function suivi.EncoreUtile(cle, idRec)
             for _, e in ipairs(EtapesDeFabrication(o.lignes)) do
                 if e.recette and tostring(e.recette.id) == tostring(idRec) then
                     if e.finale then return true end
-                    local compter = NS.Lecture("C_Item.GetItemCount", "GetItemCount")
-                    local n = compter and NS.Appeler(compter, e.objet, false) or nil
-                    if type(n) == "number" then return n < (e.besoin or 0) end
-                    return not e.faite
+                    return SurSoi(e.objet) < (e.besoin or 0)
                 end
             end
             return false
@@ -1079,7 +1085,18 @@ local function DessinerObjectifs(y, objectifs, vue)
                         t:SetPoint("TOPLEFT", zone, "TOPLEFT", 24, -(y - 2))
                         t:SetWidth(largeur - 24 - 70)
                         t:SetWordWrap(false)
-                        t:SetText(string.format(L.CRAFT_STEP_LINE, rangE, NS.inventaire.NomDObjet(e.objet), e.finale and e.besoin or e.fois))
+                        -- Compte "fait / a faire" : 0 / 5, puis 1 / 5... jusqu'a 5 / 5.
+                        local fait, total
+                        if e.finale then
+                            local cleT = tostring(o.cle) .. "/" .. tostring(e.recette.id)
+                            suiviEtapes.totauxFab = type(suiviEtapes.totauxFab) == "table" and suiviEtapes.totauxFab or {}
+                            total = math.max(tonumber(suiviEtapes.totauxFab[cleT]) or 0, e.besoin or 1)
+                            suiviEtapes.totauxFab[cleT] = total
+                            fait = total - (e.besoin or 1)
+                        else
+                            fait, total = e.avoir or 0, e.besoin or 1
+                        end
+                        t:SetText(string.format(L.CRAFT_STEP_LINE, rangE, NS.inventaire.NomDObjet(e.objet), fait, total))
                         local etat = T(LIGNE, TAILLE_LIGNE - 1)
                         etat:ClearAllPoints()
                         etat:SetPoint("TOPRIGHT", zone, "TOPLEFT", largeur, -(y - 2))

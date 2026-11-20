@@ -2547,6 +2547,12 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     local fiche = NS.base.FicheAffichee()
     local cleObjectif = tostring(ligneMetier)
     local enregistre = fiche and type(fiche.objectifsProgression) == "table" and tonumber(fiche.objectifsProgression[cleObjectif])
+    -- Rang vise deja atteint : l'objectif est fini, il n'est plus garde. La
+    -- valeur montree n'est alors qu'une proposition, pas suivie.
+    if enregistre and enregistre <= rang then
+        fiche.objectifsProgression[cleObjectif] = nil
+        enregistre = nil
+    end
     local objectif = enregistre or math.min(rang + 10, rangMax or (rang + 10))
     if objectif <= rang then objectif = math.min(rang + 1, rangMax or (rang + 1)) end
     local function PoserObjectif(valeur)
@@ -2575,7 +2581,7 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     contenu.libelleObjectif:SetFontObject("GameFontNormalSmall")
     contenu.libelleObjectif:ClearAllPoints()
     contenu.libelleObjectif:SetPoint("TOPLEFT", contenu, "TOPLEFT", aligne, -(y + 7))
-    contenu.libelleObjectif:SetText(L.GUIDE_TARGET)
+    contenu.libelleObjectif:SetText(enregistre and L.GUIDE_TARGET or L.GUIDE_TARGET_OFF)
     contenu.libelleObjectif:Show()
     contenu.etatObjectif = { valeur = objectif, mini = rang + 1, maxi = rangMax or (rang + 75) }
     local S = NS.suite or _G.CoreSuite
@@ -2599,6 +2605,8 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         c:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -y)
         c:Show()
         c.Rendre()
+        -- Pas encore suivi : la valeur proposee est attenuee.
+        c:SetAlpha(enregistre and 1 or 0.55)
         -- Bornes du metier : fleches grisees au bout.
         if c.boutonsPM then
             local bas, haut = objectif > contenu.etatObjectif.mini, objectif < contenu.etatObjectif.maxi

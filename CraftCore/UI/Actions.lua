@@ -69,7 +69,7 @@ function actions.Fabriquer(recette, nombre, garde)
     -- Serie en cours, pour la barre de fabrication ("3 / 12").
     -- `garde` dit si la fabrication sert encore (etape finie, rang atteint) :
     -- la serie s'arrete des qu'elle ne sert plus.
-    actions.serie = { total = tonumber(nombre) or 1, faits = 0, garde = garde }
+    actions.serie = { total = tonumber(nombre) or 1, faits = 0, reussis = 0, garde = garde, recette = recette and recette.id }
     -- Le metier va s'ouvrir en cache : sans le bruit d'ouverture.
     if not (NS.recettes.PretALancer and NS.recettes.PretALancer(recette)) and actions.Silence then actions.Silence() end
     local resultat = NS.recettes.Fabriquer(recette, nombre or 1)
@@ -301,9 +301,14 @@ end
 -- La serie sert-elle encore ? Sinon on arrete de repeter la fabrication.
 function actions.VerifierSerie()
     local serie = actions.serie
-    if not (serie and serie.garde) then return end
-    local ok, utile = pcall(serie.garde)
-    if ok and utile == false then
+    if not serie then return end
+    -- Borne : la quantite demandee est faite, on s'arrete la.
+    local fini = (serie.reussis or 0) >= (serie.total or 1)
+    if not fini and serie.garde then
+        local ok, utile = pcall(serie.garde)
+        fini = ok and utile == false
+    end
+    if fini then
         actions.serie = nil
         local arreter = NS.Lecture("C_TradeSkillUI.StopRecipeRepeat")
         if arreter then NS.Appeler(arreter) end
@@ -336,9 +341,20 @@ do
         pcall(f.RegisterEvent, f, e)
     end
     local fermerDans
-    f:SetScript("OnEvent", function(_, evenement, unite)
+    f:SetScript("OnEvent", function(_, evenement, unite, ...)
         if evenement == "UNIT_SPELLCAST_SUCCEEDED" or evenement == "BAG_UPDATE_DELAYED" or evenement == "SKILL_LINES_CHANGED" then
+            if evenement == "UNIT_SPELLCAST_SUCCEEDED" and unite == "player" and actions.serie then
+                local _, sort = ...
+                local serie = actions.serie
+                local secret = _G.issecretvalue and _G.issecretvalue(sort)
+                if secret or not serie.recette or tostring(sort) == tostring(serie.recette) then
+                    serie.reussis = (serie.reussis or 0) + 1
+                    actions.VerifierSerie()
+                end
+            end
             if evenement ~= "UNIT_SPELLCAST_SUCCEEDED" or unite == "player" then
+                -- Le suivi suit chaque objet fabrique, sans attendre.
+                if evenement == "BAG_UPDATE_DELAYED" and NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
                 local plusTard = NS.Lecture("C_Timer.After")
                 if plusTard then NS.Appeler(plusTard, 0.1, actions.VerifierSerie) else actions.VerifierSerie() end
             end
