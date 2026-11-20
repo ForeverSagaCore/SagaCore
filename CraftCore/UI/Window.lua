@@ -2687,18 +2687,25 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         end
     end
 
-    -- 2. Acheter chez un marchand.
+    -- 2. Acheter chez un marchand. Toujours la liste, chaque ligne cochee
+    -- quand ce personnage l'a dans ses sacs : c'est la qu'il en a besoin
+    -- pour fabriquer (ce qu'un autre personnage detient ne compte pas).
     if next(plan.achats) then
-        local manque = {}
+        local liste, manque = {}, 0
         for _, e in ipairs(Trie(plan.achats)) do
-            local reste = e.n - NS.inventaire.TotalPossede(e.objet)
-            if reste > 0 then table.insert(manque, { objet = e.objet, n = reste }) end
+            local reste = e.n - (NS.inventaire.DisponibleDansLesSacs(e.objet) or 0)
+            if reste > 0 then manque = manque + 1 end
+            table.insert(liste, { objet = e.objet, n = e.n, reste = reste })
         end
-        if Etape(L.GUIDE_BUY, #manque == 0) then
-            for _, e in ipairs(manque) do
-                local l
-                index, y, l = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), "")
-                if l and NS.marchands and NS.marchands.Localisable and NS.marchands.Localisable(e.objet) then
+        Etape(L.GUIDE_BUY, manque == 0)
+        for _, e in ipairs(liste) do
+            local droite = e.reste > 0 and string.format(L.GUIDE_BUY_LEFT, e.reste)
+                or ("|TInterface\\RaidFrame\\ReadyCheck-Ready:14|t " .. L.GUIDE_BUY_OK)
+            local l
+            index, y, l = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), droite)
+            if l then
+                if e.reste > 0 then l.total:SetTextColor(0.9, 0.3, 0.3) else l.total:SetTextColor(0.31, 0.82, 0.41) end
+                if e.reste > 0 and NS.marchands and NS.marchands.Localisable and NS.marchands.Localisable(e.objet) then
                     local objet = e.objet
                     PoserBoutonDeLigne(l, L.VENDOR_LOCATE, function() NS.marchands.Guider(objet) end, nil, L.VENDOR_LOCATE_HELP)
                 end
