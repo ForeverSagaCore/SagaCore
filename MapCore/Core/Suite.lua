@@ -1919,7 +1919,11 @@ function Suite.PastilleNumero(parent, taille)
     f.texte:SetPoint("CENTER", f, "CENTER", 0.5, 0)
     local fichier = f.texte:GetFont()
     if fichier then f.texte:SetFont(Suite.FichierPolice and Suite.FichierPolice(fichier) or fichier, math.floor(taille * 0.58 + 0.5), "OUTLINE") end
-    f.texte:SetTextColor(1, 1, 1)
+    -- Jaune vif, jamais passe a l'encre du parchemin : lisible sur le rond sombre.
+    f.texte:SetTextColor(1, 0.86, 0.1)
+    f.texte:SetShadowColor(0, 0, 0, 1)
+    f.texte:SetShadowOffset(1, -1)
+    f.sansEncre = true
     f.SetText = function(self, texte)
         self.texte:SetText(texte or "")
         self:SetShown(texte ~= nil and texte ~= "")
