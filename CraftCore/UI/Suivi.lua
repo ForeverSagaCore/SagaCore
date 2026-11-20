@@ -962,7 +962,8 @@ local function DessinerObjectifs(y, objectifs, vue)
                     end
                     b.creer:ClearAllPoints()
                     b.creer:SetPoint("RIGHT", b.droite, "LEFT", -6, 0)
-                    b.creer:SetText(L.CRAFT_BUTTON)
+                    b.creer:SetSize(60, 16)
+                    b.creer:SetText((etapes and #etapes > 1) and L.CRAFT_STEP_NOW or L.CRAFT_BUTTON)
                     NS.actions.PreparerBoutonFabriquer(b.creer, recettePrete, fois)
                     -- L'infobulle dit quelle etape le clic va lancer.
                     b.creer.etape = (etapes and #etapes > 1 and etapeP) and string.format(L.CRAFT_STEP_TIP, rangP, #etapes,
@@ -1040,17 +1041,19 @@ local function DessinerObjectifs(y, objectifs, vue)
                         etat:SetPoint("TOPRIGHT", zone, "TOPLEFT", largeur, -(y - 2))
                         etat:SetWidth(70)
                         etat:SetJustifyH("RIGHT")
+                        -- Faite : toute la ligne en vert. La prochaine : en blanc,
+                        -- suivie de "A creer" (le bouton de la ligne la lance).
+                        -- Les suivantes : en blanc.
                         if e.faite then
-                            t:SetTextColor(0.5, 0.5, 0.5)
+                            t:SetTextColor(0.31, 0.82, 0.41)
                             etat:SetText(L.GUIDE_DONE)
                             etat:SetTextColor(0.31, 0.82, 0.41)
                         elseif rangE == rangP then
                             t:SetTextColor(1, 1, 1)
                             etat:SetText(L.CRAFT_STEP_NOW)
-                            -- (le bouton Creer de la ligne lance cette etape)
                             etat:SetTextColor(1, 0.82, 0)
                         else
-                            t:SetTextColor(0.7, 0.7, 0.7)
+                            t:SetTextColor(1, 1, 1)
                             etat:SetText("")
                         end
                         y = y + 14
@@ -1672,6 +1675,7 @@ local function Annoncer(titre, detail, detail2)
     NS.Dire(texte)
 end
 
+local resumesAnnonce = {}
 local function Verifier()
     local L = NS.L
     local ok, objectifs = pcall(suivi.Objectifs)
@@ -1715,6 +1719,9 @@ local function Verifier()
         vus[o.cle] = true
         etatsAnnonce[o.cle] = etat
         local titre = (o.genre == "projet" and not o.rapides) and string.format(L.ANNOUNCE_PROJECT, o.titreAnnonce or o.nom) or o.nom
+        resumesAnnonce[o.cle] = { titre = o.commande and o.nom or titre,
+            felicitation = (o.commande and L.ANNOUNCE_DONE_ORDER) or (o.groupe == "progression" and L.ANNOUNCE_DONE_PROG) or L.ANNOUNCE_DONE_PROJECT,
+            quoi = #(o.fabriquer or {}) > 0 and table.concat(o.fabriquer, ", ") or nil }
         if not premierPassage and avant and avant ~= etat and (etat == "achats" or etat == "recolte") then
             Annoncer(titre, L.ANNOUNCE_GATHERED, string.format(etat == "achats" and L.ANNOUNCE_BUY or L.ANNOUNCE_LEFT,
                 Liste(etat == "achats" and aAcheter or autres)))
@@ -1733,7 +1740,21 @@ local function Verifier()
             end
         end
     end
-    for cle in pairs(etatsAnnonce) do if not vus[cle] then etatsAnnonce[cle] = nil end end
+    -- Un objectif tout juste fabrique disparait du suivi : bravo, au milieu
+    -- de l'ecran, avec ce qui a ete fait. Seulement juste apres une
+    -- fabrication (pas quand on supprime un projet a la main).
+    local recent = NS.actions and NS.actions.derniereFabrication
+        and ((NS.Appeler(GetTime) or 0) - NS.actions.derniereFabrication) < 30
+    for cle in pairs(etatsAnnonce) do
+        if not vus[cle] then
+            local r = resumesAnnonce[cle]
+            if recent and r and etatsAnnonce[cle] == "reuni" then
+                Annoncer(r.titre, r.felicitation, r.quoi and string.format(L.ANNOUNCE_MADE, r.quoi) or nil)
+            end
+            etatsAnnonce[cle] = nil
+            resumesAnnonce[cle] = nil
+        end
+    end
     premierPassage = false
 end
 

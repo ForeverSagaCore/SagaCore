@@ -187,6 +187,7 @@ end
 
 local function FabricationFaite(idSort)
     local cle = tostring(idSort)
+    actions.derniereFabrication = NS.Appeler(GetTime) or 0
     if not (CraftCoreDB and CraftCoreDB.recettes and CraftCoreDB.recettes[cle]) then return end
     local cibles = { "rapides" }
     for _, projet in ipairs(NS.projets.Tous(false) or {}) do table.insert(cibles, projet.id) end
