@@ -691,6 +691,19 @@ local function PremiereFabricationPrete(lignes)
     return nil, nil, nil, nil, etapes
 end
 
+-- Une fabrication prete dans le metier ouvert, pour un des objectifs du
+-- suivi : la fenetre cachee du metier reste alors ouverte.
+function suivi.FabricationPreteIci()
+    local ok, objectifs = pcall(suivi.Objectifs)
+    if not ok then return false end
+    producteurs = nil
+    for _, o in ipairs(objectifs or {}) do
+        local rec = PremiereFabricationPrete(o.lignes)
+        if rec and NS.recettes.PretALancer and NS.recettes.PretALancer(rec) then return true end
+    end
+    return false
+end
+
 -- Le groupe d'un objectif dans son onglet, comme les zones du suivi des
 -- quetes : cle et titre.
 local function GroupeDe(o, vue)

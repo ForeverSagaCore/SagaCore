@@ -70,6 +70,8 @@ function actions.Fabriquer(recette, nombre)
     actions.serie = { total = tonumber(nombre) or 1, faits = 0 }
     local resultat = NS.recettes.Fabriquer(recette, nombre or 1)
     if resultat == "ouverture" then
+        -- Ouvert par notre bouton : la fenetre du metier reste invisible.
+        actions.fantomeDemande = NS.Appeler(GetTime) or 0
         NS.Dire(L.CRAFT_OPENED)
         -- Le bouton devient "Lancer" : on redessine des que le metier est la.
         local plusTard = NS.Lecture("C_Timer.After")
@@ -221,3 +223,110 @@ ecouteFabrication:SetScript("OnEvent", function(_, _, unite, _, idSort)
     local ok, souci = pcall(FabricationFaite, idSort)
     if not ok and NS.base and NS.base.NoterIncident then NS.base.NoterIncident("fabrication faite", souci) end
 end)
+
+
+-- ---------------------------------------------------------------------------
+-- Metier ouvert en cache. Le jeu ne fabrique que fenetre du metier ouverte :
+-- quand c'est notre bouton qui l'ouvre, elle est rendue invisible (et ne
+-- prend plus les clics), seule notre interface se voit. Elle se referme
+-- d'elle-meme quand il n'y a plus rien a fabriquer dans ce metier, ou des que
+-- le personnage se deplace. Ouverte par le joueur, elle reste normale.
+-- ---------------------------------------------------------------------------
+
+local fantome = {}
+actions.fantome = fantome
+
+local function Fenetres() return { _G.ProfessionsFrame, _G.TradeSkillFrame } end
+
+local function Rendre(f)
+    if f and f.avantFantome then
+        pcall(f.SetScale, f, f.avantFantome.echelle or 1)
+        pcall(f.SetAlpha, f, f.avantFantome.alpha or 1)
+        f.avantFantome = nil
+    end
+end
+
+local function Cacher()
+    if NS.Appeler(InCombatLockdown) then return end
+    for _, f in ipairs(Fenetres()) do
+        if f and f.IsShown and f:IsShown() and not f.avantFantome then
+            f.avantFantome = { alpha = f:GetAlpha(), echelle = f:GetScale() }
+            -- Transparente et minuscule : plus rien a voir ni a cliquer.
+            pcall(f.SetAlpha, f, 0)
+            pcall(f.SetScale, f, 0.01)
+            if not f.fantomeAccroche then
+                f.fantomeAccroche = true
+                f:HookScript("OnHide", function(self)
+                    Rendre(self)
+                    fantome.actif = nil
+                end)
+            end
+            fantome.actif = true
+        end
+    end
+end
+
+local function Fermer()
+    if not fantome.actif then return end
+    fantome.actif = nil
+    local j = NS.jeu
+    if j and j.fermerMetier then pcall(j.fermerMetier) end
+    for _, f in ipairs(Fenetres()) do
+        Rendre(f)
+        if f and f.IsShown and f:IsShown() and _G.HideUIPanel and not NS.Appeler(InCombatLockdown) then pcall(_G.HideUIPanel, f) end
+    end
+end
+fantome.Fermer = Fermer
+
+-- Encore une fabrication prete dans ce metier ? Alors on garde la fenetre.
+local function EncoreAFaire()
+    return NS.suivi and NS.suivi.FabricationPreteIci and NS.suivi.FabricationPreteIci() or false
+end
+
+do
+    local f = CreateFrame("Frame")
+    for _, e in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_LIST_UPDATE", "UNIT_SPELLCAST_STOP",
+        "UNIT_SPELLCAST_FAILED", "UNIT_SPELLCAST_INTERRUPTED", "PLAYER_REGEN_DISABLED" }) do
+        pcall(f.RegisterEvent, f, e)
+    end
+    local fermerDans
+    f:SetScript("OnEvent", function(_, evenement, unite)
+        if evenement == "TRADE_SKILL_SHOW" or evenement == "TRADE_SKILL_LIST_UPDATE" then
+            local quand = actions.fantomeDemande
+            if quand and (NS.Appeler(GetTime) or 0) - quand < 5 then
+                actions.fantomeDemande = nil
+                Cacher()
+                -- Le cadre du jeu s'affiche parfois juste apres l'evenement.
+                local plusTard = NS.Lecture("C_Timer.After")
+                if plusTard then NS.Appeler(plusTard, 0, Cacher) NS.Appeler(plusTard, 0.2, Cacher) end
+            end
+        elseif evenement == "PLAYER_REGEN_DISABLED" then
+            Fermer()
+        elseif unite == "player" and fantome.actif then
+            -- Fin d'une incantation : la serie est-elle finie ? On regarde un
+            -- peu plus tard (la suivante s'enchaine aussitot).
+            fermerDans = 1.5
+        end
+    end)
+    local attente = 0
+    f:SetScript("OnUpdate", function(_, ecoule)
+        if not fantome.actif then fermerDans = nil return end
+        -- Le personnage bouge : il a fini avec le metier.
+        local ok, vitesse = pcall(GetUnitSpeed, "player")
+        if ok and not (_G.issecretvalue and _G.issecretvalue(vitesse)) and (tonumber(vitesse) or 0) > 0 then
+            Fermer()
+            return
+        end
+        if fermerDans then
+            fermerDans = fermerDans - (ecoule or 0)
+            if fermerDans <= 0 then
+                fermerDans = nil
+                local okC, sort = pcall(UnitCastingInfo, "player")
+                local enCours = okC and sort ~= nil
+                local serie = actions.serie
+                local serieFinie = not serie or (serie.faits or 0) >= (serie.total or 1)
+                if not enCours and serieFinie and not EncoreAFaire() then Fermer() end
+            end
+        end
+    end)
+end
