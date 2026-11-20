@@ -184,7 +184,17 @@ local function ObjectifsDeProgression(liste)
             else pct = 0 end
             table.insert(liste, { cle = "prog" .. cle, ligne = ligne, nom = string.format(L.GOAL_PROG, nom, vise), genre = "progression",
                 detail = string.format(L.GOAL_PROG_DETAIL, sien.rang, vise), pct = pct, atteint = sien.rang >= vise,
-                matieres = Matieres(requis, plan.manques), achats = plan.achats })
+                matieres = Matieres(requis, plan.manques), achats = plan.achats,
+                -- Les recettes du plan, dans l'ordre : le bouton Creer les lance.
+                lignes = (function()
+                    local t = {}
+                    for _, etape in ipairs(plan.etapes or {}) do
+                        if etape.recette and etape.recette.id then
+                            table.insert(t, { recette = etape.recette.id, quantite = etape.fois or 1 })
+                        end
+                    end
+                    return t
+                end)() })
         end
     end
 end
@@ -890,6 +900,47 @@ local function DessinerObjectifs(y, objectifs, vue)
                     ouverts[cle] = not ouverts[cle] or nil
                     suivi.Dessiner()
                 end)
+                -- Au survol : une infobulle collee a droite du suivi, avec la
+                -- prochaine etape et ce qui manque encore dans les sacs (et ou
+                -- le trouver), quand le bouton Creer n'est pas la.
+                local objectif = o
+                b:SetScript("OnEnter", function(self)
+                    local etapesS = EtapesDeFabrication(objectif.lignes)
+                    local e, rangE = ProchaineEtape(etapesS)
+                    GameTooltip:SetOwner(self, "ANCHOR_NONE")
+                    GameTooltip:ClearAllPoints()
+                    local droite = cadreSuivi:GetRight() or 0
+                    local largeurEcran = UIParent:GetWidth() or 0
+                    if droite + 300 > largeurEcran then
+                        GameTooltip:SetPoint("TOPRIGHT", cadreSuivi, "TOPLEFT", -4, 0)
+                    else
+                        GameTooltip:SetPoint("TOPLEFT", cadreSuivi, "TOPRIGHT", 4, 0)
+                    end
+                    GameTooltip:SetText(objectif.nom or "", 1, 0.82, 0)
+                    if e then
+                        GameTooltip:AddLine(string.format(L.CRAFT_STEP_TIP, rangE, #etapesS, NS.inventaire.NomDObjet(e.objet), e.fois or 1), 1, 1, 1, true)
+                        local pret = NS.actions and NS.actions.EtatPourFabriquer and NS.actions.EtatPourFabriquer(e.recette)
+                        if pret == false then
+                            GameTooltip:AddLine(" ")
+                            GameTooltip:AddLine(L.CRAFT_NOT_IN_BAGS, 1, 0.5, 0.3, true)
+                            NS.inventaire.ComposantsDansLInfobulle(GameTooltip, e.recette)
+                        elseif pret == nil then
+                            GameTooltip:AddLine(L.CRAFT_OTHER_CHAR, 0.8, 0.8, 0.8, true)
+                        end
+                    end
+                    for _, achat in pairs(objectif.achats or {}) do
+                        GameTooltip:AddLine(L.CRAFT_TO_BUY, 1, 0.82, 0, true)
+                        break
+                    end
+                    for objet, n in pairs(objectif.achats or {}) do
+                        local dans = NS.inventaire.DisponibleDansLesSacs(objet) or 0
+                        if dans < n then
+                            GameTooltip:AddLine("  " .. NS.inventaire.NomDObjet(objet) .. "  x" .. (n - dans), 1, 1, 1)
+                        end
+                    end
+                    GameTooltip:Show()
+                end)
+                b:SetScript("OnLeave", function() GameTooltip:Hide() end)
                 -- Tout est reuni : un bouton Creer sur la ligne, comme la petite
                 -- carte et l'etoile du suivi des quetes. Un clic lance la
                 -- premiere fabrication prete (le premier ouvre le metier).
