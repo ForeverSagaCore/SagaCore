@@ -1060,26 +1060,30 @@ function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, deja
     local function Disponible(objet) return Stock(objet) + Fabricables(objet) end
     -- Prend `quantite` d'un composant : le stock d'abord, puis ce qu'on
     -- fabrique, puis le reste manque.
-    local function Prendre(objet, quantite)
+    local function Prendre(objet, quantite, profondeur)
+        profondeur = profondeur or 0
         local dispo = Stock(objet)
         local pris = math.min(dispo, quantite)
         stock[objet] = dispo - pris
         Utiliser(objet, pris)
         local reste = quantite - pris
         local r = producteurs[objet]
-        if reste > 0 and r then
+        if reste > 0 and r and profondeur < 5 then
             local parFois = math.max(1, tonumber(r.quantiteMin) or 1)
             local fois = math.ceil(reste / parFois)
             resultat.intermediaires[objet] = (resultat.intermediaires[objet] or 0) + fois
+            -- Plus c'est profond, plus ca se fabrique tot (barre de cuivre avant bronze).
+            resultat.profondeurs = resultat.profondeurs or {}
+            resultat.profondeurs[objet] = math.max(resultat.profondeurs[objet] or 0, profondeur)
             for _, c in ipairs(r.composants) do
                 local besoin = c.quantite * fois
                 if recettes.EstVenduPartout(c.objet) then
                     resultat.achats[c.objet] = (resultat.achats[c.objet] or 0) + besoin
                 elseif c.objet ~= objet then
-                    local d = Stock(c.objet)
-                    Utiliser(c.objet, math.min(d, besoin))
-                    if d < besoin then resultat.manques[c.objet] = (resultat.manques[c.objet] or 0) + (besoin - d) end
-                    stock[c.objet] = math.max(0, d - besoin)
+                    -- Un composant qu'on fabrique aussi (barre de cuivre pour la
+                    -- barre de bronze) : on remonte jusqu'a ce qui se recolte
+                    -- (le minerai), au lieu de demander la barre a la recolte.
+                    Prendre(c.objet, besoin, profondeur + 1)
                 end
             end
             return

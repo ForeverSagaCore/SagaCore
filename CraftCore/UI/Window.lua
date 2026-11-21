@@ -2864,7 +2864,18 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
             for _, r in pairs(catalogue.Toutes and catalogue.Toutes() or {}) do
                 if type(r) == "table" and r.objetProduit and catalogue.EstApprise(r.id) then producteurs[r.objetProduit] = r end
             end
-            for _, e in ipairs(Trie(plan.intermediaires)) do
+            -- Dans l'ordre de fabrication : ce qui sert a fabriquer le reste d'abord.
+            local profondeurs = {}
+            for _, seg in ipairs(segments) do
+                for objet, pr in pairs(seg.plan.profondeurs or {}) do profondeurs[objet] = math.max(profondeurs[objet] or 0, pr) end
+            end
+            local inter = Trie(plan.intermediaires)
+            table.sort(inter, function(a, b)
+                local pa, pb = profondeurs[a.objet] or 0, profondeurs[b.objet] or 0
+                if pa ~= pb then return pa > pb end
+                return a.n > b.n
+            end)
+            for _, e in ipairs(inter) do
                 local r = producteurs[e.objet]
                 local l
                 index, y, l = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), "")
