@@ -1630,21 +1630,19 @@ function suivi.Rendre()
         local actif = NS.guidage and NS.guidage.Actif()
         -- Passerelle : un add-on de trajet installe (Shortest Path Forever)
         -- donne le chemin detaille jusqu'a la prochaine etape. Sans lui, rien.
-        if s.vue == "parcours" and pcVue and suivi.Passerelle then
+        -- Le parcours affiche entierement fait : Supprimer (il disparait), a
+        -- la place de Guider et de l'itineraire, qui n'ont plus rien a faire.
+        -- Seulement celui qu'on regarde, jamais un autre.
+        local fini
+        if pcVue and NS.parcours and moi then
+            local f, t = NS.parcours.Avancement(moi, pcVue)
+            if t > 0 and f >= t then fini = pcVue end
+        end
+        if s.vue == "parcours" and pcVue and not fini and suivi.Passerelle then
             local envoyer = suivi.Passerelle()
             if envoyer then
                 local idV = pcVue.id
                 table.insert(boutons, { L.ROUTE_DETAILED, function() pcall(suivi.EnvoyerEtape, idV) end, L.ROUTE_DETAILED_HELP })
-            end
-        end
-        -- Un parcours ouvert entierement fait : Supprimer, et il disparait.
-        local fini
-        if s.vue == "parcours" and NS.parcours and moi then
-            for _, pc in ipairs(NS.parcours.Liste(NS.ClePersonnage())) do
-                local f, t = NS.parcours.Avancement(moi, pc)
-                if not fini and t > 0 and f >= t and type(s.parcoursOuverts) == "table" and s.parcoursOuverts[pc.id] then
-                    fini = pc
-                end
             end
         end
         if fini then
