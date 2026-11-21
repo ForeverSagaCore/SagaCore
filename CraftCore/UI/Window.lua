@@ -1968,8 +1968,23 @@ local function RendreBlocRapides(contenu, index, y, gardees)
         ecran.Montrer("projets")
     end)
     cibler:SetEnabled(not estDestination)
-    y = RangeeDeBoutons(contenu, { verser, cibler }, y, RETRAIT_PAR_NIVEAU)
-    gardees.verser, gardees.ciblerRapides = true, true
+    -- Suppression en deux temps, comme pour un projet : le bouton demande
+    -- confirmation avant d'agir.
+    local aConfirmer = (ecran.suppressionEnCours == "rapides")
+    local supprimer = BoutonAction(contenu, "supprimerRapides",
+        aConfirmer and L.PROJECTS_CONFIRM or L.PROJECTS_DELETE)
+    supprimer:SetScript("OnClick", function()
+        if ecran.suppressionEnCours == "rapides" then
+            ecran.suppressionEnCours = nil
+            NS.projets.ViderRapides()
+        else
+            ecran.suppressionEnCours = "rapides"
+        end
+        ecran.Montrer(ecran.page)
+    end)
+    supprimer:Show()
+    y = RangeeDeBoutons(contenu, { verser, cibler, supprimer }, y, RETRAIT_PAR_NIVEAU)
+    gardees.verser, gardees.ciblerRapides, gardees.supprimerRapides = true, true, true
     return index, y + 4
 end
 

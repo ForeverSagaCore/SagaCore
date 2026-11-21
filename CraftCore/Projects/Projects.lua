@@ -232,6 +232,13 @@ function projets.VerserLesRapidesDans(id)
     return versees
 end
 
+-- Supprime toutes les fabrications rapides (les stocks ne sont pas touches).
+function projets.ViderRapides()
+    local d = Base()
+    if not d then return end
+    d.rapides = {}
+end
+
 -- ---------------------------------------------------------------------------
 -- Calcul
 -- ---------------------------------------------------------------------------
