@@ -577,8 +577,12 @@ local function Signaler(p)
     if C_Timer and C_Timer.After then C_Timer.After(1, function() if p.signal then p.signal:Stop() end end) end
 end
 
+-- Cle d'une aura dans la file : son numero, sinon son image (en combat,
+-- le numero est cache). Jamais son rang : un proc qui arrive decalerait
+-- tous les suivants, qui clignoteraient comme s'ils venaient d'arriver.
 local function CleAura(e, i)
     if e.id ~= nil and not Secret(e.id) then return "id" .. tostring(e.id) end
+    if e.icone ~= nil and not Secret(e.icone) then return "ic" .. tostring(e.icone) end
     return "rang" .. i
 end
 
