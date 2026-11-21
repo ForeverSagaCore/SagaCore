@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 103
+local VERSION = 104
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4742,11 +4742,14 @@ local function IconeDeSuivi(nom)
     return b
 end
 
-local function HabillerIcone(b, info)
-    if info.atlas and b.image.SetAtlas and pcall(b.image.SetAtlas, b.image, info.atlas) and b.image:GetAtlas() then
+local function HabillerIcone(b, info, nom)
+    if info.atlas and info.atlas ~= "" and b.image.SetAtlas and pcall(b.image.SetAtlas, b.image, info.atlas)
+        and (b.image:GetAtlas() or "") ~= "" then
         -- atlas pose
     else
-        b.image:SetTexture(info.texture or "Interface\\Icons\\INV_Misc_QuestionMark")
+        -- Repli : l'icone connue du suivi.
+        local connue = nom == "QuestCoreSuivi" and "Interface\\GossipFrame\\AvailableQuestIcon" or "Interface\\Icons\\Trade_BlackSmithing"
+        b.image:SetTexture(info.texture or connue)
     end
     -- Toujours en pleine couleur, comme l'onglet choisi, meme si l'onglet
     -- copie etait gris.
@@ -4771,8 +4774,11 @@ local function SuiviCache(nom)
     if e then
         local x, y = e:GetCenter()
         local k = (e:GetEffectiveScale() or 1) / (UIParent:GetEffectiveScale() or 1)
+        -- GetAtlas rend "" (et non nil) pour une image sans atlas.
         local atlas = e.image.GetAtlas and e.image:GetAtlas()
+        if atlas == "" then atlas = nil end
         local tex = e.image:GetTexture()
+        if tex == "" or tex == 0 then tex = nil end
         info = { x = x * k, y = y * k, atlas = atlas, texture = (not atlas) and tex or nil,
             -- Les icones d'objet sont arrondies ; les atlas du jeu le sont deja.
             masque = not atlas,
@@ -4781,7 +4787,7 @@ local function SuiviCache(nom)
     end
     if not info then return end
     local b = IconeDeSuivi(nom)
-    HabillerIcone(b, info)
+    HabillerIcone(b, info, nom)
     b:ClearAllPoints()
     b:SetPoint("CENTER", UIParent, "BOTTOMLEFT", info.x, info.y)
     b:Show()
