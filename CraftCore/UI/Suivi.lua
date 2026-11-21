@@ -1796,8 +1796,20 @@ local function Annoncer(titre, detail, detail2)
 end
 
 local resumesAnnonce = {}
+-- Une fabrication en cours (incantation, ou serie pas finie) : les annonces
+-- attendent la fin, pour feliciter une fois tout fabrique.
+local function FabricationEnCours()
+    local okC, sort = pcall(UnitCastingInfo, "player")
+    if okC and sort ~= nil then return true end
+    local A = NS.actions
+    local serie = A and A.serie
+    local recente = A and A.derniereFabrication and ((NS.Appeler(GetTime) or 0) - A.derniereFabrication) < 10
+    return serie ~= nil and recente and (serie.reussis or 0) < (serie.total or 1)
+end
+
 local function Verifier()
     local L = NS.L
+    if not premierPassage and FabricationEnCours() then return "attente" end
     local ok, objectifs = pcall(suivi.Objectifs)
     if not ok then return end
     local vus = {}
@@ -1891,6 +1903,7 @@ ecouteAnnonce:SetScript("OnUpdate", function(_, ecoule)
     if annonceDans > 0 then return end
     annonceDans = nil
     local okV, souci = pcall(Verifier)
+    if okV and souci == "attente" then annonceDans = 1 return end
     if not okV and NS.base.NoterIncident then NS.base.NoterIncident("annonce d'objectif", souci) end
 end)
 suivi.VerifierAnnonces = Verifier
