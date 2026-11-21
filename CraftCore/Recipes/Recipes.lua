@@ -878,38 +878,103 @@ end
 -- composants de recolte sont la ; avec un objectif, ce qui manque est compte.
 -- Ce que les rangs vises du personnage prennent dans ses stocks, objet par
 -- objet : la banque le propose a la sortie, comme pour un projet.
--- Plusieurs rangs vises par metier (82 puis 90...) : liste triee. Les
--- anciennes fiches gardaient un seul nombre, toujours accepte.
-function recettes.RangsVises(fiche, cle)
+-- Trois rangs vises possibles par metier, cumulables :
+--   sur      : ce que les composants du compte donnent a coup sur (suit les stocks)
+--   recettes : ce que les recettes connues permettent (suit les recettes)
+--   choix    : un rang fixe, choisi aux fleches
+-- Les anciennes fiches (un nombre, ou une liste) deviennent un rang choisi.
+-- Rien de regle : le rang assure est vise d'office, pour qu'il y ait
+-- toujours un objectif a portee.
+local function Emplacements(fiche, cle)
     local v = type(fiche) == "table" and type(fiche.objectifsProgression) == "table"
         and fiche.objectifsProgression[tostring(cle)]
-    if type(v) ~= "table" then v = { v } end
-    local t, vus = {}, {}
-    for _, r in pairs(v) do
-        r = tonumber(r)
-        if r and not vus[r] then vus[r] = true table.insert(t, r) end
+    if v == nil then return { sur = true } end
+    if type(v) ~= "table" then
+        return { sur = true, choix = tonumber(v) }
+    end
+    if v.sur ~= nil or v.recettes ~= nil or v.choix ~= nil then
+        return { sur = v.sur == true, recettes = v.recettes == true, choix = tonumber(v.choix) }
+    end
+    local plus
+    for _, r in pairs(v) do r = tonumber(r) if r and (not plus or r > plus) then plus = r end end
+    return { sur = true, choix = plus }
+end
+recettes.Emplacements = Emplacements
+
+function recettes.PoserEmplacement(fiche, cle, nom, valeur)
+    if type(fiche) ~= "table" then return end
+    local e = Emplacements(fiche, cle)
+    if nom == "choix" then e.choix = tonumber(valeur) else e[nom] = valeur and true or false end
+    fiche.objectifsProgression = type(fiche.objectifsProgression) == "table" and fiche.objectifsProgression or {}
+    -- Garde aussi les cases decochees : sinon le rang assure revient d'office.
+    fiche.objectifsProgression[tostring(cle)] = { sur = e.sur, recettes = e.recettes, choix = e.choix }
+end
+
+-- Les metiers qui se montent (ceux qui fabriquent), pour les rangs vises.
+local RECOLTE_SEULE = { [182] = true, [356] = true, [393] = true }
+function recettes.MetiersVises(fiche)
+    local t = {}
+    if type(fiche) ~= "table" or type(fiche.metiers) ~= "table" then return t end
+    for cle, sien in pairs(fiche.metiers) do
+        local ligne = tonumber(cle)
+        if ligne and type(sien) == "table" and sien.rang and not RECOLTE_SEULE[ligne]
+            and #(recettes.Pour(ligne) or {}) > 0 then
+            table.insert(t, tostring(cle))
+        end
     end
     table.sort(t)
     return t
 end
 
-function recettes.PoserRangsVises(fiche, cle, liste)
-    if type(fiche) ~= "table" then return end
-    fiche.objectifsProgression = type(fiche.objectifsProgression) == "table" and fiche.objectifsProgression or {}
-    local t = {}
-    for _, r in ipairs(liste or {}) do table.insert(t, r) end
-    table.sort(t)
-    fiche.objectifsProgression[tostring(cle)] = (#t > 0) and t or nil
+-- Rang assure par les stocks, et rang atteignable avec les recettes. Garde
+-- deux secondes : le suivi et la page les demandent souvent.
+local cibles = {}
+function recettes.Cibles(fiche, cle)
+    local sien = type(fiche) == "table" and type(fiche.metiers) == "table" and fiche.metiers[tostring(cle)]
+    if type(sien) ~= "table" or not sien.rang then return nil, nil end
+    local rang, rangMax = sien.rang, sien.rangMax
+    local maintenant = (GetTime and GetTime()) or 0
+    local k = tostring(fiche) .. ":" .. tostring(cle)
+    local c = cibles[k]
+    if c and c.rang == rang and maintenant - c.quand < 2 then return c.sur, c.recettes end
+    local okS, planS = pcall(recettes.Progression, tonumber(cle), rang, rangMax, nil)
+    local sur = okS and planS and rang + (planS.pointsSurs or 0) or rang
+    local okR, planR = pcall(recettes.Progression, tonumber(cle), rang, rangMax, rangMax or (rang + 75))
+    local rec = okR and planR and planR.atteint or rang
+    cibles[k] = { rang = rang, quand = maintenant, sur = sur, recettes = rec }
+    return sur, rec
 end
 
--- Ajoute (oui) ou retire un rang vise.
+-- Les rangs vises, tries : les rangs assure et atteignable seulement s'ils
+-- sont au-dessus du rang actuel ; le rang choisi toujours (atteint, il
+-- s'annonce puis s'efface).
+function recettes.RangsVises(fiche, cle)
+    local e = Emplacements(fiche, cle)
+    local sien = type(fiche) == "table" and type(fiche.metiers) == "table" and fiche.metiers[tostring(cle)]
+    local rang = type(sien) == "table" and sien.rang or 0
+    local t, vus = {}, {}
+    local function Ajouter(r)
+        if r and not vus[r] then vus[r] = true table.insert(t, r) end
+    end
+    if e.sur or e.recettes then
+        local sur, rec = recettes.Cibles(fiche, cle)
+        if e.sur and sur and sur > rang then Ajouter(sur) end
+        if e.recettes and rec and rec > rang then Ajouter(rec) end
+    end
+    Ajouter(e.choix)
+    table.sort(t)
+    return t
+end
+
+-- Ne plus viser un rang (depuis le suivi) : l'emplacement qui le donne.
 function recettes.Viser(fiche, cle, rang, oui)
     rang = tonumber(rang)
-    if not rang then return end
-    local t = {}
-    for _, r in ipairs(recettes.RangsVises(fiche, cle)) do if r ~= rang then table.insert(t, r) end end
-    if oui then table.insert(t, rang) end
-    recettes.PoserRangsVises(fiche, cle, t)
+    if not rang or oui then return end
+    local e = Emplacements(fiche, cle)
+    local sur, rec = recettes.Cibles(fiche, cle)
+    if e.choix == rang then recettes.PoserEmplacement(fiche, cle, "choix", nil) end
+    if e.sur and sur == rang then recettes.PoserEmplacement(fiche, cle, "sur", nil) end
+    if e.recettes and rec == rang then recettes.PoserEmplacement(fiche, cle, "recettes", nil) end
 end
 
 -- Les rangs vises d'un metier, a la suite : chacun part du precedent, et ce
@@ -933,8 +998,8 @@ end
 function recettes.BesoinsDesObjectifs(fiche)
     local besoins = {}
     fiche = fiche or (NS.base and NS.base.Personnage and NS.base.Personnage())
-    if type(fiche) ~= "table" or type(fiche.objectifsProgression) ~= "table" then return besoins end
-    for cle in pairs(fiche.objectifsProgression) do
+    if type(fiche) ~= "table" then return besoins end
+    for _, cle in ipairs(recettes.MetiersVises(fiche)) do
         local sien = type(fiche.metiers) == "table" and fiche.metiers[tostring(cle)]
         if type(sien) == "table" and sien.rang then
             for _, seg in ipairs(recettes.PlansVises(fiche, cle, sien.rang, sien.rangMax)) do

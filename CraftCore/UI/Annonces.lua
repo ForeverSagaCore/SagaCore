@@ -75,8 +75,8 @@ end
 -- Les rangs vises : atteint, pret a fabriquer, ou recolte a faire.
 local function Objectifs(avecRecolte)
     local fiche = NS.base and NS.base.Personnage and NS.base.Personnage()
-    if not (fiche and type(fiche.objectifsProgression) == "table" and NS.recettes) then return end
-    for cle in pairs(fiche.objectifsProgression) do
+    if not (fiche and NS.recettes and NS.recettes.MetiersVises) then return end
+    for _, cle in ipairs(NS.recettes.MetiersVises(fiche)) do
         local ligne = tonumber(cle)
         local sien = type(fiche.metiers) == "table" and fiche.metiers[tostring(cle)]
         if ligne and type(sien) == "table" and sien.rang then

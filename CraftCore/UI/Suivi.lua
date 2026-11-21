@@ -128,14 +128,14 @@ local function ObjectifsDeProgression(liste)
     local L = NS.L
     local fiche = NS.base.Personnage()
     local catalogue = NS.recettes
-    if not fiche or type(fiche.objectifsProgression) ~= "table" or not catalogue then return end
+    if not fiche or not catalogue or not catalogue.MetiersVises then return end
     -- Metiers qui ont deja leur projet de progression : l'objectif n'est pas
     -- montre en double, le projet suffit (rang actuel, rang vise, recettes).
     local avecProjet = {}
     for _, projet in ipairs(NS.projets and NS.projets.Tous and NS.projets.Tous(false) or {}) do
         if projet.progression and not projet.horsSuivi then avecProjet[tostring(projet.progression)] = true end
     end
-    for cle in pairs(fiche.objectifsProgression) do
+    for _, cle in ipairs(catalogue.MetiersVises(fiche)) do
         local ligne = tonumber(cle)
         local sien = type(fiche.metiers) == "table" and fiche.metiers[tostring(cle)]
         if ligne and type(sien) == "table" and sien.rang and not avecProjet[tostring(cle)] then
@@ -1005,7 +1005,8 @@ local function DessinerObjectifs(y, objectifs, vue)
                     end
                     suiviEtapes.etapesFab[o.cle] = rangP
                 end
-                if recettePrete then
+                -- Pas de fabrication partielle : tout doit etre reuni (100 %).
+                if recettePrete and (o.pct or 0) >= 1 then
                     if not b.creer then
                         b.creer = CreateFrame("Button", nil, b, "UIPanelButtonTemplate")
                         b.creer:SetSize(52, 16)

@@ -2558,24 +2558,22 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     local VERT, OR, GRIS = { 0.31, 0.82, 0.41 }, { 1, 0.82, 0 }, { 0.62, 0.62, 0.62 }
     local fiche = NS.base.FicheAffichee()
     local cleObjectif = tostring(ligneMetier)
-    -- Les rangs vises du metier (plusieurs possibles). Un rang atteint est
-    -- fini : il n'est plus garde.
-    local vises = {}
-    for _, v in ipairs(catalogue.RangsVises(fiche, cleObjectif)) do if v > rang then table.insert(vises, v) end end
-    if fiche then catalogue.PoserRangsVises(fiche, cleObjectif, vises) end
-    local function EstVise(v)
-        for _, x in ipairs(vises) do if x == v then return true end end
-        return false
+    -- Trois rangs vises cumulables : assure (coche d'office), atteignable
+    -- avec les recettes, et un rang au choix. Un rang choisi atteint s'efface.
+    local emp = catalogue.Emplacements(fiche, cleObjectif)
+    if emp.choix and emp.choix <= rang and fiche then
+        catalogue.PoserEmplacement(fiche, cleObjectif, "choix", nil)
+        emp.choix = nil
     end
-    local function Basculer(v)
+    local function Basculer(nom, valeur)
         if not fiche then return end
-        catalogue.Viser(fiche, cleObjectif, v, not EstVise(v))
+        catalogue.PoserEmplacement(fiche, cleObjectif, nom, valeur)
         if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
         ecran.Montrer(ecran.page)
     end
     local plafondMetier = rangMax or (rang + 75)
     ecran.choixRang = ecran.choixRang or {}
-    local choix = tonumber(ecran.choixRang[cleObjectif]) or math.min(rang + 10, plafondMetier)
+    local choix = emp.choix or tonumber(ecran.choixRang[cleObjectif]) or math.min(rang + 10, plafondMetier)
     choix = math.max(rang + 1, math.min(plafondMetier, choix))
     local gauche = RETRAIT_PAR_NIVEAU + retraitCourant
 
@@ -2584,11 +2582,10 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     local aligne = 2 + 14 + 4 + 16 + 6
     local POLICE = "GameFontHighlightSmall"
 
-    -- Les trois lignes : meme police et meme pas que les lignes des etapes,
-    -- leur bouton au meme endroit que les boutons Creer.
-    -- Une case a cocher au bord droit : cochee, le rang est vise.
+    -- Les trois lignes, au meme pas que les lignes des etapes, chacune avec
+    -- sa case a cocher au bord droit : cochee, le rang est vise.
     contenu.casesVise = contenu.casesVise or {}
-    local function LigneAViser(k, texte, couleur, rangCible)
+    local function LigneAViser(k, texte, couleur, coche, auClic)
         local l
         index, y, l = LigneSimple(contenu, index, y, nil, texte, "")
         if not l then return nil end
@@ -2601,12 +2598,13 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
             case:SetSize(24, 24)
             contenu.casesVise[k] = case
         end
-        if rangCible and rangCible > rang then
+        l.case = nil
+        if auClic then
             case:ClearAllPoints()
             case:SetPoint("RIGHT", contenu, "TOPRIGHT", -8, -(y - HAUTEUR_LIGNE / 2))
             case:SetFrameLevel(l:GetFrameLevel() + 2)
-            case:SetChecked(EstVise(rangCible))
-            case:SetScript("OnClick", function() Basculer(rangCible) end)
+            case:SetChecked(coche and true or false)
+            case:SetScript("OnClick", auClic)
             case:Show()
             l.case = case
         else
@@ -2616,36 +2614,28 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     end
 
     y = y + 4
+    local assure, atteignable = catalogue.Cibles(fiche, cleObjectif)
+    assure, atteignable = assure or rang, atteignable or rang
     -- 1. Ce que les composants du compte (sacs, banque, autres personnages)
     -- donnent deja, a coup sur.
-    local okStock, planStock = pcall(catalogue.Progression, ligneMetier, rang, rangMax, nil)
-    local assure = okStock and planStock and rang + (planStock.pointsSurs or 0) or rang
     if assure > rang then
-        LigneAViser(1, string.format(L.GUIDE_ALREADY, assure), VERT, assure)
+        LigneAViser(1, string.format(L.GUIDE_ALREADY, assure), VERT, emp.sur,
+            function() Basculer("sur", not emp.sur) end)
     else
-        LigneAViser(1, L.GUIDE_ALREADY_NONE, GRIS, nil)
+        LigneAViser(1, L.GUIDE_ALREADY_NONE, GRIS, false, nil)
     end
-
     -- 2. Ce que les recettes connues permettent, composants a reunir.
-    local okRec, planRec = pcall(catalogue.Progression, ligneMetier, rang, rangMax, plafondMetier)
-    local atteignable = okRec and planRec and planRec.atteint or rang
     if atteignable > rang then
-        LigneAViser(2, string.format(L.GUIDE_RECIPES, atteignable), OR, atteignable)
+        LigneAViser(2, string.format(L.GUIDE_RECIPES, atteignable), OR, emp.recettes,
+            function() Basculer("recettes", not emp.recettes) end)
     else
-        LigneAViser(2, L.GUIDE_RECIPES_NONE, GRIS, nil)
+        LigneAViser(2, L.GUIDE_RECIPES_NONE, GRIS, false, nil)
     end
-
-    -- 3. Un rang de son choix : la valeur entre deux fleches, juste avant le
-    -- bouton. Les fleches ne creent rien, le bouton oui. Sans choix, elles
-    -- montrent le rang vise a part (ni assure ni atteignable), pour pouvoir
-    -- ne plus le viser.
-    if not ecran.choixRang[cleObjectif] then
-        for _, v in ipairs(vises) do
-            if v ~= assure and v ~= atteignable then choix = math.max(rang + 1, math.min(plafondMetier, v)) end
-        end
-    end
+    -- 3. Un rang de son choix, juste avant sa case. Coche, il suit les
+    -- fleches sans avoir a recocher.
     if contenu.libelleObjectif then contenu.libelleObjectif:Hide() end
-    local ligneChoix = LigneAViser(3, L.GUIDE_CHOICE, nil, choix)
+    local ligneChoix = LigneAViser(3, L.GUIDE_CHOICE, nil, emp.choix ~= nil,
+        function() Basculer("choix", (not emp.choix) and choix or nil) end)
     contenu.etatObjectif = { valeur = choix, mini = rang + 1, maxi = plafondMetier }
     local S = NS.suite or _G.CoreSuite
     if S and S.Curseur and ligneChoix then
@@ -2662,7 +2652,13 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                 end, nil, nil, 5)
             contenu.curseurObjectif.surParchemin = function() return NS.charte.Fond and NS.charte.Fond() == "parchemin" end
         end
-        contenu.etatObjectif.poser = function(v) ecran.choixRang[cleObjectif] = v end
+        contenu.etatObjectif.poser = function(v)
+            ecran.choixRang[cleObjectif] = v
+            if emp.choix and fiche then
+                catalogue.PoserEmplacement(fiche, cleObjectif, "choix", v)
+                if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
+            end
+        end
         local c = contenu.curseurObjectif
         c:ClearAllPoints()
         c:SetPoint("RIGHT", ligneChoix.case or ligneChoix, ligneChoix.case and "LEFT" or "RIGHT", -6, 0)
@@ -2677,10 +2673,14 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         end
     end
 
-    -- Rien de vise : pas d'etapes. Elles apparaissent des qu'un rang est
-    -- vise, et suivent tous les rangs vises, a la suite.
+    -- Rien de vise : pas d'etapes. Elles suivent tous les rangs vises.
+    local vises = {}
+    for _, v in ipairs(catalogue.RangsVises(fiche, cleObjectif)) do if v > rang then table.insert(vises, v) end end
     if #vises == 0 then return index, y + 6 end
-    y = y + 6
+    -- Les rangs vises, sur une ligne, au-dessus des etapes.
+    local noms = {}
+    for _, v in ipairs(vises) do table.insert(noms, string.format(L.GUIDE_TARGET_ONE, v)) end
+    y = Paragraphe(contenu, y + 6, string.format(L.GUIDE_TARGETS, table.concat(noms, ", ")), POLICE, VERT, aligne)
     local segments = catalogue.PlansVises(fiche, cleObjectif, rang, rangMax, vises)
     local objectif = segments[#segments] and segments[#segments].vise or choix
     local plan = { utilises = {}, achats = {}, manques = {}, intermediaires = {}, etapes = {}, estime = false }
@@ -2689,6 +2689,24 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
             for objet, n in pairs(seg.plan[champ] or {}) do plan[champ][objet] = (plan[champ][objet] or 0) + n end
         end
         if seg.plan.estime then plan.estime = true end
+    end
+    -- Tant que la recolte n'est pas faite pour tous les rangs vises, rien ne
+    -- se cree : pas de fabrication partielle. Pour avancer rang par rang, on
+    -- decoche les rangs plus hauts.
+    local recolteAFaire = next(plan.manques) ~= nil
+    local function Creer(l, recette, n)
+        PoserBoutonFabriquer(l, recette, n)
+        if recolteAFaire and l.fabriquer then
+            l.fabriquer:SetEnabled(false)
+            if l.manque then
+                l.manque:ClearAllPoints()
+                l.manque:SetPoint("RIGHT", l.fabriquer, "LEFT", -6, 0)
+                l.manque:SetText(L.GUIDE_GATHER_FIRST)
+                l.manque:SetTextColor(0.9, 0.3, 0.3)
+                l.manque:Show()
+                AncrerLibelle(l, l.manque)
+            end
+        end
     end
     local function ParRang(champ, objet)
         if #segments < 2 then return "" end
@@ -2749,7 +2767,6 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                 index, y = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), ParRang("manques", e.objet))
             end
             BoutonDEtape("progRecolte", L.GUIDE_GATHER_GO, function()
-                if #vises == 0 and fiche then catalogue.Viser(fiche, cleObjectif, objectif, true) end
                 if NS.suivi and NS.suivi.Guider then NS.suivi.Guider(true) end
                 ecran.Montrer(ecran.page)
             end)
@@ -2829,14 +2846,9 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
             end
             for _, e in ipairs(Trie(plan.intermediaires)) do
                 local r = producteurs[e.objet]
-                local morceaux = {}
-                for _, c in ipairs(r and r.composants or {}) do
-                    table.insert(morceaux, c.quantite * e.n .. " " .. Nom(c.objet))
-                end
-                local avec = (#morceaux > 0 and string.format(L.PROG_CRAFT_WITH, table.concat(morceaux, ", ")) or "") .. ParRang("intermediaires", e.objet)
                 local l
-                index, y, l = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), avec)
-                if l and r then PoserBoutonFabriquer(l, r, e.n) end
+                index, y, l = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), "")
+                if l and r then Creer(l, r, e.n) end
             end
         end
     end
@@ -2859,7 +2871,7 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                     (etape.recette.nom or "?") .. "  |cffffffffx" .. etape.fois .. "|r", rangs)
                 if l then
                     if etape.probable then l.total:SetTextColor(1, 0.82, 0) else l.total:SetTextColor(0.31, 0.82, 0.41) end
-                    PoserBoutonFabriquer(l, etape.recette, etape.fois)
+                    Creer(l, etape.recette, etape.fois)
                     if objet then
                         l:EnableMouse(true)
                         l:SetScript("OnEnter", function(self)

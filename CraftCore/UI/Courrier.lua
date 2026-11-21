@@ -56,14 +56,14 @@ local function BesoinsDe(cle)
         -- lui se rapatrie aussi.
         local fiche = NS.base.FicheAffichee()
         local catalogue = NS.recettes
-        if fiche and type(fiche.objectifsProgression) == "table" and catalogue and catalogue.Progression then
+        if fiche and catalogue and catalogue.MetiersVises then
             local avecProjet = {}
             for _, projet in ipairs(NS.projets.Tous and NS.projets.Tous(false) or {}) do
                 if projet.progression then avecProjet[tostring(projet.progression)] = true end
             end
             local chezLui = NS.projets.StocksDuPersonnage()
             local deja = {}
-            for cleM in pairs(fiche.objectifsProgression) do
+            for _, cleM in ipairs(catalogue.MetiersVises(fiche)) do
                 local ligne = tonumber(cleM)
                 local sien = type(fiche.metiers) == "table" and fiche.metiers[tostring(cleM)]
                 if ligne and type(sien) == "table" and sien.rang and not avecProjet[tostring(cleM)] then
