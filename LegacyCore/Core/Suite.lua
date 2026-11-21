@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 110
+local VERSION = 111
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4935,10 +4935,11 @@ if not Suite.crochetInfobulles and hooksecurefunc then
         enCours = false
         tt:ClearAllPoints()
         local cote = (S and S.CoteInfobulle and S.CoteInfobulle(nom)) or FENETRES_INFOBULLE[nom]
+        -- Collee a la fenetre, sans espace, partout pareil.
         if cote == "gauche" then
-            tt:SetPoint("TOPRIGHT", f, "TOPLEFT", -4, 0)
+            tt:SetPoint("TOPRIGHT", f, "TOPLEFT", 0, 0)
         else
-            tt:SetPoint("TOPLEFT", f, "TOPRIGHT", 4, 0)
+            tt:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, 0)
         end
     end)
 end

@@ -965,15 +965,9 @@ local function DessinerObjectifs(y, objectifs, vue)
                 b:SetScript("OnEnter", function(self)
                     local etapesS = EtapesDeFabrication(objectif.lignes)
                     local e, rangE = ProchaineEtape(etapesS)
-                    GameTooltip:SetOwner(self, "ANCHOR_NONE")
-                    GameTooltip:ClearAllPoints()
-                    local droite = cadreSuivi:GetRight() or 0
-                    local largeurEcran = UIParent:GetWidth() or 0
-                    if droite + 300 > largeurEcran then
-                        GameTooltip:SetPoint("TOPRIGHT", cadreSuivi, "TOPLEFT", -4, 0)
-                    else
-                        GameTooltip:SetPoint("TOPLEFT", cadreSuivi, "TOPRIGHT", 4, 0)
-                    end
+                    -- Toujours au meme endroit : contre le haut du suivi, du
+                    -- cote choisi (la suite place l'infobulle).
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                     GameTooltip:SetText(objectif.nom or "", 1, 0.82, 0)
                     if e then
                         GameTooltip:AddLine(string.format(L.CRAFT_STEP_TIP, rangE, #etapesS, NS.inventaire.NomDObjet(e.objet), e.fois or 1), 1, 1, 1, true)
