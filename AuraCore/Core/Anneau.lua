@@ -238,6 +238,8 @@ local PISTAGES = {
     [5502] = true, [5500] = true, [43308] = true,
 }
 local exclus, iconesExclues = {}, {}
+-- Un petit sort choisi ou retire : on oublie ce qui avait ete ecarte.
+function A.OublierEcartes() exclus, iconesExclues = {}, {} end
 local function Exclu(id, icone)
     if id ~= nil and not Secret(id) and exclus[id] then return true end
     if icone ~= nil and not Secret(icone) and iconesExclues[icone] then return true end
@@ -253,8 +255,15 @@ local function DepuisLeJeu()
     -- Pistage lance en combat : la liste ne dit plus quel sort c'est. On le
     -- demande directement par son sort ; ce que le jeu laisse lire (numero
     -- d'aura, icone) suffit a l'ecarter tout de suite.
+    -- Les petits sorts non choisis s'ecartent de la meme facon.
+    local ecartes = {}
+    for sort in pairs(PISTAGES) do ecartes[sort] = true end
+    local choisis = type(Reglages().petits) == "table" and Reglages().petits or {}
+    for _, p in ipairs(D.PETITS) do
+        if not choisis[p.cle] then for _, id in ipairs(p.ids) do ecartes[id] = true end end
+    end
     if C.GetPlayerAuraBySpellID then
-        for sort in pairs(PISTAGES) do
+        for sort in pairs(ecartes) do
             local ok, a = pcall(C.GetPlayerAuraBySpellID, sort)
             if ok and type(a) == "table" then
                 if a.auraInstanceID ~= nil and not Secret(a.auraInstanceID) then exclus[a.auraInstanceID] = true end
@@ -268,7 +277,7 @@ local function DepuisLeJeu()
             if not ok then erreur = tostring(a) break end
             if type(a) ~= "table" then break end
             local sort = a.spellId
-            if sort ~= nil and not Secret(sort) and PISTAGES[sort] then
+            if sort ~= nil and not Secret(sort) and ecartes[sort] then
                 if a.auraInstanceID ~= nil and not Secret(a.auraInstanceID) then exclus[a.auraInstanceID] = true end
                 if a.icon ~= nil and not Secret(a.icon) then iconesExclues[a.icon] = true end
             elseif not Exclu(a.auraInstanceID, a.icon) then
@@ -526,11 +535,16 @@ local function Relever()
         end
     end
     table.insert(reservees, potion or { icone = "Interface\\Icons\\INV_Potion_51", actif = false, potion = D.POTIONS[#D.POTIONS], compte = 0, conso = true })
-    -- 3. Les buffs que les classes du groupe peuvent donner.
+    -- 3. Les vrais buffs de groupe : ceux que les classes du groupe peuvent
+    -- donner (gris s'ils manquent), et ceux qu'on a recus d'un passant.
     for _, classe in ipairs(ORDRE_CLASSES) do
-        if classes[classe] then
+        local recu = false
+        for _, alternatives in ipairs(D.GROUPE[classe] or {}) do
+            if select(3, Premier(alternatives, buffs)) then recu = true end
+        end
+        if classes[classe] or recu then
             for _, alternatives in ipairs(D.GROUPE[classe] or {}) do
-                if classe ~= moi or Connu(alternatives) then
+                if (classe ~= moi or Connu(alternatives)) and (classes[classe] or select(3, Premier(alternatives, buffs))) then
                     local bb, idd, nn = Premier(alternatives, buffs)
                     table.insert(reservees, { icone = (type(bb) ~= "boolean" and bb) or D.Icone(idd), actif = nn ~= nil,
                         sort = idd, classe = classe, nom = nn, index = nn and indexDes[nn], groupe = true })
@@ -642,12 +656,16 @@ local function DessinerAnneau(r)
     -- potion d'un cote, buffs de groupe d'un autre, chacun ses trois places,
     -- dans le sens de lecture. Le reste prend les autres places.
     local DIR = { haut = 90, droite = 0, bas = 270, gauche = 180 }
-    local function Quart(place)
+    -- Les n places les plus proches du centre du quart (3 par defaut ; plus
+    -- s'il y a plus de vrais buffs de groupe a poser).
+    local function Quart(place, n)
         local q = DIR[place] or 270
+        local function Ecart(a) return math.abs(((a - q + 180) % 360) - 180) end
+        local tries = {}
+        for _, a in ipairs(angles) do table.insert(tries, a) end
+        table.sort(tries, function(x, y) return Ecart(x) < Ecart(y) end)
         local l = {}
-        for _, a in ipairs(angles) do
-            if math.abs(((a - q + 180) % 360) - 180) < 44 then table.insert(l, a) end
-        end
+        for k = 1, math.min(n or 3, #tries) do table.insert(l, tries[k]) end
         table.sort(l, function(x, y)
             local rx, ry = math.rad(x), math.rad(y)
             if place == "droite" or place == "gauche" then return math.sin(rx) > math.sin(ry) end
@@ -660,7 +678,9 @@ local function DessinerAnneau(r)
     for _, a in ipairs(placesConso) do pris[a] = true end
     local placesGroupe = {}
     if r.groupeVisibles then
-        for _, a in ipairs(Quart(r.groupePlace)) do
+        local nGroupe = 0
+        for _, e in ipairs(reservees) do if e.groupe then nGroupe = nGroupe + 1 end end
+        for _, a in ipairs(Quart(r.groupePlace, math.max(3, math.min(5, nGroupe)))) do
             if not pris[a] then table.insert(placesGroupe, a) pris[a] = true end
         end
     end
@@ -740,6 +760,16 @@ local function DessinerAnneau(r)
     local enCombat = InCombatLockdown and InCombatLockdown() or false
     d[enCombat and "combat" or "horsCombat"] = { api = #api, erreur = erreur, source = source, montres = #liste,
         natifs = #BoutonsDuJeu() }
+    -- Petits sorts des autres non choisis : ni dans la file, ni ailleurs.
+    local choisis = type(r.petits) == "table" and r.petits or {}
+    for _, p in ipairs(D.PETITS) do
+        if not choisis[p.cle] then
+            for _, id in ipairs(p.ids) do
+                local nom = D.Nom(id)
+                if nom then dejaNoms[nom] = true end
+            end
+        end
+    end
     local libres = #anglesFile
     local vus, aPlacer = {}, {}
     -- Effets nuisibles : sur leur propre cercle, si l'option est cochee.

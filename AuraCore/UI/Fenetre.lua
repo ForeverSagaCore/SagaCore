@@ -286,6 +286,43 @@ function F.Construire()
                   page.rSens.nom:SetText(T("Sens", "Direction"))
                   page.rDuree.nom:SetText(T("Durée restante", "Time left"))
               end },
+            { cle = "petits", icone = "Interface\\Icons\\Spell_Nature_Thorns",
+              libelle = function() return T("Petits sorts", "Minor spells") end,
+              construire = function(page, O)
+                  page.t1 = O.Section()
+                  page.intro = O.Detail(56)
+                  page.lignes = {}
+                  for _, p in ipairs(NS.donnees.PETITS) do
+                      local cle = p.cle
+                      local l = O.Rangee()
+                      l.icone = l:CreateTexture(nil, "ARTWORK")
+                      l.icone:SetSize(18, 18)
+                      l.icone:SetPoint("LEFT", l, "LEFT", 0, 0)
+                      l.nom:ClearAllPoints()
+                      l.nom:SetPoint("LEFT", l.icone, "RIGHT", 8, 0)
+                      l.case = O.Case(l, function(oui)
+                          local r = R()
+                          r.petits = type(r.petits) == "table" and r.petits or {}
+                          r.petits[cle] = oui and true or nil
+                          if NS.anneau.OublierEcartes then NS.anneau.OublierEcartes() end
+                          Redessiner()
+                      end)
+                      l.case:SetPoint("RIGHT", l, "RIGHT", -8, 0)
+                      l.p = p
+                      table.insert(page.lignes, l)
+                  end
+              end,
+              rendre = function(page)
+                  page.t1:SetText(T("Petits sorts des autres", "Other players' minor spells"))
+                  page.intro:SetText(T("Les vrais buffs (bénédictions, Robustesse, Intelligence des Arcanes, Marque du fauve) ont toujours leur place dans leur quart. Les petits sorts, courts ou de situation, sont cachés : cochez ceux que vous voulez voir dans l'anneau.",
+                      "Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."))
+                  local choisis = type(R().petits) == "table" and R().petits or {}
+                  for _, l in ipairs(page.lignes) do
+                      l.icone:SetTexture(NS.donnees.Icone(l.p.ids[1]))
+                      l.nom:SetText(NS.donnees.Nom(l.p.ids[1]) or "?")
+                      l.case:SetChecked(choisis[l.p.cle] == true)
+                  end
+              end },
     }
     -- Seul (sans la suite) : une page pour faire connaitre la suite complete.
     if S.Seul and S.Seul() then table.insert(pages, F.PageSuite()) end
