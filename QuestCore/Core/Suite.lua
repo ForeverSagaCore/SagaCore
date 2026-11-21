@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 99
+local VERSION = 100
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -1399,16 +1399,16 @@ function Suite.Entete(cadre, cleCourante)
         table.insert(rangee.boutons, b)
         precedent = b
     end
-    -- Poste de l'auteur : ImproveCore et les macros, sous les blocs
+    -- Poste de l'auteur : AuraCore et les macros, sous les blocs
     -- experimentaux.
     if Suite.Prive() then
         local extras = {
-            { cle = "ImproveCore", icone = "Interface\\Icons\\Spell_Holy_AuraOfLight", nom = "ImproveCore",
+            { cle = "AuraCore", icone = "Interface\\Icons\\Spell_Holy_AuraOfLight", nom = "AuraCore",
               action = function()
-                  if Suite.membres.ImproveCore then Suite.Ouvrir("ImproveCore")
-                  elseif SlashCmdList.IMPROVECORE then SlashCmdList.IMPROVECORE("") end
+                  if Suite.membres.AuraCore then Suite.Ouvrir("AuraCore")
+                  elseif SlashCmdList.AURACORE then SlashCmdList.AURACORE("") end
               end,
-              dispo = function() return SlashCmdList.IMPROVECORE ~= nil end },
+              dispo = function() return SlashCmdList.AURACORE ~= nil end },
             { cle = "Macros", icone = "Interface\\Icons\\INV_Misc_Book_11", action = function() Suite.OuvrirMacros() end },
         }
         for _, e in ipairs(extras) do
@@ -1492,15 +1492,15 @@ end
 
 function Suite.Voisin(cleCourante, pas)
     -- Dans l'ordre de la colonne : les add-ons installes, puis (poste de
-    -- l'auteur) ImproveCore et Macros, qui ouvrent leurs reglages.
+    -- l'auteur) AuraCore et Macros, qui ouvrent leurs reglages.
     local liste = {}
     for _, info in ipairs(Suite.Liste()) do
         if Suite.Installe(info.cle) then table.insert(liste, { cle = info.cle }) end
     end
     if Suite.Prive() then
-        if Suite.membres.ImproveCore then table.insert(liste, { cle = "ImproveCore" })
-        elseif SlashCmdList.IMPROVECORE then
-            table.insert(liste, { cle = "ImproveCore", action = function() SlashCmdList.IMPROVECORE("") end })
+        if Suite.membres.AuraCore then table.insert(liste, { cle = "AuraCore" })
+        elseif SlashCmdList.AURACORE then
+            table.insert(liste, { cle = "AuraCore", action = function() SlashCmdList.AURACORE("") end })
         end
         if Suite.membres.Macros then table.insert(liste, { cle = "Macros" })
         else table.insert(liste, { cle = "Macros", action = function() Suite.OuvrirMacros() end }) end
@@ -1537,7 +1537,7 @@ function Suite.ManetteBas(cleCourante, bouton)
     local m = _G.SagaCoreMessages and _G.SagaCoreMessages.fenetre
     if m and m:IsShown() then return true end
     if Suite.fenetreMacros and Suite.fenetreMacros:IsShown() then return true end
-    local ic = _G.ImproveCoreReglages
+    local ic = _G.AuraCoreReglages
     if ic and ic:IsShown() then return true end
     -- Menu (Start) : les reglages generaux.
     if bouton == "PADFORWARD" then
@@ -1806,7 +1806,7 @@ function Suite.Actualiser()
                 b.badge:SetShown(pastille ~= nil)
             end
         end
-        -- ImproveCore et Macros : jamais "ouverts", en retrait sauf au survol.
+        -- AuraCore et Macros : jamais "ouverts", en retrait sauf au survol.
         for _, b in ipairs(rangee.extras or {}) do
             local courant = b.cle == rangee.courante
             if b.SetChecked then b:SetChecked(courant) end
@@ -2878,16 +2878,6 @@ Suite.RACCOURCIS = {
     { cle = "quetes", desc = "Affiche ou cache le suivi des quêtes.", descEn = "Shows or hides the quest tracker.",
       fr = "Suivi des quêtes", en = "Quest tracker", icone = "INV_Letter_15",
       action = function() Api("QuestCoreAPI", "BasculerSuivi") end, dispo = function() return _G.QuestCoreAPI ~= nil end },
-    { cle = "suivis", desc = "Prend le contrôle à la manette du premier suivi ouvert (fabrications ou quêtes). La croix se déplace, A valide, B rend la main.", descEn = "Takes gamepad control of the first open tracker (crafts or quests). D-pad moves, A confirms, B releases.",
-      fr = "Prendre la main sur les suivis", en = "Take over the trackers", icone = "INV_Misc_Spyglass_03",
-      action = function()
-          -- Deja sur un suivi : on rend la main. Sinon (rien, ou MacroCore) :
-          -- on prend le premier suivi ouvert.
-          local p = Suite.pilote
-          local surSuivi = false
-          if p and p:IsShown() then for _, n in ipairs(SUIVIS) do if p.nom == n then surSuivi = true end end end
-          if surSuivi then Suite.Piloter(false) else Suite.Piloter(true) end
-      end },
     { cle = "stop", desc = "Arrête le guidage en cours.", descEn = "Stops the current guidance.",
       fr = "Arrêter le guidage", en = "Stop guidance", icone = "Spell_Holy_Silence",
       action = function() Suite.ArreterGuidage() end },
@@ -2912,10 +2902,10 @@ Suite.RACCOURCIS = {
     { cle = "reglages", desc = "Ouvre les réglages communs à toute la suite.", descEn = "Opens the settings shared by the whole suite.",
       fr = "Réglages de la suite", en = "Suite settings", icone = "Trade_Engineering",
       action = function() Suite.OuvrirReglagesGeneraux() end },
-    { cle = "improve", desc = "Ouvre les réglages d'ImproveCore.", descEn = "Opens the ImproveCore settings.",
-      fr = "Réglages ImproveCore", en = "ImproveCore settings", icone = "Spell_Holy_AuraOfLight",
-      action = function() if SlashCmdList.IMPROVECORE then SlashCmdList.IMPROVECORE("") end end,
-      dispo = function() return SlashCmdList.IMPROVECORE ~= nil end },
+    { cle = "improve", desc = "Ouvre les réglages d'AuraCore.", descEn = "Opens the AuraCore settings.",
+      fr = "Réglages AuraCore", en = "AuraCore settings", icone = "Spell_Holy_AuraOfLight",
+      action = function() if SlashCmdList.AURACORE then SlashCmdList.AURACORE("") end end,
+      dispo = function() return SlashCmdList.AURACORE ~= nil end },
     { cle = "raccourcis", fr = "Panneau des raccourcis", en = "Shortcut panel", icone = "INV_Misc_Book_11",
       action = function() Suite.BasculerRaccourcis() end },
 }
@@ -2930,7 +2920,7 @@ Suite.FAMILLES = {
     { cle = "perso", fr = "Mes macros", en = "My macros" },
 }
 local FAMILLE_DE = {
-    pilotefab = "manette", pilotequetes = "manette", suivis = "manette",
+    pilotefab = "manette", pilotequetes = "manette",
     ouvrir = "ouvrir", craftcore = "ouvrir", questcore = "ouvrir", mapcore = "ouvrir", legacycore = "ouvrir",
     fabrications = "ouvrir", quetes = "ouvrir", metier = "ouvrir", reglages = "ouvrir", improve = "ouvrir",
     messages = "ouvrir", raccourcis = "ouvrir",
@@ -4512,7 +4502,7 @@ local function FenetresVisibles()
     Ajouter(Suite.reglagesGeneraux)
     Ajouter(Suite.fenetreMacros)
     Ajouter(_G.SagaCoreMessages and _G.SagaCoreMessages.fenetre)
-    Ajouter(_G.ImproveCoreReglages)
+    Ajouter(_G.AuraCoreReglages)
     return vues
 end
 local avantLancement
@@ -4677,7 +4667,7 @@ end
 -- ---------------------------------------------------------------------------
 -- Fenetre a pages, comme celles des add-ons de la suite : menu a gauche,
 -- parchemin a droite, pied avec Fermer, onglets de la suite sur le bord.
--- Sert aux Macros et a ImproveCore.
+-- Sert aux Macros et a AuraCore.
 --
 -- o = { nom, cle, titre = fonction, icone, pages = { { cle, libelle = fonction,
 --       icone, construire = fonction(page, O), rendre = fonction(page, O) } } }
@@ -5996,7 +5986,7 @@ end
 -- ---------------------------------------------------------------------------
 -- Un profil garde les reglages de la suite et de chaque add-on (pas les
 -- donnees : recettes, quetes, personnages). L'export laisse de cote ce qui
--- est prive (TradeCore, ImproveCore, le mode prive).
+-- est prive (TradeCore, AuraCore, le mode prive).
 
 local BASES = { CraftCore = "CraftCoreDB", QuestCore = "QuestCoreDB", MapCore = "MapCoreDB",
     LegacyCore = "LegacyCoreDB", TradeCore = "TradeCoreDB" }
@@ -6028,8 +6018,8 @@ function Suite.Photographier(pourExport)
             photo.addons[cle] = Copier(d.reglages)
         end
     end
-    if not pourExport and type(_G.ImproveCoreDB) == "table" then
-        photo.improve = Copier(_G.ImproveCoreDB)
+    if not pourExport and type(_G.AuraCoreDB) == "table" then
+        photo.improve = Copier(_G.AuraCoreDB)
         photo.improve.diag = nil
     end
     return photo
@@ -6050,10 +6040,10 @@ function Suite.Appliquer(photo)
             _G[base].reglages = Copier(reglages)
         end
     end
-    if type(photo.improve) == "table" and type(_G.ImproveCoreDB) == "table" then
-        local diag = _G.ImproveCoreDB.diag
-        _G.ImproveCoreDB = Copier(photo.improve)
-        _G.ImproveCoreDB.diag = diag
+    if type(photo.improve) == "table" and type(_G.AuraCoreDB) == "table" then
+        local diag = _G.AuraCoreDB.diag
+        _G.AuraCoreDB = Copier(photo.improve)
+        _G.AuraCoreDB.diag = diag
     end
     return true
 end
@@ -6441,7 +6431,7 @@ function Suite.InscrireDansOptions()
     -- Les sous-pages, dans l'ordre des modules.
     local liste = {}
     for cle, o in pairs(_G.SagaCoreOptions) do
-        local prive = (cle == "Macros" or cle == "ImproveCore") and not Suite.Prive()
+        local prive = (cle == "Macros" or cle == "AuraCore") and not Suite.Prive()
         if type(o) == "table" and type(o.elements) == "function" and not prive then table.insert(liste, { cle = cle, o = o }) end
     end
     table.sort(liste, function(a, b) return (a.o.ordre or 99) < (b.o.ordre or 99) end)
@@ -6526,7 +6516,7 @@ end }
 -- ---------------------------------------------------------------------------
 
 Suite.FENETRES_FONDU = { "CraftCoreWindow", "QuestCoreFenetre", "MapCoreFenetre", "LegacyCoreFenetre",
-    "TradeCoreFenetre", "ImproveCoreFenetre", "CoreSuiteReglages", "CoreSuiteMacros", "SagaCoreMessages" }
+    "TradeCoreFenetre", "AuraCoreFenetre", "CoreSuiteReglages", "CoreSuiteMacros", "SagaCoreMessages" }
 local ALPHA_MARCHE = 0.1
 
 local function FenetresAFondre()
