@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 75
+local VERSION = 76
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2895,12 +2895,21 @@ end
 -- s'affiche sur le bouton), l'icone du raccourci, et en premiere ligne une
 -- explication que le jeu n'execute pas (#), puis la commande.
 local COURTS = {
-    pilotefab = "PFa", pilotequetes = "PQu", ouvrir = "Sui", craftcore = "CC", questcore = "QC",
-    mapcore = "MC", legacycore = "LC", fabrications = "SFa", quetes = "SQu", suivis = "PSu",
+    pilotefab = "PFa", pilotequetes = "PQu", ouvrir = "Sui", craftcore = "CrC", questcore = "QuC",
+    mapcore = "MaC", legacycore = "LeC", fabrications = "SFa", quetes = "SQu", suivis = "PSu",
     stop = "Stp", rendus = "Ren", recolte = "Rec", metier = "Met", oui = "Oui", non = "Non",
     messages = "Msg", reglages = "Rgl", improve = "IC", raccourcis = "Pan",
 }
 local function NomDeMacro(r) return COURTS[r.cle] or r.cle:sub(1, 3) end
+-- Une macro du jeu est a nous seulement si elle lance ce raccourci : une
+-- macro du joueur qui porte le meme nom n'est jamais touchee.
+local function IndexANous(r, nom)
+    local index = _G.GetMacroIndexByName and _G.GetMacroIndexByName(nom)
+    if not (index and index > 0) then return nil end
+    local _, _, corps = _G.GetMacroInfo(index)
+    if type(corps) == "string" and corps:find("/sagacore " .. r.cle, 1, true) then return index end
+    return nil
+end
 local function AncienNom(r) return ("SC " .. Suite.NomRaccourci(r)):sub(1, 16) end
 -- L'icone d'une macro doit venir du catalogue des icones de macro du jeu
 -- (celui de la fenetre Macros) : une image hors catalogue laisse la macro
@@ -2941,12 +2950,13 @@ function Suite.CreerMacro(r)
     local corps = "#SagaCore : " .. Suite.NomRaccourci(r) .. "\n/sagacore " .. r.cle
     -- Deja la (sous ce nom ou l'ancien "SC ...") : mise a jour, la macro garde
     -- sa place sur les barres.
-    local index = _G.GetMacroIndexByName(nom)
-    if not (index and index > 0) then index = _G.GetMacroIndexByName(AncienNom(r)) end
-    if index and index > 0 then
+    local index = IndexANous(r, nom) or IndexANous(r, AncienNom(r))
+    if index then
         pcall(_G.EditMacro, index, nom, IconeDeMacro(r), corps)
         return true, index
     end
+    -- Le nom est deja pris par une macro du joueur : on ne cree rien.
+    if (_G.GetMacroIndexByName(nom) or 0) > 0 then return false end
     local ok, nouvel = pcall(_G.CreateMacro, nom, IconeDeMacro(r), corps, nil)
     return ok and nouvel ~= nil, nouvel
 end
@@ -2956,15 +2966,15 @@ function Suite.SupprimerMacro(r)
     if InCombatLockdown and InCombatLockdown() then return false end
     if not (_G.DeleteMacro and _G.GetMacroIndexByName) then return false end
     for _, nom in ipairs({ NomDeMacro(r), AncienNom(r) }) do
-        local index = _G.GetMacroIndexByName(nom)
-        if index and index > 0 then pcall(_G.DeleteMacro, index) end
+        local index = IndexANous(r, nom)
+        if index then pcall(_G.DeleteMacro, index) end
     end
     return true
 end
 
 function Suite.MacroExiste(r)
-    if not _G.GetMacroIndexByName then return false end
-    return (_G.GetMacroIndexByName(NomDeMacro(r)) or 0) > 0
+    if not (_G.GetMacroIndexByName and _G.GetMacroInfo) then return false end
+    return IndexANous(r, NomDeMacro(r)) ~= nil
 end
 
 -- ---------------------------------------------------------------------------
