@@ -51,9 +51,10 @@ local function TrajetCourant()
         if pc.genre == "rendu" then return pc end
     end
 end
+local queteSeule
 function page.ModeTrajet(oui)
     modeTrajet = oui == true
-    if oui then carteChoisie = nil end
+    if oui then carteChoisie = nil queteSeule = nil end
     if NS.carte then NS.carte.Invalider() end
 end
 function page.EnModeTrajet() return modeTrajet and TrajetCourant() ~= nil end
@@ -64,6 +65,7 @@ local entree
 function page.MontrerEntree(idCarte, x, y, nom)
     modeTrajet = false
     quetePointee = nil
+    queteSeule = nil
     entree = { carte = idCarte, x = x, y = y, nom = nom }
     carteChoisie = idCarte
 end
@@ -72,10 +74,22 @@ end
 -- quete (le point d'exclamation, pas le PNJ), qui pulse doucement.
 local quetePointee
 
-function page.MontrerQuete(id, idCarte, x, y, nomQuete, nomDonneur, sansFleche)
+-- Quete seule (longue-vue du suivi) : la carte ne montre que ses reperes,
+-- jusqu'a "Revenir a ma position" ou un autre lieu montre.
+function page.QueteSeule() return queteSeule end
+
+function page.MontrerQuete(id, idCarte, x, y, nomQuete, nomDonneur, sansFleche, genre, seule)
+    queteSeule = seule and id or nil
+    -- Lieu dans un donjon : la carte de l'instance n'est pas affichable ici
+    -- (elle partait en carte du continent etiree) ; on montre son entree.
+    if NS.carte and NS.carte.EstInstance and NS.carte.EstInstance(idCarte) then
+        local e = NS.carte.EntreeDInstance(idCarte)
+        if not e then return end
+        idCarte, x, y = e.carte, e.x, e.y
+    end
     modeTrajet = false
     entree = nil
-    quetePointee = { carte = idCarte, x = x, y = y, quete = id, nom = nomQuete, donneur = nomDonneur }
+    quetePointee = { carte = idCarte, x = x, y = y, quete = id, nom = nomQuete, donneur = nomDonneur, genre = genre }
     carteChoisie = idCarte
     -- Voir sur la carte : la fleche de guidage part aussi vers la quete.
     -- Sauf pendant le guidage d'un parcours : sa fleche reste.
@@ -149,6 +163,22 @@ local function PoserQuetePointee(idCarte)
     local b = vue.pointee
     if quetePointee and quetePointee.carte == idCarte then
         b.ax, b.ay, b.nom, b.donneur = quetePointee.x, quetePointee.y, quetePointee.nom, quetePointee.donneur
+        -- Quete deja prise : pas le point d'exclamation (a prendre), mais
+        -- l'icone de son etat, celle du journal (en cours ou a rendre).
+        local g = quetePointee.genre
+        if b.genre ~= g then
+            b.genre = g
+            if g == "rendre" or g == "objectif" then
+                b.t:SetTexture(g == "rendre" and "Interface\\GossipFrame\\ActiveQuestIcon"
+                    or "Interface\\GossipFrame\\IncompleteQuestIcon")
+                b.t:SetSize(16, 16)
+            elseif b.t.SetAtlas and pcall(b.t.SetAtlas, b.t, "QuestNormal") and b.t:GetAtlas() then
+                b.t:SetSize(20, 20)
+            else
+                b.t:SetTexture("Interface\\GossipFrame\\AvailableQuestIcon")
+                b.t:SetSize(16, 16)
+            end
+        end
         b:SetFrameLevel(vue.toile:GetFrameLevel() + 25)
         b:Show()
         -- D'abord un halo dore qui s'elargit (deux fois) pour dire "c'est
@@ -941,12 +971,13 @@ local function PoserLieux(idCarte)
 end
 
 local function PoserReperes(idCarte)
+    if QuestCoreDB then QuestCoreDB.diagCarte = nil end
     for i = 1, vue.enService do vue.reperes[i]:Hide() end
     vue.enService = 0
     -- Pendant le guidage : rien que le trajet (ni recolte, ni reperes, ni
     -- autres quetes).
     local guide = (NS.guidage and NS.guidage.Actif and NS.guidage.Actif()) or page.EnModeTrajet()
-    if guide then
+    if guide or queteSeule then
         for _, b in ipairs(vue.mapcore or {}) do b:Hide() end
         for _, b in ipairs(vue.lieux or {}) do b:Hide() end
     else
@@ -965,6 +996,7 @@ local function PoserReperes(idCarte)
         -- les filtres : sans elles, plus de trajet trace.
         if garder and not pt.numero and Suite and Suite.PointVisible and not Suite.PointVisible(pt) then garder = false end
         if guide and not pt.numero then garder = false end
+        if queteSeule then garder = pt.quete == queteSeule end
         if garder then
             local x, y = NS.carte.Reporter(pt, idCarte)
             if x then table.insert(liste, { pt = pt, x = x, y = y }) end
@@ -982,7 +1014,8 @@ local function PoserReperes(idCarte)
         NS.carte.Habiller(b, e.pt.genre, e.pt.icone, e.pt.attente)
         b.point, b.ax, b.ay = e.pt, e.x, e.y
         b:SetFrameLevel(vue.toile:GetFrameLevel() + 2 + poids(e))
-        b.numero:SetText(e.pt.numero and tostring(e.pt.numero) or "")
+        -- Quete seule : son numero d'etape ne dit rien de plus, l'icone suffit.
+        b.numero:SetText((e.pt.numero and not queteSeule) and tostring(e.pt.numero) or "")
         b:Show()
     end
 end
@@ -1249,6 +1282,12 @@ function page.Rendre(parent, basDroite, menuParent, menuHaut)
     -- calque (fleche du personnage, trajet) restait cache.
     if calque and vue:IsVisible() then calque:Show() end
     if menu then menu:Show() end
+    -- Carte de donjon choisie (etape dans une instance) : sa zone dehors,
+    -- sauf si on est dedans.
+    if carteChoisie and carteChoisie ~= CarteDuPerso() and NS.carte.EstInstance(carteChoisie) then
+        local e = NS.carte.EntreeDInstance(carteChoisie)
+        carteChoisie = e and e.carte or nil
+    end
     local idCarte = carteChoisie or CarteDuPerso()
     if idCarte ~= derniereCarte then zoom, decX, decY = 1, 0, 0 derniereCarte = idCarte end
     vue.idCarte = idCarte
@@ -1296,6 +1335,7 @@ function page.Rendre(parent, basDroite, menuParent, menuHaut)
         vue.allerA:SetWidth((vue.allerA.GetTextWidth and vue.allerA:GetTextWidth() or 120) + 24)
         vue.allerA:SetScript("OnClick", function()
             carteChoisie = cible.id
+            queteSeule = nil
             page.Rendre()
         end)
         vue.allerA:Show()

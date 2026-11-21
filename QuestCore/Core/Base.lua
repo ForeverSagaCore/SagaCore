@@ -298,11 +298,35 @@ local function LigneObjet(tt, o)
     tt:AddLine(string.format("  |T%s:16|t %s%s", tostring(icone), nom, (o.n or 1) > 1 and (" x" .. o.n) or ""), r, g, b)
 end
 
+-- Quete qui se fait dans une instance : laquelle, et si elle s'y prend.
+function ref.LigneDonjon(tt, id)
+    local d = NS.donjons and NS.donjons.DeQuete and NS.donjons.DeQuete(id)
+    if not d then return end
+    local L = NS.L
+    tt:AddLine(ref.IconeDonjon() .. " " .. string.format(L.DUNGEON_QUEST_TIP, d.nom or "?"), 0.78, 0.6, 1, true)
+    if NS.donjons.SePrendDedans(id) then tt:AddLine(L.DUNGEON_PICKUP_INSIDE, 0.78, 0.6, 1, true) end
+end
+
+-- Icone des quetes de donjon : celle de l'entree de donjon sur la carte.
+local iconeDonjon
+function ref.IconeDonjon()
+    if iconeDonjon then return iconeDonjon end
+    local ct = _G.C_Texture
+    local ok, info = false, nil
+    if ct and ct.GetAtlasInfo then ok, info = pcall(ct.GetAtlasInfo, "Dungeon") end
+    iconeDonjon = (ok and info) and "|A:Dungeon:16:16|a" or "|TInterface\\Icons\\INV_Misc_Key_14:14:14|t"
+    return iconeDonjon
+end
+
 -- Infobulle d'une quete : titre, niveau, puis les recompenses connues.
 function ref.InfobulleDeQuete(tt, q, id, p)
     local L = NS.L
     tt:AddLine(q.titre or ref.NomDeQuete(id, p), 1, 0.82, 0)
     if q.niveau and q.niveau > 0 then tt:AddLine(string.format(L.LEVEL, q.niveau), 0.7, 0.7, 0.7) end
+    -- Qui donne la quete, comme pour les quetes pas encore prises.
+    local donneurs = ref.Donneurs(id)
+    if #donneurs > 0 then tt:AddLine(string.format(L.GIVEN_BY, table.concat(donneurs, ", ")), 0.8, 0.8, 0.8, true) end
+    ref.LigneDonjon(tt, id)
     local r = q.recompenses
     -- Ce qu'il faut faire (texte du journal), puis le recit, en entier.
     if r and r.but then
@@ -406,6 +430,7 @@ function ref.InfobulleDeLaBase(tt, id, p)
     if niveau then tt:AddLine(string.format(L.LEVEL, niveau), 0.7, 0.7, 0.7) end
     local donneurs = ref.Donneurs(id)
     if #donneurs > 0 then tt:AddLine(string.format(L.GIVEN_BY, table.concat(donneurs, ", ")), 0.8, 0.8, 0.8, true) end
+    ref.LigneDonjon(tt, id)
     local xp = ref.XPDeLaBase(id, p and p.niveau)
     local objets = ref.ObjetsDeLaBase(id)
     if xp or objets then

@@ -76,6 +76,9 @@ local function Ligne(index)
     if l then return l end
     l = CreateFrame("Button", nil, corps)
     pcall(l.RegisterForClicks, l, "LeftButtonUp", "RightButtonUp")
+    -- Surbrillance de la ligne (souris ou manette) : la barre du journal de
+    -- quetes du jeu.
+    l:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
     -- Marque d'etat devant le titre : les icones du journal de quetes du jeu
     -- (rond a trois points en cours, rond au point d'interrogation a rendre).
     l.marque = l:CreateTexture(nil, "ARTWORK")
@@ -105,6 +108,7 @@ local function Ligne(index)
     -- Etoile de favori, a droite du titre d'une quete : l'etoile des marques
     -- de cible du jeu, en couleur quand la quete est en favori, grise sinon.
     l.etoile = CreateFrame("Button", nil, l)
+    l.etoile.pasPilote = true
     l.etoile:SetSize(12, 12)
     l.etoile.t = l.etoile:CreateTexture(nil, "ARTWORK")
     l.etoile.t:SetAllPoints()
@@ -138,6 +142,7 @@ local function Ligne(index)
     -- a rendre pour l'itineraire.
     -- Dans un petit rond, comme les boutons ronds du haut.
     l.pion = CreateFrame("Button", nil, l)
+    l.pion.pasPilote = true
     l.pion:SetSize(18, 18)
     l.pion.fond = l.pion:CreateTexture(nil, "BACKGROUND")
     l.pion.fond:SetSize(14, 14)
@@ -161,6 +166,32 @@ local function Ligne(index)
     end)
     l.pion:SetScript("OnLeave", function() GameTooltip:Hide() end)
     l.pion:Hide()
+    -- A cote de la petite carte : voir la quete sur la carte de QuestCore
+    -- (meme rond, une longue-vue).
+    l.voir = CreateFrame("Button", nil, l)
+    l.voir.pasPilote = true
+    l.voir:SetSize(18, 18)
+    l.voir.fond = l.voir:CreateTexture(nil, "BACKGROUND")
+    l.voir.fond:SetSize(14, 14)
+    l.voir.fond:SetPoint("CENTER")
+    l.voir.fond:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    l.voir.t = l.voir:CreateTexture(nil, "ARTWORK")
+    l.voir.t:SetSize(12, 12)
+    l.voir.t:SetPoint("CENTER")
+    l.voir.t:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_03")
+    if l.voir.t.SetMask then pcall(l.voir.t.SetMask, l.voir.t, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+    l.voir.anneau = l.voir:CreateTexture(nil, "OVERLAY")
+    l.voir.anneau:SetSize(31, 31)
+    l.voir.anneau:SetPoint("TOPLEFT", l.voir, "TOPLEFT", 0, 0)
+    l.voir.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    l.voir:SetScript("OnClick", function(self) if self.auClic then self.auClic() end end)
+    l.voir:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(L.TURNIN_SHOW_MAP, 1, 0.82, 0)
+        GameTooltip:Show()
+    end)
+    l.voir:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    l.voir:Hide()
     corps.lignes[index] = l
     return l
 end
@@ -302,6 +333,15 @@ local function Poser(index, y, texte, options)
     else
         l.pion:Hide()
     end
+    if options.voir then
+        l.voir.auClic = options.voir
+        l.voir:ClearAllPoints()
+        if options.pion then l.voir:SetPoint("RIGHT", l.pion, "LEFT", -2, 0)
+        else l.voir:SetPoint("RIGHT", l, "RIGHT", 0, 0) end
+        l.voir:Show()
+    else
+        l.voir:Hide()
+    end
     -- Don : une petite icone de cadeau au bout d'une ligne d'objectif d'un
     -- membre ; la quantite est dans l'infobulle.
     if options.don then
@@ -377,20 +417,18 @@ local function Poser(index, y, texte, options)
     l:SetHeight(hauteur)
     l:SetScript("OnClick", options.auClic)
     l:EnableMouse(options.auClic ~= nil)
+    -- Manette : de titre de quete en titre de quete (et les zones, pour les
+    -- deplier) ; seuls les titres de quete s'allument.
+    l.pasPilote = not (options.titre or options.zone)
+    local hl = l:GetHighlightTexture()
+    if hl then hl:SetAlpha(options.titre and 1 or 0) end
     if options.auClic then
         l:SetScript("OnEnter", function(self)
             self.texte:SetTextColor(1, 1, 1)
             if options.survol then
-                -- Collee au bord gauche du suivi, a hauteur de la ligne (ou a
-                -- droite si le suivi est contre le bord gauche de l'ecran).
-                GameTooltip:SetOwner(self, "ANCHOR_NONE")
-                GameTooltip:ClearAllPoints()
-                local dy = (self:GetTop() or 0) - (cadre:GetTop() or 0)
-                if (cadre:GetLeft() or 0) > 300 then
-                    GameTooltip:SetPoint("TOPRIGHT", cadre, "TOPLEFT", 0, dy)
-                else
-                    GameTooltip:SetPoint("TOPLEFT", cadre, "TOPRIGHT", 0, dy)
-                end
+                -- Toujours au meme endroit : contre le haut du suivi, du cote
+                -- choisi (la suite place l'infobulle).
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 pcall(options.survol, GameTooltip)
                 GameTooltip:Show()
             end
@@ -692,6 +730,30 @@ function suivi.PoserFavori(id, oui)
     suivi.Rendre()
 end
 
+-- Longue-vue : la quete sur la carte de QuestCore (objectifs, rendu ou
+-- donneur), sans fleche de guidage.
+local function VoirSurCarte(id, moi)
+    local ok, points = pcall(NS.carte.PointsPour, id, moi)
+    -- D'abord un lieu sur la carte ou l'on est, puis dans la zone de la
+    -- quete, puis n'importe ou dehors ; sinon un lieu de donjon (son entree).
+    local ici = NS.Appeler(NS.Lecture("C_Map.GetBestMapForUnit"), "player")
+    local zoneQ = tonumber(NS.ref.Lire("QuestDB", id, "zoneOrSort"))
+    local carteQ = zoneQ and zoneQ > 0 and NS.carte.CarteDeZone(zoneQ)
+    local liste = ok and points or {}
+    local pt
+    for _, cible in ipairs({ ici, carteQ, true }) do
+        for _, p in ipairs(liste) do
+            if p.carte and not NS.carte.EstInstance(p.carte) and (cible == true or p.carte == cible) then pt = p break end
+        end
+        if pt then break end
+    end
+    pt = pt or liste[1]
+    if pt and pt.carte and NS.pageCarte and NS.pageCarte.MontrerQuete then
+        NS.pageCarte.MontrerQuete(id, pt.carte, pt.x, pt.y, NS.ref.NomDeQuete(id, moi), pt.quoi, true, pt.genre, true)
+    end
+    if NS.fenetre and NS.fenetre.OuvrirCarte then NS.fenetre.OuvrirCarte() end
+end
+
 local function RendreQuete(moi, quetes, id, index, y, prefixe)
     local s = Reglages()
     local q = quetes[id]
@@ -702,7 +764,9 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
     local yDebut = y
     local ligneRendu, avecRecompense, yApresTitre, yFinMoi
     index = index + 1
-    y = Poser(index, y, (prefixe or "") .. string.format("|cff%02x%02x%02x[%d]|r %s", math.floor(r * 255),
+    -- Quete qui se fait dans une instance : l'icone de donjon devant son niveau.
+    local donjonQ = NS.donjons and NS.donjons.DeQuete and NS.donjons.DeQuete(id) and (NS.ref.IconeDonjon() .. " ") or ""
+    y = Poser(index, y, (prefixe or "") .. donjonQ .. string.format("|cff%02x%02x%02x[%d]|r %s", math.floor(r * 255),
         math.floor(g * 255), math.floor(b * 255), q.niveau or 0, q.titre or ("#" .. id)), { uneLigne = true,
         police = Police("ObjectiveTrackerHeaderFont", "GameFontNormal"), couleur = { 1, 0.82, 0 }, titre = true,
         marque = (q.complete == true) and true or (q.complete == -1 and -1 or false), idQuete = id,
@@ -721,26 +785,32 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
         end })
     yApresTitre = y
     if not replieQ then
+        -- Petite carte (itineraire) et longue-vue (voir sur la carte) :
+        -- toujours sur la premiere ligne sous le titre, a droite, pour
+        -- toutes les quetes.
+        local icones = moi.cle == NS.ClePersonnage() and q.complete ~= -1
+        local choisiesQ = Reglages().aRendreChoisies
+        local pionQ = icones and { actif = choisiesQ[idQuete] == true, afaire = q.complete ~= true, auClic = function()
+            choisiesQ[idQuete] = not choisiesQ[idQuete] or nil
+            suivi.Rendre()
+        end } or nil
+        local voirQ = icones and function() VoirSurCarte(idQuete, moi) end or nil
         -- Recompense (XP et or) en premier ; le survol garde le detail complet.
         local resume = NS.ref.ResumeRecompenses(q)
         if resume then
             index = index + 1
             y = Poser(index, y, string.format(L.REWARD_LINE, resume), { retrait = 22, couleur = { 1, 0.82, 0 },
                 police = "GameFontNormalSmall", petit = true, uneLigne = true,
-                margeDroite = (q.complete == true or (q.complete ~= -1 and moi.cle == NS.ClePersonnage())) and 22 or nil })
+                pion = pionQ, voir = voirQ, margeDroite = icones and 42 or nil })
             avecRecompense = true
+            pionQ, voirQ = nil, nil
         end
         if q.complete == true then
             local receveurs = NS.ref.Receveurs(id)
             index = index + 1
-            local choisies = Reglages().aRendreChoisies
-            ligneRendu = moi.cle == NS.ClePersonnage() and Ligne(index) or nil
             y = Poser(index, y, receveurs[1] and string.format(L.TRACK_TURN_IN, SansSecondNom(receveurs[1]))
                 or L.DONE, { retrait = 22, couleur = { 0.31, 0.82, 0.41 },
-                pion = moi.cle == NS.ClePersonnage() and { actif = choisies[idQuete] == true, auClic = function()
-                    choisies[idQuete] = not choisies[idQuete] or nil
-                    suivi.Rendre()
-                end } or nil })
+                pion = pionQ, voir = voirQ, margeDroite = pionQ and 42 or nil })
         elseif q.complete == -1 then
             index = index + 1
             y = Poser(index, y, L.FAILED, { retrait = 22, couleur = { 0.9, 0.3, 0.3 } })
@@ -751,20 +821,13 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
             -- Mode groupe : les membres du groupe qui ont la meme quete (et
             -- QuestCore), sous nos objectifs.
             local membres = NS.groupe and NS.groupe.Membres(id) or {}
-            -- Quete a faire : la meme petite carte que pour les quetes a
-            -- rendre, pour la mettre dans le trajet.
-            local avecPion = moi.cle == NS.ClePersonnage()
-            local choisies = Reglages().aRendreChoisies
             for rang, o in ipairs(q.objectifs or {}) do
                 index = index + 1
-                if rang == 1 and avecPion then ligneRendu = Ligne(index) end
+                local premiere = rang == 1 and pionQ ~= nil
                 y = Poser(index, y, "- " .. tostring(o.texte or ""), { retrait = 22,
                     couleur = o.fait and { 0.5, 0.5, 0.5 } or { 0.85, 0.85, 0.85 },
-                    margeDroite = avecPion and 22 or nil,
-                    pion = (rang == 1 and avecPion) and { actif = choisies[idQuete] == true, afaire = true, auClic = function()
-                        choisies[idQuete] = not choisies[idQuete] or nil
-                        suivi.Rendre()
-                    end } or nil })
+                    margeDroite = premiere and 42 or nil,
+                    pion = premiere and pionQ or nil, voir = premiere and voirQ or nil })
                 if o.type == "item" then
                     rangObjet = rangObjet + 1
                     local requis = objets[rangObjet]
@@ -840,13 +903,6 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
     -- Place du bloc, pour le faire clignoter s'il vient d'avancer.
     cadre.blocs = cadre.blocs or {}
     cadre.blocs[id] = { haut = yDebut, bas = y + 2 }
-    -- Petite carte du rendu : au milieu du bloc, a droite.
-    -- Centree sur les lignes sous le titre : jamais sur l'etoile du titre.
-    -- Sur nos lignes seulement, jamais sur celles du groupe.
-    if ligneRendu and yApresTitre then
-        ligneRendu.pion:ClearAllPoints()
-        ligneRendu.pion:SetPoint("RIGHT", cadre.corps, "TOPRIGHT", -1, -(yApresTitre + (yFinMoi or y)) / 2)
-    end
     return index, y + 6
 end
 
@@ -1155,12 +1211,22 @@ local function RendreEtapeBase(moi, id, rang, e, index, y, pion)
     local attente = e == "attente"
     local replieE = s.replies[id] == true
     local idE = id
+    -- Petite carte et longue-vue : sur la premiere ligne sous le titre,
+    -- comme pour les quetes prises ; sur le titre si l'etape est repliee.
+    local voirE = pion and function() VoirSurCarte(idE, moi) end or nil
+    local pionL, voirL = pion, voirE
+    local function Icones()
+        local p1, v1 = pionL, voirL
+        pionL, voirL = nil, nil
+        return { pion = p1, voir = v1, marge = p1 and 42 or nil }
+    end
     index = index + 1
-    y = Poser(index, y, rang .. ". " .. string.format("|cff%02x%02x%02x[%d]|r %s", math.floor(r * 255),
+    local donjonE = NS.donjons and NS.donjons.DeQuete and NS.donjons.DeQuete(id) and (NS.ref.IconeDonjon() .. " ") or ""
+    y = Poser(index, y, rang .. ". " .. donjonE .. string.format("|cff%02x%02x%02x[%d]|r %s", math.floor(r * 255),
         math.floor(g * 255), math.floor(b * 255), niveau, NS.ref.NomDeQuete(id, moi)), { uneLigne = true,
         police = Police("ObjectiveTrackerHeaderFont", "GameFontNormal"), titre = true,
         couleur = attente and { 0.6, 0.6, 0.6 } or { 1, 0.82, 0 },
-        pion = pion,
+        pion = replieE and pion or nil, voir = replieE and voirE or nil,
         survol = function(tt)
             NS.ref.InfobulleDeLaBase(tt, idE, moi)
             local textes = NS.ref.Lire("QuestDB", idE, "objectivesText")
@@ -1181,8 +1247,10 @@ local function RendreEtapeBase(moi, id, rang, e, index, y, pion)
         local xp = NS.ref.XPDeLaBase(id, moi.niveau)
         if xp and xp > 0 then
             index = index + 1
+            local ic = Icones()
             y = Poser(index, y, string.format(L.REWARD_LINE, string.format(L.REWARD_XP, xp)), { retrait = 22,
-                couleur = { 1, 0.82, 0 }, police = "GameFontNormalSmall", petit = true, uneLigne = true })
+                couleur = { 1, 0.82, 0 }, police = "GameFontNormalSmall", petit = true, uneLigne = true,
+                pion = ic.pion, voir = ic.voir, margeDroite = ic.marge })
         end
         local textes = NS.ref.Lire("QuestDB", id, "objectivesText")
         if type(textes) == "table" then
@@ -1191,7 +1259,9 @@ local function RendreEtapeBase(moi, id, rang, e, index, y, pion)
                 local ligne = tostring(t):match("^%s*(.-)%s*$")
                 if ligne ~= "" then
                     index = index + 1
-                    y = Poser(index, y, "- " .. ligne, { retrait = 22, couleur = { 0.85, 0.85, 0.85 } })
+                    local ic = Icones()
+                    y = Poser(index, y, "- " .. ligne, { retrait = 22, couleur = { 0.85, 0.85, 0.85 },
+                        pion = ic.pion, voir = ic.voir, margeDroite = ic.marge })
                 end
             end
         end
@@ -1206,7 +1276,9 @@ local function RendreEtapeBase(moi, id, rang, e, index, y, pion)
             couleurDetail = { 0.6, 0.6, 0.6 }
         end
         index = index + 1
+        local ic = Icones()
         y = Poser(index, y, detail, { retrait = 22, couleur = couleurDetail,
+            pion = ic.pion, voir = ic.voir, margeDroite = ic.marge,
             auClic = (NS.fenetre and NS.fenetre.VoirQuete) and function() NS.fenetre.VoirQuete(idE, moi, true) end or nil })
     end
     return index, y + 6
@@ -1288,22 +1360,52 @@ RendreVueParcours = function(moi, index, y)
                 index = index + 1
                 y = Poser(index, y, L.ROUTE_ALL_DONE, { retrait = 22, couleur = { 0.31, 0.82, 0.41 } }) + 6
             else
-                -- Les etapes faites disparaissent ; le numero reste celui du
-                -- parcours.
                 -- La petite carte d'une etape : la garder dans l'itineraire
                 -- (guidage et carte) ou l'en retirer ; retiree, elle reste en
                 -- bas, grisee, pour la remettre.
+                -- Trois groupes lisibles : en cours (quetes prises), a faire
+                -- (a prendre), fait (en vert, coche) ; le numero reste celui
+                -- du parcours.
+                local enCours, aFaire, faites = {}, {}, {}
                 for rang, id in ipairs(pc.etapes) do
                     local e = NS.parcours.EtatEtape(moi, id)
                     if (e == "cours" or e == "rendre") and moi.quetes[id] then
-                        index, y = RendreQuete(moi, moi.quetes, id, index, y, rang .. ". ")
-                    elseif e ~= "faite" then
-                        local idQ = id
-                        index, y = RendreEtapeBase(moi, id, rang, e, index, y, { actif = true, aide = L.ROUTE_STEP_HELP,
+                        table.insert(enCours, { rang = rang, id = id })
+                    elseif e == "faite" then
+                        table.insert(faites, { rang = rang, id = id })
+                    else
+                        table.insert(aFaire, { rang = rang, id = id, e = e })
+                    end
+                end
+                local function Groupe(titre, n, couleur)
+                    index = index + 1
+                    y = Poser(index, y, titre .. " (" .. n .. ")", { uneLigne = true, couleur = couleur,
+                        police = "GameFontNormalSmall", petit = true }) + 2
+                end
+                if #enCours > 0 then
+                    Groupe(L.TRACK_SECTION_ACTIVE, #enCours, { 0.4, 0.75, 1 })
+                    for _, t in ipairs(enCours) do
+                        index, y = RendreQuete(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
+                    end
+                end
+                if #aFaire > 0 then
+                    Groupe(L.ROUTE_GROUP_TODO, #aFaire, { 1, 0.82, 0 })
+                    for _, t in ipairs(aFaire) do
+                        local idQ = t.id
+                        index, y = RendreEtapeBase(moi, t.id, t.rang, t.e, index, y, { actif = true, aide = L.ROUTE_STEP_HELP,
                             auClic = function()
                                 if suivi.PasserEtape then suivi.PasserEtape(idP, idQ) end
                                 suivi.Rendre()
                             end })
+                    end
+                end
+                if #faites > 0 then
+                    Groupe(L.ROUTE_GROUP_DONE, #faites, { 0.25, 0.9, 0.25 })
+                    for _, t in ipairs(faites) do
+                        index = index + 1
+                        y = Poser(index, y, "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t " .. t.rang .. ". "
+                            .. NS.ref.NomDeQuete(t.id, moi), { uneLigne = true, couleur = { 0.25, 0.9, 0.25 },
+                            police = "GameFontNormalSmall", petit = true }) + 2
                     end
                 end
                 local retirees = {}
@@ -1491,7 +1593,9 @@ function suivi.Rendre()
         end
         -- Boutons : trajet le plus court pour le niveau, et guidage du trajet.
         local boutons = {}
-        if nRendre > 0 and manque > 0 and xpRendre >= manque then
+        -- Trajet niveau : dans la vue des quetes, pas dans celle d'un parcours
+        -- (son propre trajet y a deja ses boutons).
+        if s.vue ~= "parcours" and nRendre > 0 and manque > 0 and xpRendre >= manque then
             table.insert(boutons, { L.TRACK_LEVEL_BUTTON, function() suivi.TrajetNiveau() end, L.TRACK_LEVEL_ROUTE_HELP })
         end
         local avecTrajet = false
@@ -1526,14 +1630,21 @@ function suivi.Rendre()
             end
         end
         local actif = NS.guidage and NS.guidage.Actif()
-        -- Un parcours ouvert entierement fait : Supprimer, et il disparait.
+        -- Passerelle : un add-on de trajet installe (Shortest Path Forever)
+        -- donne le chemin detaille jusqu'a la prochaine etape. Sans lui, rien.
+        -- Le parcours affiche entierement fait : Supprimer (il disparait), a
+        -- la place de Guider et de l'itineraire, qui n'ont plus rien a faire.
+        -- Seulement celui qu'on regarde, jamais un autre.
         local fini
-        if s.vue == "parcours" and NS.parcours and moi then
-            for _, pc in ipairs(NS.parcours.Liste(NS.ClePersonnage())) do
-                local f, t = NS.parcours.Avancement(moi, pc)
-                if not fini and t > 0 and f >= t and type(s.parcoursOuverts) == "table" and s.parcoursOuverts[pc.id] then
-                    fini = pc
-                end
+        if pcVue and NS.parcours and moi then
+            local f, t = NS.parcours.Avancement(moi, pcVue)
+            if t > 0 and f >= t then fini = pcVue end
+        end
+        if s.vue == "parcours" and pcVue and not fini and suivi.Passerelle then
+            local envoyer = suivi.Passerelle()
+            if envoyer then
+                local idV = pcVue.id
+                table.insert(boutons, { L.ROUTE_DETAILED, function() pcall(suivi.EnvoyerEtape, idV) end, L.ROUTE_DETAILED_HELP })
             end
         end
         if fini then
@@ -1600,25 +1711,31 @@ function suivi.Rendre()
                 r:ClearAllPoints()
                 r:SetPoint("TOPLEFT", bilan, "TOPLEFT", 0, yB)
                 r:SetPoint("TOPRIGHT", bilan, "TOPRIGHT", 0, yB)
+                -- Deux par rangee ; un troisieme (Supprimer un parcours fini,
+                -- par exemple) passe sur une rangee de plus.
                 local n = #d.boutons
                 for m, info in ipairs(d.boutons) do
-                    local b = r.boutons[m]
+                    local b = r.boutons[m] or r.NouveauBouton(m)
                     b:SetText(info[1])
                     b.action, b.aide = info[2], info[3]
                     b:ClearAllPoints()
-                    if n == 1 then
-                        b:SetPoint("TOPLEFT", r, "TOPLEFT", 0, 0)
-                        b:SetPoint("TOPRIGHT", r, "TOPRIGHT", 0, 0)
-                    elseif m == 1 then
-                        b:SetPoint("TOPLEFT", r, "TOPLEFT", 0, 0)
-                        b:SetPoint("TOPRIGHT", r, "TOP", -2, 0)
+                    local ligne = math.floor((m - 1) / 2)
+                    local yL = -ligne * 24
+                    local seul = (m % 2 == 1) and (m == n)
+                    if seul then
+                        b:SetPoint("TOPLEFT", r, "TOPLEFT", 0, yL)
+                        b:SetPoint("TOPRIGHT", r, "TOPRIGHT", 0, yL)
+                    elseif m % 2 == 1 then
+                        b:SetPoint("TOPLEFT", r, "TOPLEFT", 0, yL)
+                        b:SetPoint("TOPRIGHT", r, "TOP", -2, yL)
                     else
-                        b:SetPoint("TOPLEFT", r, "TOP", 2, 0)
-                        b:SetPoint("TOPRIGHT", r, "TOPRIGHT", 0, 0)
+                        b:SetPoint("TOPLEFT", r, "TOP", 2, yL)
+                        b:SetPoint("TOPRIGHT", r, "TOPRIGHT", 0, yL)
                     end
                     b:Show()
                 end
-                hauteur, apres = 20, 0
+                local rangees = math.ceil(n / 2)
+                hauteur, apres = rangees * 20 + (rangees - 1) * 4, 0
             end
             r:SetHeight(hauteur)
             r:Show()
@@ -2230,20 +2347,28 @@ local function Construire()
         r.droite:SetPoint("RIGHT", r, "RIGHT", 0, 0)
         r.droite:SetJustifyH("RIGHT")
         r.boutons = {}
-        for k = 1, 2 do
+        function r.NouveauBouton(k)
             local b = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
             b:SetHeight(20)
-            b:SetScript("OnClick", function(x) if x.action then x.action() end end)
+            -- Guider, Itineraire detaille... : une fois clique, l'infobulle
+            -- s'efface (et ne revient qu'en revenant sur le bouton).
+            b:SetScript("OnClick", function(x)
+                x.muet = true
+                GameTooltip:Hide()
+                if x.action then x.action() end
+            end)
             b:SetScript("OnEnter", function(x)
-                if not x.aide then return end
+                if not x.aide or x.muet then return end
                 GameTooltip:SetOwner(x, "ANCHOR_TOP")
                 GameTooltip:SetText(x:GetText() or "", 1, 0.82, 0)
                 GameTooltip:AddLine(x.aide, 1, 1, 1, true)
                 GameTooltip:Show()
             end)
-            b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            b:SetScript("OnLeave", function(x) x.muet = nil GameTooltip:Hide() end)
             r.boutons[k] = b
+            return b
         end
+        for k = 1, 2 do r.NouveauBouton(k) end
         self.rangs[rang] = r
         return r
     end
@@ -3028,6 +3153,63 @@ do
         e:HookScript("OnShow", function() pcall(Placement, true) end)
         e:HookScript("OnHide", function() pcall(Placement, false) end)
     end
+end
+
+-- ---------------------------------------------------------------------------
+-- Passerelle vers un add-on de trajet : Shortest Path Forever, s'il est
+-- installe, recoit la destination de la prochaine etape et prend la main avec
+-- sa propre interface (vols, bateaux, portails, chemin a pied). QuestCore ne
+-- reprend rien de son code ni de ses donnees : il lui passe un point, comme le
+-- ferait le joueur avec sa commande /way.
+-- ---------------------------------------------------------------------------
+
+-- La commande de l'add-on de trajet, ou nil s'il n'est pas la. HubCore,
+-- s'il est installe, choisit l'add-on (reglages) ; sinon, Shortest Path
+-- Forever directement.
+function suivi.Passerelle()
+    local hub = _G.HubCoreAPI
+    if hub and hub.Disponible then return hub.Disponible() and hub or nil end
+    local h = _G.hash_SlashCmdList
+    local f = type(h) == "table" and h["/PATH"] or nil
+    if type(f) ~= "function" and type(_G.SlashCmdList) == "table" then
+        for cle, fn in pairs(_G.SlashCmdList) do
+            if _G["SLASH_" .. cle .. "1"] == "/path" then f = fn break end
+        end
+    end
+    return type(f) == "function" and f or nil
+end
+
+-- Envoie la prochaine etape faisable du parcours : chez le donneur s'il
+-- faut la prendre, sinon la ou se fait l'objectif, ou chez le receveur.
+function suivi.EnvoyerEtape(idParcours)
+    local commande = suivi.Passerelle()
+    local cle = NS.ClePersonnage()
+    local moi = cle and NS.base.Perso(cle)
+    local pc = moi and NS.parcours.Trouver(cle, idParcours)
+    if not (commande and pc) then return end
+    local hub = type(commande) == "table" and commande or nil
+    for _, id in ipairs(pc.etapes) do
+        local e = NS.parcours.EtatEtape(moi, id)
+        if e ~= "faite" and e ~= "attente" then
+            local ok, points = pcall(NS.carte.PointsPour, id, moi)
+            local pt = ok and points and points[1]
+            if pt and pt.carte and pt.x and pt.y then
+                local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), pt.carte)
+                local zone = type(info) == "table" and info.name or nil
+                local titre = string.gsub(NS.ref.NomDeQuete(id, moi) or "", "[\r\n]", " ")
+                local texte = string.format("way %s%.1f %.1f %s", zone and (zone .. " ") or "", pt.x * 100, pt.y * 100, titre)
+                if NS.Trace then NS.Trace("passerelle : " .. texte) end
+                if hub then
+                    pcall(hub.Trajet, { carte = pt.carte, x = pt.x, y = pt.y, titre = titre })
+                else
+                    pcall(commande, texte)
+                end
+                NS.Dire(string.format(L.ROUTE_DETAILED_SENT, (hub and hub.NomTrajet and hub.NomTrajet()) or "Shortest Path Forever", titre))
+                return
+            end
+        end
+    end
+    NS.Dire(L.ROUTE_DETAILED_NONE)
 end
 
 -- ---------------------------------------------------------------------------

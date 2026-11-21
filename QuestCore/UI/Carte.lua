@@ -59,6 +59,76 @@ function carte.CarteDeZone(zone)
     return nil
 end
 
+-- Cartes d'instance (donjons, raids de la base) et leur entree dehors.
+local instances
+local function Instances()
+    if instances then return instances end
+    local t = {}
+    local lib = _G.LibQuestieDB
+    local support = lib and lib.Support and lib.Support.Get and lib.Support.Get("ZoneDB")
+    local brut = support and support.private and support.private.dungeons
+    if type(brut) == "string" then
+        local fn = loadstring(brut)
+        local ok, r = false, nil
+        if fn then ok, r = pcall(fn) end
+        brut = ok and r or nil
+    end
+    if type(brut) ~= "table" then return t end
+    -- Cartes de dehors : celles des entrees et des zones parentes. Une
+    -- sous-zone d'un donjon peut tomber sur la carte de sa zone (les Tarides
+    -- pour Kraal de Tranchebauge) : celle-la n'est jamais une instance.
+    local dehors = {}
+    for _, d in pairs(brut) do
+        if type(d) == "table" then
+            local c = tonumber(d[3]) and carte.CarteDeZone(d[3])
+            if c then dehors[c] = true end
+            for _, e in ipairs(type(d[4]) == "table" and d[4] or {}) do
+                local ce = type(e) == "table" and carte.CarteDeZone(e[1])
+                if ce then dehors[ce] = true end
+            end
+        end
+    end
+    local function Dehors(c)
+        if dehors[c] then return true end
+        local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), c)
+        -- Monde, continent, zone : jamais une instance.
+        return type(info) == "table" and tonumber(info.mapType) ~= nil and info.mapType <= 3
+    end
+    for zone, d in pairs(brut) do
+        if type(d) == "table" then
+            local entree
+            for _, e in ipairs(type(d[4]) == "table" and d[4] or {}) do
+                local c = type(e) == "table" and carte.CarteDeZone(e[1])
+                if c and tonumber(e[2]) and tonumber(e[3]) then
+                    entree = { carte = c, x = e[2] / 100, y = e[3] / 100, nom = d[1] }
+                    break
+                end
+            end
+            local zones = { zone }
+            for _, autre in ipairs(type(d[2]) == "table" and d[2] or {}) do table.insert(zones, autre) end
+            for _, z in ipairs(zones) do
+                local c = carte.CarteDeZone(z)
+                if c and not Dehors(c) then t[c] = entree or false end
+            end
+        end
+    end
+    instances = t
+    return t
+end
+
+function carte.EstInstance(idCarte)
+    if not idCarte then return false end
+    local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), idCarte)
+    if type(info) == "table" and tonumber(info.mapType) and info.mapType <= 3 then return false end
+    if Instances()[idCarte] ~= nil then return true end
+    return type(info) == "table" and info.mapType == 4
+end
+
+-- Entree (dehors) du donjon d'une carte d'instance, ou nil.
+function carte.EntreeDInstance(idCarte)
+    return Instances()[idCarte] or nil
+end
+
 -- Niveaux d'une carte de zone, estimes d'apres ses quetes (QuestieDB) :
 -- du 15e au 85e centile de leurs niveaux. Calcule une fois, puis garde.
 local niveauxParCarte
@@ -432,11 +502,26 @@ local function Rectangle(zone, carteAffichee)
     local r = rectangles[cle]
     if r == nil then
         r = false
-        local lecture = NS.Lecture("C_Map.GetMapRectOnMap")
+        -- Une carte d'instance (donjon, raid) n'a pas de place reelle sur
+        -- la carte d'un continent : le jeu la donne alors etiree sur tout
+        -- le continent, et ses reperes s'y dessinaient en grands cercles.
+        local donjon = carte.EstInstance(zone)
+        local lecture = not donjon and NS.Lecture("C_Map.GetMapRectOnMap")
         if lecture then
             local ok, g, d, h, b = pcall(lecture, zone, carteAffichee)
-            if ok and tonumber(g) and tonumber(d) and tonumber(h) and tonumber(b) and d > g and b > h then
+            -- Meme garde si le jeu rend la carte entiere : jamais pour une
+            -- vraie zone.
+            local entiere = ok and g == 0 and d == 1 and h == 0 and b == 1
+            if ok and not entiere and tonumber(g) and tonumber(d) and tonumber(h) and tonumber(b) and d > g and b > h then
                 r = { g, d, h, b }
+                -- Sur un continent, une zone n'en couvre jamais plus d'un
+                -- dixieme (les Tarides, la plus grande, a peine). Les zones
+                -- ajoutees par Forever (Mont Hyjal...) sont rendues par le jeu
+                -- sur la moitie du continent : leurs reperes y faisaient un
+                -- grand anneau. On ne les reporte pas.
+                local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), carteAffichee)
+                local continent = type(info) == "table" and (info.mapType == 2 or info.mapType == 1)
+                if continent and zone ~= carteAffichee and (d - g) * (b - h) > 0.15 then r = false end
             end
         end
         rectangles[cle] = r

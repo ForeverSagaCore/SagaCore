@@ -39,11 +39,27 @@ local function Nettoyer(cle, liste)
     end
 end
 
+-- Anciens noms des kits ("Prerequis : X") : ils contiennent surtout les
+-- quetes du donjon a prendre avant d'y aller, d'ou le nouveau nom.
+local ANCIENS_KITS = { "^Prérequis : (.+)$", "^Prerequisites: (.+)$", "^Voraussetzungen: (.+)$", "^Requisitos: (.+)$",
+    "^Prerequisiti: (.+)$", "^Предварительные задания: (.+)$", "^前置任务：(.+)$" }
+local function Renommer(liste)
+    for _, pc in ipairs(liste) do
+        if pc.genre == "kit" and type(pc.nom) == "string" then
+            for _, motif in ipairs(ANCIENS_KITS) do
+                local nom = pc.nom:match(motif)
+                if nom then pc.nom = string.format(NS.L.DUNGEON_KIT_NAME, nom) break end
+            end
+        end
+    end
+end
+
 function parcours.Liste(cle)
     local d = QuestCoreDB
     if type(d) ~= "table" or not cle then return {} end
     d.parcours = d.parcours or {}
     d.parcours[cle] = d.parcours[cle] or {}
+    pcall(Renommer, d.parcours[cle])
     pcall(Nettoyer, cle, d.parcours[cle])
     return d.parcours[cle]
 end
