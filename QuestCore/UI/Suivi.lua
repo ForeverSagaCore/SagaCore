@@ -734,7 +734,12 @@ end
 -- donneur), sans fleche de guidage.
 local function VoirSurCarte(id, moi)
     local ok, points = pcall(NS.carte.PointsPour, id, moi)
-    local pt = ok and points and points[1]
+    -- D'abord un lieu dehors ; sinon un lieu de donjon (son entree).
+    local pt
+    for _, p in ipairs(ok and points or {}) do
+        if p.carte and not NS.carte.EstInstance(p.carte) then pt = p break end
+    end
+    pt = pt or (ok and points and points[1])
     if pt and pt.carte and NS.pageCarte and NS.pageCarte.MontrerQuete then
         NS.pageCarte.MontrerQuete(id, pt.carte, pt.x, pt.y, NS.ref.NomDeQuete(id, moi), pt.quoi, true, pt.genre)
     end

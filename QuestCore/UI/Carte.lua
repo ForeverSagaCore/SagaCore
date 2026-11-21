@@ -59,6 +59,55 @@ function carte.CarteDeZone(zone)
     return nil
 end
 
+-- Cartes d'instance (donjons, raids de la base) et leur entree dehors.
+local instances
+local function Instances()
+    if instances then return instances end
+    local t = {}
+    local lib = _G.LibQuestieDB
+    local support = lib and lib.Support and lib.Support.Get and lib.Support.Get("ZoneDB")
+    local brut = support and support.private and support.private.dungeons
+    if type(brut) == "string" then
+        local fn = loadstring(brut)
+        local ok, r = false, nil
+        if fn then ok, r = pcall(fn) end
+        brut = ok and r or nil
+    end
+    if type(brut) ~= "table" then return t end
+    for zone, d in pairs(brut) do
+        if type(d) == "table" then
+            local entree
+            for _, e in ipairs(type(d[4]) == "table" and d[4] or {}) do
+                local c = type(e) == "table" and carte.CarteDeZone(e[1])
+                if c and tonumber(e[2]) and tonumber(e[3]) then
+                    entree = { carte = c, x = e[2] / 100, y = e[3] / 100, nom = d[1] }
+                    break
+                end
+            end
+            local zones = { zone }
+            for _, autre in ipairs(type(d[2]) == "table" and d[2] or {}) do table.insert(zones, autre) end
+            for _, z in ipairs(zones) do
+                local c = carte.CarteDeZone(z)
+                if c then t[c] = entree or false end
+            end
+        end
+    end
+    instances = t
+    return t
+end
+
+function carte.EstInstance(idCarte)
+    if not idCarte then return false end
+    if Instances()[idCarte] ~= nil then return true end
+    local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), idCarte)
+    return type(info) == "table" and info.mapType == 4
+end
+
+-- Entree (dehors) du donjon d'une carte d'instance, ou nil.
+function carte.EntreeDInstance(idCarte)
+    return Instances()[idCarte] or nil
+end
+
 -- Niveaux d'une carte de zone, estimes d'apres ses quetes (QuestieDB) :
 -- du 15e au 85e centile de leurs niveaux. Calcule une fois, puis garde.
 local niveauxParCarte
@@ -435,8 +484,7 @@ local function Rectangle(zone, carteAffichee)
         -- Une carte d'instance (donjon, raid) n'a pas de place reelle sur
         -- la carte d'un continent : le jeu la donne alors etiree sur tout
         -- le continent, et ses reperes s'y dessinaient en grands cercles.
-        local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), zone)
-        local donjon = type(info) == "table" and info.mapType == 4
+        local donjon = carte.EstInstance(zone)
         local lecture = not donjon and NS.Lecture("C_Map.GetMapRectOnMap")
         if lecture then
             local ok, g, d, h, b = pcall(lecture, zone, carteAffichee)

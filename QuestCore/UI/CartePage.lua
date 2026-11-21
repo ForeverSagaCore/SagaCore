@@ -73,6 +73,13 @@ end
 local quetePointee
 
 function page.MontrerQuete(id, idCarte, x, y, nomQuete, nomDonneur, sansFleche, genre)
+    -- Lieu dans un donjon : la carte de l'instance n'est pas affichable ici
+    -- (elle partait en carte du continent etiree) ; on montre son entree.
+    if NS.carte and NS.carte.EstInstance and NS.carte.EstInstance(idCarte) then
+        local e = NS.carte.EntreeDInstance(idCarte)
+        if not e then return end
+        idCarte, x, y = e.carte, e.x, e.y
+    end
     modeTrajet = false
     entree = nil
     quetePointee = { carte = idCarte, x = x, y = y, quete = id, nom = nomQuete, donneur = nomDonneur, genre = genre }
@@ -1222,6 +1229,12 @@ function page.Rendre(parent, basDroite, menuParent, menuHaut)
     -- calque (fleche du personnage, trajet) restait cache.
     if calque and vue:IsVisible() then calque:Show() end
     if menu then menu:Show() end
+    -- Carte de donjon choisie (etape dans une instance) : sa zone dehors,
+    -- sauf si on est dedans.
+    if carteChoisie and carteChoisie ~= CarteDuPerso() and NS.carte.EstInstance(carteChoisie) then
+        local e = NS.carte.EntreeDInstance(carteChoisie)
+        carteChoisie = e and e.carte or nil
+    end
     local idCarte = carteChoisie or CarteDuPerso()
     if idCarte ~= derniereCarte then zoom, decX, decY = 1, 0, 0 derniereCarte = idCarte end
     vue.idCarte = idCarte
