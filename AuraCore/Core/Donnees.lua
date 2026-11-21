@@ -268,11 +268,9 @@ local function Placer(b)
     local pos = R().boutonBuffs
     if type(pos) == "table" and pos[1] then
         b:SetPoint(pos[1], UIParent, pos[2] or pos[1], pos[3] or 0, pos[4] or 0)
-    elseif _G.PlayerPortrait then
-        -- Aligne sur le bord gauche du portrait, juste au-dessus.
-        b:SetPoint("BOTTOMLEFT", _G.PlayerPortrait, "TOPLEFT", 0, 2)
     elseif _G.PlayerFrame then
-        b:SetPoint("BOTTOMLEFT", _G.PlayerFrame, "TOPLEFT", 20, -6)
+        -- Au-dessus du cadre du personnage, a droite, un peu plus pres.
+        b:SetPoint("BOTTOMRIGHT", _G.PlayerFrame, "TOPRIGHT", -8, -16)
     else
         b:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 180, -10)
     end
@@ -291,6 +289,7 @@ local function Construire()
     b.p = NS.anneau.Pastille(b)
     b.p:SetPoint("CENTER")
     b.p:EnableMouse(false)
+    b.p:Show()
     b.p.icone:SetTexture(D.Icone(1243))
     -- Illumine : une lueur qui pulse doucement autour de l'icone.
     b.lueur = b.p:CreateTexture(nil, "OVERLAY", nil, 2)
