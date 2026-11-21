@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 77
+local VERSION = 78
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2757,6 +2757,7 @@ function Suite.Piloter(oui, nom)
         p.alphaAvant = nil
         p:Hide()
         GameTooltip:Hide()
+        if Suite.ReprendrePanneau then Suite.ReprendrePanneau() end
         return
     end
     if InCombatLockdown and InCombatLockdown() then print("|cffffd100SagaCore|r " .. TP.combat) return end
@@ -2780,6 +2781,7 @@ function Suite.Piloter(oui, nom)
         f.SetAlpha = function(self) original(self, 1) end
         p.figee = f
     end
+    if Suite.SuspendrePanneau then Suite.SuspendrePanneau() end
     p:Show()
     pcall(p.EnableGamePadButton, p, true)
     p.Marquer()
@@ -3594,7 +3596,11 @@ local function Panneau()
     p.aide.texte:SetPoint("TOPLEFT", 10, -8)
     p:SetScript("OnHide", function(self)
         GameTooltip:Hide()
-        if Suite.boutonRaccourcis then Suite.boutonRaccourcis:SetAlpha(1) end
+        local rond = Suite.boutonRaccourcis
+        if rond then
+            rond:SetAlpha(1)
+            if rond.icone and rond.icone.SetDesaturated then rond.icone:SetDesaturated(false) end
+        end
         if not (InCombatLockdown and InCombatLockdown()) then ClearOverrideBindings(self) end
     end)
     p:RegisterEvent("PLAYER_REGEN_DISABLED")
@@ -3606,6 +3612,7 @@ end
 
 local function LierManette(p)
     if InCombatLockdown and InCombatLockdown() then return end
+    if p.suspendu then return end
     ClearOverrideBindings(p)
     local manette = _G.C_GamePad and _G.C_GamePad.IsEnabled and select(2, pcall(_G.C_GamePad.IsEnabled)) == true
     if not manette then return end
@@ -3626,16 +3633,42 @@ local function LierManette(p)
     end
 end
 
+-- Pendant qu'on pilote un suivi lance depuis le panneau, le panneau rend
+-- ses touches (son aide passe en gris) ; liberer le suivi les lui rend.
+function Suite.SuspendrePanneau()
+    local p = Suite.panneauRaccourcis
+    if not (p and p:IsShown()) then return end
+    p.suspendu = true
+    if not (InCombatLockdown and InCombatLockdown()) then ClearOverrideBindings(p) end
+    if p.aide then p.aide:SetAlpha(0.4) end
+end
+function Suite.ReprendrePanneau()
+    local p = Suite.panneauRaccourcis
+    if not (p and p.suspendu) then return end
+    p.suspendu = nil
+    if p.aide then p.aide:SetAlpha(1) end
+    if p:IsShown() then Suite.MarquerRaccourci() end
+end
+
 function Suite.MarquerRaccourci()
     local p = Suite.panneauRaccourcis
     if not p then return end
     GameTooltip:Hide()
     -- Tout a 40 %, sauf l'element choisi, en pleine couleur.
+    -- Les autres en gris (icone desaturee, liseré gris), le choisi en couleur.
+    local function Teinter(b, choisi)
+        if not b then return end
+        b:SetAlpha(choisi and 1 or 0.75)
+        if b.icone and b.icone.SetDesaturated then b.icone:SetDesaturated(not choisi) end
+        if b.bordure then
+            if choisi then b.bordure:SetVertexColor(0.72, 0.6, 0.32, 1) else b.bordure:SetVertexColor(0.45, 0.45, 0.45, 1) end
+        end
+    end
     local rond = Suite.boutonRaccourcis
-    if rond then rond:SetAlpha(p.focus == 0 and 1 or 0.4) end
+    Teinter(rond, p.focus == 0)
     for i, b in ipairs(p.boutons) do
         if b.lisere then b.lisere:SetShown(i == p.focus and b:IsShown()) end
-        b:SetAlpha(i == p.focus and 1 or 0.4)
+        Teinter(b, i == p.focus)
         if i == p.focus and b:IsShown() then
             local survol = b:GetScript("OnEnter")
             if survol then survol(b) end
@@ -3854,7 +3887,8 @@ function Suite.BasculerRaccourcis()
                 GameTooltip:Show()
             end)
             b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            b:HookScript("OnClick", function() if _G.C_Timer then _G.C_Timer.After(0, Suite.FermerRaccourcis) end end)
+            -- Lancer une action ne ferme pas le panneau : il reste ouvert jusqu'a
+            -- ce qu'on le ferme (B, ou le bouton rond).
             p.boutons[i] = b
         end
         b.e = e
