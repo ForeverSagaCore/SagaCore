@@ -1,0 +1,5 @@
+<Bindings>
+	<Binding name="AURACORE_DEMANDE" header="AURACORE">
+		AuraCore_DemanderBuffs()
+	</Binding>
+</Bindings>

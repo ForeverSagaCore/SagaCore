@@ -219,6 +219,10 @@ function F.Construire()
                   O.Liste(page.rGroupePlace, function() return { { "haut", T("Quart du haut", "Top quarter") }, { "droite", T("Quart droit", "Right quarter") },
                       { "bas", T("Quart du bas", "Bottom quarter") }, { "gauche", T("Quart gauche", "Left quarter") } } end,
                       function() return R().groupePlace end, function(v) R().groupePlace = v Redessiner() end)
+                  page.rDemande = O.Rangee()
+                  page.bDemande = O.Bouton(page.rDemande, 100, function() NS.demande.Envoyer() end)
+                  page.bDemande:SetPoint("RIGHT", page.rDemande, "RIGHT", -8, 0)
+                  page.apercu = O.Detail(44)
                   page.aide = O.Detail(30)
               end,
               rendre = function(page)
@@ -239,7 +243,10 @@ function F.Construire()
                   page.rGroupe.nom:SetText(T("Buffs que le groupe peut donner", "Buffs your group can give"))
                   page.cGroupe:SetChecked(R().groupeVisibles ~= false)
                   page.rGroupePlace.nom:SetText(T("Leur place", "Their place"))
-                  page.aide:SetText(T("/auracore off cache tout, /auracore on le remet.", "/auracore off hides everything, /auracore on shows it again."))
+                  page.rDemande.nom:SetText(T("Demander au groupe les buffs manquants", "Ask the group for missing buffs"))
+                  page.bDemande:SetText(T("Demander", "Ask"))
+                  page.apercu:SetText(NS.demande.Apercu())
+                  page.aide:SetText(T("/auracore off cache tout, /auracore on le remet, /auracore buffs demande les buffs manquants.", "/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."))
               end },
             { cle = "nuisibles", icone = "Interface\\Icons\\Spell_Shadow_CurseOfTounges",
               libelle = function() return T("Nuisibles", "Debuffs") end,

@@ -32,6 +32,7 @@ SlashCmdList.AURACORE = function(arg)
         end
         return
     end
+    if arg:match("^buff") then NS.demande.Envoyer() return end
     if arg:match("^off") then NS.anneau.Reglages().cache = true pcall(NS.anneau.Dessiner) return end
     if arg:match("^on") then NS.anneau.Reglages().cache = nil pcall(NS.anneau.Dessiner) return end
     if NS.fenetre and NS.fenetre.Ouvrir then NS.fenetre.Ouvrir() end
