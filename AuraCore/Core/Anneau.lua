@@ -250,6 +250,18 @@ local function DepuisLeJeu()
     local liste, erreur = {}, nil
     local C = _G.C_UnitAuras
     if not (C and C.GetAuraDataByIndex) then return liste, "absent" end
+    -- Pistage lance en combat : la liste ne dit plus quel sort c'est. On le
+    -- demande directement par son sort ; ce que le jeu laisse lire (numero
+    -- d'aura, icone) suffit a l'ecarter tout de suite.
+    if C.GetPlayerAuraBySpellID then
+        for sort in pairs(PISTAGES) do
+            local ok, a = pcall(C.GetPlayerAuraBySpellID, sort)
+            if ok and type(a) == "table" then
+                if a.auraInstanceID ~= nil and not Secret(a.auraInstanceID) then exclus[a.auraInstanceID] = true end
+                if a.icon ~= nil and not Secret(a.icon) then iconesExclues[a.icon] = true end
+            end
+        end
+    end
     for _, filtre in ipairs({ "HELPFUL", "HARMFUL" }) do
         for i = 1, 40 do
             local ok, a = pcall(C.GetAuraDataByIndex, "player", i, filtre)
