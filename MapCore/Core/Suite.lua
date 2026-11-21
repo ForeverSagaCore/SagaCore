@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 104
+local VERSION = 105
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4743,10 +4743,12 @@ local function IconeDeSuivi(nom)
 end
 
 local function HabillerIcone(b, info, nom)
+    local atlasPose = false
     if info.atlas and info.atlas ~= "" and b.image.SetAtlas and pcall(b.image.SetAtlas, b.image, info.atlas)
         and (b.image:GetAtlas() or "") ~= "" then
-        -- atlas pose
-    else
+        atlasPose = true
+    end
+    if not atlasPose then
         -- Repli : l'icone connue du suivi.
         local connue = nom == "QuestCoreSuivi" and "Interface\\GossipFrame\\AvailableQuestIcon" or "Interface\\Icons\\Trade_BlackSmithing"
         b.image:SetTexture(info.texture or connue)
@@ -4778,13 +4780,29 @@ local function SuiviCache(nom)
         local atlas = e.image.GetAtlas and e.image:GetAtlas()
         if atlas == "" then atlas = nil end
         local tex = e.image:GetTexture()
-        if tex == "" or tex == 0 then tex = nil end
+        -- Une image arrondie par un masque se renomme "maskNNNN" : illisible.
+        if tex == "" or tex == 0 or (type(tex) == "string" and tex:find("^mask")) then tex = nil end
         info = { x = x * k, y = y * k, atlas = atlas, texture = (not atlas) and tex or nil,
             -- Les icones d'objet sont arrondies ; les atlas du jeu le sont deja.
             masque = not atlas,
             titre = (f.titre and f.titre.GetText and f.titre:GetText()) or e.nom }
+        -- Image illisible : celle, connue, de l'onglet copie.
+        if not info.atlas and not info.texture then
+            if nom == "QuestCoreSuivi" then
+                local route = f.vuesRoute and f.vuesRoute.divers
+                if route and route:IsShown() then
+                    info.texture, info.masque = "Interface\\Icons\\INV_Misc_Map_01", true
+                else
+                    info.atlas, info.texture, info.masque = "QuestNormal", "Interface\\GossipFrame\\AvailableQuestIcon", false
+                end
+            else
+                info.texture, info.masque = "Interface\\Icons\\Trade_BlackSmithing", true
+            end
+        end
         PlacesIcones()[nom] = info
     end
+    -- Ancienne image retenue illisible ("maskNNNN") : on l'oublie.
+    if info and type(info.texture) == "string" and info.texture:find("^mask") then info.texture = nil end
     if not info then return end
     local b = IconeDeSuivi(nom)
     HabillerIcone(b, info, nom)
