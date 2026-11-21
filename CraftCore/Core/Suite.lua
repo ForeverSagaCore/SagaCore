@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 93
+local VERSION = 94
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2878,7 +2878,14 @@ Suite.RACCOURCIS = {
       action = function() Api("QuestCoreAPI", "BasculerSuivi") end, dispo = function() return _G.QuestCoreAPI ~= nil end },
     { cle = "suivis", desc = "Prend le contrôle à la manette du premier suivi ouvert (fabrications ou quêtes). La croix se déplace, A valide, B rend la main.", descEn = "Takes gamepad control of the first open tracker (crafts or quests). D-pad moves, A confirms, B releases.",
       fr = "Prendre la main sur les suivis", en = "Take over the trackers", icone = "INV_Misc_Spyglass_03",
-      action = function() Suite.Piloter() end },
+      action = function()
+          -- Deja sur un suivi : on rend la main. Sinon (rien, ou MacroCore) :
+          -- on prend le premier suivi ouvert.
+          local p = Suite.pilote
+          local surSuivi = false
+          if p and p:IsShown() then for _, n in ipairs(SUIVIS) do if p.nom == n then surSuivi = true end end end
+          if surSuivi then Suite.Piloter(false) else Suite.Piloter(true) end
+      end },
     { cle = "stop", desc = "Arrête le guidage en cours.", descEn = "Stops the current guidance.",
       fr = "Arrêter le guidage", en = "Stop guidance", icone = "Spell_Holy_Silence",
       action = function() Suite.ArreterGuidage() end },
