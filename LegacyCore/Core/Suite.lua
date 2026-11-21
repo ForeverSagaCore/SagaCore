@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 70
+local VERSION = 71
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2883,7 +2883,14 @@ local COURTS = {
 }
 local function NomDeMacro(r) return COURTS[r.cle] or r.cle:sub(1, 3) end
 local function AncienNom(r) return ("SC " .. Suite.NomRaccourci(r)):sub(1, 16) end
-local function IconeDeMacro(r) return "Interface\\Icons\\" .. r.icone end
+-- L'icone d'une macro se donne par son numero de fichier (un chemin n'est pas
+-- accepte : la macro restait sans icone, impossible a glisser).
+local function IconeDeMacro(r)
+    local chemin = "Interface\\Icons\\" .. r.icone
+    local numero = _G.GetFileIDFromPath and _G.GetFileIDFromPath(chemin)
+    if type(numero) == "number" and numero > 0 then return numero end
+    return 134400
+end
 
 function Suite.CreerMacro(r)
     if InCombatLockdown and InCombatLockdown() then return false end
