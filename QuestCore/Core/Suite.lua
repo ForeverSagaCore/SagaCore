@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 79
+local VERSION = 80
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -3852,7 +3852,7 @@ Suite.HabillerRaccourci = Habiller
 
 function Suite.BasculerRaccourcis()
     if not Suite.Prive() then return end
-    if Suite.BasculerFenetreMacros and Suite.BasculerFenetreMacros() then return end
+    if Suite.BasculerMacroCore and Suite.BasculerMacroCore() then return end
     local p = Panneau()
     if p:IsShown() then p:Hide() return end
     if InCombatLockdown and InCombatLockdown() then return end
@@ -4163,6 +4163,60 @@ function Suite.BasculerFenetreMacros()
     return true
 end
 
+-- ---------------------------------------------------------------------------
+-- MacroCore : une fenetre sur le modele de la fenetre Macros du jeu (meme
+-- cadre, meme portrait au clavier), ouverte par le bouton rond. Vide pour
+-- l'instant : son contenu viendra ensuite.
+-- ---------------------------------------------------------------------------
+
+local ICONE_MACROCORE = "Interface\\MacroFrame\\MacroFrame-Icon"
+local fenMC
+
+local function MacroCore()
+    if fenMC then return fenMC end
+    local ok, f = pcall(CreateFrame, "Frame", "CoreSuiteMacroCore", UIParent, "ButtonFrameTemplate")
+    if not ok or not f then return nil end
+    f:SetSize(338, 424)
+    f:SetFrameStrata("DIALOG")
+    f:SetToplevel(true)
+    f:SetClampedToScreen(true)
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        local x, y = self:GetCenter()
+        Reglages().macroCoreX, Reglages().macroCoreY = math.floor(x + 0.5), math.floor(y + 0.5)
+    end)
+    if f.SetPortraitToAsset then pcall(f.SetPortraitToAsset, f, ICONE_MACROCORE)
+    elseif f.portrait then f.portrait:SetTexture(ICONE_MACROCORE) end
+    if f.SetTitle then pcall(f.SetTitle, f, "MacroCore")
+    elseif f.TitleText then f.TitleText:SetText("MacroCore") end
+    -- Pas de bas a boutons pour l'instant (cadre vide).
+    if _G.ButtonFrameTemplate_HidePortrait == nil and f.Inset then f.Inset:Show() end
+    table.insert(UISpecialFrames, "CoreSuiteMacroCore")
+    f:Hide()
+    fenMC = f
+    return f
+end
+
+function Suite.BasculerMacroCore()
+    local f = MacroCore()
+    if not f then return false end
+    if f:IsShown() then f:Hide() return true end
+    f:ClearAllPoints()
+    local r = Reglages()
+    if r.macroCoreX and r.macroCoreY then
+        f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", r.macroCoreX, r.macroCoreY)
+    else
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
+    end
+    f:Show()
+    f:Raise()
+    return true
+end
+
 -- Le petit bouton rond : deplacable, il retient sa place.
 function Suite.PlacerBoutonRaccourcis()
     -- Macros et raccourcis : prives pour l'instant.
@@ -4180,7 +4234,7 @@ function Suite.PlacerBoutonRaccourcis()
         b:RegisterForDrag("LeftButton")
         b:RegisterForClicks("LeftButtonUp")
         b.icone = b:CreateTexture(nil, "ARTWORK")
-        b.icone:SetTexture("Interface\\Icons\\INV_Misc_Book_11")
+        b.icone:SetTexture("Interface\\MacroFrame\\MacroFrame-Icon")
         if b.CreateMaskTexture then
             b.masque = b:CreateMaskTexture()
             if b.masque then
@@ -4197,7 +4251,7 @@ function Suite.PlacerBoutonRaccourcis()
         b:SetScript("OnClick", function() Suite.BasculerRaccourcis() end)
         b:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText(TR("Raccourcis de la suite", "Suite shortcuts"), 1, 0.82, 0)
+            GameTooltip:SetText("MacroCore", 1, 0.82, 0)
             GameTooltip:AddLine(TR("Clic : ouvrir. Glisser : déplacer.", "Click : open. Drag : move."), 1, 1, 1)
             GameTooltip:Show()
         end)
@@ -4214,8 +4268,9 @@ function Suite.PlacerBoutonRaccourcis()
     else
         b:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 140)
     end
-    Habiller(b, Suite.TAILLE_RACCOURCI, r.raccourcisRonds)
-    b:SetShown(not r.raccourcisCache)
+    -- L'icone au clavier, ronde comme le portrait du jeu, toujours visible.
+    Habiller(b, Suite.TAILLE_RACCOURCI, true)
+    b:Show()
 end
 
 do
