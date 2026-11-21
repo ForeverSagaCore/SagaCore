@@ -764,7 +764,9 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
     local yDebut = y
     local ligneRendu, avecRecompense, yApresTitre, yFinMoi
     index = index + 1
-    y = Poser(index, y, (prefixe or "") .. string.format("|cff%02x%02x%02x[%d]|r %s", math.floor(r * 255),
+    -- Quete qui se fait dans une instance : l'icone de donjon devant son niveau.
+    local donjonQ = NS.donjons and NS.donjons.DeQuete and NS.donjons.DeQuete(id) and (NS.ref.IconeDonjon() .. " ") or ""
+    y = Poser(index, y, (prefixe or "") .. donjonQ .. string.format("|cff%02x%02x%02x[%d]|r %s", math.floor(r * 255),
         math.floor(g * 255), math.floor(b * 255), q.niveau or 0, q.titre or ("#" .. id)), { uneLigne = true,
         police = Police("ObjectiveTrackerHeaderFont", "GameFontNormal"), couleur = { 1, 0.82, 0 }, titre = true,
         marque = (q.complete == true) and true or (q.complete == -1 and -1 or false), idQuete = id,
@@ -1219,7 +1221,8 @@ local function RendreEtapeBase(moi, id, rang, e, index, y, pion)
         return { pion = p1, voir = v1, marge = p1 and 42 or nil }
     end
     index = index + 1
-    y = Poser(index, y, rang .. ". " .. string.format("|cff%02x%02x%02x[%d]|r %s", math.floor(r * 255),
+    local donjonE = NS.donjons and NS.donjons.DeQuete and NS.donjons.DeQuete(id) and (NS.ref.IconeDonjon() .. " ") or ""
+    y = Poser(index, y, rang .. ". " .. donjonE .. string.format("|cff%02x%02x%02x[%d]|r %s", math.floor(r * 255),
         math.floor(g * 255), math.floor(b * 255), niveau, NS.ref.NomDeQuete(id, moi)), { uneLigne = true,
         police = Police("ObjectiveTrackerHeaderFont", "GameFontNormal"), titre = true,
         couleur = attente and { 0.6, 0.6, 0.6 } or { 1, 0.82, 0 },

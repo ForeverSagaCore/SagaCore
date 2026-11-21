@@ -31,6 +31,7 @@ end
 
 -- Index (une fois) : chaque donjon et toutes ses quetes, avec ses niveaux.
 local index
+local queteVersDonjon = {}
 local function Index()
     if index then return index end
     local base = TableDeLaBase()
@@ -61,6 +62,7 @@ local function Index()
         local d = zone and parZone[zone]
         if d then
             table.insert(d.ids, id)
+            queteVersDonjon[id] = d
             local niveau = tonumber(Lire("QuestDB", id, "questLevel"))
             if niveau and niveau > 0 then table.insert(d.niveaux, niveau) end
         end
@@ -90,6 +92,30 @@ local function Index()
 end
 
 function donjons.Disponible() return TableDeLaBase() ~= nil end
+
+-- Le donjon d'une quete (une quete qui se fait dans l'instance), ou nil.
+function donjons.DeQuete(id)
+    Index()
+    return queteVersDonjon[id]
+end
+
+-- Quete qui se prend dans le donjon : un objet ramasse qui la donne, ou
+-- un donneur qu'on ne trouve que dans l'instance.
+function donjons.SePrendDedans(id)
+    local debut = Lire("QuestDB", id, "startedBy")
+    if type(debut) ~= "table" then return false end
+    if type(debut[3]) == "table" and #debut[3] > 0 then return true end
+    local dehors, dedans = false, false
+    for _, source in ipairs({ { 1, "NpcDB" }, { 2, "ObjectDB" } }) do
+        for _, ent in ipairs(type(debut[source[1]]) == "table" and debut[source[1]] or {}) do
+            for zone in pairs(type(Lire(source[2], ent, "spawns")) == "table" and Lire(source[2], ent, "spawns") or {}) do
+                local c = NS.carte and NS.carte.CarteDeZone and NS.carte.CarteDeZone(zone)
+                if c and NS.carte.EstInstance and NS.carte.EstInstance(c) then dedans = true elseif c then dehors = true end
+            end
+        end
+    end
+    return dedans and not dehors
+end
 
 -- Pour un personnage : chaque donjon, ses quetes admises (race, classe,
 -- faction), celles qui restent (par niveau) et le compte des faites.
