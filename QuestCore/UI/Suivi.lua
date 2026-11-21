@@ -1038,6 +1038,7 @@ local function OngletVue(cle, icone, nom, aide)
     b.icone:SetTexture(icone)
     b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
     b:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
+    b.ongletPilote = 1
     local halo = b:GetCheckedTexture()
     if halo then halo:SetBlendMode("ADD") end
     if b.SetMotionScriptsWhileDisabled then b:SetMotionScriptsWhileDisabled(true) end
@@ -2344,7 +2345,9 @@ local function Construire()
         b.nom = v[2]
         -- Compte a cote de l'icone ; "choisi" : l'onglet affiche.
         function b.Compter(self, texte) self.compte:SetText(tostring(texte or "")) end
+        b.ongletPilote = 2
         function b.Choisir(self, oui)
+            self.choisi = oui and true or nil
             self.image:SetDesaturated(not oui)
             self.image:SetAlpha(oui and 1 or 0.55)
             self.anneau:SetDesaturated(not oui)
