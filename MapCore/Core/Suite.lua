@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 96
+local VERSION = 97
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2780,7 +2780,7 @@ function Suite.Piloter(oui, nom)
         local retour = p.retour
         p.retour = nil
         local fr = retour and _G[retour]
-        if fr and fr:IsShown() and retour ~= p.nom and not (fr.piloteGarderAlpha and not fr.active) then
+        if fr and fr:IsShown() and retour ~= p.nom and not (fr.piloteGarderAlpha and (not fr.active or fr.figee)) then
             Suite.Piloter(true, retour)
         end
         return
@@ -4320,7 +4320,7 @@ end
 function Suite.ActiverMacroCore(oui)
     local f = fenMC
     if not f then return end
-    if oui and f.bloquants then return end
+    if f.figee then return end
     f.active = oui and true or nil
     f:SetAlpha(oui and ALPHA_EN_COURSE or 0)
     f:EnableMouse(oui and true or false)
@@ -4459,7 +4459,10 @@ function Suite.RemplirMacroCore()
                     end)
                     -- Clic souris : meme regle que la manette (la macro du
                     -- bouton lance l'action, on observe ce qui s'ouvre).
-                    b:SetScript("PreClick", function() Suite.AvantLancementMacroCore() end)
+                    b:SetScript("PreClick", function(self)
+                        Suite.AvantLancementMacroCore()
+                        if self.e and Suite.FigerAvantMacroCore then Suite.FigerAvantMacroCore(self.e.famille) end
+                    end)
                     b:SetScript("PostClick", function(self)
                         if self.e then Suite.ApresLancementMacroCore(self.e.famille) end
                     end)
@@ -4512,30 +4515,56 @@ end
 local avantLancement
 function Suite.AvantLancementMacroCore() avantLancement = FenetresVisibles() end
 local veille
+-- Figee : MacroCore reste a l'ecran telle quelle, mais ne recoit plus rien
+-- (ni souris, ni manette, ni macro).
+local function Figer(f, oui)
+    f.figee = oui and true or nil
+    local combat = InCombatLockdown and InCombatLockdown()
+    f:EnableMouse((not oui) and f.active and true or false)
+    if f.fermer then f.fermer:EnableMouse(not oui) end
+    if f.icone then f.icone:EnableMouse(not oui) end
+    if not combat then
+        for _, b in ipairs(f.pastilles or {}) do b:EnableMouse(not oui) end
+    end
+    if oui then
+        local p = Suite.pilote
+        if p and p:IsShown() and p.nom == "CoreSuiteMacroCore" then Suite.Piloter(false) end
+        GameTooltip:Hide()
+    end
+end
 local function Debloquer()
     local f = fenMC
     if not f then return end
     f.bloquants = nil
     if veille then veille:Hide() end
-    if Suite.Prive() and f:IsShown() then f.icone:Show() end
+    Figer(f, false)
+    -- Ouverte, elle reprend la manette.
+    if f.active and not (InCombatLockdown and InCombatLockdown()) then Suite.Piloter(true, "CoreSuiteMacroCore") end
 end
 function Suite.ApresLancementMacroCore(famille)
     local f = fenMC
     if not f then return end
     local avant = avantLancement or {}
     avantLancement = nil
-    -- Ouvrir ou piloter une fenetre : MacroCore rend la manette tout de suite.
-    if famille == "ouvrir" or famille == "manette" then Suite.ActiverMacroCore(false) end
     local plusTard = _G.C_Timer and _G.C_Timer.After
     local function Regarder()
         local nouvelles = {}
         for c in pairs(FenetresVisibles()) do
             if not avant[c] and c ~= f then table.insert(nouvelles, c) end
         end
-        if #nouvelles == 0 then return end
+        -- Une fenetre deja ouverte mais dont on vient de prendre le controle
+        -- (piloter un suivi) compte aussi.
+        local pl = Suite.pilote
+        if #nouvelles == 0 and pl and pl:IsShown() and pl.nom and pl.nom ~= "CoreSuiteMacroCore" and _G[pl.nom] then
+            table.insert(nouvelles, _G[pl.nom])
+        end
+        if #nouvelles == 0 then
+            -- Rien ne s'est ouvert : MacroCore reprend ses commandes.
+            if f.figee and not f.bloquants then Debloquer() end
+            return
+        end
         f.bloquants = nouvelles
-        Suite.ActiverMacroCore(false)
-        f.icone:Hide()
+        Figer(f, true)
         if not veille then
             veille = CreateFrame("Frame")
             local attente = 0
@@ -4552,9 +4581,15 @@ function Suite.ApresLancementMacroCore(famille)
     end
     if plusTard then plusTard(0.2, Regarder) else Regarder() end
 end
+-- Ouvrir ou piloter une fenetre : MacroCore se fige tout de suite (elle
+-- rend la manette), le temps de voir ce qui s'ouvre.
+local function FigerAvant(famille)
+    if fenMC and (famille == "ouvrir" or famille == "manette") then Figer(fenMC, true) end
+end
+Suite.FigerAvantMacroCore = FigerAvant
 function Suite.LancerDepuisMacroCore(r)
     Suite.AvantLancementMacroCore()
-    if Suite.FamilleDe(r) == "ouvrir" or Suite.FamilleDe(r) == "manette" then Suite.ActiverMacroCore(false) end
+    FigerAvant(Suite.FamilleDe(r))
     Suite.Lancer(r)
     Suite.ApresLancementMacroCore(Suite.FamilleDe(r))
 end
@@ -4562,8 +4597,8 @@ end
 function Suite.BasculerMacroCore()
     local f = MacroCore()
     if not f then return false end
-    -- Remplacee par une fenetre qu'elle a ouverte : aucune commande.
-    if f.bloquants then return true end
+    -- Figee par une fenetre qu'elle a ouverte : aucune commande.
+    if f.figee then return true end
     f:Show()
     Suite.ActiverMacroCore(not f.active)
     return true
@@ -4582,8 +4617,9 @@ function Suite.PlacerBoutonRaccourcis()
     local f = MacroCore()
     if f then
         f:Show()
-        f.icone:SetShown(not f.bloquants)
+        f.icone:Show()
         pcall(Suite.RemplirMacroCore)
+        if f.figee then Figer(f, true) end
     end
 end
 
