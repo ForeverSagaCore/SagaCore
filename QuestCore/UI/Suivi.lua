@@ -210,7 +210,8 @@ end
 
 local function RondDuJeu(ligne, etat, x, y)
     if not (AtlasExiste("UI-QuestPoi-QuestNumber")) then return nil end
-    local symbole = etat == true and "UI-QuestIcon-TurnIn-Normal" or "Quest-In-Progress-Icon-yellow"
+    -- "fait" : le point d'interrogation du rendu, en vert (quete rendue).
+    local symbole = (etat == true or etat == "fait") and "UI-QuestIcon-TurnIn-Normal" or "Quest-In-Progress-Icon-yellow"
     if not AtlasExiste(symbole) then return nil end
     if not ligne.rond then
         local support = CreateFrame("Frame", nil, ligne)
@@ -229,6 +230,8 @@ local function RondDuJeu(ligne, etat, x, y)
     ligne.rond.fond:SetSize(24, 24)
     ligne.rond.symbole:SetAtlas(symbole)
     ligne.rond.symbole:SetSize(24, 24)
+    ligne.rond.symbole:SetDesaturated(etat == "fait")
+    if etat == "fait" then ligne.rond.symbole:SetVertexColor(0.3, 1, 0.3) else ligne.rond.symbole:SetVertexColor(1, 1, 1) end
     ligne.rond:Show()
     return ligne.rond
 end
@@ -238,6 +241,11 @@ suivi.Rond = RondDuJeu
 local function IconeDeQuete(texture, etat)
     texture:SetTexCoord(0, 1, 0, 1)
     texture:SetDesaturated(false)
+    if etat == "fait" then
+        texture:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+        texture:SetSize(16, 16)
+        return
+    end
     if etat == -1 then
         texture:SetTexture("Interface\\RaidFrame\\ReadyCheck-NotReady")
         texture:SetSize(16, 16)
@@ -840,6 +848,14 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
                     end
                 end
             end
+            -- Ou ca se fait : qui laisse les objets, ou sont les creatures ;
+            -- sans objectif localise, qui reprend la quete.
+            local ou, parQui = NS.ref.OuSeFait(id)
+            if ou then
+                index = index + 1
+                y = Poser(index, y, string.format(parQui and L.TRACK_SEE or L.TRACK_WHERE, ou), { retrait = 22,
+                    couleur = { 1, 0.82, 0 }, police = "GameFontNormalSmall", petit = true })
+            end
             -- Le groupe : sous nos objectifs, un mini filet, puis chacun avec
             -- son nom (couleur de sa classe) et ou il en est.
             yFinMoi = y
@@ -1366,17 +1382,20 @@ RendreVueParcours = function(moi, index, y)
                 -- Trois groupes lisibles : en cours (quetes prises), a faire
                 -- (a prendre), fait (en vert, coche) ; le numero reste celui
                 -- du parcours.
-                local enCours, aFaire, faites = {}, {}, {}
+                local enCours, aRendre, aFaire, faites = {}, {}, {}, {}
                 for rang, id in ipairs(pc.etapes) do
                     local e = NS.parcours.EtatEtape(moi, id)
-                    if (e == "cours" or e == "rendre") and moi.quetes[id] then
-                        table.insert(enCours, { rang = rang, id = id })
+                    local q = moi.quetes[id]
+                    if (e == "cours" or e == "rendre") and q then
+                        table.insert(q.complete == true and aRendre or enCours, { rang = rang, id = id })
                     elseif e == "faite" then
                         table.insert(faites, { rang = rang, id = id })
                     else
                         table.insert(aFaire, { rang = rang, id = id, e = e })
                     end
                 end
+                -- Les quatre groupes : meme titre, meme retrait ; les quetes y
+                -- gardent leur presentation habituelle.
                 local function Groupe(titre, n, couleur)
                     index = index + 1
                     y = Poser(index, y, titre .. " (" .. n .. ")", { uneLigne = true, couleur = couleur,
@@ -1385,6 +1404,12 @@ RendreVueParcours = function(moi, index, y)
                 if #enCours > 0 then
                     Groupe(L.TRACK_SECTION_ACTIVE, #enCours, { 0.4, 0.75, 1 })
                     for _, t in ipairs(enCours) do
+                        index, y = RendreQuete(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
+                    end
+                end
+                if #aRendre > 0 then
+                    Groupe(L.TRACK_SECTION_DONE, #aRendre, { 1, 0.6, 0.2 })
+                    for _, t in ipairs(aRendre) do
                         index, y = RendreQuete(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
                     end
                 end
@@ -1402,10 +1427,13 @@ RendreVueParcours = function(moi, index, y)
                 if #faites > 0 then
                     Groupe(L.ROUTE_GROUP_DONE, #faites, { 0.25, 0.9, 0.25 })
                     for _, t in ipairs(faites) do
+                        -- Comme un titre de quete : meme police, meme place, avec
+                        -- le rond du jeu et son point d'interrogation en vert.
+                        local niveau = tonumber(NS.ref.Lire("QuestDB", t.id, "questLevel")) or 0
                         index = index + 1
-                        y = Poser(index, y, "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t " .. t.rang .. ". "
-                            .. NS.ref.NomDeQuete(t.id, moi), { uneLigne = true, couleur = { 0.25, 0.9, 0.25 },
-                            police = "GameFontNormalSmall", petit = true }) + 2
+                        y = Poser(index, y, string.format("%d. [%d] %s", t.rang, niveau, NS.ref.NomDeQuete(t.id, moi)),
+                            { uneLigne = true, titre = true, marque = "fait", couleur = { 0.25, 0.9, 0.25 },
+                            police = Police("ObjectiveTrackerHeaderFont", "GameFontNormal") }) + 4
                     end
                 end
                 local retirees = {}

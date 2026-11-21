@@ -91,6 +91,41 @@ local function Acteurs(liste)
 end
 
 function ref.Donneurs(id) return Acteurs(Lire("QuestDB", id, "startedBy")) end
+
+-- Ou se fait une quete en cours : les creatures qui laissent ses objets, les
+-- creatures a tuer, les objets a utiliser, chacun avec sa zone. Sans
+-- objectif localise (parler a quelqu'un...), celui qui la reprend.
+-- Rend { texte, parQui } ou nil ; parQui : true si c'est le receveur.
+local function NomEtZone(entite, id)
+    local nom = Lire(entite, id, "name")
+    if not nom then return nil end
+    local zone
+    if entite == "NpcDB" or entite == "ObjectDB" then
+        zone = NomDeZone(Lire(entite, id, "zoneID"))
+        if not zone then
+            local spawns = Lire(entite, id, "spawns")
+            for z in pairs(type(spawns) == "table" and spawns or {}) do zone = NomDeZone(z) if zone then break end end
+        end
+    end
+    return zone and (nom .. " (" .. zone .. ")") or nom
+end
+function ref.OuSeFait(id)
+    local noms, vus = {}, {}
+    local function Ajouter(t) if t and not vus[t] and #noms < 2 then vus[t] = true table.insert(noms, t) end end
+    local o = Lire("QuestDB", id, "objectives")
+    if type(o) == "table" then
+        for _, it in ipairs(type(o[3]) == "table" and o[3] or {}) do
+            for _, pnj in ipairs(Lire("ItemDB", it[1], "npcDrops") or {}) do Ajouter(NomEtZone("NpcDB", pnj)) end
+            for _, ob in ipairs(Lire("ItemDB", it[1], "objectDrops") or {}) do Ajouter(NomEtZone("ObjectDB", ob)) end
+        end
+        for _, pnj in ipairs(type(o[1]) == "table" and o[1] or {}) do Ajouter(NomEtZone("NpcDB", pnj[1])) end
+        for _, ob in ipairs(type(o[2]) == "table" and o[2] or {}) do Ajouter(NomEtZone("ObjectDB", ob[1])) end
+    end
+    if #noms > 0 then return table.concat(noms, ", "), false end
+    local fin = ref.Receveurs(id)
+    if fin[1] then return fin[1], true end
+    return nil
+end
 function ref.Receveurs(id) return Acteurs(Lire("QuestDB", id, "finishedBy")) end
 
 -- Objets a rapporter pour une quete en cours d'un personnage :
