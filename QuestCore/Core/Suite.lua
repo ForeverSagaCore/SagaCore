@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 97
+local VERSION = 98
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4536,6 +4536,7 @@ local function Debloquer()
     local f = fenMC
     if not f then return end
     f.bloquants = nil
+    f.blocPilote = nil
     if veille then veille:Hide() end
     Figer(f, false)
     -- Ouverte, elle reprend la manette.
@@ -4549,14 +4550,18 @@ function Suite.ApresLancementMacroCore(famille)
     local plusTard = _G.C_Timer and _G.C_Timer.After
     local function Regarder()
         local nouvelles = {}
-        for c in pairs(FenetresVisibles()) do
-            if not avant[c] and c ~= f then table.insert(nouvelles, c) end
-        end
-        -- Une fenetre deja ouverte mais dont on vient de prendre le controle
-        -- (piloter un suivi) compte aussi.
+        -- Prise de controle d'une fenetre (piloter un suivi) : MacroCore est
+        -- figee tant que la manette pilote cette fenetre, et reprend la main
+        -- des qu'on la libere (meme si la fenetre reste ouverte).
         local pl = Suite.pilote
-        if #nouvelles == 0 and pl and pl:IsShown() and pl.nom and pl.nom ~= "CoreSuiteMacroCore" and _G[pl.nom] then
-            table.insert(nouvelles, _G[pl.nom])
+        f.blocPilote = nil
+        if pl and pl:IsShown() and pl.nom and pl.nom ~= "CoreSuiteMacroCore" then
+            f.blocPilote = pl.nom
+            table.insert(nouvelles, _G[pl.nom] or f)
+        else
+            for c in pairs(FenetresVisibles()) do
+                if not avant[c] and c ~= f then table.insert(nouvelles, c) end
+            end
         end
         if #nouvelles == 0 then
             -- Rien ne s'est ouvert : MacroCore reprend ses commandes.
@@ -4573,7 +4578,13 @@ function Suite.ApresLancementMacroCore(famille)
                 if attente > 0 then return end
                 attente = 0.25
                 local encore = false
-                for _, c in ipairs((fenMC and fenMC.bloquants) or {}) do if c:IsShown() then encore = true end end
+                local fm = fenMC
+                if fm and fm.blocPilote then
+                    local pp = Suite.pilote
+                    encore = pp and pp:IsShown() and pp.nom == fm.blocPilote or false
+                else
+                    for _, c in ipairs((fm and fm.bloquants) or {}) do if c:IsShown() then encore = true end end
+                end
                 if not encore then Debloquer() end
             end)
         end
