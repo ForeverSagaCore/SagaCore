@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 78
+local VERSION = 79
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2703,7 +2703,12 @@ local function Pilote()
             end
         elseif bouton == "PAD4" then Suite.ArreterGuidage()
         elseif bouton == "PADBACK" then p.barreVisible = not p.barreVisible
-        elseif bouton == "PAD2" then Suite.Piloter(false) return end
+        elseif bouton == "PAD2" then
+            local f = _G[p.nom]
+            if f and f.piloteFermerSurB then f:Hide() end
+            Suite.Piloter(false)
+            return
+        end
         -- Le suivi se redessine souvent apres un clic : on remarque un peu apres.
         p.Marquer()
         p.Barre()
@@ -2758,10 +2763,18 @@ function Suite.Piloter(oui, nom)
         p:Hide()
         GameTooltip:Hide()
         if Suite.ReprendrePanneau then Suite.ReprendrePanneau() end
+        -- La fenetre des macros reprend la main si elle est encore ouverte.
+        local retour = p.retour
+        p.retour = nil
+        if retour and _G[retour] and _G[retour]:IsShown() and retour ~= p.nom then
+            Suite.Piloter(true, retour)
+        end
         return
     end
     if InCombatLockdown and InCombatLockdown() then print("|cffffd100SagaCore|r " .. TP.combat) return end
-    if p:IsShown() then Suite.Piloter(false) end
+    -- Depuis la fenetre des macros : elle reste ouverte, et reprendra la main.
+    local retour = (p:IsShown() and p.nom == "CoreSuiteMacros" and nom ~= "CoreSuiteMacros") and "CoreSuiteMacros" or nil
+    if p:IsShown() then p.retour = nil Suite.Piloter(false) end
     -- Sans nom : le premier suivi ouvert.
     if not nom then
         for _, n in ipairs(SUIVIS) do if _G[n] and _G[n]:IsShown() then nom = n break end end
@@ -2771,6 +2784,7 @@ function Suite.Piloter(oui, nom)
     if not (f and f:IsShown()) and OUVRIR_SUIVI[nom] then OUVRIR_SUIVI[nom]() f = _G[nom] end
     if not (f and f:IsShown()) then print("|cffffd100SagaCore|r " .. TP.rien) return end
     p.nom, p.choix, p.pos = nom, nil, nil
+    p.retour = retour
     p.alphaAvant = f:GetAlpha()
     f:SetAlpha(1)
     -- Pleine couleur tant qu'on la pilote : son propre fondu (survol,
@@ -2939,8 +2953,19 @@ local function IconeDeMacro(r)
         sonde:SetTexture(chemin)
         numero = sonde.GetTextureFileID and sonde:GetTextureFileID()
     end
+    -- Le catalogue rend des numeros ou des noms selon le client : on verifie
+    -- l'un ou l'autre ; un catalogue illisible ne bloque rien.
     local cat = Catalogue()
-    if type(numero) == "number" and numero > 0 and (next(cat) == nil or cat[numero]) then return numero end
+    local avecNumeros, avecNoms = false, false
+    for k in pairs(cat) do
+        if type(k) == "number" then avecNumeros = true else avecNoms = true end
+        if avecNumeros and avecNoms then break end
+    end
+    local present = (not avecNumeros and not avecNoms)
+        or (avecNumeros and cat[numero])
+        or (avecNoms and (cat[r.icone] or cat[r.icone:lower()] or cat[r.icone:upper()]))
+    if type(numero) == "number" and numero > 0 and present then return numero end
+    if avecNoms and present then return r.icone end
     return 134400
 end
 Suite.IconeDeMacro = IconeDeMacro
@@ -3755,7 +3780,7 @@ local function Entrees()
     local liste = {}
     for _, r in ipairs(Suite.RACCOURCIS) do
         if Dispo(r) and r.cle ~= "raccourcis" and Suite.RaccourciActif("r:" .. r.cle) then
-            table.insert(liste, { nom = Suite.NomRaccourci(r), icone = "Interface\\Icons\\" .. r.icone, texte = "/sagacore " .. r.cle, famille = Suite.FamilleDe(r) })
+            table.insert(liste, { nom = Suite.NomRaccourci(r), icone = "Interface\\Icons\\" .. r.icone, texte = "/sagacore " .. r.cle, famille = Suite.FamilleDe(r), cle = r.cle })
         end
     end
     for _, m in ipairs(Suite.MacrosPerso()) do
@@ -3827,6 +3852,7 @@ Suite.HabillerRaccourci = Habiller
 
 function Suite.BasculerRaccourcis()
     if not Suite.Prive() then return end
+    if Suite.BasculerFenetreMacros and Suite.BasculerFenetreMacros() then return end
     local p = Panneau()
     if p:IsShown() then p:Hide() return end
     if InCombatLockdown and InCombatLockdown() then return end
@@ -3931,6 +3957,210 @@ function Suite.BasculerRaccourcis()
     p.focus = (rond and rond:IsShown()) and 0 or 1
     p:Show()
     Suite.MarquerRaccourci()
+end
+
+-- ---------------------------------------------------------------------------
+-- Fenetre « Macros de la suite » : une petite fenetre comme les suivis
+-- (Mes fabrications, Quetes), ouverte par le bouton rond. Un groupe repliable
+-- par famille, une ligne par raccourci ; on la pilote a la manette des
+-- qu'elle s'ouvre. Lancer un pilotage depuis elle la laisse ouverte : la
+-- manette passe a la fenetre pilotee, puis lui revient quand on libere.
+-- ---------------------------------------------------------------------------
+
+local LARGEUR_MACROS = 290
+local fenM
+
+local function FenetreMacrosSuite()
+    if fenM then return fenM end
+    local C = NS.charte
+    if not (C and C.Fenetre) then return nil end
+    local f = C.Fenetre("CoreSuiteMacros", LARGEUR_MACROS, 120, { portrait = false, strate = "MEDIUM", sansPied = true })
+    f.titre:SetText(TR("Macros de la suite", "Suite macros"))
+    f.fermer:SetScript("OnClick", function() f:Hide() end)
+    f.lignes, f.titres = {}, {}
+    f.piloteFermerSurB = true
+    -- Replier : seulement le titre.
+    local replier = CreateFrame("Button", nil, f)
+    replier:SetFrameLevel((f.fermer:GetFrameLevel() or f:GetFrameLevel()) + 1)
+    replier:SetSize(16, 16)
+    replier:SetPoint("RIGHT", f.fermer, "LEFT", -2, 0)
+    replier:SetHighlightTexture("Interface\\Buttons\\UI-PlusButton-Hilight", "ADD")
+    replier:SetScript("OnClick", function()
+        local r = Reglages()
+        r.macrosReplie = not r.macrosReplie or nil
+        Suite.DessinerFenetreMacros()
+    end)
+    f.replier = replier
+    f:SetScript("OnHide", function()
+        if Suite.pilote and Suite.pilote:IsShown() and Suite.pilote.nom == "CoreSuiteMacros" then Suite.Piloter(false) end
+        if Suite.boutonRaccourcis and Suite.boutonRaccourcis.icone then Suite.boutonRaccourcis.icone:SetDesaturated(false) end
+    end)
+    f:RegisterEvent("PLAYER_REGEN_DISABLED")
+    f:SetScript("OnEvent", function(self) if self:IsShown() then Suite.Piloter(false) end end)
+    fenM = f
+    return f
+end
+
+local function LigneM(f, i, secure)
+    local pool = secure and "lignesS" or "lignes"
+    f[pool] = f[pool] or {}
+    local b = f[pool][i]
+    if b then return b end
+    if secure then
+        b = CreateFrame("Button", "CoreSuiteMacrosS" .. i, f.zone, "SecureActionButtonTemplate")
+        b:RegisterForClicks("AnyUp", "AnyDown")
+    else
+        b = CreateFrame("Button", nil, f.zone)
+    end
+    b:SetHeight(20)
+    b.icone = b:CreateTexture(nil, "ARTWORK")
+    b.icone:SetSize(16, 16)
+    b.icone:SetPoint("LEFT", 18, 0)
+    if b.CreateMaskTexture then
+        local m = b:CreateMaskTexture()
+        if m then
+            m:SetTexture("Interface\\Masks\\CircleMaskScalable", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            m:SetAllPoints(b.icone)
+            b.icone:AddMaskTexture(m)
+        end
+    end
+    b.nom = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    b.nom:SetPoint("LEFT", b.icone, "RIGHT", 6, 0)
+    b.nom:SetPoint("RIGHT", b, "RIGHT", -4, 0)
+    b.nom:SetJustifyH("LEFT")
+    b.nom:SetWordWrap(false)
+    b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(self.e and self.e.nom or "", 1, 0.82, 0)
+        local detail = self.e and (self.e.texte or self.e.corps)
+        if detail then GameTooltip:AddLine(detail, 0.7, 0.7, 0.7, true) end
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    f[pool][i] = b
+    return b
+end
+
+local function TitreM(f, i)
+    local t = f.titres[i]
+    if t then return t end
+    t = CreateFrame("Button", nil, f.zone)
+    t:SetHeight(20)
+    t.marque = t:CreateTexture(nil, "ARTWORK")
+    t.marque:SetSize(14, 14)
+    t.marque:SetPoint("LEFT", 0, 0)
+    t.nom = t:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    t.nom:SetPoint("LEFT", t.marque, "RIGHT", 4, 0)
+    t.nom:SetJustifyH("LEFT")
+    t.filet = t:CreateTexture(nil, "ARTWORK")
+    t.filet:SetHeight(1)
+    t.filet:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", 0, 0)
+    t.filet:SetPoint("BOTTOMRIGHT", t, "BOTTOMRIGHT", 0, 0)
+    t.filet:SetColorTexture(1, 0.82, 0, 0.25)
+    t:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    t:SetScript("OnClick", function(self)
+        local r = Reglages()
+        r.famillesRepliees = type(r.famillesRepliees) == "table" and r.famillesRepliees or {}
+        r.famillesRepliees[self.cle] = not r.famillesRepliees[self.cle] or nil
+        Suite.DessinerFenetreMacros()
+    end)
+    f.titres[i] = t
+    return t
+end
+
+function Suite.DessinerFenetreMacros()
+    local f = fenM
+    if not (f and f:IsShown()) then return end
+    if InCombatLockdown and InCombatLockdown() then return end
+    local r = Reglages()
+    local replie = r.macrosReplie
+    f.replier:SetNormalTexture(replie and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+    for _, l in ipairs(f.lignes or {}) do l:Hide() end
+    for _, l in ipairs(f.lignesS or {}) do l:Hide() end
+    for _, t in ipairs(f.titres) do t:Hide() end
+    local y, nT, nL, nS = 0, 0, 0, 0
+    if not replie then
+        local entrees = Entrees()
+        local repliees = type(r.famillesRepliees) == "table" and r.famillesRepliees or {}
+        local largeur = LARGEUR_MACROS - 2 * ((NS.charte and NS.charte.MARGE) or 12)
+        for _, fam in ipairs(Suite.FAMILLES) do
+            local membres = {}
+            for _, e in ipairs(entrees) do if e.famille == fam.cle then table.insert(membres, e) end end
+            if #membres > 0 then
+                nT = nT + 1
+                local t = TitreM(f, nT)
+                t.cle = fam.cle
+                t:ClearAllPoints()
+                t:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, -y)
+                t:SetWidth(largeur)
+                t.marque:SetTexture(repliees[fam.cle] and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+                t.nom:SetText(TR(fam.fr, fam.en) .. "  |cff9d9d9d" .. #membres .. "|r")
+                t:Show()
+                y = y + 24
+                if not repliees[fam.cle] then
+                    for _, e in ipairs(membres) do
+                        local b
+                        if e.macro or fam.cle == "perso" then
+                            nS = nS + 1
+                            b = LigneM(f, nS, true)
+                            b:SetAttribute("type", "macro")
+                            if e.macro then b:SetAttribute("macrotext", nil) b:SetAttribute("macro", e.macro)
+                            else b:SetAttribute("macro", nil) b:SetAttribute("macrotext", e.texte) end
+                        else
+                            nL = nL + 1
+                            b = LigneM(f, nL, false)
+                            b:SetScript("OnClick", function(self)
+                                local rac = self.e and self.e.cle and Suite.Raccourci(self.e.cle)
+                                if rac then Suite.Lancer(rac) end
+                            end)
+                        end
+                        b.e = e
+                        b.icone:SetTexture(e.icone or "Interface\\Icons\\INV_Misc_QuestionMark")
+                        b.nom:SetText(e.nom)
+                        b:ClearAllPoints()
+                        b:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, -y)
+                        b:SetWidth(largeur)
+                        b:Show()
+                        y = y + 22
+                    end
+                end
+                y = y + 4
+            end
+        end
+    end
+    local haut = (f:GetHeight() or 0) - (f.zone:GetHeight() or 0)
+    f:SetHeight(math.max(60, (replie and 0 or y) + math.max(haut, 40)))
+    if Suite.pilote and Suite.pilote:IsShown() and Suite.pilote.nom == "CoreSuiteMacros" then
+        Suite.pilote.Marquer()
+        Suite.pilote.Barre()
+    end
+end
+
+-- Ouvrir / fermer : pres du bouton rond, puis pilotee a la manette.
+function Suite.BasculerFenetreMacros()
+    local f = FenetreMacrosSuite()
+    if not f then return false end
+    if f:IsShown() then f:Hide() return true end
+    if InCombatLockdown and InCombatLockdown() then return true end
+    if Suite.panneauRaccourcis then Suite.panneauRaccourcis:Hide() end
+    f:ClearAllPoints()
+    local rond = Suite.boutonRaccourcis
+    local ouverture = Reglages().raccourcisOuverture or "gauche"
+    if rond and rond:IsShown() then
+        if ouverture == "droite" then f:SetPoint("TOPLEFT", rond, "TOPRIGHT", 8, 0)
+        elseif ouverture == "haut" then f:SetPoint("BOTTOMLEFT", rond, "TOPLEFT", 0, 8)
+        elseif ouverture == "bas" then f:SetPoint("TOPLEFT", rond, "BOTTOMLEFT", 0, -8)
+        else f:SetPoint("TOPRIGHT", rond, "TOPLEFT", -8, 0) end
+    else
+        f:SetPoint("CENTER")
+    end
+    f:SetClampedToScreen(true)
+    f:Show()
+    Suite.DessinerFenetreMacros()
+    local manette = _G.C_GamePad and _G.C_GamePad.IsEnabled and select(2, pcall(_G.C_GamePad.IsEnabled)) == true
+    if manette then Suite.Piloter(true, "CoreSuiteMacros") end
+    return true
 end
 
 -- Le petit bouton rond : deplacable, il retient sa place.
