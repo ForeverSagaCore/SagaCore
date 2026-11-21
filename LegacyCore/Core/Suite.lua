@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 72
+local VERSION = 73
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2916,6 +2916,17 @@ function Suite.CreerMacro(r)
     return ok and nouvel ~= nil, nouvel
 end
 
+-- Supprime la macro du jeu d'un raccourci (son nom court, ou l'ancien "SC ...").
+function Suite.SupprimerMacro(r)
+    if InCombatLockdown and InCombatLockdown() then return false end
+    if not (_G.DeleteMacro and _G.GetMacroIndexByName) then return false end
+    for _, nom in ipairs({ NomDeMacro(r), AncienNom(r) }) do
+        local index = _G.GetMacroIndexByName(nom)
+        if index and index > 0 then pcall(_G.DeleteMacro, index) end
+    end
+    return true
+end
+
 function Suite.MacroExiste(r)
     if not _G.GetMacroIndexByName then return false end
     return (_G.GetMacroIndexByName(NomDeMacro(r)) or 0) > 0
@@ -4821,10 +4832,14 @@ local function FenetreMacrosPages()
                       l.nom:SetPoint("LEFT", l.icone, "RIGHT", 8, 0)
                       l.commande = l:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
                       l.commande:SetPoint("LEFT", l, "LEFT", O.X - 40, 0)
-                      l.creer = O.Bouton(l, 110, function() if l.r then Suite.CreerMacro(l.r) end end)
+                      -- Un seul bouton : Creer, ou Supprimer une fois la macro creee.
+                      l.creer = O.Bouton(l, 110, function()
+                          if not l.r then return end
+                          if Suite.MacroExiste(l.r) then Suite.SupprimerMacro(l.r) else Suite.CreerMacro(l.r) end
+                      end)
                       l.creer:SetPoint("RIGHT", l, "RIGHT", -10, 0)
                       l.etat = l:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                      l.etat:SetPoint("RIGHT", l, "RIGHT", -10, 0)
+                      l.etat:SetPoint("RIGHT", l.creer, "LEFT", -8, 0)
                       page.lignes[i] = l
                   end
               end,
@@ -4847,8 +4862,8 @@ local function FenetreMacrosPages()
                           l.case:SetChecked(Suite.RaccourciActif("r:" .. r.cle))
                           l.case:SetShown(r.cle ~= "raccourcis")
                           local existe = Suite.MacroExiste(r)
-                          l.creer:SetText(TR("Créer", "Create"))
-                          l.creer:SetShown(not existe)
+                          l.creer:SetText(existe and TR("Supprimer", "Delete") or TR("Créer", "Create"))
+                          l.creer:Show()
                           l.etat:SetText(existe and ("|cff4fd16a" .. TR("Macro créée", "Macro created") .. "|r") or "")
                           l.etat:SetShown(existe)
                           l:Show()
@@ -4873,9 +4888,17 @@ local function FenetreMacrosPages()
                       l.nom:SetPoint("LEFT", l.icone, "RIGHT", 8, 0)
                       l.genre = l:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
                       l.genre:SetPoint("LEFT", l, "LEFT", O.X - 40, 0)
+                      -- Supprimer : la macro quitte la suite, et la macro du jeu qui
+                      -- va avec est supprimee aussi.
                       l.retirer = O.Bouton(l, 90, function()
                           local liste = Suite.MacrosPerso()
-                          for k, m in ipairs(liste) do if m == l.m then table.remove(liste, k) break end end
+                          local m = l.m
+                          if m and not m.texte and m.nom and _G.GetMacroIndexByName and _G.DeleteMacro
+                              and not (InCombatLockdown and InCombatLockdown()) then
+                              local index = _G.GetMacroIndexByName(m.nom)
+                              if index and index > 0 then pcall(_G.DeleteMacro, index) end
+                          end
+                          for k, mm in ipairs(liste) do if mm == m then table.remove(liste, k) break end end
                           if edition == l.m then edition = nil end
                           Suite.RafraichirRaccourcis()
                       end)
@@ -4961,7 +4984,7 @@ local function FenetreMacrosPages()
                           l.case:SetChecked(Suite.RaccourciActif(IdPerso(mm)))
                           l.modifier:SetText(edition == mm and TR("Fermer", "Close") or TR("Modifier", "Edit"))
                           l.modifier:SetShown(ecrite)
-                          l.retirer:SetText(TR("Retirer", "Remove"))
+                          l.retirer:SetText(TR("Supprimer", "Delete"))
                           l:Show()
                       else
                           l.m = nil
