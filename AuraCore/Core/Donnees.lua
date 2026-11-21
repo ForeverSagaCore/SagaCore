@@ -332,11 +332,11 @@ function M.ReplacerBouton()
     if bouton then Placer(bouton) end
 end
 
--- Etat du bouton : cache hors groupe ou si l'option est decochee ; eteint
--- (gris, inactif) en combat ou quand rien ne manque ; illumine sinon.
+-- Etat du bouton : toujours visible (sauf option decochee) ; eteint (gris,
+-- inactif) hors groupe, en combat ou quand rien ne manque ; illumine sinon.
 function M.MettreAJour()
     local b = Construire()
-    if R().boutonBuffsCache or not Canal() then b:Hide() return end
+    if R().boutonBuffsCache then b:Hide() return end
     b:Show()
     -- La taille des icones de l'anneau.
     local t = tonumber(R().taille) or 30
@@ -346,7 +346,7 @@ function M.MettreAJour()
         b.p:Taille(t)
         b.lueur:SetSize(t * 0.95, t * 0.95)
     end
-    local manque = (not EnCombat()) and #M.Analyser() > 0
+    local manque = Canal() ~= nil and (not EnCombat()) and #M.Analyser() > 0
     b.actif = manque
     -- Comme une place de l'anneau : grise quand rien ne manque, en couleur
     -- (et qui pulse) des qu'un buff manque.
@@ -375,7 +375,12 @@ do
         attente = attente - (ecoule or 0)
         if attente > 0 then return end
         attente = 0.5
-        pcall(M.MettreAJour)
+        local ok, souci = pcall(M.MettreAJour)
+        if not ok then
+            local r = R()
+            r.diag = type(r.diag) == "table" and r.diag or {}
+            r.diag.bouton = tostring(souci)
+        end
     end)
 end
 
