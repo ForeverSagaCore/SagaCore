@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 65
+local VERSION = 66
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2610,7 +2610,13 @@ local function Pilote()
             .. G("PAD2") .. "  " .. TR("Libérer", "Release"))
         p.barre:SetWidth((p.barre.texte:GetStringWidth() or 300) + 24)
         p.barre:ClearAllPoints()
-        p.barre:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, -4)
+        -- Sous le suivi s'il y a la place, sinon au-dessus ; jamais hors de
+        -- l'ecran, et calee a droite si le suivi est a droite.
+        local bas, droite = f:GetBottom() or 0, (f:GetRight() or 0) > (UIParent:GetWidth() or 0) / 2
+        local cote = droite and "RIGHT" or "LEFT"
+        if bas > 50 then p.barre:SetPoint("TOP" .. cote, f, "BOTTOM" .. cote, 0, -4)
+        else p.barre:SetPoint("BOTTOM" .. cote, f, "TOP" .. cote, 0, 4) end
+        if p.barre.SetClampedToScreen then p.barre:SetClampedToScreen(true) end
         p.barre:Show()
     end
     p:SetScript("OnGamePadButtonDown", function(self, bouton)
@@ -2640,11 +2646,15 @@ local function Pilote()
         p.Barre()
         if C_Timer and C_Timer.After then C_Timer.After(0.15, function() if p:IsShown() then p.Marquer() p.Barre() end end) end
     end)
-    -- Pleine opacite tant qu'on la pilote (le suivi peut s'estomper seul).
-    p:SetScript("OnUpdate", function()
+    -- Le suivi ferme : on libere. (Plus de remise a pleine opacite a chaque
+    -- image : elle se battait avec le fondu du suivi et le faisait clignoter.)
+    local attente = 0
+    p:SetScript("OnUpdate", function(_, ecoule)
+        attente = attente + (ecoule or 0)
+        if attente < 0.25 then return end
+        attente = 0
         local f = _G[p.nom]
-        if not (f and f:IsShown()) then Suite.Piloter(false) return end
-        if (f:GetAlpha() or 1) < 1 then f:SetAlpha(1) end
+        if not (f and f:IsShown()) then Suite.Piloter(false) end
     end)
     p:RegisterEvent("PLAYER_REGEN_DISABLED")
     p:SetScript("OnEvent", function() Suite.Piloter(false) end)
