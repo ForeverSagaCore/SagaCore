@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 112
+local VERSION = 113
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -86,8 +86,26 @@ Suite.ORDRE = {
 Suite.presents = Suite.presents or {}
 function Suite.Annoncer(cle) Suite.presents[cle] = true end
 
+-- Complements de la suite (AuraCore) : publies aussi seuls. Sans aucun des
+-- add-ons principaux, la suite se reduit a eux (fenetre generale, reglages,
+-- langues), sans les onglets des add-ons absents.
+function Suite.Seul()
+    local charge = (_G.C_AddOns and _G.C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
+    for _, info in ipairs(Suite.ORDRE) do
+        if not info.discret then
+            if Suite.presents[info.cle] or Suite.membres[info.cle] then return false end
+            if charge then
+                local ok, oui = pcall(charge, info.cle)
+                if ok and oui then return false end
+            end
+        end
+    end
+    return true
+end
+
 -- Les add-ons a montrer : tous, sauf les discrets absents.
 function Suite.Liste()
+    if Suite.Seul() then return {} end
     local liste = {}
     for _, info in ipairs(Suite.ORDRE) do
         if not info.discret or Suite.presents[info.cle] or Suite.membres[info.cle] then table.insert(liste, info) end
@@ -1399,9 +1417,9 @@ function Suite.Entete(cadre, cleCourante)
         table.insert(rangee.boutons, b)
         precedent = b
     end
-    -- Poste de l'auteur : AuraCore et les macros, sous les blocs
-    -- experimentaux.
-    if Suite.Prive() then
+    -- Sous les blocs : AuraCore (complement, s'il est installe) ; poste de
+    -- l'auteur : les macros.
+    do
         local extras = {
             { cle = "AuraCore", icone = "Interface\\Icons\\Spell_Holy_AuraOfLight", nom = "AuraCore",
               action = function()
@@ -1409,15 +1427,21 @@ function Suite.Entete(cadre, cleCourante)
                   elseif SlashCmdList.AURACORE then SlashCmdList.AURACORE("") end
               end,
               dispo = function() return SlashCmdList.AURACORE ~= nil end },
-            { cle = "Macros", icone = "Interface\\Icons\\INV_Misc_Book_11", action = function() Suite.OuvrirMacros() end },
         }
+        if Suite.Prive() then
+            table.insert(extras, { cle = "Macros", icone = "Interface\\Icons\\INV_Misc_Book_11", action = function() Suite.OuvrirMacros() end })
+        end
         for _, e in ipairs(extras) do
             if not e.dispo or e.dispo() then
                 local b = OngletLateral(cadre, { cle = e.cle, icone = e.icone }, e.action)
                 b.courante = cleCourante
                 b.extra = true
                 b:ClearAllPoints()
-                if precedent and not rangee.separe then
+                if not precedent then
+                    -- Seul (AuraCore sans la suite) : en tete de colonne.
+                    local a, point = Suite.AncreHaut(cadre, "gauche")
+                    b:SetPoint("TOPRIGHT", a, point, 0, Suite.HAUT_ONGLET)
+                elseif not rangee.separe then
                     rangee.separe = true
                     b:SetPoint("TOPRIGHT", precedent, "BOTTOMRIGHT", 0, -Suite.ECART_ENTRE_ONGLETS - 26)
                 else
@@ -1497,11 +1521,11 @@ function Suite.Voisin(cleCourante, pas)
     for _, info in ipairs(Suite.Liste()) do
         if Suite.Installe(info.cle) then table.insert(liste, { cle = info.cle }) end
     end
+    if Suite.membres.AuraCore then table.insert(liste, { cle = "AuraCore" })
+    elseif SlashCmdList.AURACORE then
+        table.insert(liste, { cle = "AuraCore", action = function() SlashCmdList.AURACORE("") end })
+    end
     if Suite.Prive() then
-        if Suite.membres.AuraCore then table.insert(liste, { cle = "AuraCore" })
-        elseif SlashCmdList.AURACORE then
-            table.insert(liste, { cle = "AuraCore", action = function() SlashCmdList.AURACORE("") end })
-        end
         if Suite.membres.Macros then table.insert(liste, { cle = "Macros" })
         else table.insert(liste, { cle = "Macros", action = function() Suite.OuvrirMacros() end }) end
     end
@@ -1668,6 +1692,7 @@ local function IconeDuBouton()
         for _, info in ipairs(Suite.Liste()) do if info.cle == d.dernier then return info.icone end end
     end
     for _, info in ipairs(Suite.Liste()) do if Suite.Installe(info.cle) then return info.icone end end
+    if Suite.Seul() and SlashCmdList.AURACORE then return "Interface\\Icons\\Spell_Holy_AuraOfLight" end
     return Suite.ORDRE[1].icone
 end
 
@@ -1688,7 +1713,9 @@ function Suite.ConstruireMinicarte()
                 if Suite.Installe(info.cle) then cible = info.cle break end
             end
         end
-        if cible then Suite.Ouvrir(cible) end
+        if cible then Suite.Ouvrir(cible)
+        elseif Suite.membres.AuraCore then Suite.Ouvrir("AuraCore")
+        elseif SlashCmdList.AURACORE then SlashCmdList.AURACORE("") end
     end)
     bouton:SetScript("OnDragStart", function(self)
         Suite.eventail:Hide()
@@ -6785,7 +6812,7 @@ function Suite.InscrireDansOptions()
     -- Les sous-pages, dans l'ordre des modules.
     local liste = {}
     for cle, o in pairs(_G.SagaCoreOptions) do
-        local prive = (cle == "Macros" or cle == "AuraCore") and not Suite.Prive()
+        local prive = (cle == "Macros") and not Suite.Prive()
         if type(o) == "table" and type(o.elements) == "function" and not prive then table.insert(liste, { cle = cle, o = o }) end
     end
     table.sort(liste, function(a, b) return (a.o.ordre or 99) < (b.o.ordre or 99) end)

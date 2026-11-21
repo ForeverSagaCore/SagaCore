@@ -8,6 +8,7 @@
 | **CraftCore** | Métiers, recettes, projets, progression, commandes entre vos personnages, prix et bénéfices. |
 | **MapCore** | Cartes, services (maîtres, réparation, boîtes aux lettres...), vos repères, où sont vos personnages. |
 | **LegacyCore** | Arbres d'héritage, défis du compte, chronologie et temps par niveau. |
+| **AuraCore** *(bêta)* | Un anneau discret autour du personnage : améliorations, procs, nourriture, flacon, potion, buffs de groupe, et les effets nuisibles sur leur propre cercle. Aussi publié seul. |
 
 Chaque add-on s'installe aussi seul. Installés ensemble, ils partagent la même barre d'onglets, le même personnage choisi et la même flèche de guidage. Tout se joue aussi à la manette, en 7 langues.
 
@@ -36,7 +37,7 @@ Si vous aviez déjà installé un des add-ons seul, retirez-le de WowUp avant : 
 ### À la main
 
 1. Téléchargez `ForeverSagaCore-X.Y.Z-forever.zip` depuis la [dernière version](https://github.com/ForeverSagaCore/SagaCore/releases/latest).
-2. Décompressez-le dans `World of Warcraft/_forever_/Interface/AddOns/` : vous obtenez les dossiers `CraftCore`, `QuestCore`, `MapCore` et `LegacyCore`.
+2. Décompressez-le dans `World of Warcraft/_forever_/Interface/AddOns/` : vous obtenez les dossiers `CraftCore`, `QuestCore`, `MapCore`, `LegacyCore` et `AuraCore`.
 
 ## Signaler un problème
 

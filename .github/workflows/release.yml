@@ -1,8 +1,8 @@
 name: Publier une version
 
 # Chaque nouveau numero dans VERSION, pousse sur main, publie la suite : le zip
-# "ForeverSagaCore-X.Y.Z-forever.zip" avec les quatre dossiers d'add-ons a la racine
-# (CraftCore, QuestCore, MapCore, LegacyCore), joint a une release GitHub
+# "ForeverSagaCore-X.Y.Z-forever.zip" avec les dossiers d'add-ons a la racine
+# (CraftCore, QuestCore, MapCore, LegacyCore, et AuraCore en beta), joint a une release GitHub
 # etiquetee vX.Y.Z. WowUp lit ces releases pour proposer les mises a jour.
 
 on:
@@ -41,9 +41,11 @@ jobs:
         if: steps.version.outputs.nouvelle == 'oui' || github.event_name == 'workflow_dispatch'
         run: |
           mkdir -p build
-          cp -r CraftCore QuestCore MapCore LegacyCore build/
+          cp -r CraftCore QuestCore MapCore LegacyCore AuraCore build/
           cd build
-          zip -qr "ForeverSagaCore-${{ steps.version.outputs.version }}-forever.zip" CraftCore QuestCore MapCore LegacyCore
+          zip -qr "ForeverSagaCore-${{ steps.version.outputs.version }}-forever.zip" CraftCore QuestCore MapCore LegacyCore AuraCore
+          # AuraCore seul (complement, publie aussi a part, en beta).
+          zip -qr "AuraCore-$(grep -m1 '^## Version:' AuraCore/AuraCore.toc | cut -d' ' -f3 | tr -d '\r')-forever.zip" AuraCore
 
       - name: Publier la release
         if: steps.version.outputs.nouvelle == 'oui'
@@ -88,3 +90,24 @@ jobs:
           gh release view "v$VER" --json body -q .body > corps.md || true
           printf '\n\n%s\n' "$RESULTAT" >> corps.md
           gh release edit "v$VER" --notes-file corps.md || true
+
+      # AuraCore seul, sur son propre projet CurseForge, en beta. Le numero du
+      # projet (variable du depot AURACORE_CF_PROJET) n'existe qu'une fois le
+      # projet cree sur CurseForge : sans lui, rien n'est envoye.
+      - name: Envoyer AuraCore seul sur CurseForge
+        if: (steps.version.outputs.nouvelle == 'oui' || github.event_name == 'workflow_dispatch') && env.CF_API_KEY != '' && vars.AURACORE_CF_PROJET != ''
+        env:
+          PROJET: ${{ vars.AURACORE_CF_PROJET }}
+        run: |
+          set -u
+          VERSION_JEU="1.60.1"
+          ZIP=$(ls build/AuraCore-*-forever.zip | head -1)
+          NOM=$(basename "$ZIP" -forever.zip)
+          ID=$(curl -sf -H "X-Api-Token: $CF_API_KEY" https://wow.curseforge.com/api/game/versions \
+            | jq -r --arg v "$VERSION_JEU" '[.[] | select(.name == $v)][0].id // empty')
+          if [ -z "$ID" ]; then echo "CurseForge : version du jeu introuvable, AuraCore non envoye."; exit 0; fi
+          CHANGELOG="$NOM (beta). Fait partie de Forever SagaCore : https://www.curseforge.com/projects/1817365"
+          META=$(jq -n --arg c "$CHANGELOG" --arg n "$NOM" --argjson id "$ID" \
+            '{changelog: $c, changelogType: "markdown", displayName: $n, gameVersions: [$id], releaseType: "beta"}')
+          curl -s -H "X-Api-Token: $CF_API_KEY" --form-string "metadata=$META" -F "file=@$ZIP" \
+            "https://wow.curseforge.com/api/projects/$PROJET/upload-file"

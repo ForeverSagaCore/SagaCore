@@ -1,0 +1,27 @@
+## Interface: 16001
+## Title: AuraCore |cffff8800(beta)|r
+## Notes: A discreet ring around your character : your buffs, procs, consumables and group buffs, debuffs on their own circle, with the game's own icons.
+## Notes-frFR: Un anneau discret autour de votre personnage : vos améliorations, procs, consommables et buffs de groupe, les effets nuisibles sur leur propre cercle, avec les icônes du jeu.
+## Notes-deDE: Ein dezenter Ring um deinen Charakter : Stärkungen, Procs, Verbrauchsgüter und Gruppenstärkungen, Schwächungen auf einem eigenen Kreis, mit den Symbolen des Spiels.
+## Notes-esES: Un anillo discreto alrededor de tu personaje : beneficios, procs, consumibles y beneficios de grupo, perjuicios en su propio círculo, con los iconos del juego.
+## Notes-esMX: Un anillo discreto alrededor de tu personaje : beneficios, procs, consumibles y beneficios de grupo, perjuicios en su propio círculo, con los iconos del juego.
+## Notes-itIT: Un anello discreto intorno al tuo personaggio : benefici, proc, consumabili e benefici di gruppo, penalità su un cerchio proprio, con le icone del gioco.
+## Notes-ruRU: Незаметное кольцо вокруг персонажа : положительные эффекты, срабатывания, расходуемые предметы и эффекты группы, отрицательные эффекты на отдельном круге, со значками игры.
+## Notes-zhCN: 角色周围的简洁圆环 : 增益、触发效果、消耗品和队伍增益，减益效果位于单独圆圈，使用游戏自带图标。
+## Notes-zhTW: 角色周围的简洁圆环 : 增益、触发效果、消耗品和队伍增益，减益效果位于单独圆圈，使用游戏自带图标。
+## Author: ForeverSagaCore
+## Version: 0.9.0-beta
+## IconTexture: Interface\Icons\Spell_Holy_AuraOfLight
+## X-Category: Buffs & Debuffs
+## X-Website: https://github.com/ForeverSagaCore/SagaCore
+## OptionalDeps: CraftCore, QuestCore, MapCore, LegacyCore
+## SavedVariables: AuraCoreDB, CoreSuiteDB
+
+Core\Socle.lua
+Locale\Traductions.lua
+Core\Suite.lua
+UI\Charte.lua
+Core\Donnees.lua
+Core\Anneau.lua
+UI\Fenetre.lua
+AuraCore.lua
