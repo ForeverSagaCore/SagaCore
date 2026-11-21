@@ -56,6 +56,23 @@ end
 -- Projets
 -- ---------------------------------------------------------------------------
 
+-- Le suivi Mes fabrications suit toute modification aussitot (une seule
+-- fois par image, meme si plusieurs changements s'enchainent).
+local enAttente = false
+local function Rafraichir()
+    if enAttente then return end
+    local plusTard = _G.C_Timer and _G.C_Timer.After
+    if not plusTard then
+        if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
+        return
+    end
+    enAttente = true
+    plusTard(0, function()
+        enAttente = false
+        if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
+    end)
+end
+
 function projets.Creer(nom)
     local d = Base()
     if not d then return nil end
@@ -93,7 +110,7 @@ function projets.Supprimer(id)
     if not d.projets[tostring(id)] then return false end
     d.projets[tostring(id)] = nil
     -- Le suivi a l'ecran le montre aussitot, sans attendre son prochain tour.
-    if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
+    Rafraichir()
     return true
 end
 
@@ -178,10 +195,12 @@ function projets.Ajouter(cible, recette, quantite)
     for _, entree in ipairs(entrees) do
         if tostring(entree.recette) == tostring(recette) then
             entree.quantite = (tonumber(entree.quantite) or 0) + quantite
+            Rafraichir()
             return true
         end
     end
     table.insert(entrees, { recette = recette, quantite = quantite })
+    Rafraichir()
     return true
 end
 
@@ -196,6 +215,7 @@ function projets.ChangerQuantite(cible, recette, delta)
             else
                 entree.quantite = nouvelle
             end
+            Rafraichir()
             return true
         end
     end
@@ -208,6 +228,7 @@ function projets.Retirer(cible, recette)
     for index, entree in ipairs(entrees) do
         if tostring(entree.recette) == tostring(recette) then
             table.remove(entrees, index)
+            Rafraichir()
             return true
         end
     end
@@ -229,6 +250,7 @@ function projets.VerserLesRapidesDans(id)
         versees = versees + 1
     end
     d.rapides = {}
+    Rafraichir()
     return versees
 end
 
@@ -237,6 +259,8 @@ function projets.ViderRapides()
     local d = Base()
     if not d then return end
     d.rapides = {}
+    -- Le suivi Mes fabrications le montre aussitot.
+    Rafraichir()
 end
 
 -- ---------------------------------------------------------------------------
