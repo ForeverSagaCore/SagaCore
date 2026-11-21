@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 109
+local VERSION = 110
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -5357,15 +5357,10 @@ function Suite.Curseur(parent, mini, maxi, pas, lire, poser, format, boutons, gr
     valeur:SetPoint("LEFT", moins, "RIGHT", 0, 0)
     valeur:SetPoint("RIGHT", plus, "LEFT", 0, 0)
     valeur:SetJustifyH("CENTER")
-    -- Juste la place de trois chiffres entre les fleches ; un peu plus pour
-    -- une valeur ecrite plus longue (100 %), sur une seule ligne.
+    -- Meme place partout entre les fleches (assez pour 100 %, sur une seule
+    -- ligne) : toutes les fleches des reglages restent alignees.
     valeur:SetWordWrap(false)
-    local place = 34
-    if format then
-        valeur:SetText(Ecrire(maxi))
-        place = math.max(56, math.ceil((valeur:GetStringWidth() or 0) + 16))
-        valeur:SetText("")
-    end
+    local place = 56
     f:SetWidth((moinsVite and 4 or 2) * 26 + place)
     f.boutonsPM = { moins, plus, moinsVite, plusVite }
     function f.Rendre()
