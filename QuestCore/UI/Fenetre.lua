@@ -325,10 +325,17 @@ local function RendreQuetes(contenu, p, index, y)
         return index, y
     end
     for _, zone in ipairs(zones) do
+        -- Zone repliable, son + au bord gauche du filet, comme les disponibles.
+        local cleZ = "qz" .. zone
+        local fermeeZ = etat.ouvertes[cleZ] == false
         index = index + 1
-        y = Poser(contenu, index, y, { retrait = 0, texte = zone, police = "GameFontNormalSmall",
-            couleur = { 1, 0.82, 0 } })
-        local ids = parZone[zone]
+        y = Poser(contenu, index, y, { retrait = 0, depliable = true, deplie = not fermeeZ, texte = zone,
+            police = "GameFontNormalSmall", couleur = { 1, 0.82, 0 },
+            auClic = function()
+                if etat.ouvertes[cleZ] == false then etat.ouvertes[cleZ] = nil else etat.ouvertes[cleZ] = false end
+                fen.Rendre()
+            end })
+        local ids = fermeeZ and {} or parZone[zone]
         table.sort(ids, function(a, b)
             local qa, qb = p.quetes[a], p.quetes[b]
             if (qa.niveau or 0) ~= (qb.niveau or 0) then return (qa.niveau or 0) < (qb.niveau or 0) end
@@ -353,7 +360,7 @@ local function RendreQuetes(contenu, p, index, y)
             local idQuete = id
             index = index + 1
             local qSurvol = q
-            y = Poser(contenu, index, y, { retrait = RETRAIT, depliable = true, deplie = ouverte,
+            y = Poser(contenu, index, y, { retrait = RETRAIT,
                 etatQuete = (q.complete == true) and true or (q.complete == -1 and -1 or false),
                 survol = function(self)
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -630,10 +637,17 @@ local function RendreCommunes(contenu, index, y)
         return index, y
     end
     for _, zone in ipairs(zones) do
+        -- Zone repliable, son + au bord gauche du filet, comme les disponibles.
+        local cleZ = "qz" .. zone
+        local fermeeZ = etat.ouvertes[cleZ] == false
         index = index + 1
-        y = Poser(contenu, index, y, { retrait = 0, texte = zone, police = "GameFontNormalSmall",
-            couleur = { 1, 0.82, 0 } })
-        local ids = parZone[zone]
+        y = Poser(contenu, index, y, { retrait = 0, depliable = true, deplie = not fermeeZ, texte = zone,
+            police = "GameFontNormalSmall", couleur = { 1, 0.82, 0 },
+            auClic = function()
+                if etat.ouvertes[cleZ] == false then etat.ouvertes[cleZ] = nil else etat.ouvertes[cleZ] = false end
+                fen.Rendre()
+            end })
+        local ids = fermeeZ and {} or parZone[zone]
         table.sort(ids, function(a, b)
             local qa, qb = parQuete[a][1].q, parQuete[b][1].q
             if (qa.niveau or 0) ~= (qb.niveau or 0) then return (qa.niveau or 0) < (qb.niveau or 0) end
@@ -648,7 +662,7 @@ local function RendreCommunes(contenu, index, y)
             local r, g, b = NS.ref.CouleurDeNiveau(q.niveau, premier.niveau)
             local idQuete = id
             index = index + 1
-            y = Poser(contenu, index, y, { retrait = RETRAIT, depliable = true, deplie = ouverte,
+            y = Poser(contenu, index, y, { retrait = RETRAIT,
                 texte = string.format("[%d] %s", q.niveau or 0, q.titre or ("#" .. id)), couleur = { r, g, b },
                 droite = string.format(L.COMMON_COUNT, #liste),
                 survol = function(self)
@@ -967,7 +981,7 @@ local function RendreHistoire(contenu, p, index, y)
         local fini = z.faites >= z.total
         local ici = zoneIci and (z.nom == zoneIci)
         index = index + 1
-        y = Poser(contenu, index, y, { retrait = RETRAIT, depliable = true, deplie = ouverte,
+        y = Poser(contenu, index, y, { retrait = 0, depliable = true, deplie = ouverte,
             -- Niveau de la zone a la couleur du jeu selon le personnage (gris,
             -- vert, jaune, orange, rouge), comme dans le menu de MapCore.
             texte = NiveauColore(z.niveau, p.niveau) .. z.nom
@@ -1200,7 +1214,7 @@ RendreDonjonOuvert = function(contenu, p, d, index, y)
         local rr, gg, bb = NS.ref.CouleurDeNiveau(niveau, p.niveau)
         if q.etat == "faite" then rr, gg, bb = 0.6, 0.6, 0.6 end
         index = index + 1
-        y = Poser(contenu, index, y, { retrait = retrait, depliable = true, deplie = ouverte,
+        y = Poser(contenu, index, y, { retrait = retrait,
             etatQuete = (q.etat == "rendre" or q.etat == "faite") and true or ((q.etat == "cours") and false or nil),
             icone = (q.etat == "prendre") and "Interface\\GossipFrame\\AvailableQuestIcon" or nil,
             texte = string.format("[%d] %s", niveau, NS.ref.NomDeQuete(id, p)),
@@ -1312,7 +1326,7 @@ local function RendreDonjons(contenu, p, index, y)
                 math.floor(b * 255), (d.maxi and d.maxi ~= d.mini) and (d.mini .. "-" .. d.maxi) or tostring(d.mini))
         end
         index = index + 1
-        y = Poser(contenu, index, y, { retrait = RETRAIT, depliable = true, deplie = ouverte,
+        y = Poser(contenu, index, y, { retrait = 0, depliable = true, deplie = ouverte,
             texte = niveaux .. d.nom .. (ici and ("   |cff4fd16a" .. L.STORY_HERE .. "|r") or ""),
             police = "GameFontHighlightSmall", surligne = ici, couleur = { 1, 1, 1 },
             barre = d.total > 0 and (d.faites / d.total) or 0,
@@ -1381,7 +1395,7 @@ local function RendreDisponibles(contenu, p, index, y)
         end
         local fermee = etat.ouvertes[cleZone] == false or (etat.ouvertes[cleZone] == nil and z.nom ~= ici)
         index = index + 1
-        y = Poser(contenu, index, y, { retrait = RETRAIT, depliable = true, deplie = not fermee,
+        y = Poser(contenu, index, y, { retrait = 0, depliable = true, deplie = not fermee,
             texte = z.nom .. " (" .. #z.ids .. ")" .. ((z.nom == ici) and ("   |cff4fd16a" .. L.STORY_HERE .. "|r") or ""),
             police = "GameFontNormalSmall", couleur = { 1, 0.82, 0 }, surligne = z.nom == ici,
             droite = xpZone > 0 and string.format(L.TRACK_ZONE_XP, NS.ref.NombreLisible(xpZone)) or nil,
@@ -1398,7 +1412,7 @@ local function RendreDisponibles(contenu, p, index, y)
                 local donneurs = NS.ref.Donneurs(id)
                 local ouverte = etat.dispoOuverte == id
                 index = index + 1
-                y = Poser(contenu, index, y, { retrait = RETRAIT * 2,
+                y = Poser(contenu, index, y, { retrait = RETRAIT,
                     icone = "Interface\\GossipFrame\\AvailableQuestIcon",
                     texte = string.format("[%d] %s", d.niveau, NS.ref.NomDeQuete(id, p)), couleur = { rr, gg, bb },
                     droite = donneurs[1], couleurDroite = { 0.75, 0.75, 0.75 },
