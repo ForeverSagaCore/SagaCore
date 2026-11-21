@@ -882,22 +882,17 @@ end
 --   sur      : ce que les composants du compte donnent a coup sur (suit les stocks)
 --   recettes : ce que les recettes connues permettent (suit les recettes)
 --   choix    : un rang fixe, choisi aux fleches
--- Les anciennes fiches (un nombre, ou une liste) deviennent un rang choisi.
+-- Les anciens formats (un nombre, ou une liste de rangs) sont oublies.
 -- Rien de regle : le rang assure est vise d'office, pour qu'il y ait
 -- toujours un objectif a portee.
 local function Emplacements(fiche, cle)
     local v = type(fiche) == "table" and type(fiche.objectifsProgression) == "table"
         and fiche.objectifsProgression[tostring(cle)]
-    if v == nil then return { sur = true } end
-    if type(v) ~= "table" then
-        return { sur = true, choix = tonumber(v) }
-    end
-    if v.sur ~= nil or v.recettes ~= nil or v.choix ~= nil then
+    if type(v) == "table" and (v.sur ~= nil or v.recettes ~= nil or v.choix ~= nil) then
         return { sur = v.sur == true, recettes = v.recettes == true, choix = tonumber(v.choix) }
     end
-    local plus
-    for _, r in pairs(v) do r = tonumber(r) if r and (not plus or r > plus) then plus = r end end
-    return { sur = true, choix = plus }
+    -- Rien de regle, ou un ancien format (rangs empiles) : on repart propre.
+    return { sur = true }
 end
 recettes.Emplacements = Emplacements
 
