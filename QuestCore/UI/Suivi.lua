@@ -749,7 +749,7 @@ local function VoirSurCarte(id, moi)
     end
     pt = pt or liste[1]
     if pt and pt.carte and NS.pageCarte and NS.pageCarte.MontrerQuete then
-        NS.pageCarte.MontrerQuete(id, pt.carte, pt.x, pt.y, NS.ref.NomDeQuete(id, moi), pt.quoi, true, pt.genre)
+        NS.pageCarte.MontrerQuete(id, pt.carte, pt.x, pt.y, NS.ref.NomDeQuete(id, moi), pt.quoi, true, pt.genre, true)
     end
     if NS.fenetre and NS.fenetre.OuvrirCarte then NS.fenetre.OuvrirCarte() end
 end

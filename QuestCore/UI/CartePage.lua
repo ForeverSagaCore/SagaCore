@@ -51,9 +51,10 @@ local function TrajetCourant()
         if pc.genre == "rendu" then return pc end
     end
 end
+local queteSeule
 function page.ModeTrajet(oui)
     modeTrajet = oui == true
-    if oui then carteChoisie = nil end
+    if oui then carteChoisie = nil queteSeule = nil end
     if NS.carte then NS.carte.Invalider() end
 end
 function page.EnModeTrajet() return modeTrajet and TrajetCourant() ~= nil end
@@ -64,6 +65,7 @@ local entree
 function page.MontrerEntree(idCarte, x, y, nom)
     modeTrajet = false
     quetePointee = nil
+    queteSeule = nil
     entree = { carte = idCarte, x = x, y = y, nom = nom }
     carteChoisie = idCarte
 end
@@ -72,7 +74,12 @@ end
 -- quete (le point d'exclamation, pas le PNJ), qui pulse doucement.
 local quetePointee
 
-function page.MontrerQuete(id, idCarte, x, y, nomQuete, nomDonneur, sansFleche, genre)
+-- Quete seule (longue-vue du suivi) : la carte ne montre que ses reperes,
+-- jusqu'a "Revenir a ma position" ou un autre lieu montre.
+function page.QueteSeule() return queteSeule end
+
+function page.MontrerQuete(id, idCarte, x, y, nomQuete, nomDonneur, sansFleche, genre, seule)
+    queteSeule = seule and id or nil
     -- Lieu dans un donjon : la carte de l'instance n'est pas affichable ici
     -- (elle partait en carte du continent etiree) ; on montre son entree.
     if NS.carte and NS.carte.EstInstance and NS.carte.EstInstance(idCarte) then
@@ -926,7 +933,7 @@ local function PoserReperes(idCarte)
     -- Pendant le guidage : rien que le trajet (ni recolte, ni reperes, ni
     -- autres quetes).
     local guide = (NS.guidage and NS.guidage.Actif and NS.guidage.Actif()) or page.EnModeTrajet()
-    if guide then
+    if guide or queteSeule then
         for _, b in ipairs(vue.mapcore or {}) do b:Hide() end
         for _, b in ipairs(vue.lieux or {}) do b:Hide() end
     else
@@ -945,11 +952,31 @@ local function PoserReperes(idCarte)
         -- les filtres : sans elles, plus de trajet trace.
         if garder and not pt.numero and Suite and Suite.PointVisible and not Suite.PointVisible(pt) then garder = false end
         if guide and not pt.numero then garder = false end
+        if queteSeule then garder = pt.quete == queteSeule end
         if garder then
             local x, y = NS.carte.Reporter(pt, idCarte)
             if x then table.insert(liste, { pt = pt, x = x, y = y }) end
         end
     end
+    -- Diagnostic (temporaire) : ce qui est dessine, pour comprendre les
+    -- reperes mal places. Lu dans les SavedVariables apres un /reload.
+    local diag = { carte = idCarte, choisie = carteChoisie, perso = CarteDuPerso(), n = #liste, points = {} }
+    local parCarte = {}
+    for _, e in ipairs(liste) do
+        local k = tostring(e.pt.carte)
+        parCarte[k] = (parCarte[k] or 0) + 1
+        if #diag.points < 80 then
+            table.insert(diag.points, string.format("q%s c%s %.3f,%.3f -> %.3f,%.3f %s n%s", tostring(e.pt.quete),
+                k, e.pt.x or -1, e.pt.y or -1, e.x, e.y, tostring(e.pt.genre), tostring(e.pt.numero)))
+        end
+    end
+    diag.parCarte = parCarte
+    local okR, g, d, h, bas = pcall(NS.Lecture("C_Map.GetMapRectOnMap") or error, 279, idCarte)
+    diag.rect279 = okR and string.format("%s %s %s %s", tostring(g), tostring(d), tostring(h), tostring(bas)) or "?"
+    local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), 279)
+    diag.info279 = type(info) == "table" and (tostring(info.name) .. " type " .. tostring(info.mapType) .. " parent " .. tostring(info.parentMapID)) or "nil"
+    diag.instance279 = tostring(NS.carte.EstInstance(279))
+    if QuestCoreDB then QuestCoreDB.diagCarte = diag end
     local function poids(e) return (e.pt.numero and 4 or 0) + ((e.pt.genre ~= "objectif") and 2 or 0) end
     table.sort(liste, function(a, b) return poids(a) < poids(b) end)
     for _, e in ipairs(liste) do
@@ -1282,6 +1309,7 @@ function page.Rendre(parent, basDroite, menuParent, menuHaut)
         vue.allerA:SetWidth((vue.allerA.GetTextWidth and vue.allerA:GetTextWidth() or 120) + 24)
         vue.allerA:SetScript("OnClick", function()
             carteChoisie = cible.id
+            queteSeule = nil
             page.Rendre()
         end)
         vue.allerA:Show()
