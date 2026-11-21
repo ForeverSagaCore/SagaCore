@@ -1005,8 +1005,16 @@ local function DessinerObjectifs(y, objectifs, vue)
                     end
                     suiviEtapes.etapesFab[o.cle] = rangP
                 end
-                -- Pas de fabrication partielle : tout doit etre reuni (100 %).
-                if recettePrete and (o.pct or 0) >= 1 then
+                -- Pas de fabrication partielle : tout doit etre reuni (100 %) et
+                -- dans les sacs (rien a sortir de la banque ni a acheter).
+                local toutEnSacs = (o.pct or 0) >= 1
+                for _, m in ipairs(toutEnSacs and o.matieres or {}) do
+                    if (NS.inventaire.DisponibleDansLesSacs(m.objet) or 0) < (m.requis or 0) then toutEnSacs = false break end
+                end
+                for objet, n in pairs(toutEnSacs and type(o.achats) == "table" and o.achats or {}) do
+                    if (NS.inventaire.DisponibleDansLesSacs(objet) or 0) < (tonumber(n) or 0) then toutEnSacs = false break end
+                end
+                if recettePrete and toutEnSacs then
                     if not b.creer then
                         b.creer = CreateFrame("Button", nil, b, "UIPanelButtonTemplate")
                         b.creer:SetSize(52, 16)
