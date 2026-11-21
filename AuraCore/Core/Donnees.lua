@@ -268,8 +268,11 @@ local function Placer(b)
     local pos = R().boutonBuffs
     if type(pos) == "table" and pos[1] then
         b:SetPoint(pos[1], UIParent, pos[2] or pos[1], pos[3] or 0, pos[4] or 0)
+    elseif _G.PlayerPortrait then
+        -- Aligne sur le bord gauche du portrait, juste au-dessus.
+        b:SetPoint("BOTTOMLEFT", _G.PlayerPortrait, "TOPLEFT", 0, 2)
     elseif _G.PlayerFrame then
-        b:SetPoint("BOTTOMRIGHT", _G.PlayerFrame, "TOPRIGHT", -8, -10)
+        b:SetPoint("BOTTOMLEFT", _G.PlayerFrame, "TOPLEFT", 20, -6)
     else
         b:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 180, -10)
     end
@@ -278,28 +281,40 @@ end
 local function Construire()
     if bouton then return bouton end
     local b = CreateFrame("Button", "AuraCoreBoutonBuffs", UIParent)
-    b:SetSize(31, 31)
+    -- Meme habillage que les pastilles de l'anneau : fond sombre, icone
+    -- vraiment ronde (masque circulaire, bords de l'image rognes), anneau
+    -- dore du jeu, aux memes proportions.
+    local t = 28
+    b:SetSize(t, t)
     b:SetFrameStrata("MEDIUM")
     b:SetMovable(true)
     b:SetClampedToScreen(true)
     b:RegisterForDrag("LeftButton")
     b:RegisterForClicks("LeftButtonUp")
     b.fond = b:CreateTexture(nil, "BACKGROUND")
-    b.fond:SetSize(24, 24)
-    b.fond:SetPoint("TOPLEFT", 7, -5)
+    b.fond:SetSize(t * 19 / 24, t * 19 / 24)
+    b.fond:SetPoint("CENTER")
     b.fond:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
     b.icone = b:CreateTexture(nil, "ARTWORK")
-    b.icone:SetSize(18, 18)
-    b.icone:SetPoint("TOPLEFT", 7, -6)
+    b.icone:SetSize(t * 16 / 24, t * 16 / 24)
+    b.icone:SetPoint("CENTER")
     b.icone:SetTexture(D.Icone(1243))
-    if b.icone.SetMask then pcall(b.icone.SetMask, b.icone, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+    b.icone:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    if b.CreateMaskTexture then
+        local m = b:CreateMaskTexture()
+        if m then
+            m:SetTexture("Interface\\Masks\\CircleMaskScalable", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            m:SetAllPoints(b.icone)
+            b.icone:AddMaskTexture(m)
+        end
+    end
     b.anneau = b:CreateTexture(nil, "OVERLAY")
-    b.anneau:SetSize(53, 53)
+    b.anneau:SetSize(t * 41 / 24, t * 41 / 24)
     b.anneau:SetPoint("TOPLEFT", 0, 0)
     b.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
     -- Illumine : une lueur qui pulse doucement autour de l'icone.
     b.lueur = b:CreateTexture(nil, "OVERLAY", nil, 1)
-    b.lueur:SetSize(36, 36)
+    b.lueur:SetSize(t * 1.3, t * 1.3)
     b.lueur:SetPoint("CENTER", b.icone, "CENTER", 0, 0)
     b.lueur:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
     b.lueur:SetBlendMode("ADD")
