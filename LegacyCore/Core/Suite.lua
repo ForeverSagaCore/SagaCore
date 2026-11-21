@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 68
+local VERSION = 69
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -1161,6 +1161,18 @@ local function GlyphePad(touche)
     return "|cffffd100" .. g[2] .. "|r"
 end
 Suite.GlyphePad = function(t) return GlyphePad(t) end
+-- La croix entiere (une seule icone), sinon la fleche du haut.
+local function GlypheCroix()
+    local info = C_Texture and C_Texture.GetAtlasInfo
+    if info then
+        for _, nom in ipairs({ "Gamepad_Gen_DPad_64", "Gamepad_Gen_Dpad_64", "Gamepad_Ltr_DPad_64", "Gamepad_Shp_DPad_64" }) do
+            local ok, existe = pcall(info, nom)
+            if ok and existe then return "|A:" .. nom .. ":20:20|a" end
+        end
+    end
+    return GlyphePad("PADDUP")
+end
+Suite.GlypheCroix = GlypheCroix
 local function ManetteActive()
     local pad = _G.C_GamePad
     if type(pad) ~= "table" or type(pad.IsEnabled) ~= "function" then return false end
@@ -1397,7 +1409,7 @@ function Suite.Entete(cadre, cleCourante)
                   elseif SlashCmdList.IMPROVECORE then SlashCmdList.IMPROVECORE("") end
               end,
               dispo = function() return SlashCmdList.IMPROVECORE ~= nil end },
-            { cle = "Macros", icone = "Interface\\Icons\\INV_Misc_Rune_01", action = function() Suite.OuvrirMacros() end },
+            { cle = "Macros", icone = "Interface\\Icons\\INV_Misc_Book_11", action = function() Suite.OuvrirMacros() end },
         }
         for _, e in ipairs(extras) do
             if not e.dispo or e.dispo() then
@@ -2825,7 +2837,7 @@ Suite.RACCOURCIS = {
     { cle = "improve", fr = "Réglages ImproveCore", en = "ImproveCore settings", icone = "Spell_Holy_AuraOfLight",
       action = function() if SlashCmdList.IMPROVECORE then SlashCmdList.IMPROVECORE("") end end,
       dispo = function() return SlashCmdList.IMPROVECORE ~= nil end },
-    { cle = "raccourcis", fr = "Panneau des raccourcis", en = "Shortcut panel", icone = "INV_Misc_Rune_01",
+    { cle = "raccourcis", fr = "Panneau des raccourcis", en = "Shortcut panel", icone = "INV_Misc_Book_11",
       action = function() Suite.BasculerRaccourcis() end },
 }
 
@@ -3448,8 +3460,16 @@ local function Panneau()
     Nav("CoreSuiteRaccourcisDroite", function() Suite.BougerRaccourci(1, 0) end)
     Nav("CoreSuiteRaccourcisFermer", function() Suite.FermerRaccourcis() end)
     table.insert(UISpecialFrames, "CoreSuiteRaccourcis")
+    -- Le petit menu d'aide, le temps que le panneau est ouvert.
+    local okA, aide = pcall(CreateFrame, "Frame", nil, p, "TooltipBackdropTemplate")
+    p.aide = okA and aide or CreateFrame("Frame", nil, p)
+    p.aide:SetHeight(32)
+    p.aide:SetClampedToScreen(true)
+    p.aide.texte = p.aide:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    p.aide.texte:SetPoint("LEFT", 12, 0)
     p:SetScript("OnHide", function(self)
         GameTooltip:Hide()
+        if Suite.boutonRaccourcis then Suite.boutonRaccourcis:SetAlpha(1) end
         if not (InCombatLockdown and InCombatLockdown()) then ClearOverrideBindings(self) end
     end)
     p:RegisterEvent("PLAYER_REGEN_DISABLED")
@@ -3468,20 +3488,48 @@ local function LierManette(p)
     SetOverrideBindingClick(p, true, "PADDDOWN", "CoreSuiteRaccourcisBas")
     SetOverrideBindingClick(p, true, "PADDLEFT", "CoreSuiteRaccourcisGauche")
     SetOverrideBindingClick(p, true, "PADDRIGHT", "CoreSuiteRaccourcisDroite")
-    SetOverrideBindingClick(p, true, "PAD2", "CoreSuiteRaccourcisFermer")
-    local b = p.boutons[p.focus]
-    if b and b:IsShown() then SetOverrideBindingClick(p, true, "PAD1", b:GetName()) end
+    -- Echappe : B, et aussi Vue, Menu et la touche du jeu au centre.
+    for _, touche in ipairs({ "PAD2", "PADBACK", "PADFORWARD", "PADSYSTEM" }) do
+        SetOverrideBindingClick(p, true, touche, "CoreSuiteRaccourcisFermer")
+    end
+    if p.focus == 0 then
+        -- Sur le bouton rond : A referme le panneau.
+        SetOverrideBindingClick(p, true, "PAD1", "CoreSuiteRaccourcisFermer")
+    else
+        local b = p.boutons[p.focus]
+        if b and b:IsShown() then SetOverrideBindingClick(p, true, "PAD1", b:GetName()) end
+    end
 end
 
 function Suite.MarquerRaccourci()
     local p = Suite.panneauRaccourcis
     if not p then return end
     GameTooltip:Hide()
+    -- Tout a 40 %, sauf l'element choisi, en pleine couleur.
+    local rond = Suite.boutonRaccourcis
+    if rond then rond:SetAlpha(p.focus == 0 and 1 or 0.4) end
     for i, b in ipairs(p.boutons) do
         if b.lisere then b.lisere:SetShown(i == p.focus and b:IsShown()) end
+        b:SetAlpha(i == p.focus and 1 or 0.4)
         if i == p.focus and b:IsShown() then
             local survol = b:GetScript("OnEnter")
             if survol then survol(b) end
+        end
+    end
+    -- L'aide : ce que fait chaque touche, a la manette seulement.
+    local manette = _G.C_GamePad and _G.C_GamePad.IsEnabled and select(2, pcall(_G.C_GamePad.IsEnabled)) == true
+    if p.aide then
+        if manette then
+            local esp = "      "
+            p.aide.texte:SetText(GlypheCroix() .. "  " .. TR("Se déplacer", "Move") .. esp
+                .. GlyphePad("PAD1") .. "  " .. (p.focus == 0 and TR("Fermer", "Close") or TR("Lancer", "Launch")) .. esp
+                .. GlyphePad("PAD2") .. "  " .. TR("Fermer et rendre la manette", "Close and give back the gamepad"))
+            p.aide:SetWidth((p.aide.texte:GetStringWidth() or 300) + 24)
+            p.aide:ClearAllPoints()
+            p.aide:SetPoint("TOP", p, "BOTTOM", 0, -8)
+            p.aide:Show()
+        else
+            p.aide:Hide()
         end
     end
     LierManette(p)
@@ -3492,10 +3540,27 @@ end
 function Suite.BougerRaccourci(dx, dy)
     local p = Suite.panneauRaccourcis
     if not p or not p.n or p.n == 0 then return end
+    local ouverture = Reglages().raccourcisOuverture or "gauche"
+    local rond = Suite.boutonRaccourcis
+    local avecRond = rond and rond:IsShown()
+    -- Depuis le bouton rond : on entre dans le panneau par la premiere icone.
+    if p.focus == 0 then
+        p.focus = 1
+        Suite.MarquerRaccourci()
+        return
+    end
+    -- Ouvert vers la gauche, les colonnes avancent vers la gauche a l'ecran.
+    if ouverture == "gauche" then dx = -dx end
     local col = p.colonnes
     local x, y = (p.focus - 1) % col + dx, math.floor((p.focus - 1) / col) + dy
     local cible = y * col + x + 1
-    if x >= 0 and x < col and y >= 0 and cible <= p.n then p.focus = cible end
+    if x >= 0 and x < col and y >= 0 and cible <= p.n then
+        p.focus = cible
+    elseif avecRond and ((x < 0 and (ouverture == "gauche" or ouverture == "droite"))
+        or (y < 0 and (ouverture == "haut" or ouverture == "bas"))) then
+        -- Sortie du cote du bouton rond : retour sur lui.
+        p.focus = 0
+    end
     Suite.MarquerRaccourci()
 end
 
@@ -3664,7 +3729,8 @@ function Suite.BasculerRaccourcis()
     else
         p:SetPoint("CENTER")
     end
-    p.focus = 1
+    -- A l'ouverture, on reste sur le bouton rond ; on entre en se deplacant.
+    p.focus = (rond and rond:IsShown()) and 0 or 1
     p:Show()
     Suite.MarquerRaccourci()
 end
@@ -3686,7 +3752,7 @@ function Suite.PlacerBoutonRaccourcis()
         b:RegisterForDrag("LeftButton")
         b:RegisterForClicks("LeftButtonUp")
         b.icone = b:CreateTexture(nil, "ARTWORK")
-        b.icone:SetTexture("Interface\\Icons\\INV_Misc_Rune_01")
+        b.icone:SetTexture("Interface\\Icons\\INV_Misc_Book_11")
         if b.CreateMaskTexture then
             b.masque = b:CreateMaskTexture()
             if b.masque then
@@ -4637,10 +4703,10 @@ local function FenetreMacrosPages()
     local edition, choixJeu
     local MAX_PERSO, MAX_AUTRES, MAX_JEU = 24, 30, 40
     fenetreM = Suite.FenetreAPages({
-        nom = "CoreSuiteMacrosPages", cle = "Macros", icone = "Interface\\Icons\\INV_Misc_Rune_01",
+        nom = "CoreSuiteMacrosPages", cle = "Macros", icone = "Interface\\Icons\\INV_Misc_Book_11",
         titre = function() return TR("Macros", "Macros") end,
         pages = {
-            { cle = "panneau", icone = "Interface\\Icons\\INV_Misc_Rune_01",
+            { cle = "panneau", icone = "Interface\\Icons\\INV_Misc_Book_11",
               libelle = function() return TR("Le panneau", "The panel") end,
               construire = function(page, O)
                   page.t1 = O.Section()
