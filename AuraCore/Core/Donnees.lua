@@ -270,7 +270,8 @@ local function Placer(b)
         b:SetPoint(pos[1], UIParent, pos[2] or pos[1], pos[3] or 0, pos[4] or 0)
     elseif _G.PlayerFrame then
         -- Au-dessus du cadre du personnage, a droite, un peu plus pres.
-        b:SetPoint("BOTTOMRIGHT", _G.PlayerFrame, "TOPRIGHT", -8, -16)
+        -- Bord droit aligne sur celui du cadre (barre du nom).
+        b:SetPoint("BOTTOMRIGHT", _G.PlayerFrame, "TOPRIGHT", -22, -16)
     else
         b:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 180, -10)
     end
@@ -290,7 +291,8 @@ local function Construire()
     b.p:SetPoint("CENTER")
     b.p:EnableMouse(false)
     b.p:Show()
-    b.p.icone:SetTexture(D.Icone(1243))
+    -- Un cor : l'appel au groupe, lisible, en couleur.
+    b.p.icone:SetTexture("Interface\\Icons\\INV_Misc_Horn_01")
     -- Illumine : une lueur qui pulse doucement autour de l'icone.
     b.lueur = b.p:CreateTexture(nil, "OVERLAY", nil, 2)
     b.lueur:SetPoint("CENTER", b.p.icone, "CENTER", 0, 0)
