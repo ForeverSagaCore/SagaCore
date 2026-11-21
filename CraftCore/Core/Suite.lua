@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 69
+local VERSION = 70
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2577,8 +2577,6 @@ local function Pilote()
     end
     function p.Marquer()
         p.cadre:Hide()
-        local f = _G[p.nom]
-        if f and (f:GetAlpha() or 1) < 1 then f:SetAlpha(1) end
         local e = p.Courant()
         if e ~= p.eclaire then p.Eteindre() end
         if not e then return end
@@ -2654,7 +2652,8 @@ local function Pilote()
         p.barre.texte:SetText(Croix() .. "  " .. TR("Se déplacer", "Move") .. esp
             .. GlyphePad("PAD1") .. "  " .. TR("Valider", "Select") .. esp
             .. GlyphePad("PAD2") .. "  " .. TR("Libérer", "Release"))
-        p.barre:SetWidth((p.barre.texte:GetStringWidth() or 300) + 24)
+        -- De la largeur de la fenetre pilotee, posee juste au-dessus.
+        p.barre:SetWidth(math.max(f:GetWidth() or 0, (p.barre.texte:GetStringWidth() or 300) + 24))
         p.barre:ClearAllPoints()
         p.barre:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 4)
         if p.barre.SetClampedToScreen then p.barre:SetClampedToScreen(true) end
@@ -2748,6 +2747,13 @@ function Suite.Piloter(oui, nom)
             local f = p.nom and _G[p.nom]
             if f and p.alphaAvant then f:SetAlpha(p.alphaAvant) end
         end
+        -- La fenetre retrouve son opacite normale.
+        local fl = p.figee
+        p.figee = nil
+        if fl then
+            fl.SetAlpha = nil
+            if p.alphaAvant then fl:SetAlpha(p.alphaAvant) end
+        end
         p.alphaAvant = nil
         p:Hide()
         GameTooltip:Hide()
@@ -2766,6 +2772,13 @@ function Suite.Piloter(oui, nom)
     p.nom, p.choix, p.pos = nom, nil, nil
     p.alphaAvant = f:GetAlpha()
     f:SetAlpha(1)
+    -- Pleine couleur tant qu'on la pilote : son propre fondu (survol,
+    -- deplacement) ne la touche plus jusqu'a ce qu'on libere.
+    local original = getmetatable(f) and getmetatable(f).__index and getmetatable(f).__index.SetAlpha
+    if original then
+        f.SetAlpha = function(self) original(self, 1) end
+        p.figee = f
+    end
     p:Show()
     pcall(p.EnableGamePadButton, p, true)
     p.Marquer()
