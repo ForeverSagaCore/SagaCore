@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 64
+local VERSION = 65
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2450,20 +2450,30 @@ end
 
 
 -- ---------------------------------------------------------------------------
--- Pilotage des fenetres de suivi a la manette (/sagacore suivis), hors combat.
--- Croix haut / bas : element precedent / suivant ; gauche / droite : l'autre
--- fenetre de suivi ; A : clic ; X : clic droit ; Y : arreter le guidage ;
--- B : rendre la manette au jeu.
+-- Prendre la main sur une fenetre de suivi a la manette (macros « Piloter
+-- mes fabrications » et « Piloter le suivi des quetes »), hors combat. La
+-- manette ne pilote plus que cette fenetre, comme un panneau du jeu :
+--   croix              se deplacer (haut, bas, gauche, droite, d'apres l'ecran)
+--   LB / RB            onglet precedent / suivant
+--   A                  valider (clic) ; X : clic droit ; Y : arreter le guidage
+--   Vue (deux carres)  montrer ou cacher la barre des commandes
+--   B                  liberer : la manette revient au jeu
 -- ---------------------------------------------------------------------------
 
+local function TR(fr, en) return Suite.Langue() == "frFR" and fr or en end
 local SUIVIS = { "CraftCoreSuivi", "QuestCoreSuivi", "TradeCoreSuivi" }
+local OUVRIR_SUIVI = {
+    CraftCoreSuivi = function() local a = _G.CraftCoreAPI if a and a.BasculerSuivi then pcall(a.BasculerSuivi) end end,
+    QuestCoreSuivi = function() local a = _G.QuestCoreAPI if a and a.BasculerSuivi then pcall(a.BasculerSuivi) end end,
+}
 
 local function Cliquables(cadre, liste)
     if not cadre or not cadre.IsVisible or not cadre:IsVisible() then return liste end
     for _, enfant in ipairs({ cadre:GetChildren() }) do
         if enfant:IsVisible() then
             local clic = enfant.GetScript and (enfant:GetScript("OnClick") or enfant:GetScript("OnMouseUp") or enfant:GetScript("OnMouseDown"))
-            if clic and enfant:GetObjectType() ~= "ScrollFrame" and (enfant:GetWidth() or 0) > 4 then
+            local actif = not (enfant.IsEnabled and not enfant:IsEnabled()) or enfant:GetScript("OnEnter") ~= nil
+            if clic and actif and enfant:GetObjectType() ~= "ScrollFrame" and (enfant:GetWidth() or 0) > 4 then
                 table.insert(liste, enfant)
             end
             Cliquables(enfant, liste)
@@ -2482,6 +2492,23 @@ local function Elements(nom)
     return liste
 end
 
+-- Les onglets d'un suivi : marques par la fenetre elle-meme, ongletPilote =
+-- 1 pour les onglets principaux (LB / RB), 2 pour les sous-onglets (LT / RT).
+local function Onglets(liste, niveau)
+    local t = {}
+    for _, e in ipairs(liste) do
+        local n = e.ongletPilote == true and 1 or e.ongletPilote
+        if n == niveau then table.insert(t, e) end
+    end
+    return t
+end
+
+local function Boite(e)
+    local g, h, l, ht = e:GetLeft(), e:GetTop(), e:GetWidth(), e:GetHeight()
+    if not (g and h and l and ht) then return nil end
+    return { x = g + l / 2, y = h - ht / 2, h = ht }
+end
+
 local function Pilote()
     local p = Suite.pilote
     if p then return p end
@@ -2496,18 +2523,40 @@ local function Pilote()
         p.cadre:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14 })
         p.cadre:SetBackdropBorderColor(1, 0.82, 0, 1)
     end
-    p.aide = p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    p.aide:SetPoint("TOP", UIParent, "TOP", 0, -60)
-    p.fenetre, p.rang = 1, 1
+    -- La barre des commandes, comme sous les fenetres du jeu.
+    local okBarre, barre = pcall(CreateFrame, "Frame", nil, p, "TooltipBackdropTemplate")
+    p.barre = okBarre and barre or CreateFrame("Frame", nil, p)
+    p.barre:SetFrameStrata("TOOLTIP")
+    p.barre:SetHeight(34)
+    p.barre.texte = p.barre:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    p.barre.texte:SetPoint("LEFT", p.barre, "LEFT", 12, 0)
+    p.barreVisible = true
+
+    function p.Liste() return Elements(p.nom) end
+    -- L'element choisi ; s'il a disparu (le suivi s'est redessine), le plus
+    -- proche de sa derniere place.
     function p.Courant()
-        local liste = Elements(SUIVIS[p.fenetre])
-        p.rang = math.max(1, math.min(p.rang, #liste))
-        return liste[p.rang], liste
+        local liste = p.Liste()
+        for _, e in ipairs(liste) do if e == p.choix then return e, liste end end
+        local meilleur, dMin
+        for _, e in ipairs(liste) do
+            local bx = Boite(e)
+            if bx and p.pos and not e.ongletPilote then
+                local d = (bx.x - p.pos.x) ^ 2 + (bx.y - p.pos.y) ^ 2
+                if not dMin or d < dMin then meilleur, dMin = e, d end
+            end
+        end
+        if not meilleur then
+            for _, e in ipairs(liste) do if not e.ongletPilote then meilleur = e break end end
+        end
+        p.choix = meilleur or liste[1]
+        return p.choix, liste
     end
     function p.Marquer()
         GameTooltip:Hide()
         local e = p.Courant()
         if not e then p.cadre:Hide() return end
+        p.pos = Boite(e) or p.pos
         p.cadre:ClearAllPoints()
         p.cadre:SetPoint("TOPLEFT", e, "TOPLEFT", -4, 4)
         p.cadre:SetPoint("BOTTOMRIGHT", e, "BOTTOMRIGHT", 4, -4)
@@ -2515,19 +2564,65 @@ local function Pilote()
         local survol = e:GetScript("OnEnter")
         if survol then pcall(survol, e) end
     end
-    function p.Changer(pas)
-        for _ = 1, #SUIVIS do
-            p.fenetre = ((p.fenetre - 1 + pas) % #SUIVIS) + 1
-            if #Elements(SUIVIS[p.fenetre]) > 0 then break end
+    function p.Deplacer(dx, dy)
+        local depart, liste = p.Courant()
+        local d = depart and Boite(depart)
+        if not d then return end
+        local meilleur, scoreMin
+        for _, e in ipairs(liste) do
+            local b = e ~= depart and Boite(e)
+            if b then
+                local score
+                if dy ~= 0 then
+                    local avance = (dy > 0) and (d.y - b.y) or (b.y - d.y)
+                    if avance > 4 then score = avance * 4 + math.abs(b.x - d.x) * 0.5 end
+                else
+                    local memeLigne = math.abs(b.y - d.y) < math.max(d.h, b.h) / 2 + 2
+                    local avance = (dx > 0) and (b.x - d.x) or (d.x - b.x)
+                    if memeLigne and avance > 2 then score = avance end
+                end
+                if score and (not scoreMin or score < scoreMin) then meilleur, scoreMin = e, score end
+            end
         end
-        p.rang = 1
+        if meilleur then p.choix = meilleur end
+    end
+    function p.Onglet(pas, niveau)
+        local onglets = Onglets(p.Liste(), niveau or 1)
+        if #onglets == 0 then return end
+        local rang = 1
+        for i, o in ipairs(onglets) do
+            if o.choisi or (o.GetChecked and o:GetChecked()) then rang = i end
+        end
+        local cible = onglets[((rang - 1 + pas) % #onglets) + 1]
+        if cible and cible.Click then pcall(cible.Click, cible, "LeftButton") end
+        p.choix, p.pos = nil, nil
+    end
+    function p.Barre()
+        local f = _G[p.nom]
+        if not (p.barreVisible and f) then p.barre:Hide() return end
+        local G = GlyphePad
+        local esp = "      "
+        p.barre.texte:SetText(G("PADDUP") .. " " .. G("PADDDOWN") .. " " .. G("PADDLEFT") .. " " .. G("PADDRIGHT") .. "  "
+            .. TR("Se déplacer", "Move") .. esp
+            .. G("PADLSHOULDER") .. " " .. G("PADRSHOULDER") .. "  " .. TR("Onglets", "Tabs") .. esp
+            .. ((#Onglets(p.Liste(), 2) > 0) and (G("PADLTRIGGER") .. " " .. G("PADRTRIGGER") .. "  " .. TR("Sous-onglets", "Sub-tabs") .. esp) or "")
+            .. G("PAD1") .. "  " .. TR("Valider", "Select") .. esp
+            .. G("PAD2") .. "  " .. TR("Libérer", "Release"))
+        p.barre:SetWidth((p.barre.texte:GetStringWidth() or 300) + 24)
+        p.barre:ClearAllPoints()
+        p.barre:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, -4)
+        p.barre:Show()
     end
     p:SetScript("OnGamePadButtonDown", function(self, bouton)
-        local e, liste = p.Courant()
-        if bouton == "PADDDOWN" then p.rang = math.min(#liste, p.rang + 1)
-        elseif bouton == "PADDUP" then p.rang = math.max(1, p.rang - 1)
-        elseif bouton == "PADDLEFT" then p.Changer(-1)
-        elseif bouton == "PADDRIGHT" then p.Changer(1)
+        local e = p.Courant()
+        if bouton == "PADDDOWN" then p.Deplacer(0, 1)
+        elseif bouton == "PADDUP" then p.Deplacer(0, -1)
+        elseif bouton == "PADDLEFT" then p.Deplacer(-1, 0)
+        elseif bouton == "PADDRIGHT" then p.Deplacer(1, 0)
+        elseif bouton == "PADLSHOULDER" then p.Onglet(-1)
+        elseif bouton == "PADRSHOULDER" then p.Onglet(1)
+        elseif bouton == "PADLTRIGGER" then p.Onglet(-1, 2)
+        elseif bouton == "PADRTRIGGER" then p.Onglet(1, 2)
         elseif bouton == "PAD1" or bouton == "PAD3" then
             local cote = bouton == "PAD1" and "LeftButton" or "RightButton"
             if e then
@@ -2538,8 +2633,18 @@ local function Pilote()
                 end
             end
         elseif bouton == "PAD4" then Suite.ArreterGuidage()
+        elseif bouton == "PADBACK" then p.barreVisible = not p.barreVisible
         elseif bouton == "PAD2" then Suite.Piloter(false) return end
+        -- Le suivi se redessine souvent apres un clic : on remarque un peu apres.
         p.Marquer()
+        p.Barre()
+        if C_Timer and C_Timer.After then C_Timer.After(0.15, function() if p:IsShown() then p.Marquer() p.Barre() end end) end
+    end)
+    -- Pleine opacite tant qu'on la pilote (le suivi peut s'estomper seul).
+    p:SetScript("OnUpdate", function()
+        local f = _G[p.nom]
+        if not (f and f:IsShown()) then Suite.Piloter(false) return end
+        if (f:GetAlpha() or 1) < 1 then f:SetAlpha(1) end
     end)
     p:RegisterEvent("PLAYER_REGEN_DISABLED")
     p:SetScript("OnEvent", function() Suite.Piloter(false) end)
@@ -2549,9 +2654,8 @@ local function Pilote()
 end
 
 local TP = Paresseux({
-    aide = "Gamepad : D-pad to move, A click, X right-click, Y stop guidance, B to exit",
     combat = "Not in combat.",
-    rien = "No tracking window is open.",
+    rien = "This tracker is not open.",
 })
 
 -- Touche du jeu (Echap, Options, Raccourcis, Add-ons) : piloter un suivi.
@@ -2562,23 +2666,35 @@ end
 
 function Suite.Piloter(oui, nom)
     local p = Pilote()
-    if oui == nil then oui = not (p:IsShown() and (not nom or SUIVIS[p.fenetre] == nom)) end
+    if oui == nil then oui = not (p:IsShown() and (not nom or p.nom == nom)) end
     if not oui then
         pcall(p.EnableGamePadButton, p, false)
+        if p:IsShown() then
+            local f = p.nom and _G[p.nom]
+            if f and p.alphaAvant then f:SetAlpha(p.alphaAvant) end
+        end
+        p.alphaAvant = nil
         p:Hide()
         GameTooltip:Hide()
         return
     end
     if InCombatLockdown and InCombatLockdown() then print("|cffffd100SagaCore|r " .. TP.combat) return end
-    p.fenetre = 1
-    for i, n in ipairs(SUIVIS) do if n == nom then p.fenetre = i end end
-    if #Elements(SUIVIS[p.fenetre]) == 0 then p.Changer(1) end
-    if #Elements(SUIVIS[p.fenetre]) == 0 then print("|cffffd100SagaCore|r " .. TP.rien) return end
-    p.rang = 1
-    p.aide:SetText(TP.aide)
+    if p:IsShown() then Suite.Piloter(false) end
+    -- Sans nom : le premier suivi ouvert.
+    if not nom then
+        for _, n in ipairs(SUIVIS) do if _G[n] and _G[n]:IsShown() then nom = n break end end
+        nom = nom or SUIVIS[1]
+    end
+    local f = _G[nom]
+    if not (f and f:IsShown()) and OUVRIR_SUIVI[nom] then OUVRIR_SUIVI[nom]() f = _G[nom] end
+    if not (f and f:IsShown()) then print("|cffffd100SagaCore|r " .. TP.rien) return end
+    p.nom, p.choix, p.pos = nom, nil, nil
+    p.alphaAvant = f:GetAlpha()
+    f:SetAlpha(1)
     p:Show()
     pcall(p.EnableGamePadButton, p, true)
     p.Marquer()
+    p.Barre()
 end
 
 
@@ -2603,6 +2719,10 @@ local function Messages(fonction, ...)
 end
 
 Suite.RACCOURCIS = {
+    { cle = "pilotefab", fr = "Piloter mes fabrications", en = "Drive my crafts", icone = "Trade_BlackSmithing",
+      action = function() Suite.Piloter(nil, "CraftCoreSuivi") end, dispo = function() return _G.CraftCoreAPI ~= nil end },
+    { cle = "pilotequetes", fr = "Piloter les quêtes", en = "Drive the quests", icone = "INV_Letter_15",
+      action = function() Suite.Piloter(nil, "QuestCoreSuivi") end, dispo = function() return _G.QuestCoreAPI ~= nil end },
     { cle = "ouvrir", fr = "Ouvrir la suite", en = "Open the suite", icone = "INV_Misc_Book_11",
       action = function()
           local premier
@@ -2723,10 +2843,40 @@ local function ClePersoSuite()
     local nom, royaume = UnitName("player"), _G.SagaCoreRoyaume()
     return (nom or "?") .. " - " .. (royaume or "?")
 end
+-- Par defaut, seuls les deux pilotages sont dans le panneau. Les anciens
+-- reglages (ou tout etait coche pour essayer) repartent une fois de la.
+local ACTIFS_DEFAUT = { ["r:pilotefab"] = true, ["r:pilotequetes"] = true }
+local function MigrerRaccourcis()
+    local r = Reglages()
+    local cle = ClePersoSuite()
+    r.raccourcisMigres = type(r.raccourcisMigres) == "table" and r.raccourcisMigres or {}
+    if r.raccourcisMigres[cle] then return end
+    r.raccourcisMigres[cle] = 1
+    r.raccourcisOff = type(r.raccourcisOff) == "table" and r.raccourcisOff or {}
+    local t = {}
+    for _, rac in ipairs(Suite.RACCOURCIS) do
+        if not ACTIFS_DEFAUT["r:" .. rac.cle] then t["r:" .. rac.cle] = true end
+    end
+    for _, m in ipairs(type(r.macrosPerso) == "table" and r.macrosPerso or {}) do
+        if type(m) == "table" and m.id then t["m:" .. m.id] = true end
+    end
+    r.raccourcisOff[cle] = t
+end
 function Suite.RaccourciActif(id)
+    pcall(MigrerRaccourcis)
     local r = Reglages()
     local t = type(r.raccourcisOff) == "table" and r.raccourcisOff[ClePersoSuite()]
     return not (t and t[id])
+end
+function Suite.ToutDecocher()
+    local r = Reglages()
+    r.raccourcisOff = type(r.raccourcisOff) == "table" and r.raccourcisOff or {}
+    local t = {}
+    for _, rac in ipairs(Suite.RACCOURCIS) do t["r:" .. rac.cle] = true end
+    for _, m in ipairs(Suite.MacrosPerso and Suite.MacrosPerso() or {}) do
+        if type(m) == "table" and m.id then t["m:" .. m.id] = true end
+    end
+    r.raccourcisOff[ClePersoSuite()] = t
 end
 function Suite.PoserRaccourciActif(id, oui)
     local r = Reglages()
@@ -2857,6 +3007,13 @@ local function FenetreMacros()
     f.sectionMacros = Poser(Titre(), 18, 16)
     f.texteMacros = Poser(Texte(), 28, 4)
     f.tout = Poser(Bouton(f, L_CHOIX + 6 + L_PETIT), 22, 4)
+    f.decocher = Bouton(f, L_CHOIX)
+    f.decocher:SetPoint("LEFT", f.tout, "RIGHT", 8, 0)
+    f.decocher:SetScript("OnClick", function()
+        Suite.ToutDecocher()
+        Suite.RendreMacros()
+        Suite.RafraichirRaccourcis()
+    end)
     f.lignes = {}
     for i = 1, #Suite.RACCOURCIS do
         local l = CreateFrame("Button", nil, f)
@@ -3019,7 +3176,7 @@ local function FenetreMacros()
         f.focus = 1
         f.Elements = function()
             local liste = { f.rRond.choix, f.replacer, f.rOuverture.choix, f.rForme.choix,
-                f.rParLigne.moins, f.rParLigne.plus, f.rLignes.moins, f.rLignes.plus, f.tout }
+                f.rParLigne.moins, f.rParLigne.plus, f.rLignes.moins, f.rLignes.plus, f.tout, f.decocher }
             for _, l in ipairs(f.lignes) do
                 if l:IsShown() then
                     table.insert(liste, l.actif)
@@ -3093,6 +3250,7 @@ function Suite.RendreMacros()
     f.texteMacros:SetText(TR("Une macro par raccourci, nommée « SC ... ». Survolez une ligne pour voir sa commande. Pas en combat.",
         "One macro per shortcut, named \"SC ...\". Hover a row to see its command. Not in combat."))
     f.tout:SetText(TR("Créer toutes les macros", "Create all macros"))
+    f.decocher:SetText(TR("Tout décocher", "Uncheck all"))
     local rang = 0
     for _, l in ipairs(f.lignes) do l:Hide() end
     for _, rac in ipairs(Suite.RACCOURCIS) do
@@ -4469,6 +4627,14 @@ local function FenetreMacrosPages()
                       for _, r in ipairs(Suite.RACCOURCIS) do if Dispo(r) then Suite.CreerMacro(r) end end
                   end)
                   page.bTout:SetPoint("LEFT", page.rTout, "LEFT", 0, 0)
+                  page.bDecocher = O.Bouton(page.rTout, 160, function()
+                      Suite.ToutDecocher()
+                      Suite.RafraichirRaccourcis()
+                      for _, w in ipairs(Suite.fenetresAPages or {}) do
+                          if w.cadre and w.cadre:IsShown() and w.Rendre then pcall(w.Rendre) end
+                      end
+                  end)
+                  page.bDecocher:SetPoint("LEFT", page.bTout, "RIGHT", 8, 0)
                   page.lignes = {}
                   for i = 1, #Suite.RACCOURCIS do
                       local l = O.Rangee(24)
@@ -4492,6 +4658,7 @@ local function FenetreMacrosPages()
                   page.intro:SetText(TR("La case met le raccourci dans le panneau de ce personnage. « Créer » en fait aussi une macro du jeu (« SC ... », commune au compte), à poser sur une barre.",
                       "The box puts the shortcut in this character's panel. \"Create\" also makes it a game macro (\"SC ...\", account-wide), to put on a bar."))
                   page.bTout:SetText(TR("Créer toutes les macros", "Create all macros"))
+                  page.bDecocher:SetText(TR("Tout décocher", "Uncheck all"))
                   local rang = 0
                   for _, l in ipairs(page.lignes) do l:Hide() end
                   for _, r in ipairs(Suite.RACCOURCIS) do

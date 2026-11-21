@@ -519,8 +519,11 @@ local function Construire()
         b.compte = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         b.compte:SetPoint("LEFT", b, "RIGHT", 4, 0)
         b.nom = v[2]
+        -- Onglet pour la manette (LB / RB quand on pilote le suivi).
+        b.ongletPilote = true
         function b.Compter(self, n) self.compte:SetText(tostring(n or 0)) end
         function b.Choisir(self, oui)
+            self.choisi = oui and true or nil
             self.image:SetDesaturated(not oui)
             self.image:SetAlpha(oui and 1 or 0.55)
             self.anneau:SetDesaturated(not oui)
