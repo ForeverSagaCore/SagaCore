@@ -989,7 +989,8 @@ local function PoserReperes(idCarte)
         NS.carte.Habiller(b, e.pt.genre, e.pt.icone, e.pt.attente)
         b.point, b.ax, b.ay = e.pt, e.x, e.y
         b:SetFrameLevel(vue.toile:GetFrameLevel() + 2 + poids(e))
-        b.numero:SetText(e.pt.numero and tostring(e.pt.numero) or "")
+        -- Quete seule : son numero d'etape ne dit rien de plus, l'icone suffit.
+        b.numero:SetText((e.pt.numero and not queteSeule) and tostring(e.pt.numero) or "")
         b:Show()
     end
 end

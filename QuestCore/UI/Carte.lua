@@ -74,6 +74,26 @@ local function Instances()
         brut = ok and r or nil
     end
     if type(brut) ~= "table" then return t end
+    -- Cartes de dehors : celles des entrees et des zones parentes. Une
+    -- sous-zone d'un donjon peut tomber sur la carte de sa zone (les Tarides
+    -- pour Kraal de Tranchebauge) : celle-la n'est jamais une instance.
+    local dehors = {}
+    for _, d in pairs(brut) do
+        if type(d) == "table" then
+            local c = tonumber(d[3]) and carte.CarteDeZone(d[3])
+            if c then dehors[c] = true end
+            for _, e in ipairs(type(d[4]) == "table" and d[4] or {}) do
+                local ce = type(e) == "table" and carte.CarteDeZone(e[1])
+                if ce then dehors[ce] = true end
+            end
+        end
+    end
+    local function Dehors(c)
+        if dehors[c] then return true end
+        local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), c)
+        -- Monde, continent, zone : jamais une instance.
+        return type(info) == "table" and tonumber(info.mapType) ~= nil and info.mapType <= 3
+    end
     for zone, d in pairs(brut) do
         if type(d) == "table" then
             local entree
@@ -88,7 +108,7 @@ local function Instances()
             for _, autre in ipairs(type(d[2]) == "table" and d[2] or {}) do table.insert(zones, autre) end
             for _, z in ipairs(zones) do
                 local c = carte.CarteDeZone(z)
-                if c then t[c] = entree or false end
+                if c and not Dehors(c) then t[c] = entree or false end
             end
         end
     end
@@ -98,8 +118,9 @@ end
 
 function carte.EstInstance(idCarte)
     if not idCarte then return false end
-    if Instances()[idCarte] ~= nil then return true end
     local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), idCarte)
+    if type(info) == "table" and tonumber(info.mapType) and info.mapType <= 3 then return false end
+    if Instances()[idCarte] ~= nil then return true end
     return type(info) == "table" and info.mapType == 4
 end
 
