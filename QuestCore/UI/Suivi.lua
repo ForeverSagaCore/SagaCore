@@ -1593,7 +1593,9 @@ function suivi.Rendre()
         end
         -- Boutons : trajet le plus court pour le niveau, et guidage du trajet.
         local boutons = {}
-        if nRendre > 0 and manque > 0 and xpRendre >= manque then
+        -- Trajet niveau : dans la vue des quetes, pas dans celle d'un parcours
+        -- (son propre trajet y a deja ses boutons).
+        if s.vue ~= "parcours" and nRendre > 0 and manque > 0 and xpRendre >= manque then
             table.insert(boutons, { L.TRACK_LEVEL_BUTTON, function() suivi.TrajetNiveau() end, L.TRACK_LEVEL_ROUTE_HELP })
         end
         local avecTrajet = false
