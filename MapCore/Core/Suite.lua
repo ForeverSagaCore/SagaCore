@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 111
+local VERSION = 112
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2597,13 +2597,13 @@ local function Pilote()
         local meilleur, dMin
         for _, e in ipairs(liste) do
             local bx = Boite(e)
-            if bx and p.pos and not e.ongletPilote then
+            if bx and p.pos and not e.ongletPilote and not e.pasPilote then
                 local d = (bx.x - p.pos.x) ^ 2 + (bx.y - p.pos.y) ^ 2
                 if not dMin or d < dMin then meilleur, dMin = e, d end
             end
         end
         if not meilleur then
-            for _, e in ipairs(liste) do if not e.ongletPilote then meilleur = e break end end
+            for _, e in ipairs(liste) do if not e.ongletPilote and not e.pasPilote then meilleur = e break end end
         end
         p.choix = meilleur or liste[1]
         return p.choix, liste
@@ -2660,7 +2660,7 @@ local function Pilote()
         for _, e in ipairs(liste) do
             -- Les onglets ont leur propre navigation (LB / RB, LT / RT) : la
             -- croix ne s'y arrete pas.
-            local b = e ~= depart and not e.ongletPilote and Boite(e)
+            local b = e ~= depart and not e.ongletPilote and not e.pasPilote and Boite(e)
             if b then
                 local score
                 if dy ~= 0 then
