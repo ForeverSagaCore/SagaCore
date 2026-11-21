@@ -669,8 +669,6 @@ local function LigneSimple(contenu, index, y, icone, texte, droite, auClic, poli
     ligne.nom:SetText(texte)
     ligne.sacs:SetText("") ligne.banque:SetText("")
     ligne.total:SetFontObject("GameFontHighlightSmall")
-    -- La colonne de droite a la meme taille que le nom.
-    ligne.total.agrandir = true
     ligne.total:SetText(droite or "")
     ligne:Show()
     return index, y + HAUTEUR_LIGNE, ligne
@@ -2588,14 +2586,31 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
 
     -- Les trois lignes : meme police et meme pas que les lignes des etapes,
     -- leur bouton au meme endroit que les boutons Creer.
-    local function LigneAViser(texte, couleur, rangCible)
+    -- Une case a cocher au bord droit : cochee, le rang est vise.
+    contenu.casesVise = contenu.casesVise or {}
+    local function LigneAViser(k, texte, couleur, rangCible)
         local l
         index, y, l = LigneSimple(contenu, index, y, nil, texte, "")
-        if l then
-            if couleur then l.nom:SetTextColor(couleur[1], couleur[2], couleur[3]) end
-            if rangCible and rangCible > rang then
-                PoserBoutonDeLigne(l, EstVise(rangCible) and L.GUIDE_UNAIM or L.GUIDE_AIM, function() Basculer(rangCible) end)
-            end
+        if not l then return nil end
+        l.nom.agrandir = false
+        l.nom:SetFontObject(POLICE)
+        if couleur then l.nom:SetTextColor(couleur[1], couleur[2], couleur[3]) end
+        local case = contenu.casesVise[k]
+        if not case then
+            case = CreateFrame("CheckButton", nil, contenu, "UICheckButtonTemplate")
+            case:SetSize(24, 24)
+            contenu.casesVise[k] = case
+        end
+        if rangCible and rangCible > rang then
+            case:ClearAllPoints()
+            case:SetPoint("RIGHT", contenu, "TOPRIGHT", -8, -(y - HAUTEUR_LIGNE / 2))
+            case:SetFrameLevel(l:GetFrameLevel() + 2)
+            case:SetChecked(EstVise(rangCible))
+            case:SetScript("OnClick", function() Basculer(rangCible) end)
+            case:Show()
+            l.case = case
+        else
+            case:Hide()
         end
         return l
     end
@@ -2606,18 +2621,18 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     local okStock, planStock = pcall(catalogue.Progression, ligneMetier, rang, rangMax, nil)
     local assure = okStock and planStock and rang + (planStock.pointsSurs or 0) or rang
     if assure > rang then
-        LigneAViser(string.format(L.GUIDE_ALREADY, assure), VERT, assure)
+        LigneAViser(1, string.format(L.GUIDE_ALREADY, assure), VERT, assure)
     else
-        LigneAViser(L.GUIDE_ALREADY_NONE, GRIS, nil)
+        LigneAViser(1, L.GUIDE_ALREADY_NONE, GRIS, nil)
     end
 
     -- 2. Ce que les recettes connues permettent, composants a reunir.
     local okRec, planRec = pcall(catalogue.Progression, ligneMetier, rang, rangMax, plafondMetier)
     local atteignable = okRec and planRec and planRec.atteint or rang
     if atteignable > rang then
-        LigneAViser(string.format(L.GUIDE_RECIPES, atteignable), OR, atteignable)
+        LigneAViser(2, string.format(L.GUIDE_RECIPES, atteignable), OR, atteignable)
     else
-        LigneAViser(L.GUIDE_RECIPES_NONE, GRIS, nil)
+        LigneAViser(2, L.GUIDE_RECIPES_NONE, GRIS, nil)
     end
 
     -- 3. Un rang de son choix : la valeur entre deux fleches, juste avant le
@@ -2630,7 +2645,7 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         end
     end
     if contenu.libelleObjectif then contenu.libelleObjectif:Hide() end
-    local ligneChoix = LigneAViser(L.GUIDE_CHOICE, nil, choix)
+    local ligneChoix = LigneAViser(3, L.GUIDE_CHOICE, nil, choix)
     contenu.etatObjectif = { valeur = choix, mini = rang + 1, maxi = plafondMetier }
     local S = NS.suite or _G.CoreSuite
     if S and S.Curseur and ligneChoix then
@@ -2650,7 +2665,7 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         contenu.etatObjectif.poser = function(v) ecran.choixRang[cleObjectif] = v end
         local c = contenu.curseurObjectif
         c:ClearAllPoints()
-        c:SetPoint("RIGHT", ligneChoix.plus, "LEFT", -6, 0)
+        c:SetPoint("RIGHT", ligneChoix.case or ligneChoix, ligneChoix.case and "LEFT" or "RIGHT", -6, 0)
         c:SetFrameLevel(ligneChoix:GetFrameLevel() + 2)
         c:Show()
         c.Rendre()
@@ -2886,6 +2901,7 @@ local function RendreProgression(contenu)
     if contenu.valeurObjectif then contenu.valeurObjectif:Hide() end
     if contenu.libelleObjectif then contenu.libelleObjectif:Hide() end
     if contenu.curseurObjectif then contenu.curseurObjectif:Hide() end
+    for _, c in pairs(contenu.casesVise or {}) do c:Hide() end
     MigrerProjetsDeProgression()
     ecran.deplie = ecran.deplie or {}
     local catalogue = NS.recettes
@@ -4516,6 +4532,9 @@ function ecran.Montrer(cle)
         end
         if fenetre.contenu.curseurObjectif and ecran.page ~= "progression" then
             fenetre.contenu.curseurObjectif:Hide()
+        end
+        if ecran.page ~= "progression" then
+            for _, c in pairs(fenetre.contenu.casesVise or {}) do c:Hide() end
         end
         -- Les paragraphes sont reposes par chaque page qui en a besoin.
         CacherParagraphes(fenetre.contenu)
