@@ -213,7 +213,22 @@ local function DessinerTrajet()
     calque:SetFrameLevel(math.min((vue.clip:GetFrameLevel() or 1) + 40, 9000))
     for _, t in ipairs(calque.points or {}) do t:Hide() end
     local t = Tournee()
-    if t.carte ~= vue.idCarte or #t.points == 0 then return end
+    if t.carte ~= vue.idCarte or #t.points == 0 then
+        -- Guidage vers un seul point (PNJ, service...) : des pointilles du
+        -- personnage jusqu'a lui, pour le retrouver meme quand il ne
+        -- clignote plus.
+        local S = NS.suite or _G.CoreSuite
+        local c = page.cibleGuidee
+        if c and c.carte == vue.idCarte and c.x and c.y and S and S.GuidageActif and S.GuidageActif() then
+            local jx, jy = PositionJoueur(vue.idCarte)
+            if jx then
+                local ax, ay = VersCalque(jx, jy)
+                local bx, by = VersCalque(c.x, c.y)
+                Pointilles(0, ax, ay, bx, by, COULEUR_TOURNEE, 7, 0.95)
+            end
+        end
+        return
+    end
     local chemin = {}
     local jx, jy = PositionJoueur(vue.idCarte)
     if jx then table.insert(chemin, { jx, jy }) end

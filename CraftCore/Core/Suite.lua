@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 94
+local VERSION = 95
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2704,7 +2704,11 @@ local function Pilote()
             if e then
                 -- Pastille de MacroCore : on lance le raccourci directement.
                 local r = e.e and e.e.cle and Suite.Raccourci(e.e.cle)
-                if r then Suite.Lancer(r)
+                if r then
+                    -- Ouvrir une fenetre depuis MacroCore : MacroCore se
+                    -- referme et rend la manette a la fenetre ouverte.
+                    if p.nom == "CoreSuiteMacroCore" and Suite.FamilleDe(r) == "ouvrir" then Suite.ActiverMacroCore(false) end
+                    Suite.Lancer(r)
                 elseif e.Click and e:GetScript("OnClick") then pcall(e.Click, e, cote)
                 else
                     local f = e:GetScript("OnMouseUp") or e:GetScript("OnMouseDown")
@@ -4453,6 +4457,13 @@ function Suite.RemplirMacroCore()
                     b:SetScript("OnLeave", function(self)
                         self:SetAlpha(ALPHA_EN_COURSE)
                         GameTooltip:Hide()
+                    end)
+                    -- Ouvrir une fenetre : MacroCore se referme, la manette
+                    -- passe a la fenetre ouverte.
+                    b:HookScript("OnClick", function(self)
+                        if self.e and self.e.famille == "ouvrir" and not (InCombatLockdown and InCombatLockdown()) then
+                            Suite.ActiverMacroCore(false)
+                        end
                     end)
                     f.pastilles[n] = b
                 end
