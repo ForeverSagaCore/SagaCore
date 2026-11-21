@@ -2742,33 +2742,21 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         return liste
     end
 
-    -- 1. Recuperer : ce qui dort en banque ou chez mes autres personnages.
-    local aRecuperer = {}
-    for _, e in ipairs(Trie(plan.utilises)) do
-        local enSacs = NS.inventaire.DisponibleDansLesSacs(e.objet)
-        if enSacs < e.n then
-            local morceaux, reste = {}, e.n - enSacs
-            local _, banque = NS.inventaire.SacsEtBanque(fiche, e.objet)
-            if banque > 0 then table.insert(morceaux, string.format(L.GUIDE_IN_BANK, math.min(banque, reste))) reste = reste - banque end
-            local _, detail = NS.inventaire.DetailChezLesAutres(fiche, e.objet)
-            for _, d in ipairs(detail) do
-                if reste <= 0 then break end
-                table.insert(morceaux, d.nom .. " " .. math.min(d.total, reste))
-                reste = reste - d.total
+    -- 1. Recolter d'abord ce qui manque encore au compte.
+    if next(plan.manques) then
+        if Etape(L.GUIDE_GATHER, false) then
+            for _, e in ipairs(Trie(plan.manques)) do
+                index, y = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), ParRang("manques", e.objet))
             end
-            if #morceaux > 0 then table.insert(aRecuperer, { objet = e.objet, n = e.n - enSacs, ou = table.concat(morceaux, ", ") .. ParRang("utilises", e.objet) }) end
-        end
-    end
-    if next(plan.utilises or {}) then
-        if Etape(L.GUIDE_FETCH, #aRecuperer == 0) then
-            for _, e in ipairs(aRecuperer) do
-                index, y = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), e.ou)
-            end
-            y = Paragraphe(contenu, y + 2, L.GUIDE_FETCH_HELP, "GameFontDisableSmall")
+            BoutonDEtape("progRecolte", L.GUIDE_GATHER_GO, function()
+                if #vises == 0 and fiche then catalogue.Viser(fiche, cleObjectif, objectif, true) end
+                if NS.suivi and NS.suivi.Guider then NS.suivi.Guider(true) end
+                ecran.Montrer(ecran.page)
+            end)
         end
     end
 
-    -- 2. Acheter chez un marchand. Toujours la liste, chaque ligne cochee
+    -- 2. Acheter chez un marchand, apres la recolte. Toujours la liste, chaque ligne cochee
     -- quand ce personnage l'a dans ses sacs : c'est la qu'il en a besoin
     -- pour fabriquer (ce qu'un autre personnage detient ne compte pas).
     if next(plan.achats) then
@@ -2794,17 +2782,41 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         end
     end
 
-    -- 3. Recolter ou obtenir ce qui manque encore au compte.
-    if next(plan.manques) then
-        if Etape(L.GUIDE_GATHER, false) then
-            for _, e in ipairs(Trie(plan.manques)) do
-                index, y = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), ParRang("manques", e.objet))
+    -- 3. Recuperer en dernier : ce qui dort en banque ou chez mes autres
+    -- personnages, on l'a deja ; on le sort une fois le reste reuni.
+    local function ARecupererParRang(objet, enSacs)
+        if #segments < 2 then return "" end
+        local morceaux, sacs = {}, enSacs or 0
+        for _, seg in ipairs(segments) do
+            local u = seg.plan.utilises and seg.plan.utilises[objet] or 0
+            local deSacs = math.min(sacs, u)
+            sacs = sacs - deSacs
+            if u - deSacs > 0 then table.insert(morceaux, string.format(L.GUIDE_SPLIT, seg.vise, u - deSacs)) end
+        end
+        return (#morceaux > 0) and ("  |cff9d9d9d(" .. table.concat(morceaux, ", ") .. ")|r") or ""
+    end
+    local aRecuperer = {}
+    for _, e in ipairs(Trie(plan.utilises)) do
+        local enSacs = NS.inventaire.DisponibleDansLesSacs(e.objet)
+        if enSacs < e.n then
+            local morceaux, reste = {}, e.n - enSacs
+            local _, banque = NS.inventaire.SacsEtBanque(fiche, e.objet)
+            if banque > 0 then table.insert(morceaux, string.format(L.GUIDE_IN_BANK, math.min(banque, reste))) reste = reste - banque end
+            local _, detail = NS.inventaire.DetailChezLesAutres(fiche, e.objet)
+            for _, d in ipairs(detail) do
+                if reste <= 0 then break end
+                table.insert(morceaux, d.nom .. " " .. math.min(d.total, reste))
+                reste = reste - d.total
             end
-            BoutonDEtape("progRecolte", L.GUIDE_GATHER_GO, function()
-                if #vises == 0 and fiche then catalogue.Viser(fiche, cleObjectif, objectif, true) end
-                if NS.suivi and NS.suivi.Guider then NS.suivi.Guider(true) end
-                ecran.Montrer(ecran.page)
-            end)
+            if #morceaux > 0 then table.insert(aRecuperer, { objet = e.objet, n = e.n - enSacs, ou = table.concat(morceaux, ", ") .. ARecupererParRang(e.objet, enSacs) }) end
+        end
+    end
+    if next(plan.utilises or {}) then
+        if Etape(L.GUIDE_FETCH, #aRecuperer == 0) then
+            for _, e in ipairs(aRecuperer) do
+                index, y = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), e.ou)
+            end
+            y = Paragraphe(contenu, y + 2, L.GUIDE_FETCH_HELP, "GameFontDisableSmall")
         end
     end
 
