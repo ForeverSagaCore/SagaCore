@@ -668,7 +668,8 @@ local function RendrePersos(contenu, index, y)
                 PoserVisage(tex, perso, perso.cle == courant)
                 tex:SetDesaturated(not debloque)
             end,
-            texte = NS.NomCourt(p.cle) .. "  |cffb3b3b3" .. NomDeClasse(p.classe) .. "|r",
+            -- La couleur dit deja la classe : le nom seul.
+            texte = NS.NomCourt(p.cle),
             police = "GameFontNormal", couleur = CouleurDeClasse(p.classe),
             droite = p.niveau and string.format(L.LEVEL, p.niveau) or "", couleurDroite = BLANC,
             bandeau = p.cle == etat.cle,

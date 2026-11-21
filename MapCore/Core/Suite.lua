@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 115
+local VERSION = 116
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -3004,7 +3004,7 @@ Suite.RACCOURCIS = {
       action = function() if SlashCmdList.AURACORE then SlashCmdList.AURACORE("") end end,
       dispo = function() return SlashCmdList.AURACORE ~= nil end },
     { cle = "buffs", desc = "Demande au groupe, en un seul message, les buffs qui manquent et qui peut les donner. Hors combat seulement ; rien n'est envoyé s'il ne manque rien.", descEn = "Asks your group, in a single message, for the missing buffs and who can give them. Out of combat only ; nothing is sent when nothing is missing.",
-      fr = "Demander les buffs", en = "Ask for buffs", icone = "Spell_Holy_WordFortitude", famille = "repondre",
+      fr = "Demander les buffs", en = "Ask for buffs", icone = "INV_Misc_Horn_01", famille = "repondre",
       action = function() if _G.AuraCore_DemanderBuffs then _G.AuraCore_DemanderBuffs() end end,
       dispo = function() return _G.AuraCore_DemanderBuffs ~= nil end },
     { cle = "raccourcis", fr = "Panneau des raccourcis", en = "Shortcut panel", icone = "INV_Misc_Book_11",
