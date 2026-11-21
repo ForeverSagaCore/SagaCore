@@ -319,7 +319,11 @@ local SERVICES = {
     { cle = "auberge", libelle = "SVC_INN", fichiers = { "Interface\\Minimap\\Tracking\\Innkeeper" } },
     { cle = "banque", libelle = "SVC_BANK", fichiers = { "Interface\\Minimap\\Tracking\\Banker" } },
     { cle = "vol", libelle = "SVC_FLIGHT", fichiers = { "Interface\\Minimap\\Tracking\\FlightMaster" } },
+    -- Marchands de fleches et de balles (pour les classes qui tirent).
+    { cle = "munitions", libelle = "SVC_AMMO", fichiers = { "Interface\\Icons\\INV_Ammo_Arrow_02" }, defaut = true, rond = true },
 }
+-- Les munitions ne concernent que les classes qui tirent.
+local TIREURS = { HUNTER = true, WARRIOR = true, ROGUE = true }
 page.SERVICES = SERVICES
 
 -- Les services se filtrent comme le reste, dans la barre de la suite sous
@@ -394,7 +398,7 @@ end
 local function IconeDe(e)
     if e[1] == "metier" and ICONES_METIER[e[7]] then return ICONES_METIER[e[7]], true end
     local service = InfoService(e[1])
-    return service and service.fichiers[1], false
+    return service and service.fichiers[1], service and service.rond or false
 end
 
 -- Pose une icone sur une paire de textures : la normale (icones de suivi du
@@ -514,6 +518,7 @@ local function PoserServices(idCarte)
         local ok = page.ServiceActif(e[1])
         if ok and e[6] ~= "" and e[6] ~= "AH" and e[6] ~= faction then ok = false end
         if ok and e[1] == "classe" and classe and e[7] ~= "" and e[7] ~= classe then ok = false end
+        if ok and e[1] == "munitions" and classe and not TIREURS[classe] then ok = false end
         -- Deux icones identiques presque au meme endroit (deux maitres
         -- d'alchimie cote a cote) n'en font qu'une ; l'infobulle les nomme.
         if ok then
@@ -584,6 +589,7 @@ function page.ServicesVisibles(idCarte)
         local ok = page.ServiceActif(e[1])
         if ok and e[6] ~= "" and e[6] ~= "AH" and e[6] ~= faction then ok = false end
         if ok and e[1] == "classe" and classe and e[7] ~= "" and e[7] ~= classe then ok = false end
+        if ok and e[1] == "munitions" and classe and not TIREURS[classe] then ok = false end
         if ok then
             local icone, rond = IconeDe(e)
             table.insert(liste, { carte = idCarte, x = e[2] / 100, y = e[3] / 100,

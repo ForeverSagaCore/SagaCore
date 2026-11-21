@@ -43,6 +43,11 @@ NS.SERVICES = {
         { "metier", 40.5, 68.1, "Norzsh", "Junior Mining Trainer", "H", "MINING" },
         { "metier", 42.7, 67.4, "Zor'la", "Junior Herbalism Trainer", "H", "HERBALISM" },
         { "courrier", 51.9, 42.1, "", "", "", "" },
+        { "munitions", 42.6, 67.3, "Duokna", "Flèches et balles", "H", "" },
+        { "munitions", 54.4, 42.2, "Jark", "Flèches et balles", "H", "" },
+        { "munitions", 53.0, 41.0, "Ghrawt", "Flèches", "H", "" },
+        { "munitions", 56.3, 73.4, "K'waii", "Flèches et balles", "H", "" },
+        { "munitions", 56.5, 73.1, "Trayexir", "Flèches", "H", "" },
     },
     [1412] = {
         { "classe", 43.8, 76.7, "Harutt Thunderhorn", "Maître des guerriers", "H", "WARRIOR" },
@@ -75,6 +80,9 @@ NS.SERVICES = {
         { "metier", 44.3, 78.4, "Vartha Rochecrin", "Junior Mining Trainer", "H", "MINING" },
         { "metier", 44.1, 78.0, "Garan Haut-Soleil", "Junior Herbalism Trainer", "H", "HERBALISM" },
         { "courrier", 46.2, 63.5, "", "", "", "" },
+        { "munitions", 44.8, 77.0, "Kawnie Softbreeze", "Flèches et balles", "H", "" },
+        { "munitions", 45.3, 61.3, "Moorat Longstride", "Flèches et balles", "H", "" },
+        { "munitions", 45.0, 62.0, "Kennah Hawkseye", "Balles", "H", "" },
     },
     [1413] = {
         { "reparation", 51.1, 29.0, "Hraq", "Fournitures de forgeron", "H", "" },
@@ -114,6 +122,9 @@ NS.SERVICES = {
         { "courrier", 52.0, 30.4, "", "", "", "" },
         { "courrier", 62.2, 39.2, "", "", "", "" },
         { "courrier", 45.1, 58.7, "", "", "", "" },
+        { "munitions", 51.7, 29.9, "Barg", "Flèches et balles", "H", "" },
+        { "munitions", 51.1, 29.1, "Uthrok", "Flèches et balles", "H", "" },
+        { "munitions", 61.9, 38.8, "Jazzik", "Flèches et balles", "AH", "" },
     },
     [1416] = {
         { "classe", 84.5, 80.3, "Fahrad", "Grand maître des voleurs", "AH", "ROGUE" },
@@ -151,6 +162,9 @@ NS.SERVICES = {
         { "courrier", 19.1, 73.8, "", "", "", "" },
         { "courrier", 20.8, 65.9, "", "", "", "" },
         { "courrier", 15.4, 63.1, "", "", "", "" },
+        { "munitions", 17.2, 71.5, "Aemara", "Flèches", "AH", "" },
+        { "munitions", 39.5, 81.7, "Thanthaldis Snowgleam", "Flèches et balles", "A", "" },
+        { "munitions", 62.8, 59.3, "Jekyll Flandring", "Flèches et balles", "H", "" },
     },
     [1417] = {
         { "reparation", 46.0, 47.7, "Jannos Ironwill", "Fabricant de masses supérieures", "A", "" },
@@ -162,6 +176,9 @@ NS.SERVICES = {
         { "reparation", 72.5, 33.4, "Mu'uta", "Fabricant d'arcs", "H", "" },
         { "metier", 73.4, 36.9, "Docteur Gregory Victor", "Chirurgien", "H", "FIRSTAID" },
         { "courrier", 73.9, 33.1, "", "", "", "" },
+        { "munitions", 72.5, 33.4, "Mu'uta", "Flèches", "H", "" },
+        { "munitions", 46.5, 47.6, "Vikki Lonsav", "Flèches et balles", "A", "" },
+        { "munitions", 74.1, 32.4, "Graud", "Flèches et balles", "H", "" },
     },
     [1418] = {
         { "reparation", 2.9, 47.2, "Sranda", "Marchand d'armes et d'armures légères", "H", "" },
@@ -170,6 +187,7 @@ NS.SERVICES = {
         { "reparation", 42.5, 52.5, "Jazzrik", "Fournitures de forgeron", "AH", "" },
         { "auberge", 2.8, 45.9, "Aubergiste Shul'kar", "Aubergiste", "H", "" },
         { "courrier", 3.8, 47.3, "", "", "", "" },
+        { "munitions", 3.1, 45.9, "Grawl", "Flèches et balles", "H", "" },
     },
     [1419] = {
         { "reparation", 66.1, 17.2, "Strumner Flintheel", "Fabricant d'armures", "A", "" },
@@ -215,6 +233,8 @@ NS.SERVICES = {
         { "metier", 21.2, 45.7, "Angus Mainmartel", "Blacksmith", "H", "BLACKSMITHING" },
         { "reparation", 21.2, 45.7, "Angus Mainmartel", "Blacksmith", "H", "" },
         { "courrier", 61.5, 53.1, "", "", "", "" },
+        { "munitions", 32.3, 65.4, "Joshua Kien", "Flèches et balles", "H", "" },
+        { "munitions", 61.2, 52.6, "Mme Winters", "Flèches et balles", "H", "" },
     },
     [1421] = {
         { "vol", 45.6, 42.6, "Karos Razok", "Eleveur de chauve-souris", "H", "" },
@@ -232,6 +252,8 @@ NS.SERVICES = {
         { "auberge", 43.2, 41.3, "Aubergiste Bates", "Aubergiste", "H", "" },
         { "reparation", 45.0, 39.3, "Nadia Vernon", "Fabricant d'arcs", "H", "" },
         { "courrier", 43.4, 41.5, "", "", "", "" },
+        { "munitions", 44.0, 39.9, "Edwin Harly", "Flèches et balles", "H", "" },
+        { "munitions", 45.0, 39.3, "Nadia Vernon", "Flèches", "H", "" },
     },
     [1422] = {
         { "reparation", 42.8, 83.7, "Intendant de l'Aube d'argent Lightspark", "L'Aube d'argent", "AH", "" },
@@ -245,6 +267,7 @@ NS.SERVICES = {
         { "auberge", 71.8, 48.5, "Jessica Chambers", "Aubergiste", "AH", "" },
         { "reparation", 71.2, 49.9, "Artisan Wilhelm", "Fraternité de la Lumière", "AH", "" },
         { "courrier", 71.2, 48.9, "", "", "", "" },
+        { "munitions", 69.9, 53.7, "Conservateur Alen", "Flèches et balles", "AH", "" },
     },
     [1424] = {
         { "maitre", 36.8, 44.3, "Couturière de Hautebrande", "", "A", "" },
@@ -265,6 +288,8 @@ NS.SERVICES = {
         { "metier", 54.1, 80.3, "Chasseur Moore", "Fisherman", "A", "FISHING" },
         { "courrier", 50.4, 58.7, "", "", "", "" },
         { "courrier", 62.4, 19.7, "", "", "", "" },
+        { "munitions", 62.6, 19.9, "Kayren Soothallow", "Flèches et balles", "H", "" },
+        { "munitions", 49.1, 55.1, "Sarah Raycroft", "Flèches et balles", "A", "" },
     },
     [1425] = {
         { "vol", 81.7, 81.8, "Gorkas", "Maître des Cavaliers célestes", "H", "" },
@@ -282,6 +307,7 @@ NS.SERVICES = {
         { "classe", 14.6, 43, "Torin Treehame", "Hunter Trainer", "A", "HUNTER" },
         { "courrier", 14.0, 45.7, "", "", "", "" },
         { "courrier", 78.8, 80.5, "", "", "", "" },
+        { "munitions", 76.8, 81.4, "Renn'az", "Flèches", "H", "" },
     },
     [1426] = {
         { "classe", 28.6, 66.1, "Alamar Grimm", "Maître des démonistes", "A", "WARLOCK" },
@@ -329,6 +355,9 @@ NS.SERVICES = {
         { "metier", 28.9, 67.7, "Sally Vivevrille", "Junior Mining Trainer", "A", "MINING" },
         { "metier", 28.9, 66.6, "Emrys Barbe-de-silex", "Junior Herbalism Trainer", "A", "HERBALISM" },
         { "courrier", 47.0, 52.6, "", "", "", "" },
+        { "munitions", 30.1, 71.5, "Adlin Pridedrift", "Flèches et balles", "A", "" },
+        { "munitions", 47.2, 52.4, "Kreg Bilmn", "Flèches et balles", "A", "" },
+        { "munitions", 40.7, 65.1, "Hegnar Rumbleshot", "Balles", "A", "" },
     },
     [1427] = {
         { "vol", 37.9, 30.9, "Lanie Reed", "Maître des gryphons", "A", "" },
@@ -336,6 +365,7 @@ NS.SERVICES = {
         { "metier", 63.6, 76.0, "Sarah Tanner", "Artisan du cuir - Maître élémentaire", "A", "LEATHERWORKING" },
         { "reparation", 41.5, 75.0, "Graw Cornerstone", "Marchand d'armures en mailles", "A", "" },
         { "reparation", 38.8, 28.5, "Maître forgeron Burninate", "La Confrérie du thorium", "AH", "" },
+        { "munitions", 38.8, 28.5, "Maître forgeron Burninate", "Flèches et balles", "AH", "" },
     },
     [1428] = {
         { "reparation", 85.2, 68.4, "Felder Stover", "Marchand d'armes", "A", "" },
@@ -386,6 +416,11 @@ NS.SERVICES = {
         { "classe", 41.1, 66.2, "Joséphine Carson", "Hunter Trainer", "A", "HUNTER" },
         { "reparation", 42.0, 66.4, "Nordun Fixevision", "Traveling Ranged Weapon Salesman", "A", "" },
         { "courrier", 42.9, 65.5, "", "", "", "" },
+        { "munitions", 44.0, 65.9, "Brog Hamfist", "Flèches et balles", "A", "" },
+        { "munitions", 47.5, 41.6, "Frère Danil", "Flèches et balles", "A", "" },
+        { "munitions", 83.3, 66.1, "Rallic Finn", "Flèches", "A", "" },
+        { "munitions", 83.3, 66.7, "Drake Lindgren", "Flèches et balles", "A", "" },
+        { "munitions", 42.0, 66.4, "Nordun Fixevision", "Flèches et balles", "A", "" },
     },
     [1430] = {
         { "reparation", 48.4, 78, "Haunted Anvil", "", "AH", "" },
@@ -403,6 +438,8 @@ NS.SERVICES = {
         { "reparation", 45.6, 51.2, "Quartermaster Falinar", "", "AH", "" },
         { "reparation", 46.8, 47.6, "Quartermaster Falinar", "", "AH", "" },
         { "courrier", 73.7, 46.1, "", "", "", "" },
+        { "munitions", 73.0, 44.4, "Avette Fellwood", "Flèches", "A", "" },
+        { "munitions", 74.2, 44.8, "Mabel Solaj", "Flèches et balles", "A", "" },
     },
     [1432] = {
         { "reparation", 34.0, 46.5, "Morhan Coppertongue", "Forgeron", "A", "" },
@@ -423,6 +460,11 @@ NS.SERVICES = {
         { "auberge", 35.5, 48.4, "Hearthstove l'aubergiste", "Aubergiste", "A", "" },
         { "classe", 82.4, 62.4, "Dargh Trueaim", "Maître des chasseurs", "A", "HUNTER" },
         { "courrier", 34.8, 47.7, "", "", "", "" },
+        { "munitions", 34.8, 48.6, "Yanni Stoutheart", "Flèches et balles", "A", "" },
+        { "munitions", 82.5, 63.4, "Xandar Goodbeard", "Flèches et balles", "A", "" },
+        { "munitions", 83.0, 63.0, "Cliff Hadin", "Flèches", "A", "" },
+        { "munitions", 35.8, 43.5, "Vrok Blunderblast", "Balles", "A", "" },
+        { "munitions", 83.2, 63.4, "Irene Sureshot", "Balles", "A", "" },
     },
     [1433] = {
         { "reparation", 22.0, 45.5, "Kimberly Hiett", "Fabricant d'arcs", "A", "" },
@@ -439,6 +481,9 @@ NS.SERVICES = {
         { "reparation", 10.4, 74.8, "Stondry Sombremartel", "Blacksmith", "A", "" },
         { "banque", 9.5, 72.0, "Cargaison non inspectée", "", "AH", "" },
         { "courrier", 21.3, 46.5, "", "", "", "" },
+        { "munitions", 22.0, 45.5, "Kimberly Hiett", "Flèches", "A", "" },
+        { "munitions", 23.7, 47.3, "Lindsay Ashlock", "Flèches et balles", "A", "" },
+        { "munitions", 18.8, 41.3, "Henry Chapal", "Balles", "A", "" },
     },
     [1434] = {
         { "metier", 27.7, 77.9, "Flora Silverwind", "Grande herboriste", "AH", "HERBALISM" },
@@ -478,6 +523,10 @@ NS.SERVICES = {
         { "reparation", 28.4, 75.4, "Bubbles", "Toy Vendor", "AH", "" },
         { "courrier", 26.7, 76.4, "", "", "", "" },
         { "courrier", 32.5, 28.6, "", "", "", "" },
+        { "munitions", 28.3, 74.6, "Haren Kanmae", "Flèches", "AH", "" },
+        { "munitions", 38.0, 3.0, "Caporal Bluth", "Flèches et balles", "A", "" },
+        { "munitions", 31.6, 27.9, "Uthok", "Flèches et balles", "H", "" },
+        { "munitions", 28.5, 75.1, "Tireur d’élite Mazk", "Balles", "AH", "" },
     },
     [1435] = {
         { "reparation", 45.1, 50.4, "Grimnal", "Marchand de cottes de mailles & d'armures de plaques", "H", "" },
@@ -501,6 +550,8 @@ NS.SERVICES = {
         { "auberge", 52.9, 53.7, "Aubergiste Heather", "Aubergiste", "A", "" },
         { "maitre", 42.8, 72.8, "Enfant étrange", "", "AH", "" },
         { "courrier", 53.1, 53.3, "", "", "", "" },
+        { "munitions", 57, 47.2, "Intendant Lewis", "Flèches et balles", "A", "" },
+        { "munitions", 57.7, 53.9, "William MacGregor", "Flèches", "A", "" },
     },
     [1437] = {
         { "reparation", 11.4, 59.7, "Brak Durnad", "Fabricant d'armes", "A", "" },
@@ -517,6 +568,11 @@ NS.SERVICES = {
         { "metier", 10.8, 61.4, "Fremal Doohickey", "Maître des premiers soins", "A", "FIRSTAID" },
         { "maitre", 10.8, 60.2, "Junder Brokk", "", "A", "" },
         { "courrier", 10.9, 59.7, "", "", "", "" },
+        { "munitions", 11.3, 58.4, "Naela Trance", "Flèches", "A", "" },
+        { "munitions", 11.1, 58.3, "Edwina Monzor", "Flèches", "A", "" },
+        { "munitions", 10.8, 56.8, "Neal Allen", "Flèches et balles", "A", "" },
+        { "munitions", 12.1, 58.0, "Gruham Rumdnul", "Flèches et balles", "A", "" },
+        { "munitions", 11.3, 59.6, "Murndan Derth", "Balles", "A", "" },
     },
     [1438] = {
         { "maitre", 56.8, 59.8, "Keldas", "Maître des familiers", "A", "" },
@@ -552,6 +608,10 @@ NS.SERVICES = {
         { "metier", 58.2, 41.4, "Fanorran Calmechêne", "Junior Mining Trainer", "A", "MINING" },
         { "metier", 59.9, 41.3, "Eleyna Vespebrise", "Junior Herbalism Trainer", "A", "HERBALISM" },
         { "courrier", 56.1, 58.4, "", "", "", "" },
+        { "munitions", 59.5, 40.9, "Lyrai", "Flèches et balles", "A", "" },
+        { "munitions", 59.3, 41.1, "Keina", "Flèches", "A", "" },
+        { "munitions", 55.5, 57.1, "Aldia", "Flèches et balles", "A", "" },
+        { "munitions", 55.9, 59.2, "Jeena Featherbow", "Flèches", "A", "" },
     },
     [1439] = {
         { "vol", 36.3, 45.6, "Caylais Moonfeather", "Maître des hippogryphes", "A", "" },
@@ -565,6 +625,7 @@ NS.SERVICES = {
         { "auberge", 37.0, 44.1, "Shaussiy l'aubergiste", "Aubergiste", "A", "" },
         { "metier", 38.3, 41.1, "Jenna Lemkenilli", "Ingénieur - Compagnon", "A", "ENGINEERING" },
         { "courrier", 37.3, 43.7, "", "", "", "" },
+        { "munitions", 37.5, 40.5, "Dalmond", "Flèches et balles", "A", "" },
     },
     [1440] = {
         { "maitre", 18.0, 60.0, "Bolyun", "Maître des familiers", "A", "" },
@@ -591,6 +652,9 @@ NS.SERVICES = {
         { "reparation", 89.6, 40.4, "Quartermaster Kyleen", "", "AH", "" },
         { "courrier", 36.3, 50.2, "", "", "", "" },
         { "courrier", 73.6, 60.9, "", "", "", "" },
+        { "munitions", 50.3, 67.3, "Bhaldaran Ravenshade", "Flèches", "A", "" },
+        { "munitions", 73.5, 60.3, "Burkrum", "Flèches et balles", "H", "" },
+        { "munitions", 34.9, 50.9, "Haljan Oakheart", "Flèches et balles", "A", "" },
     },
     [1441] = {
         { "reparation", 80.4, 77.0, "Synge", "Marchand d'armes à feu", "AH", "" },
@@ -598,6 +662,9 @@ NS.SERVICES = {
         { "reparation", 44.9, 50.7, "Starn", "Fabricant d'armes à feu & arcs", "H", "" },
         { "auberge", 46.1, 51.5, "Aubergiste Abeqwa", "Aubergiste", "H", "" },
         { "courrier", 45.9, 51.1, "", "", "", "" },
+        { "munitions", 44.9, 50.7, "Starn", "Flèches et balles", "H", "" },
+        { "munitions", 45.9, 51.5, "Jawn Highmesa", "Flèches et balles", "H", "" },
+        { "munitions", 80.4, 77.0, "Synge", "Balles", "AH", "" },
     },
     [1442] = {
         { "reparation", 62.7, 40.2, "Nizzik", "Marchand d'armures de la KapitalRisk", "AH", "" },
@@ -611,6 +678,9 @@ NS.SERVICES = {
         { "auberge", 35.8, 5.7, "Aubergiste Faralia", "Aubergiste", "A", "" },
         { "courrier", 48.0, 61.1, "", "", "", "" },
         { "courrier", 36.0, 7.2, "", "", "", "" },
+        { "munitions", 45.9, 58.7, "Grawnal", "Flèches et balles", "H", "" },
+        { "munitions", 35.5, 6.2, "Chylina", "Flèches et balles", "A", "" },
+        { "munitions", 45.4, 59.1, "Borand", "Flèches", "H", "" },
     },
     [1443] = {
         { "reparation", 67.9, 8.3, "Maxton Strang", "Marchand de cottes de mailles", "A", "" },
@@ -625,6 +695,9 @@ NS.SERVICES = {
         { "reparation", 25.8, 71.0, "Hae'Wilani", "Fabricant de haches", "H", "" },
         { "courrier", 65.4, 6.8, "", "", "", "" },
         { "courrier", 24.8, 68.8, "", "", "", "" },
+        { "munitions", 24.9, 71.8, "Tukk", "Flèches et balles", "H", "" },
+        { "munitions", 66.6, 7.0, "Christi Galvanis", "Flèches et balles", "A", "" },
+        { "munitions", 40.5, 79.3, "Super-Vendeur 680", "Flèches et balles", "AH", "" },
     },
     [1444] = {
         { "reparation", 89.3, 45.9, "Rendow", "Marchand d'armures de cuir", "A", "" },
@@ -650,6 +723,8 @@ NS.SERVICES = {
         { "reparation", 48.6, 12.4, "Quartermaster Valdane", "", "AH", "" },
         { "courrier", 31.3, 43.8, "", "", "", "" },
         { "courrier", 74.9, 44, "", "", "", "" },
+        { "munitions", 30.6, 43.4, "Faralorn", "Flèches et balles", "A", "" },
+        { "munitions", 74.9, 45.7, "Cawind Trueaim", "Flèches et balles", "H", "" },
     },
     [1445] = {
         { "vol", 67.5, 51.3, "Baldruc", "Maître des gryphons", "A", "" },
@@ -671,6 +746,10 @@ NS.SERVICES = {
         { "metier", 67.8, 49.0, "Docteur Gustaf VanHowzen", "Chirurgien", "A", "FIRSTAID" },
         { "reparation", 53.8, 11.3, "Bryanna Embrise", "Theramore Expeditionary Force Quartermaster", "A", "" },
         { "courrier", 66.0, 45.3, "", "", "", "" },
+        { "munitions", 68.0, 49.9, "Jensen Farran", "Flèches", "A", "" },
+        { "munitions", 35.5, 30.1, "Zanara", "Flèches", "H", "" },
+        { "munitions", 67.5, 51.7, "Charity Mipsy", "Flèches et balles", "A", "" },
+        { "munitions", 67.5, 48.0, "Torq Ironblast", "Balles", "A", "" },
     },
     [1446] = {
         { "reparation", 51.5, 28.8, "Krinkle Goodsteel", "Fournitures de forgeron", "AH", "" },
@@ -685,6 +764,8 @@ NS.SERVICES = {
         { "reparation", 50.7, 27.5, "Blizrik Buckshot", "Fabricant d’armes à feu", "AH", "" },
         { "metier", 52.3, 27.7, "Buzzek Bracketswing", "Ingénieur - Maître", "AH", "ENGINEERING" },
         { "courrier", 52.3, 27.8, "", "", "", "" },
+        { "munitions", 67.0, 22.0, "Jabbey", "Flèches et balles", "AH", "" },
+        { "munitions", 50.7, 27.5, "Blizrik Buckshot", "Balles", "AH", "" },
     },
     [1447] = {
         { "metier", 37.6, 65.4, "Peter Galen", "Artisan du cuir - Maître écailles de dragon", "A", "LEATHERWORKING" },
@@ -693,6 +774,7 @@ NS.SERVICES = {
         { "vol", 11.9, 77.6, "Jarrodenus", "Maître des hippogryphes", "A", "" },
         { "reparation", 12, 78.4, "Brinna Valanaar", "Fabricant d'arcs", "A", "" },
         { "auberge", 12.6, 77.4, "Berdun Brasse-Falaise", "Innkeeper", "A", "" },
+        { "munitions", 12, 78.4, "Brinna Valanaar", "Flèches", "A", "" },
     },
     [1448] = {
         { "maitre", 62.2, 24.4, "Nalesette Wildbringer", "Maître des familiers", "A", "" },
@@ -704,10 +786,14 @@ NS.SERVICES = {
         { "vol", 62.5, 24.2, "Mishellena", "Maître des hippogryphes", "A", "" },
         { "reparation", 62.4, 25.8, "Mylini Frostmoon", "Marchand d'armes", "A", "" },
         { "maitre", 51.5, 82.0, "Maître mycologue Shurome", "Emerald Circle", "AH", "" },
+        { "munitions", 62.3, 25.6, "Malygen", "Flèches et balles", "A", "" },
+        { "munitions", 34.8, 53.2, "Bale", "Flèches et balles", "H", "" },
+        { "munitions", 65.2, 2.7, "Gorn le Borgne", "Flèches et balles", "", "" },
     },
     [1449] = {
         { "reparation", 44.1, 7.2, "Gibbert", "Marchand d'armes", "AH", "" },
         { "vol", 45.2, 5.8, "Gryfe", "Maître de vol", "AH", "" },
+        { "munitions", 43.3, 7.7, "Nergal", "Flèches et balles", "AH", "" },
     },
     [1450] = {
         { "reparation", 52, 32.9, "Geenia Sunshadow", "Tailleur de robes spécialiste", "AH", "" },
@@ -720,6 +806,8 @@ NS.SERVICES = {
         { "reparation", 53.3, 42.7, "Narianna", "Fabricants d'arcs", "AH", "" },
         { "classe", 52.5, 40.6, "Loganaar", "Maître des druides", "AH", "DRUID" },
         { "vol", 32.1, 66.6, "Faustron", "Maître des Cavaliers célestes", "H", "" },
+        { "munitions", 53.3, 42.7, "Narianna", "Flèches", "AH", "" },
+        { "munitions", 45.2, 34.7, "Daeolyn Summerleaf", "Flèches et balles", "AH", "" },
     },
     [1451] = {
         { "auberge", 51.9, 39.2, "Calandrath", "Aubergiste", "AH", "" },
@@ -727,6 +815,7 @@ NS.SERVICES = {
         { "vol", 50.6, 34.5, "Cloud Skydancer", "Maître des hippogryphes", "A", "" },
         { "vol", 48.7, 36.7, "Runk Windtamer", "Maître des Cavaliers célestes", "H", "" },
         { "courrier", 51.8, 38.0, "", "", "", "" },
+        { "munitions", 51.9, 39.2, "Calandrath", "Flèches et balles", "AH", "" },
     },
     [1452] = {
         { "auberge", 61.4, 38.8, "Aubergiste Vizzie", "Aubergiste", "AH", "" },
@@ -737,6 +826,8 @@ NS.SERVICES = {
         { "reparation", 61.7, 38.0, "Wixxrak", "Fabricant d'armes & de fusils", "AH", "" },
         { "banque", 61.5, 37.0, "Izzy Coppergrab", "Banquier", "AH", "" },
         { "courrier", 61.3, 38.6, "", "", "", "" },
+        { "munitions", 51.5, 30.8, "Natheril Raincaller", "Flèches et balles", "A", "" },
+        { "munitions", 61.7, 38.0, "Wixxrak", "Balles", "AH", "" },
     },
     [1453] = {
         { "classe", 49.2, 87.8, "Maginor Dumas", "Maître magicien", "A", "MAGE" },
@@ -824,6 +915,11 @@ NS.SERVICES = {
         { "courrier", 74.5, 55.4, "", "", "", "" },
         { "courrier", 50.6, 89.7, "", "", "", "" },
         { "courrier", 61.6, 76.1, "", "", "", "" },
+        { "munitions", 64.8, 72.2, "Thurman Mullby", "Flèches et balles", "A", "" },
+        { "munitions", 64.1, 68.4, "Marda Weller", "Flèches", "A", "" },
+        { "munitions", 58.7, 68.7, "Lina Stover", "Flèches et balles", "A", "" },
+        { "munitions", 58.4, 69.0, "Frederick Stover", "Flèches", "A", "" },
+        { "munitions", 62.0, 36.6, "Thulman Flintcrag", "Balles", "A", "" },
     },
     [1454] = {
         { "metier", 79.6, 23.3, "Snarl", "Forgeron - Expert", "H", "BLACKSMITHING" },
@@ -902,6 +998,11 @@ NS.SERVICES = {
         { "classe", 38.7, 35.9, "Sagorne Creststrider", "Maître des chamans", "H", "SHAMAN" },
         { "courrier", 62.3, 40.5, "", "", "", "" },
         { "courrier", 50.7, 70.4, "", "", "", "" },
+        { "munitions", 48.1, 80.5, "Trak'gen", "Flèches et balles", "H", "" },
+        { "munitions", 81.2, 18.7, "Zendo'jian", "Flèches", "H", "" },
+        { "munitions", 78.1, 38.5, "Jin'sora", "Flèches", "H", "" },
+        { "munitions", 46.1, 40.9, "Asoran", "Flèches et balles", "H", "" },
+        { "munitions", 52.1, 62.1, "Kaja", "Balles", "H", "" },
     },
     [1455] = {
         { "metier", 66.3, 55.7, "Vosur Brakthel", "Alchimiste - Compagnon", "A", "ALCHEMY" },
@@ -986,6 +1087,10 @@ NS.SERVICES = {
         { "courrier", 71.3, 72.1, "", "", "", "" },
         { "courrier", 33.2, 64.7, "", "", "", "" },
         { "courrier", 72.3, 49.1, "", "", "", "" },
+        { "munitions", 71.8, 66.7, "Skolmin Goldfury", "Flèches", "A", "" },
+        { "munitions", 61.5, 89.4, "Thalgus Thunderfist", "Flèches et balles", "A", "" },
+        { "munitions", 39.2, 74.5, "Bryllia Ironbrand", "Flèches et balles", "A", "" },
+        { "munitions", 72.2, 65.2, "Bretta Goldfury", "Balles", "A", "" },
     },
     [1456] = {
         { "metier", 29.7, 21.2, "Pand Stonebinder", "Maître des premiers soins", "H", "FIRSTAID" },
@@ -1050,6 +1155,10 @@ NS.SERVICES = {
         { "classe", 39.4, 65.8, "Boarton Ombre-Totem", "Rogue Trainer?", "H", "ROGUE" },
         { "classe", 25.4, 14.7, "Alodan l'Optimiste", "Paladin Trainer", "H", "PALADIN" },
         { "courrier", 45.2, 59.4, "", "", "", "" },
+        { "munitions", 47, 45.7, "Kuna Thunderhorn", "Flèches", "H", "" },
+        { "munitions", 38.9, 64.7, "Kuruk", "Flèches et balles", "H", "" },
+        { "munitions", 41.4, 62.4, "Jyn Stonehoof", "Balles", "H", "" },
+        { "munitions", 55.5, 57.1, "Hogor Thunderhoof", "Balles", "H", "" },
     },
     [1457] = {
         { "maitre", 32.5, 21.3, "Faelyssa", "", "A", "" },
@@ -1098,6 +1207,10 @@ NS.SERVICES = {
         { "classe", 39.5, 81.2, "Prêtresse Alathea", "Maître des prêtres", "A", "PRIEST" },
         { "maitre", 57.6, 46.7, "Ilyenia Moonfire", "Maître d'armes", "A", "" },
         { "courrier", 41.6, 41.9, "", "", "", "" },
+        { "munitions", 64.7, 53.0, "Ellandrieth", "Flèches et balles", "A", "" },
+        { "munitions", 63.3, 66.3, "Landria", "Flèches", "A", "" },
+        { "munitions", 58.8, 44.5, "Ariyell Skyshadow", "Flèches", "A", "" },
+        { "munitions", 70.7, 45.4, "Mydrannul", "Flèches et balles", "A", "" },
     },
     [1458] = {
         { "metier", 70.9, 58.4, "Dan Golthas", "Artisan du cuir - Compagnon", "H", "LEATHERWORKING" },
@@ -1165,12 +1278,20 @@ NS.SERVICES = {
         { "maitre", 57.3, 32.8, "Archibald", "Maître d'armes", "H", "" },
         { "classe", 47.5, 15.0, "Garen Largo", "Paladin Trainer", "H", "PALADIN" },
         { "courrier", 68.2, 38.3, "", "", "", "" },
+        { "munitions", 69.2, 48.9, "Eleanor Rusk", "Flèches et balles", "H", "" },
+        { "munitions", 58.8, 32.8, "Benijah Fenner", "Flèches", "H", "" },
+        { "munitions", 54.7, 38.8, "Abigail Sawyer", "Flèches", "H", "" },
+        { "munitions", 62.7, 26.8, "Nicholas Atwood", "Balles", "H", "" },
     },
     [1459] = {
         { "reparation", 49.7, 82.5, "Grelkor", "Fournitures de forgeron", "H", "" },
         { "reparation", 43.4, 15.6, "Lana Thunderbrew", "Fournitures de forgeron", "A", "" },
         { "reparation", 44.3, 18.2, "Gaelden Hammersmith", "Officier de ravitaillement Stormpike", "A", "" },
         { "reparation", 49.3, 82.5, "Grunnda Wolfheart", "Officier de ravitaillement Frostwolf", "H", "" },
+        { "munitions", 49.9, 82.1, "Rarck", "Flèches et balles", "H", "" },
+        { "munitions", 43.1, 17.5, "Jonivera Farmountain", "Flèches et balles", "A", "" },
+        { "munitions", 44.3, 18.2, "Gaelden Hammersmith", "Flèches et balles", "A", "" },
+        { "munitions", 49.3, 82.5, "Grunnda Wolfheart", "Flèches et balles", "H", "" },
     },
     [2482] = {
         { "auberge", 70.9, 51.5, "Sebelia", "Innkeeper", "AH", "" },
@@ -1183,6 +1304,9 @@ NS.SERVICES = {
         { "reparation", 13.7, 52.6, "Chagrak Hammerstrike", "Repairs", "H", "" },
         { "courrier", 69.2, 47.5, "", "", "", "" },
         { "courrier", 70.9, 49.8, "", "", "", "" },
+        { "munitions", 70.9, 50.8, "Lenedil Moonwing", "Flèches et balles", "AH", "" },
+        { "munitions", 12.9, 52.9, "Ortak Lomgok", "Flèches et balles", "H", "" },
+        { "munitions", 15.7, 50.4, "Caitir Flinthew", "Flèches et balles", "A", "" },
     },
     [2521] = {
         { "reparation", 43.4, 23.5, "Destin Triple-Forgé", "Weapon Merchant", "AH", "" },
@@ -1250,6 +1374,10 @@ NS.SERVICES = {
         { "courrier", 43.4, 44.2, "", "", "", "" },
         { "courrier", 62.3, 73.8, "", "", "", "" },
         { "courrier", 58.2, 76.5, "", "", "", "" },
+        { "munitions", 42.8, 24.5, "Uualia Solcrête", "Flèches et balles", "AH", "" },
+        { "munitions", 63.0, 77.8, "Antelariaa Mirenuée", "Flèches et balles", "AH", "" },
+        { "munitions", 44.7, 45.5, "Veena Vérinuage", "Flèches et balles", "AH", "" },
+        { "munitions", 44.8, 44.2, "Tephri Triple-Forgé", "Flèches", "AH", "" },
     },
     [2548] = {
         { "metier", 77.7, 51.9, "Grungle", "Miner", "AH", "MINING" },
@@ -1271,6 +1399,11 @@ NS.SERVICES = {
         { "courrier", 78.6, 53.8, "", "", "", "" },
         { "courrier", 58.7, 45.5, "", "", "", "" },
         { "courrier", 64.5, 83.6, "", "", "", "" },
+        { "munitions", 76.7, 53.2, "Grizzek", "Flèches et balles", "AH", "" },
+        { "munitions", 77.1, 52.9, "Friz Faiblétincelle", "Flèches et balles", "AH", "" },
+        { "munitions", 64.2, 84.1, "Martha Vaulecoup", "Flèches et balles", "A", "" },
+        { "munitions", 58.2, 45.9, "Maka", "Flèches et balles", "H", "" },
+        { "munitions", 78.6, 53.6, "Fizzix Boumcalibre", "Balles", "AH", "" },
     },
     [2652] = {
         { "auberge", 42.4, 69.8, "Adarien", "Innkeeper", "AH", "" },
