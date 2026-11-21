@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 84
+local VERSION = 85
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4177,220 +4177,108 @@ function Suite.BasculerFenetreMacros()
 end
 
 -- ---------------------------------------------------------------------------
--- MacroCore : une fenetre sur le modele de la fenetre Macros du jeu (meme
--- cadre, meme portrait au clavier), ouverte par le bouton rond. Vide pour
--- l'instant : son contenu viendra ensuite.
--- ---------------------------------------------------------------------------
-
+-- MacroCore : une fenetre comme le suivi Mes fabrications. Pour l'instant,
+-- seulement la rangee du haut (l'icone au clavier, comme un onglet du suivi)
+-- et le filet dessous.
 local ICONE_MACROCORE = "Interface\\MacroFrame\\MacroFrame-Icon"
+local ALPHA_EN_COURSE = 0.25
+local HAUT_ONGLETS = 38
 local fenMC
 
 local function MacroCore()
     if fenMC then return fenMC end
-    local ok, f = pcall(CreateFrame, "Frame", "CoreSuiteMacroCore", UIParent, "ButtonFrameTemplate")
-    if not ok or not f then return nil end
-    -- A la largeur des suivis (Mes fabrications, Quetes).
-    local suiviModele = _G.CraftCoreSuivi or _G.QuestCoreSuivi
-    local L = math.floor((suiviModele and suiviModele:GetWidth() or 300) + 0.5)
-    if L < 260 then L = 300 end
-    f:SetSize(L, 440)
-    f:SetFrameStrata("DIALOG")
-    f:SetClampedToScreen(false)
-    f:EnableMouse(true)
-    f:RegisterForDrag("LeftButton")
-    -- La fenetre est accrochee a l'icone : deplacer l'une deplace l'autre.
-    f:SetScript("OnDragStart", function()
-        local b = Suite.boutonRaccourcis
-        if b then b:StartMoving() end
+    local charte = NS.charte
+    if not (charte and charte.Fenetre) then return nil end
+    local cadre = charte.Fenetre("CoreSuiteMacroCore", 300, 84,
+        { portrait = false, strate = "MEDIUM", sansPied = true })
+    if cadre.titre then cadre.titre:SetText("MacroCore") end
+    cadre.fermer:SetScript("OnClick", function() cadre:Hide() end)
+
+    -- Place retenue.
+    local r = Reglages()
+    cadre:ClearAllPoints()
+    if type(r.macroCorePlace) == "table" then
+        cadre:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", r.macroCorePlace[1], r.macroCorePlace[2])
+    else
+        cadre:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+    end
+    cadre:SetScript("OnDragStart", function(self)
+        if Suite.Libre and not Suite.Libre("CoreSuiteMacroCore") then return end
+        self:StartMoving()
     end)
-    f:SetScript("OnDragStop", function()
-        local b = Suite.boutonRaccourcis
-        if b and b:GetScript("OnDragStop") then b:GetScript("OnDragStop")(b) end
+    cadre:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        local x, y = self:GetLeft(), self:GetTop()
+        if x and y then Reglages().macroCorePlace = { math.floor(x + 0.5), math.floor(y + 0.5) } end
     end)
-    if f.SetPortraitToAsset then pcall(f.SetPortraitToAsset, f, ICONE_MACROCORE)
-    elseif f.portrait then f.portrait:SetTexture(ICONE_MACROCORE) end
-    if f.SetTitle then pcall(f.SetTitle, f, "MacroCore")
-    elseif f.TitleText then f.TitleText:SetText("MacroCore") end
-    if f.Inset then f.Inset:Hide() end
-    if f.CloseButton then
-        f.CloseButton:SetScript("OnClick", function() Suite.ReplierMacroCore() end)
-    end
-    -- Echap replie la fenetre (sans faire disparaitre l'icone).
-    local echap = CreateFrame("Frame", "CoreSuiteMacroCoreOuverte", f)
-    echap:SetScript("OnHide", function()
-        if f.etat == "deplie" and f:IsShown() then Suite.ReplierMacroCore() end
+    if Suite.Ancrable then pcall(Suite.Ancrable, "CoreSuiteMacroCore", cadre, "MacroCore") end
+
+    -- L'icone au clavier : meme bouton que les onglets du suivi.
+    local b = CreateFrame("Button", nil, cadre)
+    b:SetSize(24, 24)
+    b:SetPoint("TOPLEFT", cadre.zone, "TOPLEFT", 2, 0)
+    b.fond = b:CreateTexture(nil, "BACKGROUND")
+    b.fond:SetSize(19, 19)
+    b.fond:SetPoint("CENTER")
+    b.fond:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    b.image = b:CreateTexture(nil, "ARTWORK")
+    b.image:SetPoint("CENTER")
+    b.image:SetSize(16, 16)
+    b.image:SetTexture(ICONE_MACROCORE)
+    if b.image.SetMask then pcall(b.image.SetMask, b.image, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+    b.anneau = b:CreateTexture(nil, "OVERLAY")
+    b.anneau:SetSize(41, 41)
+    b.anneau:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
+    b.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("MacroCore", 1, 0.82, 0)
+        GameTooltip:Show()
     end)
-    echap:Hide()
-    table.insert(UISpecialFrames, "CoreSuiteMacroCoreOuverte")
-    f.echap = echap
-    f.etat = "deplie"
-    f:Hide()
-    fenMC = f
-    return f
-end
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    cadre.icone = b
 
-local function PortraitDe(f)
-    local pc = f.PortraitContainer
-    return (pc and pc.portrait) or f.portrait or pc
-end
+    local filet = cadre:CreateTexture(nil, "ARTWORK")
+    filet:SetHeight(1)
+    filet:SetPoint("TOPLEFT", cadre.zone, "TOPLEFT", 0, -HAUT_ONGLETS + 6)
+    filet:SetPoint("TOPRIGHT", cadre.zone, "TOPRIGHT", 0, -HAUT_ONGLETS + 6)
+    filet:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+    cadre.filet = filet
 
--- Diametre exterieur de l'anneau du portrait.
-local function DiametreAnneau(f)
-    local p = PortraitDe(f)
-    local l = p and p:GetWidth() or 0
-    if not l or l < 20 then l = 60 end
-    return math.floor(l * 1.16 + 0.5)
-end
-
--- Ecart entre le coin haut gauche de la fenetre et le centre de son portrait.
-local function EcartPortrait(f)
-    local p = PortraitDe(f)
-    local px, py
-    if p then px, py = p:GetCenter() end
-    local fx, fy = f:GetLeft(), f:GetTop()
-    if px and py and fx and fy then return px - fx, py - fy end
-    return 25, -23
-end
-
--- Replie : seul reste le portrait de la fenetre avec son anneau. C'est la
--- fenetre elle-meme, donc l'icone et le portrait sont forcement identiques.
-function Suite.ReplierMacroCore()
-    local f = fenMC
-    if not f then return end
-    f.etat = "replie"
-    f.echap:Hide()
-    f.caches = f.caches or {}
-    local garder = { [f.PortraitContainer or false] = true, [f.NineSlice or false] = true, [f.echap] = true }
-    for _, c in ipairs({ f:GetChildren() }) do
-        if not garder[c] and c:IsShown() then c:Hide() table.insert(f.caches, c) end
-    end
-    for _, r in ipairs({ f:GetRegions() }) do
-        if r ~= f.portrait and r:IsShown() then r:Hide() table.insert(f.caches, r) end
-    end
-    local ns = f.NineSlice
-    local coin = ns and ns.TopLeftCorner
-    if ns then
-        for _, r in ipairs({ ns:GetRegions() }) do
-            if r ~= coin and r:IsShown() then r:Hide() table.insert(f.caches, r) end
-        end
-    end
-    if coin and ns.CreateMaskTexture then
-        if not f.masqueAnneau then
-            local m = ns:CreateMaskTexture()
-            m:SetTexture("Interface\\Masks\\CircleMaskScalable", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-            f.masqueAnneau = m
-        end
-        local d = DiametreAnneau(f)
-        f.masqueAnneau:ClearAllPoints()
-        f.masqueAnneau:SetPoint("CENTER", PortraitDe(f), "CENTER")
-        f.masqueAnneau:SetSize(d, d)
-        if not f.masqueActif then coin:AddMaskTexture(f.masqueAnneau) f.masqueActif = true end
-    end
-    f:EnableMouse(false)
-    f.etat = "replie"
-end
-
-function Suite.DeplierMacroCore()
-    local f = fenMC
-    if not f then return end
-    for _, x in ipairs(f.caches or {}) do x:Show() end
-    f.caches = {}
-    local coin = f.NineSlice and f.NineSlice.TopLeftCorner
-    if coin and f.masqueActif then coin:RemoveMaskTexture(f.masqueAnneau) f.masqueActif = nil end
-    f:EnableMouse(true)
-    f.etat = "deplie"
-    f.echap:Show()
-    f:Raise()
-end
-
--- Accroche la fenetre a l'icone : le centre du portrait sur le centre de l'icone.
-local function AccrocherMacroCore(b)
-    local f = MacroCore()
-    if not f then return end
-    if not f.ecart then
-        f:ClearAllPoints()
-        f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", 0, 0)
-        f:Show()
-        local dx, dy = EcartPortrait(f)
-        f.ecart = { dx, dy }
-    end
-    f:ClearAllPoints()
-    f:SetPoint("TOPLEFT", b, "CENTER", -f.ecart[1], -f.ecart[2])
-    f:Show()
-    if f.etat ~= "replie" and not f.echap:IsShown() then Suite.ReplierMacroCore() end
-    local d = DiametreAnneau(f)
-    b:SetSize(d, d)
-    b:SetFrameStrata("DIALOG")
-    b:SetFrameLevel(f:GetFrameLevel() + 60)
+    -- Presque transparente quand on court, nette a l'arret (comme le suivi).
+    local attente = 0
+    cadre:SetScript("OnUpdate", function(self, ecoule)
+        attente = attente - (ecoule or 0)
+        if attente > 0 then return end
+        attente = 0.2
+        local ok, enMouvement = false, false
+        if IsPlayerMoving then ok, enMouvement = pcall(IsPlayerMoving) end
+        local survol = self.IsMouseOver and self:IsMouseOver()
+        self:SetAlpha((ok and enMouvement and not survol) and ALPHA_EN_COURSE or 1)
+    end)
+    cadre:SetScript("OnHide", function() Reglages().macroCoreFermee = true end)
+    cadre:SetScript("OnShow", function() Reglages().macroCoreFermee = nil end)
+    fenMC = cadre
+    return cadre
 end
 
 function Suite.BasculerMacroCore()
     local f = MacroCore()
-    local b = Suite.boutonRaccourcis
-    if not f or not b then return false end
-    if f.etat == "deplie" then Suite.ReplierMacroCore() else Suite.DeplierMacroCore() end
-    b:SetFrameLevel(f:GetFrameLevel() + 60)
+    if not f then return false end
+    f:SetShown(not f:IsShown())
     return true
 end
 
--- Le petit bouton rond : deplacable, il retient sa place.
+-- Plus de bouton rond : seule la fenetre MacroCore.
 function Suite.PlacerBoutonRaccourcis()
-    -- Macros et raccourcis : prives pour l'instant.
+    if Suite.boutonRaccourcis then Suite.boutonRaccourcis:Hide() end
     if not Suite.Prive() then
-        if Suite.boutonRaccourcis then Suite.boutonRaccourcis:Hide() end
-        if _G.CoreSuiteMacroCore then _G.CoreSuiteMacroCore:Hide() end
+        if fenMC then fenMC:Hide() end
         return
     end
-    local r = Reglages()
-    local b = Suite.boutonRaccourcis
-    if not b then
-        b = CreateFrame("Button", "CoreSuiteBoutonRaccourcis", UIParent)
-        b:SetFrameStrata("MEDIUM")
-        b:SetMovable(true)
-        b:SetClampedToScreen(true)
-        b:RegisterForDrag("LeftButton")
-        b:RegisterForClicks("LeftButtonUp")
-        b.icone = b:CreateTexture(nil, "ARTWORK")
-        b.icone:SetTexture("Interface\\MacroFrame\\MacroFrame-Icon")
-        if b.CreateMaskTexture then
-            b.masque = b:CreateMaskTexture()
-            if b.masque then
-                b.masque:SetTexture("Interface\\Masks\\CircleMaskScalable", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-                b.masque:SetAllPoints(b.icone)
-            end
-        end
-        b:SetScript("OnDragStart", function(self) self:StartMoving() end)
-        b:SetScript("OnDragStop", function(self)
-            self:StopMovingOrSizing()
-            local x, y = self:GetCenter()
-            Reglages().raccourcisX, Reglages().raccourcisY = math.floor(x + 0.5), math.floor(y + 0.5)
-        end)
-        b:SetScript("OnClick", function() Suite.BasculerRaccourcis() end)
-        b:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText("MacroCore", 1, 0.82, 0)
-            GameTooltip:AddLine(TR("Clic : ouvrir. Glisser : déplacer.", "Click : open. Drag : move."), 1, 1, 1)
-            GameTooltip:Show()
-        end)
-        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        Suite.boutonRaccourcis = b
-    end
-    b:ClearAllPoints()
-    local quetes = _G.QuestCoreSuivi
-    if r.raccourcisX and r.raccourcisY then
-        b:SetPoint("CENTER", UIParent, "BOTTOMLEFT", r.raccourcisX, r.raccourcisY)
-    elseif quetes and quetes:IsShown() then
-        -- Par defaut : juste a gauche du suivi des quetes.
-        b:SetPoint("TOPRIGHT", quetes, "TOPLEFT", -6, 0)
-    else
-        b:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 140)
-    end
-    -- L'icone n'a pas de dessin a elle : c'est le portrait de la fenetre
-    -- repliee qui se voit dessous. Elle sert de poignee (clic, glisser).
-    b.icone:Hide()
-    if b.bordure then b.bordure:Hide() end
-    b:Show()
-    AccrocherMacroCore(b)
+    local f = MacroCore()
+    if f and not Reglages().macroCoreFermee then f:Show() end
 end
 
 do
