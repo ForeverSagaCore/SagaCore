@@ -734,12 +734,20 @@ end
 -- donneur), sans fleche de guidage.
 local function VoirSurCarte(id, moi)
     local ok, points = pcall(NS.carte.PointsPour, id, moi)
-    -- D'abord un lieu dehors ; sinon un lieu de donjon (son entree).
+    -- D'abord un lieu sur la carte ou l'on est, puis dans la zone de la
+    -- quete, puis n'importe ou dehors ; sinon un lieu de donjon (son entree).
+    local ici = NS.Appeler(NS.Lecture("C_Map.GetBestMapForUnit"), "player")
+    local zoneQ = tonumber(NS.ref.Lire("QuestDB", id, "zoneOrSort"))
+    local carteQ = zoneQ and zoneQ > 0 and NS.carte.CarteDeZone(zoneQ)
+    local liste = ok and points or {}
     local pt
-    for _, p in ipairs(ok and points or {}) do
-        if p.carte and not NS.carte.EstInstance(p.carte) then pt = p break end
+    for _, cible in ipairs({ ici, carteQ, true }) do
+        for _, p in ipairs(liste) do
+            if p.carte and not NS.carte.EstInstance(p.carte) and (cible == true or p.carte == cible) then pt = p break end
+        end
+        if pt then break end
     end
-    pt = pt or (ok and points and points[1])
+    pt = pt or liste[1]
     if pt and pt.carte and NS.pageCarte and NS.pageCarte.MontrerQuete then
         NS.pageCarte.MontrerQuete(id, pt.carte, pt.x, pt.y, NS.ref.NomDeQuete(id, moi), pt.quoi, true, pt.genre)
     end

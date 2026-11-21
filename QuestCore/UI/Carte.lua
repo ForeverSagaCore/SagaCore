@@ -493,6 +493,14 @@ local function Rectangle(zone, carteAffichee)
             local entiere = ok and g == 0 and d == 1 and h == 0 and b == 1
             if ok and not entiere and tonumber(g) and tonumber(d) and tonumber(h) and tonumber(b) and d > g and b > h then
                 r = { g, d, h, b }
+                -- Sur un continent, une zone n'en couvre jamais plus d'un
+                -- dixieme (les Tarides, la plus grande, a peine). Les zones
+                -- ajoutees par Forever (Mont Hyjal...) sont rendues par le jeu
+                -- sur la moitie du continent : leurs reperes y faisaient un
+                -- grand anneau. On ne les reporte pas.
+                local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), carteAffichee)
+                local continent = type(info) == "table" and (info.mapType == 2 or info.mapType == 1)
+                if continent and zone ~= carteAffichee and (d - g) * (b - h) > 0.15 then r = false end
             end
         end
         rectangles[cle] = r
