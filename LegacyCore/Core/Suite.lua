@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 91
+local VERSION = 92
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2658,9 +2658,11 @@ local function Pilote()
             .. GlyphePad("PAD1") .. "  " .. TR("Valider", "Select") .. esp
             .. GlyphePad("PAD2") .. "  " .. TR("Libérer", "Release"))
         -- De la largeur de la fenetre pilotee, posee juste au-dessus.
-        p.barre:SetWidth(math.max(f:GetWidth() or 0, (p.barre.texte:GetStringWidth() or 300) + 24))
+        -- Exactement la largeur du cadre visible de la fenetre (le bord
+        -- dessine du jeu commence un peu apres le bord gauche du cadre).
         p.barre:ClearAllPoints()
-        p.barre:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 4)
+        p.barre:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 3.5, 4)
+        p.barre:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 4)
         if p.barre.SetClampedToScreen then p.barre:SetClampedToScreen(true) end
         p.barre:Show()
         local liste = p.Liste()
@@ -4425,10 +4427,12 @@ function Suite.RemplirMacroCore()
                     b:SetScript("OnEnter", function(self)
                         if not self.e then return end
                         self:SetAlpha(1)
-                        -- Juste au-dessus de la pastille, jamais ailleurs.
+                        -- Colle au bord droit de la fenetre, a la hauteur de la
+                        -- pastille.
                         GameTooltip:SetOwner(self, "ANCHOR_NONE")
                         GameTooltip:ClearAllPoints()
-                        GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT", 0, 6)
+                        local dx = (f:GetRight() or 0) - (self:GetRight() or 0)
+                        GameTooltip:SetPoint("TOPLEFT", self, "TOPRIGHT", dx > 0 and dx or 0, 0)
                         GameTooltip:SetText(self.e.nom, 1, 0.82, 0)
                         local d = self.e.desc
                         if not d and (self.e.corps or self.e.texte) then
