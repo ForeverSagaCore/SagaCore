@@ -3018,6 +3018,7 @@ end
 do
     local f = CreateFrame("Frame")
     f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:RegisterEvent("UPDATE_MACROS")
     f:SetScript("OnEvent", function(self)
         self:UnregisterAllEvents()
         if not Suite.Prive() then return end
@@ -3029,8 +3030,14 @@ do
                              { "RLD", 1029581, "/reload", "macroRLDRecreee" } }) do
             if not r[m[4]] then
                 if (_G.GetMacroIndexByName(m[1]) or 0) == 0 then
-                    local ok = pcall(_G.CreateMacro, m[1], m[2], m[3], nil)
-                    if ok then r[m[4]] = true end
+                    local ok, index = pcall(_G.CreateMacro, m[1], m[2], m[3], nil)
+                    if not (ok and index) then ok, index = pcall(_G.CreateMacro, m[1], 134400, m[3], nil) end
+                    if ok and index then
+                        r[m[4]] = true
+                        print("|cffffd100SagaCore|r " .. TR("Macro recréée : ", "Macro recreated : ") .. m[1])
+                    else
+                        print("|cffffd100SagaCore|r " .. TR("Impossible de recréer la macro ", "Could not recreate macro ") .. m[1] .. " : " .. tostring(index))
+                    end
                 else
                     r[m[4]] = true
                 end
