@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 106
+local VERSION = 107
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2572,10 +2572,31 @@ local function Pilote()
     -- L'element choisi est montre comme au survol de la souris (sa propre
     -- surbrillance, son infobulle), sans cadre ajoute, comme dans les menus de
     -- la suite. La fenetre reste en pleine couleur tant qu'on la pilote.
+    -- L'element choisi clignote doucement (sa propre surbrillance), pour bien
+    -- le voir.
+    local function Clignoter(e, oui)
+        local h = e.GetHighlightTexture and e:GetHighlightTexture()
+        if not (h and h.CreateAnimationGroup) then return end
+        if oui then
+            if not h.suiteClignote then
+                local g = h:CreateAnimationGroup()
+                g:SetLooping("BOUNCE")
+                local a = g:CreateAnimation("Alpha")
+                a:SetFromAlpha(1)
+                a:SetToAlpha(0.15)
+                a:SetDuration(0.45)
+                h.suiteClignote = g
+            end
+            h.suiteClignote:Play()
+        elseif h.suiteClignote then
+            h.suiteClignote:Stop()
+        end
+    end
     function p.Eteindre()
         local e = p.eclaire
         p.eclaire = nil
         if not e then return end
+        pcall(Clignoter, e, false)
         if e.UnlockHighlight then pcall(e.UnlockHighlight, e) end
         local quitte = e.GetScript and e:GetScript("OnLeave")
         if quitte then pcall(quitte, e) end
@@ -2588,6 +2609,7 @@ local function Pilote()
         p.pos = Boite(e) or p.pos
         p.eclaire = e
         if e.LockHighlight then pcall(e.LockHighlight, e) end
+        pcall(Clignoter, e, true)
         local survol = e:GetScript("OnEnter")
         if survol then pcall(survol, e) end
     end
@@ -4291,6 +4313,7 @@ local function MacroCore()
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     b:SetScript("OnClick", function() Suite.ActiverMacroCore(not cadre.active) end)
+    b.infobulleDe = "CoreSuiteMacroCore"
     cadre.icone = b
 
     -- A droite de l'icone : les deux suivis. Un clic les montre ou les cache.
@@ -4323,6 +4346,7 @@ local function MacroCore()
         s.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
         s:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
         s.nomSuivi, s.api, s.nom, s.desc = v[1], v[2], v[3], v[6]
+        s.infobulleDe = "CoreSuiteMacroCore"
         s:SetAlpha(ALPHA_EN_COURSE)
         s:SetScript("OnClick", function(self)
             local a = _G[self.api]
@@ -4331,10 +4355,7 @@ local function MacroCore()
         s:SetScript("OnEnter", function(self)
             self:SetAlpha(1)
             if Reglages().macroCoreSansInfobulle then return end
-            GameTooltip:SetOwner(self, "ANCHOR_NONE")
-            GameTooltip:ClearAllPoints()
-            local dx = (cadre:GetRight() or 0) - (self:GetRight() or 0)
-            GameTooltip:SetPoint("TOPLEFT", self, "TOPRIGHT", dx > 0 and dx or 0, 0)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetText(self.nom, 1, 0.82, 0)
             GameTooltip:AddLine(self.desc, 1, 1, 1, true)
             GameTooltip:Show()
@@ -4481,6 +4502,7 @@ function Suite.RemplirMacroCore()
                     b:SetFrameStrata(f:GetFrameStrata())
                     b:SetFrameLevel(f:GetFrameLevel() + 10)
                     b:SetAlpha(ALPHA_EN_COURSE)
+                    b.infobulleDe = "CoreSuiteMacroCore"
                     b:RegisterForClicks("AnyUp", "AnyDown")
                     b:SetSize(PASTILLE, PASTILLE)
                     b.fond = b:CreateTexture(nil, "BACKGROUND")
@@ -4501,12 +4523,9 @@ function Suite.RemplirMacroCore()
                         f.dernierePastille = self
                         -- Infobulles : reglage de la suite (actives par defaut).
                         if Reglages().macroCoreSansInfobulle then return end
-                        -- Colle au bord droit de la fenetre, a la hauteur de la
-                        -- pastille.
-                        GameTooltip:SetOwner(self, "ANCHOR_NONE")
-                        GameTooltip:ClearAllPoints()
-                        local dx = (f:GetRight() or 0) - (self:GetRight() or 0)
-                        GameTooltip:SetPoint("TOPLEFT", self, "TOPRIGHT", dx > 0 and dx or 0, 0)
+                        -- Toujours au meme endroit, contre la fenetre (voir
+                        -- les infobulles fixes).
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                         GameTooltip:SetText(self.e.nom, 1, 0.82, 0)
                         local d = self.e.desc
                         if not d and (self.e.corps or self.e.texte) then
@@ -4829,6 +4848,61 @@ local function BrancherSuivis()
     end
 end
 Suite.BrancherIconesSuivis = BrancherSuivis
+
+-- ---------------------------------------------------------------------------
+-- Infobulles fixes : dans MacroCore, Mes fabrications et Quetes, l'infobulle
+-- est toujours au meme endroit, contre le haut de la fenetre, a droite ou a
+-- gauche (reglable). Par defaut : MacroCore et Mes fabrications a droite,
+-- Quetes a gauche.
+-- ---------------------------------------------------------------------------
+
+local FENETRES_INFOBULLE = { CoreSuiteMacroCore = "droite", CraftCoreSuivi = "droite", QuestCoreSuivi = "gauche" }
+Suite.FENETRES_INFOBULLE = FENETRES_INFOBULLE
+
+function Suite.CoteInfobulle(nom)
+    local r = Reglages()
+    local t = type(r.coteInfobulles) == "table" and r.coteInfobulles or {}
+    return t[nom] or FENETRES_INFOBULLE[nom]
+end
+function Suite.PoserCoteInfobulle(nom, cote)
+    local r = Reglages()
+    r.coteInfobulles = type(r.coteInfobulles) == "table" and r.coteInfobulles or {}
+    r.coteInfobulles[nom] = cote
+end
+
+local function FenetreDInfobulle(o)
+    local n = 0
+    while o and n < 20 do
+        if o.infobulleDe then return o.infobulleDe end
+        local nom = o.GetName and o:GetName()
+        if nom and FENETRES_INFOBULLE[nom] then return nom end
+        o = o.GetParent and o:GetParent()
+        n = n + 1
+    end
+end
+
+if not Suite.crochetInfobulles and hooksecurefunc then
+    Suite.crochetInfobulles = true
+    local enCours = false
+    hooksecurefunc(GameTooltip, "SetOwner", function(tt, owner)
+        if enCours or not owner then return end
+        local S = _G.CoreSuite
+        local ok, nom = pcall(FenetreDInfobulle, owner)
+        if not ok or not nom then return end
+        local f = _G[nom]
+        if not f then return end
+        enCours = true
+        pcall(tt.SetOwner, tt, owner, "ANCHOR_NONE")
+        enCours = false
+        tt:ClearAllPoints()
+        local cote = (S and S.CoteInfobulle and S.CoteInfobulle(nom)) or FENETRES_INFOBULLE[nom]
+        if cote == "gauche" then
+            tt:SetPoint("TOPRIGHT", f, "TOPLEFT", -4, 0)
+        else
+            tt:SetPoint("TOPLEFT", f, "TOPRIGHT", 4, 0)
+        end
+    end)
+end
 
 -- Plus de bouton rond : seule la fenetre MacroCore.
 function Suite.PlacerBoutonRaccourcis()
@@ -5784,6 +5858,15 @@ local function FenetreMacrosPages()
                   page.rInfo = O.Rangee()
                   page.cInfo = O.Case(page.rInfo, function(oui) Reglages().macroCoreSansInfobulle = (not oui) or nil end)
                   page.cInfo:SetPoint("RIGHT", page.rInfo, "RIGHT", -10, 0)
+                  -- Cote des infobulles, par fenetre.
+                  page.rCotes = {}
+                  for _, nom in ipairs({ "CoreSuiteMacroCore", "CraftCoreSuivi", "QuestCoreSuivi" }) do
+                      local rg = O.Rangee()
+                      rg.cle = nom
+                      O.Liste(rg, function() return { { "gauche", TR("À gauche", "On the left") }, { "droite", TR("À droite", "On the right") } } end,
+                          function() return Suite.CoteInfobulle(nom) end, function(v) Suite.PoserCoteInfobulle(nom, v) end)
+                      table.insert(page.rCotes, rg)
+                  end
                   page.rOuv = O.Rangee()
                   page.sOuv = O.Segments(page.rOuv, function() return {
                       { "gauche", TR("Gauche", "Left") }, { "droite", TR("Droite", "Right") },
@@ -5814,6 +5897,10 @@ local function FenetreMacrosPages()
                   page.cRond:SetChecked(not r.raccourcisCache)
                   page.rInfo.nom:SetText(TR("Infobulles des raccourcis", "Shortcut tooltips"))
                   page.cInfo:SetChecked(not r.macroCoreSansInfobulle)
+                  local NOMS = { CoreSuiteMacroCore = TR("Infobulles de MacroCore", "MacroCore tooltips"),
+                      CraftCoreSuivi = TR("Infobulles de Mes fabrications", "My crafts tooltips"),
+                      QuestCoreSuivi = TR("Infobulles des quêtes", "Quest tooltips") }
+                  for _, rg in ipairs(page.rCotes or {}) do rg.nom:SetText(NOMS[rg.cle]) end
                   page.bReplacer:SetText(TR("Replacer", "Reset"))
                   page.rOuv.nom:SetText(TR("Les icônes s'ouvrent", "Icons open"))
                   page.rForme.nom:SetText(TR("Forme des icônes", "Icon shape"))
