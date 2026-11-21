@@ -255,6 +255,128 @@ function M.Envoyer()
     for _, texte in ipairs(messages) do pcall(envoyer, texte, canal) end
 end
 
+-- ---------------------------------------------------------------------------
+-- Le bouton : rond, a l'icone de Robustesse, au-dessus du portrait du
+-- personnage par defaut (Maj + glisser pour le deplacer). Visible en groupe ;
+-- eteint et inactif tant que rien ne manque, illumine des qu'un buff manque.
+-- ---------------------------------------------------------------------------
+
+local function R() return NS.anneau and NS.anneau.Reglages and NS.anneau.Reglages() or {} end
+local bouton
+local function Placer(b)
+    b:ClearAllPoints()
+    local pos = R().boutonBuffs
+    if type(pos) == "table" and pos[1] then
+        b:SetPoint(pos[1], UIParent, pos[2] or pos[1], pos[3] or 0, pos[4] or 0)
+    elseif _G.PlayerFrame then
+        b:SetPoint("BOTTOMRIGHT", _G.PlayerFrame, "TOPRIGHT", -8, -10)
+    else
+        b:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 180, -10)
+    end
+end
+
+local function Construire()
+    if bouton then return bouton end
+    local b = CreateFrame("Button", "AuraCoreBoutonBuffs", UIParent)
+    b:SetSize(31, 31)
+    b:SetFrameStrata("MEDIUM")
+    b:SetMovable(true)
+    b:SetClampedToScreen(true)
+    b:RegisterForDrag("LeftButton")
+    b:RegisterForClicks("LeftButtonUp")
+    b.fond = b:CreateTexture(nil, "BACKGROUND")
+    b.fond:SetSize(24, 24)
+    b.fond:SetPoint("TOPLEFT", 7, -5)
+    b.fond:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    b.icone = b:CreateTexture(nil, "ARTWORK")
+    b.icone:SetSize(18, 18)
+    b.icone:SetPoint("TOPLEFT", 7, -6)
+    b.icone:SetTexture(D.Icone(1243))
+    if b.icone.SetMask then pcall(b.icone.SetMask, b.icone, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+    b.anneau = b:CreateTexture(nil, "OVERLAY")
+    b.anneau:SetSize(53, 53)
+    b.anneau:SetPoint("TOPLEFT", 0, 0)
+    b.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    -- Illumine : une lueur qui pulse doucement autour de l'icone.
+    b.lueur = b:CreateTexture(nil, "OVERLAY", nil, 1)
+    b.lueur:SetSize(36, 36)
+    b.lueur:SetPoint("CENTER", b.icone, "CENTER", 0, 0)
+    b.lueur:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
+    b.lueur:SetBlendMode("ADD")
+    b.pulse = b.lueur:CreateAnimationGroup()
+    b.pulse:SetLooping("BOUNCE")
+    local a = b.pulse:CreateAnimation("Alpha")
+    a:SetFromAlpha(1)
+    a:SetToAlpha(0.2)
+    a:SetDuration(0.8)
+    b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
+    b:SetScript("OnClick", function(self)
+        if self.actif then M.Envoyer() M.MettreAJour() end
+    end)
+    b:SetScript("OnDragStart", function(self)
+        if IsShiftKeyDown and IsShiftKeyDown() then self:StartMoving() end
+    end)
+    b:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        local point, _, rel, x, y = self:GetPoint()
+        R().boutonBuffs = { point, rel, x, y }
+    end)
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
+        GameTooltip:SetText(T("Demander les buffs manquants", "Ask for missing buffs"), 1, 0.82, 0)
+        GameTooltip:AddLine(M.Apercu(), 1, 1, 1, true)
+        GameTooltip:AddLine(T("Maj + glisser : déplacer le bouton.", "Shift + drag : move the button."), 0.6, 0.6, 0.6, true)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    Placer(b)
+    bouton = b
+    return b
+end
+
+function M.ReplacerBouton()
+    R().boutonBuffs = nil
+    if bouton then Placer(bouton) end
+end
+
+-- Etat du bouton : cache hors groupe ou si l'option est decochee ; eteint
+-- (gris, inactif) en combat ou quand rien ne manque ; illumine sinon.
+function M.MettreAJour()
+    local b = Construire()
+    if R().boutonBuffsCache or not Canal() then b:Hide() return end
+    b:Show()
+    local manque = (not EnCombat()) and #M.Analyser() > 0
+    b.actif = manque
+    b.icone:SetDesaturated(not manque)
+    b.anneau:SetDesaturated(not manque)
+    b:SetAlpha(manque and 1 or 0.5)
+    b.lueur:SetShown(manque)
+    if manque then
+        if not b.pulse:IsPlaying() then b.pulse:Play() end
+    else
+        b.pulse:Stop()
+    end
+end
+
+do
+    local f = CreateFrame("Frame")
+    for _, ev in ipairs({ "PLAYER_LOGIN", "GROUP_ROSTER_UPDATE", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "UNIT_AURA" }) do
+        pcall(f.RegisterEvent, f, ev)
+    end
+    local attente = 0
+    f:SetScript("OnEvent", function(_, ev, unite)
+        if ev == "UNIT_AURA" and EnCombat() then return end
+        attente = 0
+    end)
+    -- Au plus deux fois par seconde : la lecture des auras du groupe reste legere.
+    f:SetScript("OnUpdate", function(_, ecoule)
+        attente = attente - (ecoule or 0)
+        if attente > 0 then return end
+        attente = 0.5
+        pcall(M.MettreAJour)
+    end)
+end
+
 -- Raccourci (Options, Raccourcis, AuraCore) : utilisable a la manette.
 _G.BINDING_HEADER_AURACORE = "AuraCore"
 _G.BINDING_NAME_AURACORE_DEMANDE = T("Demander au groupe les buffs manquants", "Ask the group for missing buffs")
@@ -266,27 +388,27 @@ local AJOUTS = {
         ["Missing buffs : "] = "Fehlende Stärkungen : ", ["Thanks!"] = "Danke!", ["You are not in a group."] = "Du bist in keiner Gruppe.",
         ["Out of combat only."] = "Nur außerhalb des Kampfes.", ["Nothing to ask : everyone has the buffs your group can give."] = "Nichts zu erbitten : alle haben die Stärkungen, die eure Gruppe geben kann.",
         ["Wait a few seconds before asking again."] = "Warte ein paar Sekunden, bevor du erneut fragst.",
-        ["Ask the group for missing buffs"] = "Gruppe um fehlende Stärkungen bitten", ["Ask"] = "Bitten", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off blendet alles aus, /auracore on zeigt es wieder, /auracore buffs bittet um fehlende Stärkungen.", ["Minor spells"] = "Kleine Zauber", ["Other players' minor spells"] = "Kleine Zauber der anderen", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "Echte Stärkungen (Segen, Seelenstärke, Arkane Intelligenz, Mal der Wildnis) haben immer ihren Platz in ihrem Viertel. Kleine Zauber, kurz oder situativ, sind ausgeblendet : hake die an, die du im Ring sehen willst." },
+        ["Ask the group for missing buffs"] = "Gruppe um fehlende Stärkungen bitten", ["Ask"] = "Bitten", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off blendet alles aus, /auracore on zeigt es wieder, /auracore buffs bittet um fehlende Stärkungen.", ["Minor spells"] = "Kleine Zauber", ["Other players' minor spells"] = "Kleine Zauber der anderen", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "Echte Stärkungen (Segen, Seelenstärke, Arkane Intelligenz, Mal der Wildnis) haben immer ihren Platz in ihrem Viertel. Kleine Zauber, kurz oder situativ, sind ausgeblendet : hake die an, die du im Ring sehen willst.", ["Ask for missing buffs"] = "Fehlende Stärkungen erbitten", ["Shift + drag : move the button."] = "Umschalt + ziehen : Knopf verschieben.", ["Button above the portrait"] = "Knopf über dem Porträt", ["Reset"] = "Zurücksetzen" },
     esES = { ["a blessing"] = "una bendición", ["the whole group"] = "todo el grupo", ["for"] = "para",
         ["Missing buffs : "] = "Beneficios que faltan : ", ["Thanks!"] = "¡Gracias!", ["You are not in a group."] = "No estás en un grupo.",
         ["Out of combat only."] = "Solo fuera de combate.", ["Nothing to ask : everyone has the buffs your group can give."] = "Nada que pedir : todos tienen los beneficios que tu grupo puede dar.",
         ["Wait a few seconds before asking again."] = "Espera unos segundos antes de volver a pedir.",
-        ["Ask the group for missing buffs"] = "Pedir al grupo los beneficios que faltan", ["Ask"] = "Pedir", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off lo oculta todo, /auracore on lo vuelve a mostrar, /auracore buffs pide los beneficios que faltan.", ["Minor spells"] = "Hechizos menores", ["Other players' minor spells"] = "Hechizos menores de los demás", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "Los beneficios reales (bendiciones, Entereza, Intelecto Arcano, Marca de lo Salvaje) siempre tienen su lugar en su cuarto. Los hechizos menores, cortos o de situación, están ocultos : marca los que quieras ver en el anillo." },
+        ["Ask the group for missing buffs"] = "Pedir al grupo los beneficios que faltan", ["Ask"] = "Pedir", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off lo oculta todo, /auracore on lo vuelve a mostrar, /auracore buffs pide los beneficios que faltan.", ["Minor spells"] = "Hechizos menores", ["Other players' minor spells"] = "Hechizos menores de los demás", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "Los beneficios reales (bendiciones, Entereza, Intelecto Arcano, Marca de lo Salvaje) siempre tienen su lugar en su cuarto. Los hechizos menores, cortos o de situación, están ocultos : marca los que quieras ver en el anillo.", ["Ask for missing buffs"] = "Pedir los beneficios que faltan", ["Shift + drag : move the button."] = "Mayús + arrastrar : mover el botón.", ["Button above the portrait"] = "Botón sobre el retrato", ["Reset"] = "Restablecer" },
     itIT = { ["a blessing"] = "una benedizione", ["the whole group"] = "tutto il gruppo", ["for"] = "per",
         ["Missing buffs : "] = "Benefici mancanti : ", ["Thanks!"] = "Grazie!", ["You are not in a group."] = "Non sei in un gruppo.",
         ["Out of combat only."] = "Solo fuori dal combattimento.", ["Nothing to ask : everyone has the buffs your group can give."] = "Niente da chiedere : tutti hanno i benefici che il gruppo può dare.",
         ["Wait a few seconds before asking again."] = "Attendi qualche secondo prima di chiedere di nuovo.",
-        ["Ask the group for missing buffs"] = "Chiedi al gruppo i benefici mancanti", ["Ask"] = "Chiedi", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off nasconde tutto, /auracore on lo mostra di nuovo, /auracore buffs chiede i benefici mancanti.", ["Minor spells"] = "Incantesimi minori", ["Other players' minor spells"] = "Incantesimi minori degli altri", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "I veri benefici (benedizioni, Tempra, Intelletto Arcano, Marchio della Natura) hanno sempre il loro posto nel loro quarto. Gli incantesimi minori, brevi o di situazione, sono nascosti : spunta quelli che vuoi vedere nell'anello." },
+        ["Ask the group for missing buffs"] = "Chiedi al gruppo i benefici mancanti", ["Ask"] = "Chiedi", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off nasconde tutto, /auracore on lo mostra di nuovo, /auracore buffs chiede i benefici mancanti.", ["Minor spells"] = "Incantesimi minori", ["Other players' minor spells"] = "Incantesimi minori degli altri", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "I veri benefici (benedizioni, Tempra, Intelletto Arcano, Marchio della Natura) hanno sempre il loro posto nel loro quarto. Gli incantesimi minori, brevi o di situazione, sono nascosti : spunta quelli che vuoi vedere nell'anello.", ["Ask for missing buffs"] = "Chiedi i benefici mancanti", ["Shift + drag : move the button."] = "Maiusc + trascina : sposta il pulsante.", ["Button above the portrait"] = "Pulsante sopra il ritratto", ["Reset"] = "Ripristina" },
     ruRU = { ["a blessing"] = "благословение", ["the whole group"] = "вся группа", ["for"] = "для",
         ["Missing buffs : "] = "Не хватает эффектов : ", ["Thanks!"] = "Спасибо!", ["You are not in a group."] = "Вы не в группе.",
         ["Out of combat only."] = "Только вне боя.", ["Nothing to ask : everyone has the buffs your group can give."] = "Нечего просить : у всех есть эффекты, которые может дать группа.",
         ["Wait a few seconds before asking again."] = "Подождите несколько секунд перед новой просьбой.",
-        ["Ask the group for missing buffs"] = "Попросить группу о недостающих эффектах", ["Ask"] = "Попросить", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off скрывает всё, /auracore on показывает снова, /auracore buffs просит недостающие эффекты.", ["Minor spells"] = "Малые заклинания", ["Other players' minor spells"] = "Малые заклинания других", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "Настоящие эффекты (благословения, Стойкость, Чародейский интеллект, Знак дикой природы) всегда на своём месте в своей четверти. Малые заклинания, короткие или ситуативные, скрыты : отметьте те, что хотите видеть в кольце." },
+        ["Ask the group for missing buffs"] = "Попросить группу о недостающих эффектах", ["Ask"] = "Попросить", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off скрывает всё, /auracore on показывает снова, /auracore buffs просит недостающие эффекты.", ["Minor spells"] = "Малые заклинания", ["Other players' minor spells"] = "Малые заклинания других", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "Настоящие эффекты (благословения, Стойкость, Чародейский интеллект, Знак дикой природы) всегда на своём месте в своей четверти. Малые заклинания, короткие или ситуативные, скрыты : отметьте те, что хотите видеть в кольце.", ["Ask for missing buffs"] = "Попросить недостающие эффекты", ["Shift + drag : move the button."] = "Shift + перетаскивание : переместить кнопку.", ["Button above the portrait"] = "Кнопка над портретом", ["Reset"] = "Сбросить" },
     zhCN = { ["a blessing"] = "一个祝福", ["the whole group"] = "全队", ["for"] = "给",
         ["Missing buffs : "] = "缺少的增益 : ", ["Thanks!"] = "谢谢！", ["You are not in a group."] = "你不在队伍中。",
         ["Out of combat only."] = "仅限非战斗中。", ["Nothing to ask : everyone has the buffs your group can give."] = "无需请求 : 每个人都有队伍能给的增益。",
         ["Wait a few seconds before asking again."] = "请稍等几秒再请求。",
-        ["Ask the group for missing buffs"] = "向队伍请求缺少的增益", ["Ask"] = "请求", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off 隐藏全部，/auracore on 重新显示，/auracore buffs 请求缺少的增益。", ["Minor spells"] = "次要法术", ["Other players' minor spells"] = "他人的次要法术", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "真正的增益（祝福、坚韧、奥术智慧、野性印记）始终在各自的四分之一处。次要法术（短时或特定情况）默认隐藏 : 勾选你想在圆环中看到的。" },
+        ["Ask the group for missing buffs"] = "向队伍请求缺少的增益", ["Ask"] = "请求", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off 隐藏全部，/auracore on 重新显示，/auracore buffs 请求缺少的增益。", ["Minor spells"] = "次要法术", ["Other players' minor spells"] = "他人的次要法术", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "真正的增益（祝福、坚韧、奥术智慧、野性印记）始终在各自的四分之一处。次要法术（短时或特定情况）默认隐藏 : 勾选你想在圆环中看到的。", ["Ask for missing buffs"] = "请求缺少的增益", ["Shift + drag : move the button."] = "Shift + 拖动 : 移动按钮。", ["Button above the portrait"] = "头像上方的按钮", ["Reset"] = "重置" },
 }
 for code, t in pairs(AJOUTS) do
     NS.TRAD[code] = NS.TRAD[code] or {}
