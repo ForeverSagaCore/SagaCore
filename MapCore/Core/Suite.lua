@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 98
+local VERSION = 99
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4305,8 +4305,10 @@ local function MacroCore()
     cadre.piloteGarderAlpha = true
     cadre.piloteSurB = function() Suite.ActiverMacroCore(false) end
     cadre.elementsPilote = function() return cadre.pastilles or {} end
-    -- La manette commence sur la premiere pastille.
+    -- La manette reprend sur la derniere pastille choisie, sinon la premiere.
     cadre.piloteDepart = function()
+        local d = cadre.dernierePastille
+        if d and d.e and d:IsShown() then return d end
         for _, b in ipairs(cadre.pastilles or {}) do if b.e and b:IsShown() then return b end end
     end
     fenMC = cadre
@@ -4437,6 +4439,7 @@ function Suite.RemplirMacroCore()
                     b:SetScript("OnEnter", function(self)
                         if not self.e then return end
                         self:SetAlpha(1)
+                        f.dernierePastille = self
                         -- Infobulles : reglage de la suite (actives par defaut).
                         if Reglages().macroCoreSansInfobulle then return end
                         -- Colle au bord droit de la fenetre, a la hauteur de la
