@@ -1714,6 +1714,22 @@ function suivi.Guider(oui)
         cibleRecolteQuand = -100
         if NS.marchands and NS.marchands.OterDrapeau then pcall(NS.marchands.OterDrapeau) end
         S.Guider("CraftCore", fournisseurRecolte)
+        -- On dit ou mene la fleche, sinon le clic semble ne rien faire.
+        local okC, cible, raison = pcall(ChercherCible)
+        local L = NS.L
+        local texte
+        if okC and cible then
+            local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), cible.carte)
+            local zone = type(info) == "table" and info.name or "?"
+            texte = string.format(L.GUIDE_GATHER_TO, cible.qui or "?", zone,
+                math.floor((cible.x or 0) * 100 + 0.5), math.floor((cible.y or 0) * 100 + 0.5))
+        elseif okC and raison == "fini" then
+            texte = L.GUIDE_GATHER_NOTHING
+        else
+            texte = L.GUIDE_GATHER_NOWHERE
+        end
+        NS.Dire(texte)
+        if _G.UIErrorsFrame then pcall(_G.UIErrorsFrame.AddMessage, _G.UIErrorsFrame, texte, 1, 0.82, 0) end
     else
         S.ArreterGuidage("CraftCore")
     end
