@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 67
+local VERSION = 68
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2660,8 +2660,15 @@ local function Pilote()
         local deux = Onglets(liste, 2)
         if #deux > 1 then
             table.sort(deux, function(a, b) return (a:GetLeft() or 0) < (b:GetLeft() or 0) end)
-            Glyphe("lt", "PADLTRIGGER"):SetPoint("RIGHT", deux[1], "LEFT", -2, 0)
-            Glyphe("rt", "PADRTRIGGER"):SetPoint("LEFT", deux[#deux], "RIGHT", 2, 0)
+            -- LT et RT cote a cote, dans la fenetre, au bout de la ligne des
+            -- sous-onglets.
+            local _, yOnglet = deux[#deux]:GetCenter()
+            local haut = f:GetTop()
+            if yOnglet and haut then
+                local g = Glyphe("lt", "PADLTRIGGER")
+                g:SetText(GlyphePad("PADLTRIGGER") .. " " .. GlyphePad("PADRTRIGGER"))
+                g:SetPoint("RIGHT", f, "TOPRIGHT", -10, yOnglet - haut)
+            end
         end
     end
     p:SetScript("OnGamePadButtonDown", function(self, bouton)
@@ -2839,28 +2846,39 @@ function Suite.Lancer(r)
     if not ok and Suite.Prive() then print("|cffffd100SagaCore|r " .. tostring(souci)) end
 end
 
--- Les macros du jeu : "SC " + nom court, communes au compte.
-local function NomDeMacro(r)
-    local nom = "SC " .. Suite.NomRaccourci(r)
-    return nom:sub(1, 16)
-end
+-- Les macros du jeu, communes au compte : un nom de 3 lettres au plus (il
+-- s'affiche sur le bouton), l'icone du raccourci, et en premiere ligne une
+-- explication que le jeu n'execute pas (#), puis la commande.
+local COURTS = {
+    pilotefab = "PFa", pilotequetes = "PQu", ouvrir = "Sui", craftcore = "CC", questcore = "QC",
+    mapcore = "MC", legacycore = "LC", fabrications = "SFa", quetes = "SQu", suivis = "PSu",
+    stop = "Stp", rendus = "Ren", recolte = "Rec", metier = "Met", oui = "Oui", non = "Non",
+    messages = "Msg", reglages = "Rgl", improve = "IC", raccourcis = "Pan",
+}
+local function NomDeMacro(r) return COURTS[r.cle] or r.cle:sub(1, 3) end
+local function AncienNom(r) return ("SC " .. Suite.NomRaccourci(r)):sub(1, 16) end
+local function IconeDeMacro(r) return "Interface\\Icons\\" .. r.icone end
 
 function Suite.CreerMacro(r)
     if InCombatLockdown and InCombatLockdown() then return false end
     if not (_G.CreateMacro and _G.GetMacroIndexByName) then return false end
     local nom = NomDeMacro(r)
-    local corps = "/sagacore " .. r.cle
+    local corps = "#SagaCore : " .. Suite.NomRaccourci(r) .. "\n/sagacore " .. r.cle
+    -- Deja la (sous ce nom ou l'ancien "SC ...") : mise a jour, la macro garde
+    -- sa place sur les barres.
     local index = _G.GetMacroIndexByName(nom)
+    if not (index and index > 0) then index = _G.GetMacroIndexByName(AncienNom(r)) end
     if index and index > 0 then
-        pcall(_G.EditMacro, index, nom, r.icone, corps)
+        pcall(_G.EditMacro, index, nom, IconeDeMacro(r), corps)
         return true, index
     end
-    local ok, nouvel = pcall(_G.CreateMacro, nom, r.icone, corps, nil)
+    local ok, nouvel = pcall(_G.CreateMacro, nom, IconeDeMacro(r), corps, nil)
     return ok and nouvel ~= nil, nouvel
 end
 
 function Suite.MacroExiste(r)
-    return _G.GetMacroIndexByName and (_G.GetMacroIndexByName(NomDeMacro(r)) or 0) > 0
+    if not _G.GetMacroIndexByName then return false end
+    return (_G.GetMacroIndexByName(NomDeMacro(r)) or 0) > 0
 end
 
 -- ---------------------------------------------------------------------------
@@ -4711,8 +4729,8 @@ local function FenetreMacrosPages()
               end,
               rendre = function(page)
                   page.t1:SetText(TR("Les raccourcis de la suite", "The suite's shortcuts"))
-                  page.intro:SetText(TR("La case met le raccourci dans le panneau de ce personnage. « Créer » en fait aussi une macro du jeu (« SC ... », commune au compte), à poser sur une barre.",
-                      "The box puts the shortcut in this character's panel. \"Create\" also makes it a game macro (\"SC ...\", account-wide), to put on a bar."))
+                  page.intro:SetText(TR("La case met le raccourci dans le panneau de ce personnage. « Créer » en fait aussi une macro du jeu, nommée en 3 lettres (PFa, PQu...) avec l'icône du raccourci : elle se trouve dans la fenêtre Macros du jeu (/macro), onglet Général, d'où on la fait glisser sur une barre.",
+                      "The box puts the shortcut in this character's panel. \"Create\" also makes it a game macro, with a 3-letter name (PFa, PQu...) and the shortcut's icon : find it in the game's Macros window (/macro), General tab, and drag it onto a bar."))
                   page.bTout:SetText(TR("Créer toutes les macros", "Create all macros"))
                   page.bDecocher:SetText(TR("Tout décocher", "Uncheck all"))
                   local rang = 0
