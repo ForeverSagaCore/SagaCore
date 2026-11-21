@@ -676,15 +676,11 @@ end
 
 -- Texte sur plusieurs lignes au besoin, jamais tronque. Meme retrait que les
 -- lignes simples. `couleur` : { r, g, b } facultatif.
--- Texte explicatif (legendes, aides) : en italique, noir a 50 % sur le
--- parchemin, blanc a 50 % sur fond sombre. Partout le meme.
-local ITALIQUE = "Interface\\AddOns\\CraftCore\\Fonts\\LiberationSans-Italic.ttf"
+-- Texte explicatif (legendes, aides) : noir a 50 % sur le parchemin, blanc
+-- a 50 % sur fond sombre. Partout le meme, avec les polices du jeu.
 function NS.Explication(fs)
     if not fs then return end
     fs:SetFontObject("GameFontDisableSmall")
-    local _, taille, options = fs:GetFont()
-    local ok, pose = pcall(fs.SetFont, fs, ITALIQUE, (taille or 10) + 1, options or "")
-    if not ok or pose == false then fs:SetFontObject("GameFontDisableSmall") end
     local parchemin = NS.charte and NS.charte.Fond and NS.charte.Fond() == "parchemin"
     if parchemin then fs:SetTextColor(0, 0, 0, 0.5) else fs:SetTextColor(1, 1, 1, 0.5) end
 end
