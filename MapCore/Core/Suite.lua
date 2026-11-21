@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 76
+local VERSION = 77
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -3013,11 +3013,39 @@ local function ClePersoSuite()
     local nom, royaume = UnitName("player"), _G.SagaCoreRoyaume()
     return (nom or "?") .. " - " .. (royaume or "?")
 end
+-- Une fois : la macro « CC » du joueur (/sagacore), effacee par erreur, est
+-- recreee a la connexion si elle n'existe plus.
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:SetScript("OnEvent", function(self)
+        self:UnregisterAllEvents()
+        if not Suite.Prive() then return end
+        local r = Reglages()
+        if r.macroCCRecreee then return end
+        if InCombatLockdown and InCombatLockdown() then return end
+        if not (_G.GetMacroIndexByName and _G.CreateMacro) then return end
+        if (_G.GetMacroIndexByName("CC") or 0) == 0 then
+            local ok = pcall(_G.CreateMacro, "CC", 132279, "/sagacore", nil)
+            if ok then r.macroCCRecreee = true end
+        else
+            r.macroCCRecreee = true
+        end
+    end)
+end
+
 -- Par defaut, seuls les deux pilotages sont dans le panneau. Les anciens
 -- reglages (ou tout etait coche pour essayer) repartent une fois de la.
 local ACTIFS_DEFAUT = { ["r:pilotefab"] = true, ["r:pilotequetes"] = true }
 local function MigrerRaccourcis()
     local r = Reglages()
+    -- Remise a zero demandee (une fois) : gestionnaire de macros comme neuf.
+    if Suite.Prive() and not r.macrosRemisesAZero then
+        r.macrosRemisesAZero = true
+        r.macrosPerso = {}
+        r.raccourcisOff = {}
+        r.raccourcisMigres = {}
+    end
     local cle = ClePersoSuite()
     r.raccourcisMigres = type(r.raccourcisMigres) == "table" and r.raccourcisMigres or {}
     if r.raccourcisMigres[cle] then return end
