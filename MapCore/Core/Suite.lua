@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 71
+local VERSION = 72
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2885,9 +2885,16 @@ local function NomDeMacro(r) return COURTS[r.cle] or r.cle:sub(1, 3) end
 local function AncienNom(r) return ("SC " .. Suite.NomRaccourci(r)):sub(1, 16) end
 -- L'icone d'une macro se donne par son numero de fichier (un chemin n'est pas
 -- accepte : la macro restait sans icone, impossible a glisser).
+local sonde
 local function IconeDeMacro(r)
     local chemin = "Interface\\Icons\\" .. r.icone
     local numero = _G.GetFileIDFromPath and _G.GetFileIDFromPath(chemin)
+    if not (type(numero) == "number" and numero > 0) then
+        -- Le numero lu sur une texture qui charge l'icone.
+        sonde = sonde or UIParent:CreateTexture(nil, "BACKGROUND")
+        sonde:SetTexture(chemin)
+        numero = sonde.GetTextureFileID and sonde:GetTextureFileID()
+    end
     if type(numero) == "number" and numero > 0 then return numero end
     return 134400
 end
@@ -3481,13 +3488,14 @@ local function Panneau()
     Nav("CoreSuiteRaccourcisDroite", function() Suite.BougerRaccourci(1, 0) end)
     Nav("CoreSuiteRaccourcisFermer", function() Suite.FermerRaccourcis() end)
     table.insert(UISpecialFrames, "CoreSuiteRaccourcis")
-    -- Le petit menu d'aide, le temps que le panneau est ouvert.
-    local okA, aide = pcall(CreateFrame, "Frame", nil, p, "TooltipBackdropTemplate")
-    p.aide = okA and aide or CreateFrame("Frame", nil, p)
-    p.aide:SetHeight(32)
+    -- Une petite fenetre discrete autour des icones, ouverte a la manette :
+    -- les commandes en haut, dedans, les icones dessous.
+    local okA, fond = pcall(CreateFrame, "Frame", nil, p, "TooltipBackdropTemplate")
+    p.aide = okA and fond or CreateFrame("Frame", nil, p)
+    p.aide:SetFrameLevel(math.max(0, p:GetFrameLevel() - 1))
     p.aide:SetClampedToScreen(true)
-    p.aide.texte = p.aide:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    p.aide.texte:SetPoint("LEFT", 12, 0)
+    p.aide.texte = p.aide:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p.aide.texte:SetPoint("TOPLEFT", 10, -8)
     p:SetScript("OnHide", function(self)
         GameTooltip:Hide()
         if Suite.boutonRaccourcis then Suite.boutonRaccourcis:SetAlpha(1) end
@@ -3541,13 +3549,19 @@ function Suite.MarquerRaccourci()
     local manette = _G.C_GamePad and _G.C_GamePad.IsEnabled and select(2, pcall(_G.C_GamePad.IsEnabled)) == true
     if p.aide then
         if manette then
-            local esp = "      "
-            p.aide.texte:SetText(GlypheCroix() .. "  " .. TR("Se déplacer", "Move") .. esp
-                .. GlyphePad("PAD1") .. "  " .. (p.focus == 0 and TR("Fermer", "Close") or TR("Lancer", "Launch")) .. esp
-                .. GlyphePad("PAD2") .. "  " .. TR("Fermer et rendre la manette", "Close and give back the gamepad"))
-            p.aide:SetWidth((p.aide.texte:GetStringWidth() or 300) + 24)
+            local esp = "    "
+            local function G(t) return (string.gsub(t, ":20:20|a", ":16:16|a")) end
+            p.aide.texte:SetText(G(GlypheCroix()) .. " " .. TR("Se déplacer", "Move") .. esp
+                .. G(GlyphePad("PAD1")) .. " " .. (p.focus == 0 and TR("Fermer", "Close") or TR("Lancer", "Launch")) .. esp
+                .. G(GlyphePad("PAD2")) .. " " .. TR("Rendre la manette", "Release the gamepad"))
+            local largeur = math.max(p:GetWidth() + 20, (p.aide.texte:GetStringWidth() or 200) + 20)
             p.aide:ClearAllPoints()
-            p.aide:SetPoint("TOP", p, "BOTTOM", 0, -8)
+            local gauche = (Reglages().raccourcisOuverture or "gauche") == "gauche"
+            local ancre = gauche and "RIGHT" or "LEFT"
+            local dx = gauche and 10 or -10
+            p.aide:SetPoint("TOP" .. ancre, p, "TOP" .. ancre, dx, 30)
+            p.aide:SetPoint("BOTTOM" .. ancre, p, "BOTTOM" .. ancre, dx, -10)
+            p.aide:SetWidth(largeur)
             p.aide:Show()
         else
             p.aide:Hide()
