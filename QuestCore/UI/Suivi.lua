@@ -108,6 +108,7 @@ local function Ligne(index)
     -- Etoile de favori, a droite du titre d'une quete : l'etoile des marques
     -- de cible du jeu, en couleur quand la quete est en favori, grise sinon.
     l.etoile = CreateFrame("Button", nil, l)
+    l.etoile.pasPilote = true
     l.etoile:SetSize(12, 12)
     l.etoile.t = l.etoile:CreateTexture(nil, "ARTWORK")
     l.etoile.t:SetAllPoints()
@@ -141,6 +142,7 @@ local function Ligne(index)
     -- a rendre pour l'itineraire.
     -- Dans un petit rond, comme les boutons ronds du haut.
     l.pion = CreateFrame("Button", nil, l)
+    l.pion.pasPilote = true
     l.pion:SetSize(18, 18)
     l.pion.fond = l.pion:CreateTexture(nil, "BACKGROUND")
     l.pion.fond:SetSize(14, 14)
@@ -380,6 +382,11 @@ local function Poser(index, y, texte, options)
     l:SetHeight(hauteur)
     l:SetScript("OnClick", options.auClic)
     l:EnableMouse(options.auClic ~= nil)
+    -- Manette : de titre de quete en titre de quete (et les zones, pour les
+    -- deplier) ; seuls les titres de quete s'allument.
+    l.pasPilote = not (options.titre or options.zone)
+    local hl = l:GetHighlightTexture()
+    if hl then hl:SetAlpha(options.titre and 1 or 0) end
     if options.auClic then
         l:SetScript("OnEnter", function(self)
             self.texte:SetTextColor(1, 1, 1)
@@ -2238,15 +2245,21 @@ local function Construire()
         for k = 1, 2 do
             local b = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
             b:SetHeight(20)
-            b:SetScript("OnClick", function(x) if x.action then x.action() end end)
+            -- Guider, Itineraire detaille... : une fois clique, l'infobulle
+            -- s'efface (et ne revient qu'en revenant sur le bouton).
+            b:SetScript("OnClick", function(x)
+                x.muet = true
+                GameTooltip:Hide()
+                if x.action then x.action() end
+            end)
             b:SetScript("OnEnter", function(x)
-                if not x.aide then return end
+                if not x.aide or x.muet then return end
                 GameTooltip:SetOwner(x, "ANCHOR_TOP")
                 GameTooltip:SetText(x:GetText() or "", 1, 0.82, 0)
                 GameTooltip:AddLine(x.aide, 1, 1, 1, true)
                 GameTooltip:Show()
             end)
-            b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            b:SetScript("OnLeave", function(x) x.muet = nil GameTooltip:Hide() end)
             r.boutons[k] = b
         end
         self.rangs[rang] = r
