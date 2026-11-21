@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 89
+local VERSION = 91
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2496,6 +2496,11 @@ end
 
 local function Elements(nom)
     local liste = Cliquables(_G[nom], {})
+    -- Boutons poses hors de la fenetre mais qui en font partie (MacroCore).
+    local f = _G[nom]
+    if f and f.elementsPilote then
+        for _, e in ipairs(f.elementsPilote()) do if e:IsVisible() then table.insert(liste, e) end end
+    end
     table.sort(liste, function(a, b)
         local ya, yb = a:GetTop() or 0, b:GetTop() or 0
         if math.abs(ya - yb) > 3 then return ya > yb end
@@ -2790,6 +2795,7 @@ function Suite.Piloter(oui, nom)
     if not (f and f:IsShown()) then print("|cffffd100SagaCore|r " .. TP.rien) return end
     p.nom, p.choix, p.pos = nom, nil, nil
     p.retour = retour
+    if f.piloteDepart then p.choix = f.piloteDepart() end
     if f.piloteGarderAlpha then
         if Suite.SuspendrePanneau then Suite.SuspendrePanneau() end
         p:Show()
@@ -4287,6 +4293,11 @@ local function MacroCore()
     -- Pilote : garde l'opacite d'activation ; B referme (rend la manette).
     cadre.piloteGarderAlpha = true
     cadre.piloteSurB = function() Suite.ActiverMacroCore(false) end
+    cadre.elementsPilote = function() return cadre.pastilles or {} end
+    -- La manette commence sur la premiere pastille.
+    cadre.piloteDepart = function()
+        for _, b in ipairs(cadre.pastilles or {}) do if b.e and b:IsShown() then return b end end
+    end
     fenMC = cadre
     Suite.ActiverMacroCore(false)
     return cadre
@@ -4365,11 +4376,19 @@ function Suite.RemplirMacroCore()
             local tt = f.titres[nt]
             if not tt then
                 tt = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                local fichier, _, drapeaux = tt:GetFont()
-                if fichier then tt:SetFont(fichier, 15, drapeaux) end
                 tt:SetTextColor(1, 0.82, 0)
                 tt:SetJustifyH("LEFT")
                 f.titres[nt] = tt
+            end
+            -- Meme police et meme taille que les en-tetes de groupe des suivis
+            -- (Fabrications rapides, Projets) : taille du suivi des quetes + 3.
+            do
+                tt:SetFontObject("GameFontNormal")
+                local fichier, _, drapeaux = tt:GetFont()
+                local d = _G.QuestCoreDB
+                local sv = type(d) == "table" and type(d.reglages) == "table" and type(d.reglages.general) == "table" and d.reglages.general.suivi
+                local taille = tonumber(type(sv) == "table" and sv.taille) or 12
+                if fichier then tt:SetFont(Suite.FichierPolice and Suite.FichierPolice(fichier) or fichier, taille + 3, drapeaux) end
             end
             tt:ClearAllPoints()
             tt:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, y - 2)
@@ -4382,7 +4401,13 @@ function Suite.RemplirMacroCore()
                 n = n + 1
                 local b = f.pastilles[n]
                 if not b then
-                    b = CreateFrame("Button", nil, f, "SecureActionButtonTemplate")
+                    -- Posee sur l'ecran (pas dans la fenetre) : la pastille
+                    -- selectionnee passe a pleine opacite, les autres restent
+                    -- a celle de la fenetre.
+                    b = CreateFrame("Button", nil, UIParent, "SecureActionButtonTemplate")
+                    b:SetFrameStrata(f:GetFrameStrata())
+                    b:SetFrameLevel(f:GetFrameLevel() + 10)
+                    b:SetAlpha(ALPHA_EN_COURSE)
                     b:RegisterForClicks("AnyUp", "AnyDown")
                     b:SetSize(PASTILLE, PASTILLE)
                     b.fond = b:CreateTexture(nil, "BACKGROUND")
@@ -4399,7 +4424,11 @@ function Suite.RemplirMacroCore()
                     b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
                     b:SetScript("OnEnter", function(self)
                         if not self.e then return end
-                        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                        self:SetAlpha(1)
+                        -- Juste au-dessus de la pastille, jamais ailleurs.
+                        GameTooltip:SetOwner(self, "ANCHOR_NONE")
+                        GameTooltip:ClearAllPoints()
+                        GameTooltip:SetPoint("BOTTOMLEFT", self, "TOPLEFT", 0, 6)
                         GameTooltip:SetText(self.e.nom, 1, 0.82, 0)
                         local d = self.e.desc
                         if not d and (self.e.corps or self.e.texte) then
@@ -4408,7 +4437,10 @@ function Suite.RemplirMacroCore()
                         if d then GameTooltip:AddLine(d, 1, 1, 1, true) end
                         GameTooltip:Show()
                     end)
-                    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                    b:SetScript("OnLeave", function(self)
+                        self:SetAlpha(ALPHA_EN_COURSE)
+                        GameTooltip:Hide()
+                    end)
                     f.pastilles[n] = b
                 end
                 b.e = e
@@ -4450,7 +4482,10 @@ end
 function Suite.PlacerBoutonRaccourcis()
     if Suite.boutonRaccourcis then Suite.boutonRaccourcis:Hide() end
     if not Suite.Prive() then
-        if fenMC then fenMC:Hide() fenMC.icone:Hide() end
+        if fenMC then
+            Suite.ActiverMacroCore(false)
+            fenMC:Hide() fenMC.icone:Hide()
+        end
         return
     end
     local f = MacroCore()
