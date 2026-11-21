@@ -72,10 +72,10 @@ end
 -- quete (le point d'exclamation, pas le PNJ), qui pulse doucement.
 local quetePointee
 
-function page.MontrerQuete(id, idCarte, x, y, nomQuete, nomDonneur, sansFleche)
+function page.MontrerQuete(id, idCarte, x, y, nomQuete, nomDonneur, sansFleche, genre)
     modeTrajet = false
     entree = nil
-    quetePointee = { carte = idCarte, x = x, y = y, quete = id, nom = nomQuete, donneur = nomDonneur }
+    quetePointee = { carte = idCarte, x = x, y = y, quete = id, nom = nomQuete, donneur = nomDonneur, genre = genre }
     carteChoisie = idCarte
     -- Voir sur la carte : la fleche de guidage part aussi vers la quete.
     -- Sauf pendant le guidage d'un parcours : sa fleche reste.
@@ -149,6 +149,22 @@ local function PoserQuetePointee(idCarte)
     local b = vue.pointee
     if quetePointee and quetePointee.carte == idCarte then
         b.ax, b.ay, b.nom, b.donneur = quetePointee.x, quetePointee.y, quetePointee.nom, quetePointee.donneur
+        -- Quete deja prise : pas le point d'exclamation (a prendre), mais
+        -- l'icone de son etat, celle du journal (en cours ou a rendre).
+        local g = quetePointee.genre
+        if b.genre ~= g then
+            b.genre = g
+            if g == "rendre" or g == "objectif" then
+                b.t:SetTexture(g == "rendre" and "Interface\\GossipFrame\\ActiveQuestIcon"
+                    or "Interface\\GossipFrame\\IncompleteQuestIcon")
+                b.t:SetSize(16, 16)
+            elseif b.t.SetAtlas and pcall(b.t.SetAtlas, b.t, "QuestNormal") and b.t:GetAtlas() then
+                b.t:SetSize(20, 20)
+            else
+                b.t:SetTexture("Interface\\GossipFrame\\AvailableQuestIcon")
+                b.t:SetSize(16, 16)
+            end
+        end
         b:SetFrameLevel(vue.toile:GetFrameLevel() + 25)
         b:Show()
         if b.anim and not b.anim:IsPlaying() then b.anim:Play() end

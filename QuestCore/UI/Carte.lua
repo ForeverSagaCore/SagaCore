@@ -432,10 +432,18 @@ local function Rectangle(zone, carteAffichee)
     local r = rectangles[cle]
     if r == nil then
         r = false
-        local lecture = NS.Lecture("C_Map.GetMapRectOnMap")
+        -- Une carte d'instance (donjon, raid) n'a pas de place reelle sur
+        -- la carte d'un continent : le jeu la donne alors etiree sur tout
+        -- le continent, et ses reperes s'y dessinaient en grands cercles.
+        local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), zone)
+        local donjon = type(info) == "table" and info.mapType == 4
+        local lecture = not donjon and NS.Lecture("C_Map.GetMapRectOnMap")
         if lecture then
             local ok, g, d, h, b = pcall(lecture, zone, carteAffichee)
-            if ok and tonumber(g) and tonumber(d) and tonumber(h) and tonumber(b) and d > g and b > h then
+            -- Meme garde si le jeu rend la carte entiere : jamais pour une
+            -- vraie zone.
+            local entiere = ok and g == 0 and d == 1 and h == 0 and b == 1
+            if ok and not entiere and tonumber(g) and tonumber(d) and tonumber(h) and tonumber(b) and d > g and b > h then
                 r = { g, d, h, b }
             end
         end
