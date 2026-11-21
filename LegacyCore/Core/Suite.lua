@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 82
+local VERSION = 83
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4233,9 +4233,10 @@ end
 -- Ecart entre le coin haut gauche de la fenetre et le centre de son portrait.
 local function EcartPortrait(f)
     local portrait = f.PortraitContainer or f.portrait
-    local px, py = portrait and portrait:GetCenter()
+    local px, py
+    if portrait then px, py = portrait:GetCenter() end
     local fx, fy = f:GetLeft(), f:GetTop()
-    if px and fx then return px - fx, py - fy end
+    if px and py and fx and fy then return px - fx, py - fy end
     return 25, -23
 end
 
@@ -4244,8 +4245,9 @@ function Suite.IconeSurPortrait()
     local f = fenMC
     if not f then return end
     local portrait = f.PortraitContainer or f.portrait
-    local px, py = portrait and portrait:GetCenter()
-    if px then
+    local px, py
+    if portrait then px, py = portrait:GetCenter() end
+    if px and py then
         Reglages().raccourcisX, Reglages().raccourcisY = math.floor(px + 0.5), math.floor(py + 0.5)
     end
 end
@@ -4326,8 +4328,8 @@ function Suite.PlacerBoutonRaccourcis()
     else
         b:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 140)
     end
-    -- L'icone au clavier, ronde comme le portrait du jeu, toujours visible.
-    Habiller(b, Suite.TAILLE_RACCOURCI, true)
+    -- L'icone au clavier, ronde et de la taille du portrait de la fenetre.
+    Habiller(b, 58, true)
     b:SetShown(not (_G.CoreSuiteMacroCore and _G.CoreSuiteMacroCore:IsShown()))
 end
 
