@@ -1613,6 +1613,7 @@ function suivi.LieuxManquants(objectifs)
     end
     local liste = {}
     local d = CraftCoreDB
+    suivi.matieresManquantes = manques
     for objet in pairs(manques) do
         for carte, lieux in pairs(type(d) == "table" and d.lieux and d.lieux[objet] or {}) do
             for _, l in ipairs(lieux) do
@@ -1647,7 +1648,11 @@ local function ChercherCible()
             cacheManques.lieux = suivi.LieuxManquants(suivi.Objectifs())
         end
         local lieux = cacheManques.lieux or {}
-        if #lieux == 0 then return nil, "fini" end
+        if #lieux == 0 then
+            -- Des matieres manquent mais aucun lieu n'est connu : ce n'est pas fini.
+            if next(suivi.matieresManquantes or {}) then return nil, "inconnu" end
+            return nil, "fini"
+        end
         local carteJ = NS.Appeler(NS.Lecture("C_Map.GetBestMapForUnit"), "player")
         local pos = carteJ and NS.Appeler(NS.Lecture("C_Map.GetPlayerMapPosition"), carteJ, "player")
         local jx, jy, jc
@@ -1733,6 +1738,11 @@ function suivi.Guider(oui)
                 math.floor((cible.x or 0) * 100 + 0.5), math.floor((cible.y or 0) * 100 + 0.5))
         elseif okC and raison == "fini" then
             texte = L.GUIDE_GATHER_NOTHING
+        elseif okC and raison == "inconnu" then
+            local noms = {}
+            for objet in pairs(suivi.matieresManquantes or {}) do table.insert(noms, NS.inventaire.NomDObjet(objet)) end
+            table.sort(noms)
+            texte = string.format(L.GUIDE_GATHER_UNKNOWN, table.concat(noms, ", "))
         else
             texte = L.GUIDE_GATHER_NOWHERE
         end
