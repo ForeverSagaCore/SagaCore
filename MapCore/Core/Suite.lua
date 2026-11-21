@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 102
+local VERSION = 103
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4748,6 +4748,13 @@ local function HabillerIcone(b, info)
     else
         b.image:SetTexture(info.texture or "Interface\\Icons\\INV_Misc_QuestionMark")
     end
+    -- Toujours en pleine couleur, comme l'onglet choisi, meme si l'onglet
+    -- copie etait gris.
+    b.image:SetDesaturated(false)
+    b.image:SetVertexColor(1, 1, 1)
+    b.image:SetAlpha(1)
+    b.anneau:SetDesaturated(false)
+    b:SetAlpha(1)
     if info.masque and b.image.SetMask and not b.masquee then
         pcall(b.image.SetMask, b.image, "Interface\\CharacterFrame\\TempPortraitAlphaMask")
         b.masquee = true
@@ -4767,7 +4774,8 @@ local function SuiviCache(nom)
         local atlas = e.image.GetAtlas and e.image:GetAtlas()
         local tex = e.image:GetTexture()
         info = { x = x * k, y = y * k, atlas = atlas, texture = (not atlas) and tex or nil,
-            masque = e.image.GetNumMaskTextures and (e.image:GetNumMaskTextures() or 0) > 0 or false,
+            -- Les icones d'objet sont arrondies ; les atlas du jeu le sont deja.
+            masque = not atlas,
             titre = (f.titre and f.titre.GetText and f.titre:GetText()) or e.nom }
         PlacesIcones()[nom] = info
     end
