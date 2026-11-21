@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 73
+local VERSION = 74
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2855,6 +2855,25 @@ Suite.RACCOURCIS = {
       action = function() Suite.BasculerRaccourcis() end },
 }
 
+-- Les familles de raccourcis : une ligne chacune dans le panneau, un groupe
+-- dans la page des macros. Un nouveau raccourci prend sa famille ici.
+Suite.FAMILLES = {
+    { cle = "manette", fr = "Prendre la main à la manette", en = "Take control with the gamepad" },
+    { cle = "ouvrir", fr = "Ouvrir une fenêtre", en = "Open a window" },
+    { cle = "guider", fr = "Guider", en = "Guide" },
+    { cle = "repondre", fr = "Répondre aux messages", en = "Answer messages" },
+    { cle = "perso", fr = "Mes macros", en = "My macros" },
+}
+local FAMILLE_DE = {
+    pilotefab = "manette", pilotequetes = "manette", suivis = "manette",
+    ouvrir = "ouvrir", craftcore = "ouvrir", questcore = "ouvrir", mapcore = "ouvrir", legacycore = "ouvrir",
+    fabrications = "ouvrir", quetes = "ouvrir", metier = "ouvrir", reglages = "ouvrir", improve = "ouvrir",
+    messages = "ouvrir", raccourcis = "ouvrir",
+    rendus = "guider", recolte = "guider", stop = "guider",
+    oui = "repondre", non = "repondre",
+}
+function Suite.FamilleDe(r) return r.famille or FAMILLE_DE[r.cle] or "ouvrir" end
+
 function Suite.Raccourci(cle)
     if not cle then return nil end
     cle = cle:lower()
@@ -3597,10 +3616,22 @@ function Suite.BougerRaccourci(dx, dy)
     end
     -- Ouvert vers la gauche, les colonnes avancent vers la gauche a l'ecran.
     if ouverture == "gauche" then dx = -dx end
-    local col = p.colonnes
-    local x, y = (p.focus - 1) % col + dx, math.floor((p.focus - 1) / col) + dy
-    local cible = y * col + x + 1
-    if x >= 0 and x < col and y >= 0 and cible <= p.n then
+    local ici = p.places and p.places[p.focus]
+    if not ici then return end
+    local x, y = ici.col + dx, ici.lig + dy
+    local ligne = p.grille and p.grille[y]
+    local cible
+    if ligne then
+        if dy ~= 0 then
+            -- Ligne plus courte : la derniere icone de cette ligne.
+            local dernier = 0
+            for k in pairs(ligne) do dernier = math.max(dernier, k) end
+            cible = ligne[math.min(math.max(x, 0), dernier)]
+        elseif x >= 0 then
+            cible = ligne[x]
+        end
+    end
+    if cible then
         p.focus = cible
     elseif avecRond and ((x < 0 and (ouverture == "gauche" or ouverture == "droite"))
         or (y < 0 and (ouverture == "haut" or ouverture == "bas"))) then
@@ -3625,18 +3656,18 @@ local function Entrees()
     local liste = {}
     for _, r in ipairs(Suite.RACCOURCIS) do
         if Dispo(r) and r.cle ~= "raccourcis" and Suite.RaccourciActif("r:" .. r.cle) then
-            table.insert(liste, { nom = Suite.NomRaccourci(r), icone = "Interface\\Icons\\" .. r.icone, texte = "/sagacore " .. r.cle })
+            table.insert(liste, { nom = Suite.NomRaccourci(r), icone = "Interface\\Icons\\" .. r.icone, texte = "/sagacore " .. r.cle, famille = Suite.FamilleDe(r) })
         end
     end
     for _, m in ipairs(Suite.MacrosPerso()) do
         if type(m) == "table" and Suite.RaccourciActif(IdPerso(m)) then
             if m.texte then
                 if m.texte ~= "" then
-                    table.insert(liste, { nom = m.nom or "?", icone = Suite.IconeDe and Suite.IconeDe(m.icone) or m.icone, texte = m.texte })
+                    table.insert(liste, { nom = m.nom or "?", icone = Suite.IconeDe and Suite.IconeDe(m.icone) or m.icone, texte = m.texte, famille = "perso" })
                 end
             elseif m.nom and _G.GetMacroInfo then
                 local nom, icone, corps = _G.GetMacroInfo(m.nom)
-                if nom then table.insert(liste, { nom = nom, icone = icone, macro = nom, corps = corps }) end
+                if nom then table.insert(liste, { nom = nom, icone = icone, macro = nom, corps = corps, famille = "perso" }) end
             end
         end
     end
@@ -3701,14 +3732,35 @@ function Suite.BasculerRaccourcis()
     if p:IsShown() then p:Hide() return end
     if InCombatLockdown and InCombatLockdown() then return end
     local r = Reglages()
-    local liste = Entrees()
-    local parLigne, lignes = r.raccourcisParLigne or 6, r.raccourcisLignes or 3
-    while #liste > parLigne * lignes do table.remove(liste) end
+    local brute = Entrees()
+    local parLigne = r.raccourcisParLigne or 6
     local T, ECART = Suite.TAILLE_RACCOURCI, 6
-    local n = #liste
     local ouverture = r.raccourcisOuverture or "gauche"
+    -- Une ligne par famille (coupee si elle depasse le nombre par ligne).
+    local liste, places = {}, {}
+    local lig = -1
+    p.grille = {}
+    for _, fam in ipairs(Suite.FAMILLES) do
+        local col = parLigne
+        for _, e in ipairs(brute) do
+            if e.famille == fam.cle then
+                if col >= parLigne then lig = lig + 1 col = 0 p.grille[lig] = {} end
+                table.insert(liste, e)
+                places[#liste] = { col = col, lig = lig }
+                p.grille[lig][col] = #liste
+                col = col + 1
+            end
+        end
+    end
+    local n = #liste
     p.n = n
-    p.colonnes = math.max(1, math.min(parLigne, n))
+    p.places = places
+    p.colonnes = 1
+    for _, ligne in pairs(p.grille) do
+        local c = 0
+        for k in pairs(ligne) do c = math.max(c, k + 1) end
+        p.colonnes = math.max(p.colonnes, c)
+    end
     for i, e in ipairs(liste) do
         local b = p.boutons[i]
         if not b then
@@ -3754,7 +3806,7 @@ function Suite.BasculerRaccourcis()
         b:ClearAllPoints()
         -- Vers la gauche, les icones partent du bouton rond vers la gauche
         -- (la premiere tout contre lui) ; les autres sens de meme.
-        local col, lig = (i - 1) % p.colonnes, math.floor((i - 1) / p.colonnes)
+        local col, lig = places[i].col, places[i].lig
         if ouverture == "gauche" then
             b:SetPoint("TOPRIGHT", p, "TOPRIGHT", -(col * (T + ECART)), -(lig * (T + ECART)))
         else
@@ -3763,7 +3815,7 @@ function Suite.BasculerRaccourcis()
         b:Show()
     end
     for i = n + 1, #p.boutons do p.boutons[i]:Hide() end
-    local nbLignes = math.max(1, math.ceil(n / p.colonnes))
+    local nbLignes = math.max(1, lig + 1)
     p:SetSize(p.colonnes * (T + ECART) - ECART, nbLignes * (T + ECART) - ECART)
     p:ClearAllPoints()
     local rond = Suite.boutonRaccourcis
@@ -4822,7 +4874,7 @@ local function FenetreMacrosPages()
                   end)
                   page.bDecocher:SetPoint("LEFT", page.bTout, "RIGHT", 8, 0)
                   page.lignes = {}
-                  for i = 1, #Suite.RACCOURCIS do
+                  for i = 1, #Suite.RACCOURCIS + #Suite.FAMILLES do
                       local l = O.Rangee(24)
                       l.case = O.Case(l, function(oui) if l.r then Suite.PoserRaccourciActif("r:" .. l.r.cle, oui) Suite.RafraichirRaccourcis() end end)
                       l.case:SetPoint("LEFT", l, "LEFT", -3, 0)
@@ -4851,22 +4903,42 @@ local function FenetreMacrosPages()
                   page.bDecocher:SetText(TR("Tout décocher", "Uncheck all"))
                   local rang = 0
                   for _, l in ipairs(page.lignes) do l:Hide() end
-                  for _, r in ipairs(Suite.RACCOURCIS) do
-                      if Dispo(r) then
+                  -- Par famille : un titre, puis ses raccourcis.
+                  for _, fam in ipairs(Suite.FAMILLES) do
+                      local membres = {}
+                      for _, r in ipairs(Suite.RACCOURCIS) do
+                          if Dispo(r) and Suite.FamilleDe(r) == fam.cle then table.insert(membres, r) end
+                      end
+                      if #membres > 0 then
                           rang = rang + 1
-                          local l = page.lignes[rang]
-                          l.r = r
-                          l.icone:SetTexture("Interface\\Icons\\" .. r.icone)
-                          l.nom:SetText(Suite.NomRaccourci(r))
-                          l.commande:SetText("/sagacore " .. r.cle)
-                          l.case:SetChecked(Suite.RaccourciActif("r:" .. r.cle))
-                          l.case:SetShown(r.cle ~= "raccourcis")
-                          local existe = Suite.MacroExiste(r)
-                          l.creer:SetText(existe and TR("Supprimer", "Delete") or TR("Créer", "Create"))
-                          l.creer:Show()
-                          l.etat:SetText(existe and ("|cff4fd16a" .. TR("Macro créée", "Macro created") .. "|r") or "")
-                          l.etat:SetShown(existe)
-                          l:Show()
+                          local t = page.lignes[rang]
+                          t.r = nil
+                          t.case:Hide() t.icone:Hide() t.commande:Hide() t.creer:Hide() t.etat:Hide()
+                          t.nom:ClearAllPoints()
+                          t.nom:SetPoint("LEFT", t, "LEFT", 0, 0)
+                          t.nom:SetFontObject("GameFontNormal")
+                          t.nom:SetText(TR(fam.fr, fam.en))
+                          t:Show()
+                          for _, r in ipairs(membres) do
+                              rang = rang + 1
+                              local l = page.lignes[rang]
+                              l.r = r
+                              l.case:Show() l.icone:Show() l.commande:Show()
+                              l.nom:ClearAllPoints()
+                              l.nom:SetPoint("LEFT", l.icone, "RIGHT", 8, 0)
+                              l.nom:SetFontObject("GameFontHighlight")
+                              l.icone:SetTexture("Interface\\Icons\\" .. r.icone)
+                              l.nom:SetText(Suite.NomRaccourci(r))
+                              l.commande:SetText("/sagacore " .. r.cle)
+                              l.case:SetChecked(Suite.RaccourciActif("r:" .. r.cle))
+                              l.case:SetShown(r.cle ~= "raccourcis")
+                              local existe = Suite.MacroExiste(r)
+                              l.creer:SetText(existe and TR("Supprimer", "Delete") or TR("Créer", "Create"))
+                              l.creer:Show()
+                              l.etat:SetText(existe and ("|cff4fd16a" .. TR("Macro créée", "Macro created") .. "|r") or "")
+                              l.etat:SetShown(existe)
+                              l:Show()
+                          end
                       end
                   end
               end },
