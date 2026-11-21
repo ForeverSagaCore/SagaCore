@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 105
+local VERSION = 106
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2597,7 +2597,9 @@ local function Pilote()
         if not d then return end
         local meilleur, scoreMin
         for _, e in ipairs(liste) do
-            local b = e ~= depart and Boite(e)
+            -- Les onglets ont leur propre navigation (LB / RB, LT / RT) : la
+            -- croix ne s'y arrete pas.
+            local b = e ~= depart and not e.ongletPilote and Boite(e)
             if b then
                 local score
                 if dy ~= 0 then
