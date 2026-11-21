@@ -127,6 +127,7 @@ local function CreerLigneCandidat(parent, index)
     if ligne.nom.SetMaxLines then ligne.nom:SetMaxLines(2) end
 
     ligne.etat = ligne:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    ligne.etat.pasExplication = true
     ligne.etat:SetPoint("TOPLEFT", ligne.nom, "BOTTOMLEFT", 0, -2)
     ligne.etat:SetPoint("RIGHT", ligne, "RIGHT", -4, 0)
     ligne.etat:SetJustifyH("LEFT")
@@ -147,6 +148,7 @@ local function CreerLigneStat(bandeau, index)
     ligne.colonnes = {}
 
     ligne.cle = ligne:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    ligne.cle.pasExplication = true
     ligne.cle:SetPoint("LEFT", ligne, "LEFT", 0, 0)
     ligne.cle:SetJustifyH("LEFT")
     ligne.cle:SetWordWrap(false)

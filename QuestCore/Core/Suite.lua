@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 63
+local VERSION = 64
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4022,11 +4022,11 @@ function Suite.FenetreAPages(o)
         end
         -- Explication sous un reglage : plus petite, en retrait.
         function O.Detail(hauteur)
-            local t = page.cadre:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            -- Police des textes explicatifs : la charte les met a 40 %.
+            local t = page.cadre:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
             t:SetWidth(LARGEUR_C - 60)
             t:SetJustifyH("LEFT")
             t:SetWordWrap(true)
-            t:SetTextColor(0.8, 0.8, 0.8)
             O.Placer(t, hauteur or 28, 2)
             t:ClearAllPoints()
             t:SetPoint("TOPLEFT", page.cadre, "TOPLEFT", 16, -(page.y - (hauteur or 28)))

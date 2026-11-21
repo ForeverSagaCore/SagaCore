@@ -241,6 +241,16 @@ local function EncrerTexte(fs, parchemin)
     local r, g, b, a = fs:GetTextColor()
     if not r then return end
     local texte = fs:GetText()
+    -- Texte explicatif (police GameFontDisableSmall) : noir a 40 % sur le
+    -- parchemin, blanc a 40 % sur fond sombre, dans toute la suite. Ses mots
+    -- colores (legendes) gardent leur couleur.
+    if fs.GetFontObject and fs:GetFontObject() == _G.GameFontDisableSmall and not fs.pasExplication then
+        if parchemin then fs:SetTextColor(0, 0, 0, 0.4) else fs:SetTextColor(1, 1, 1, 0.4) end
+        fs.encre, fs.couleurOrigine = nil, nil
+        r, g, b, a = fs:GetTextColor()
+        fs.encre = parchemin and { r, g, b } or nil
+        fs.couleurOrigine = parchemin and { r, g, b, a } or nil
+    end
     if parchemin then
         if not (fs.encre and Proche(r, g, b, fs.encre[1], fs.encre[2], fs.encre[3])) then
             fs.couleurOrigine = { r, g, b, a }

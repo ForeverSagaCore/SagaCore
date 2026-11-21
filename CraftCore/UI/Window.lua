@@ -605,6 +605,10 @@ local function TitreDeSection(contenu, index, y, texte, droite)
     titre.icone:Hide()
     titre.sacs:SetText("") titre.banque:SetText("")
     titre.total:SetFontObject("GameFontDisableSmall")
+    titre.total.pasExplication = true
+    -- "Fait", "A faire maintenant" : toujours tout a droite, a la meme place.
+    titre.total:SetJustifyH("RIGHT")
+    titre.total:SetWordWrap(false)
     titre.total:SetText(droite or "")
     titre:Show()
     if NS.charte.Fond() == "parchemin" then
@@ -669,6 +673,9 @@ local function LigneSimple(contenu, index, y, icone, texte, droite, auClic, poli
     ligne.nom:SetText(texte)
     ligne.sacs:SetText("") ligne.banque:SetText("")
     ligne.total:SetFontObject("GameFontHighlightSmall")
+    ligne.total.pasExplication = nil
+    -- La ligne a pu servir de titre (calee a droite) : calage de la page.
+    ligne.total:SetJustifyH(contenu.largeurEtat and "LEFT" or "RIGHT")
     ligne.total:SetText(droite or "")
     ligne:Show()
     return index, y + HAUTEUR_LIGNE, ligne
@@ -2038,7 +2045,7 @@ RendreChoixDeRecettes = function(contenu, idProjet, index, y)
         titre.nom:SetTextColor(1, 0.82, 0)
         titre.nom:SetText(NomMetier(ligneMetier))
         titre.sacs:SetText("") titre.banque:SetText("")
-        titre.total:SetFontObject("GameFontDisableSmall")
+        titre.total:SetFontObject("GameFontDisableSmall") titre.total.pasExplication = true
         titre.total:SetText(string.format(L.PROJECTS_PICK_COUNT, #liste))
         titre:Show()
         y = y + HAUTEUR_LIGNE
@@ -4338,6 +4345,7 @@ local function Construire()
     barre.info = info
 
     barre.touches = barre:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    barre.touches.pasExplication = true
     barre.touches:SetPoint("LEFT", info, "RIGHT", 4, 0)
     barre.depart = 2
     barre.touches:SetJustifyH("LEFT")

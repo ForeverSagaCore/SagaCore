@@ -781,6 +781,11 @@ local function DessinerObjectifs(y, objectifs, vue)
         nt = nt + 1
         local t = Texte(nt, police)
         if taille then Taille(t, taille) end
+        -- Texte repris d'un autre usage : alignement et coupure par defaut, sinon
+        -- un etat aligne a droite deplacait la ligne suivante.
+        t:SetJustifyH("LEFT")
+        t:SetWordWrap(true)
+        t:SetWidth(0)
         return t
     end
     local function Icone()
@@ -1111,9 +1116,12 @@ local function DessinerObjectifs(y, objectifs, vue)
                         t:SetText(string.format(L.CRAFT_STEP_LINE, rangE, NS.inventaire.NomDObjet(e.objet), fait, total))
                         local etat = T(LIGNE, TAILLE_LIGNE - 1)
                         etat:ClearAllPoints()
-                        etat:SetPoint("TOPRIGHT", zone, "TOPLEFT", largeur, -(y - 2))
+                        -- "Fait" et "A creer" tout a droite, toujours au meme endroit ;
+                        -- un nom trop long est coupe par des points.
+                        etat:SetPoint("TOPRIGHT", zone, "TOPLEFT", largeur - 2, -(y - 2))
                         etat:SetWidth(70)
                         etat:SetJustifyH("RIGHT")
+                        etat:SetWordWrap(false)
                         -- Faite : toute la ligne en vert. La prochaine : en blanc,
                         -- suivie de "A creer" (le bouton de la ligne la lance).
                         -- Les suivantes : en blanc.

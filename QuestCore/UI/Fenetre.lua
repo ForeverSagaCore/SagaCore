@@ -128,7 +128,9 @@ local function Poser(contenu, index, y, options)
     l.gauche:SetFontObject(options.police or "GameFontHighlightSmall")
     l.gauche:SetText(options.texte or "")
     local c = options.couleur or { 1, 1, 1 }
-    l.gauche:SetTextColor(c[1], c[2], c[3])
+    -- Pleine opacite : une ligne reprise d'un texte explicatif (40 %) ne
+    -- doit pas le rester.
+    l.gauche:SetTextColor(c[1], c[2], c[3], 1)
     local hauteurLigne = HAUTEUR_LIGNE
     if options.section and NS.charte.TitreDeSection(l.gauche, l.filet) then hauteurLigne = HAUTEUR_LIGNE + 6 end
     l:SetHeight(hauteurLigne)
@@ -1290,7 +1292,7 @@ local function RendreDonjons(contenu, p, index, y)
     index = index + 1
     y = Titre(contenu, index, y, L.NAV_DUNGEONS)
     index = index + 1
-    y = Poser(contenu, index, y, { retrait = 18, texte = L.DUNGEON_HELP, couleur = { 0.7, 0.7, 0.7 } }) + 4
+    y = Poser(contenu, index, y, { retrait = 18, texte = L.DUNGEON_HELP, police = "GameFontDisableSmall" }) + 4
     local zoneIci = NS.Appeler(NS.Lecture("GetRealZoneText"))
     local raids = false
     for _, d in ipairs(liste) do
