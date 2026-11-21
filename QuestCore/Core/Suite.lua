@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 107
+local VERSION = 108
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2326,19 +2326,33 @@ local function CadreGuidage()
         GameTooltip:Show()
     end)
     c:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    -- La fleche seule (celle du personnage sur la minicarte), bien centree.
-    c.fleche = c:CreateTexture(nil, "ARTWORK")
-    c.fleche:SetSize(56, 56)
-    c.fleche:SetPoint("CENTER")
+    -- Une boussole : un anneau au centre, et la fleche qui tourne autour vers
+    -- la destination. Anneau et fleche de la meme couleur (doree, verte
+    -- quand on va droit dessus).
+    c.boussole = c:CreateTexture(nil, "ARTWORK")
+    c.boussole:SetSize(54, 54)
+    c.boussole:SetPoint("TOPLEFT", c, "CENTER", -16, 16)
+    c.boussole:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    c.fondBoussole = c:CreateTexture(nil, "BACKGROUND")
+    c.fondBoussole:SetSize(25, 25)
+    c.fondBoussole:SetPoint("CENTER")
+    c.fondBoussole:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    c.fleche = c:CreateTexture(nil, "OVERLAY")
+    c.fleche:SetSize(30, 30)
     c.fleche:SetTexture("Interface\\Minimap\\MinimapArrow")
-    c.arrivee = c:CreateTexture(nil, "ARTWORK")
-    c.arrivee:SetSize(32, 32)
+    c.fleche:SetPoint("CENTER")
+    c.arrivee = c:CreateTexture(nil, "OVERLAY")
+    c.arrivee:SetSize(22, 22)
     c.arrivee:SetPoint("CENTER")
     c.arrivee:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
     c.distance = c:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     c.distance:SetPoint("TOP", c, "BOTTOM", 0, -2)
+    -- Duree estimee, en petit, sous la distance.
+    c.temps = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    c.temps:SetPoint("TOP", c.distance, "BOTTOM", 0, -1)
+    c.temps:SetTextColor(0.8, 0.8, 0.8)
     c.qui = c:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    c.qui:SetPoint("TOP", c.distance, "BOTTOM", 0, -1)
+    c.qui:SetPoint("TOP", c.temps, "BOTTOM", 0, -1)
     local attente = 0
     c:SetScript("OnUpdate", function(self, ecoule)
         attente = attente - (ecoule or 0)
@@ -2350,7 +2364,7 @@ local function CadreGuidage()
         if not ok then return end
         if not cible then
             if raison == "fini" then Suite.ArreterGuidage() return end
-            self.fleche:Hide() self.arrivee:Hide()
+            self.fleche:Hide() self.arrivee:Hide() self.temps:SetText("")
             self.distance:SetText(TG.loin)
             -- Hors de portee (autre continent...) : ou aller, si on le sait.
             self.qui:SetText(type(detail) == "string" and detail or "")
@@ -2365,16 +2379,32 @@ local function CadreGuidage()
         local ax, ay, ca = PositionJoueur()
         local bx, by, cb = PositionMonde(cible.carte, cible.x, cible.y)
         if not (ax and bx) or (ca and cb and ca ~= cb) then
-            self.fleche:Hide() self.arrivee:Hide()
+            self.fleche:Hide() self.arrivee:Hide() self.temps:SetText("")
             self.distance:SetText(TG.loin)
             return
         end
         local nord, ouest = bx - ax, by - ay
         local yards = math.sqrt(nord * nord + ouest * ouest)
         self.distance:SetText(string.format("%d m", math.floor(yards * 0.9144 + 0.5)))
+        -- Duree estimee : a la vitesse actuelle (monture comprise), sinon a
+        -- la vitesse de course a pied (7 yards par seconde).
+        local vitesse = 0
+        if _G.GetUnitSpeed then
+            local okV, v = pcall(_G.GetUnitSpeed, "player")
+            if okV and type(v) == "number" then vitesse = v end
+        end
+        if vitesse < 1 then vitesse = 7 end
+        local sec = math.floor(yards / vitesse + 0.5)
+        if sec >= 60 then
+            self.temps:SetText(string.format("%d min %02d s", math.floor(sec / 60), sec % 60))
+        else
+            self.temps:SetText(string.format("%d s", sec))
+        end
         if yards < 12 then
             self.fleche:Hide()
             self.arrivee:Show()
+            self.temps:SetText("")
+            self.boussole:SetVertexColor(0.4, 1, 0.4)
             if f.Arrivee then pcall(f.Arrivee, cible) end
             -- Message de la suite, une fois par destination.
             local cleArrivee = tostring(cible.carte) .. ":" .. math.floor((cible.x or 0) * 1000) .. ":" .. math.floor((cible.y or 0) * 1000)
@@ -2400,9 +2430,18 @@ local function CadreGuidage()
         local face = tonumber(_G.GetPlayerFacing and _G.GetPlayerFacing()) or 0
         local angle = math.atan2(ouest, nord) - face
         if self.fleche.SetRotation then self.fleche:SetRotation(angle) end
-        -- Verte quand on va droit dessus, doree sinon.
+        -- La fleche tourne autour de l'anneau, du cote de la destination.
+        self.fleche:ClearAllPoints()
+        self.fleche:SetPoint("CENTER", self, "CENTER", -math.sin(angle) * 24, math.cos(angle) * 24)
+        -- Verte quand on va droit dessus, doree sinon (anneau et fleche).
         local ecart = math.abs(((angle + math.pi) % (2 * math.pi)) - math.pi)
-        if ecart < 0.35 then self.fleche:SetVertexColor(0.4, 1, 0.4) else self.fleche:SetVertexColor(1, 0.82, 0) end
+        if ecart < 0.35 then
+            self.fleche:SetVertexColor(0.4, 1, 0.4)
+            self.boussole:SetVertexColor(0.4, 1, 0.4)
+        else
+            self.fleche:SetVertexColor(1, 0.82, 0)
+            self.boussole:SetVertexColor(1, 1, 1)
+        end
     end)
     c:Hide()
     g.cadre = c
