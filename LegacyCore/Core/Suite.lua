@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 92
+local VERSION = 93
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4427,6 +4427,8 @@ function Suite.RemplirMacroCore()
                     b:SetScript("OnEnter", function(self)
                         if not self.e then return end
                         self:SetAlpha(1)
+                        -- Infobulles : reglage de la suite (actives par defaut).
+                        if Reglages().macroCoreSansInfobulle then return end
                         -- Colle au bord droit de la fenetre, a la hauteur de la
                         -- pastille.
                         GameTooltip:SetOwner(self, "ANCHOR_NONE")
@@ -5425,6 +5427,10 @@ local function FenetreMacrosPages()
                   page.bReplacer:SetPoint("RIGHT", page.rRond, "RIGHT", -10, 0)
                   page.cRond = O.Case(page.rRond, function(oui) Reglages().raccourcisCache = (not oui) or nil Maj() end)
                   page.cRond:SetPoint("RIGHT", page.bReplacer, "LEFT", -16, 0)
+                  -- Infobulles des raccourcis de MacroCore (actives par defaut).
+                  page.rInfo = O.Rangee()
+                  page.cInfo = O.Case(page.rInfo, function(oui) Reglages().macroCoreSansInfobulle = (not oui) or nil end)
+                  page.cInfo:SetPoint("RIGHT", page.rInfo, "RIGHT", -10, 0)
                   page.rOuv = O.Rangee()
                   page.sOuv = O.Segments(page.rOuv, function() return {
                       { "gauche", TR("Gauche", "Left") }, { "droite", TR("Droite", "Right") },
@@ -5453,6 +5459,8 @@ local function FenetreMacrosPages()
                       "A small button on screen opens the panel : your shortcuts and macros as icons, launched with one click. Drag the button wherever you like."))
                   page.rRond.nom:SetText(TR("Bouton à l'écran", "Button on screen"))
                   page.cRond:SetChecked(not r.raccourcisCache)
+                  page.rInfo.nom:SetText(TR("Infobulles des raccourcis", "Shortcut tooltips"))
+                  page.cInfo:SetChecked(not r.macroCoreSansInfobulle)
                   page.bReplacer:SetText(TR("Replacer", "Reset"))
                   page.rOuv.nom:SetText(TR("Les icônes s'ouvrent", "Icons open"))
                   page.rForme.nom:SetText(TR("Forme des icônes", "Icon shape"))
