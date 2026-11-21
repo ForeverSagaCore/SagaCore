@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 101
+local VERSION = 102
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2775,6 +2775,10 @@ function Suite.Piloter(oui, nom)
         p.alphaAvant = nil
         p:Hide()
         GameTooltip:Hide()
+        -- Remis dans l'etat d'avant : ferme s'il l'etait.
+        local aFermer = p.refermer and _G[p.refermer]
+        p.refermer = nil
+        if aFermer and aFermer:IsShown() then aFermer:Hide() end
         if Suite.ReprendrePanneau then Suite.ReprendrePanneau() end
         -- La fenetre des macros reprend la main si elle est encore ouverte.
         local retour = p.retour
@@ -2795,10 +2799,13 @@ function Suite.Piloter(oui, nom)
         nom = nom or SUIVIS[1]
     end
     local f = _G[nom]
-    if not (f and f:IsShown()) and OUVRIR_SUIVI[nom] then OUVRIR_SUIVI[nom]() f = _G[nom] end
+    -- Ferme avant d'en prendre le controle : il se referme quand on le libere.
+    local ouvertIci = false
+    if not (f and f:IsShown()) and OUVRIR_SUIVI[nom] then OUVRIR_SUIVI[nom]() f = _G[nom] ouvertIci = true end
     if not (f and f:IsShown()) then print("|cffffd100SagaCore|r " .. TP.rien) return end
     p.nom, p.choix, p.pos = nom, nil, nil
     p.retour = retour
+    p.refermer = ouvertIci and f and f:IsShown() and nom or nil
     if f.piloteDepart then p.choix = f.piloteDepart() end
     if f.piloteGarderAlpha then
         if Suite.SuspendrePanneau then Suite.SuspendrePanneau() end
@@ -4295,7 +4302,8 @@ local function MacroCore()
         s:SetFrameStrata(cadre:GetFrameStrata())
         s:SetFrameLevel(cadre:GetFrameLevel() + 10)
         s:SetSize(24, 24)
-        s:SetPoint("TOPLEFT", cadre.zone, "TOPLEFT", 2 + rang * (24 + 8), 0)
+        -- Tout au bord droit, pour ne pas les confondre avec l'icone de MacroCore.
+        s:SetPoint("TOPRIGHT", cadre.zone, "TOPRIGHT", -2 - (2 - rang) * (24 + 8), 0)
         s.fond = s:CreateTexture(nil, "BACKGROUND")
         s.fond:SetSize(19, 19)
         s.fond:SetPoint("CENTER")
