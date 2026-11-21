@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 80
+local VERSION = 81
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -3052,6 +3052,19 @@ do
         local r = Reglages()
         if InCombatLockdown and InCombatLockdown() then return end
         if not (_G.GetMacroIndexByName and _G.CreateMacro) then return end
+        -- Nos macros restees avec le point d'interrogation : leur vraie icone.
+        if _G.GetMacroInfo and _G.EditMacro then
+            for _, rac in ipairs(Suite.RACCOURCIS) do
+                local index = IndexANous(rac, NomDeMacro(rac))
+                if index then
+                    local nomM, icone, corps = _G.GetMacroInfo(index)
+                    local bonne = IconeDeMacro(rac)
+                    if (icone == 134400 or icone == "INV_MISC_QUESTIONMARK") and bonne ~= 134400 then
+                        pcall(_G.EditMacro, index, nomM, bonne, corps)
+                    end
+                end
+            end
+        end
         -- Ses macros CC (/sagacore) et RLD (/reload), effacees par erreur.
         for _, m in ipairs({ { "CC", 132279, "/sagacore", "macroCCRecreee" },
                              { "RLD", 1029581, "/reload", "macroRLDRecreee" } }) do
@@ -4176,8 +4189,12 @@ local function MacroCore()
     if fenMC then return fenMC end
     local ok, f = pcall(CreateFrame, "Frame", "CoreSuiteMacroCore", UIParent, "ButtonFrameTemplate")
     if not ok or not f then return nil end
-    -- Memes proportions et meme organisation que la fenetre Macros du jeu.
-    f:SetSize(384, 520)
+    -- Meme organisation que la fenetre Macros du jeu, a la largeur des suivis
+    -- (Mes fabrications, Quetes).
+    local suiviModele = _G.CraftCoreSuivi or _G.QuestCoreSuivi
+    local L = math.floor((suiviModele and suiviModele:GetWidth() or 300) + 0.5)
+    if L < 260 then L = 300 end
+    f:SetSize(L, 440)
     f:SetFrameStrata("DIALOG")
     f:SetToplevel(true)
     f:SetClampedToScreen(true)
@@ -4187,8 +4204,8 @@ local function MacroCore()
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
-        local x, y = self:GetCenter()
-        Reglages().macroCoreX, Reglages().macroCoreY = math.floor(x + 0.5), math.floor(y + 0.5)
+        -- L'icone au clavier suit la fenetre : elle reprend la place du portrait.
+        Suite.IconeSurPortrait()
     end)
     if f.SetPortraitToAsset then pcall(f.SetPortraitToAsset, f, ICONE_MACROCORE)
     elseif f.portrait then f.portrait:SetTexture(ICONE_MACROCORE) end
@@ -4206,7 +4223,7 @@ local function MacroCore()
     -- Les deux onglets : macros generales, macros du personnage.
     f.onglets = {}
     local nomPerso = UnitName and UnitName("player") or "?"
-    for i, texte in ipairs({ TR("Macros générales", "General macros"), TR("Macros de ", "Macros of ") .. nomPerso }) do
+    for i, texte in ipairs({ TR("Générales", "General"), nomPerso }) do
         local okT, t = pcall(CreateFrame, "Button", "CoreSuiteMacroCoreOnglet" .. i, f, "PanelTopTabButtonTemplate")
         if not okT or not t then t = CreateFrame("Button", nil, f, "UIPanelButtonTemplate") t:SetSize(150, 24) end
         t:SetText(texte)
@@ -4230,16 +4247,16 @@ local function MacroCore()
     f.grille = okG and grille or CreateFrame("Frame", nil, f)
     f.grille:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -66)
     f.grille:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -66)
-    f.grille:SetHeight(196)
+    local T, ECART = math.floor((L - 20 - 12 - 26 - 5 * 6) / 6), 6
+    f.grille:SetHeight(3 * (T + ECART) + 12)
     local okS, defile = pcall(CreateFrame, "ScrollFrame", nil, f.grille, "UIPanelScrollFrameTemplate")
     f.defile = okS and defile or CreateFrame("ScrollFrame", nil, f.grille)
     f.defile:SetPoint("TOPLEFT", 6, -6)
     f.defile:SetPoint("BOTTOMRIGHT", -26, 6)
     local contenu = CreateFrame("Frame", nil, f.defile)
-    contenu:SetSize(320, 186)
+    contenu:SetSize(6 * (T + ECART), 3 * (T + ECART))
     f.defile:SetScrollChild(contenu)
     f.cases = {}
-    local T, ECART = 44, 9
     for i = 1, 18 do
         local c = CreateFrame("CheckButton", nil, contenu)
         c:SetSize(T, T)
@@ -4264,18 +4281,18 @@ local function MacroCore()
     f.choix:SetPoint("TOPLEFT", f.grille, "BOTTOMLEFT", 0, -6)
     f.choix:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 32)
     f.iconeChoix = f.choix:CreateTexture(nil, "ARTWORK")
-    f.iconeChoix:SetSize(44, 44)
+    f.iconeChoix:SetSize(36, 36)
     f.iconeChoix:SetPoint("TOPLEFT", 10, -10)
     f.iconeChoix:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
     f.iconeChoix:SetTexCoord(0.17, 0.83, 0.17, 0.83)
     f.nomChoix = f.choix:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     f.nomChoix:SetPoint("TOPLEFT", f.iconeChoix, "TOPRIGHT", 10, -2)
     f.nomChoix:SetText("")
-    f.modifier = Bouton(TR("Modifier Nom/Icône", "Change Name/Icon"), 170)
+    f.modifier = Bouton(TR("Modifier Nom/Icône", "Change Name/Icon"), L - 20 - 56 - 90)
     f.modifier:SetPoint("BOTTOMLEFT", f.iconeChoix, "BOTTOMRIGHT", 8, 0)
-    f.sauver = Bouton(TR("Sauver", "Save"), 96)
+    f.sauver = Bouton(TR("Sauver", "Save"), 76)
     f.sauver:SetPoint("TOPRIGHT", f.choix, "TOPRIGHT", -8, -10)
-    f.annuler = Bouton(TR("Annuler", "Cancel"), 96)
+    f.annuler = Bouton(TR("Annuler", "Cancel"), 76)
     f.annuler:SetPoint("TOPRIGHT", f.sauver, "BOTTOMRIGHT", 0, -6)
     f.consigne = f.choix:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f.consigne:SetPoint("TOPLEFT", f.iconeChoix, "BOTTOMLEFT", -2, -8)
@@ -4293,7 +4310,7 @@ local function MacroCore()
     f.texte:SetMultiLine(true)
     f.texte:SetAutoFocus(false)
     f.texte:SetFontObject("GameFontHighlight")
-    f.texte:SetWidth(290)
+    f.texte:SetWidth(L - 70)
     f.texte:SetMaxLetters(255)
     f.texte:SetScript("OnEscapePressed", f.texte.ClearFocus)
     f.defileTexte:SetScrollChild(f.texte)
@@ -4306,32 +4323,71 @@ local function MacroCore()
     Compter()
 
     -- Le bas : Suppr. a gauche, Nouvelle et Quitter a droite.
-    f.supprimer = Bouton(TR("Suppr.", "Delete"), 90)
+    f.supprimer = Bouton(TR("Suppr.", "Delete"), 76)
     f.supprimer:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 6, 6)
-    f.quitter = Bouton(TR("Quitter", "Exit"), 90)
+    f.quitter = Bouton(TR("Quitter", "Exit"), 76)
     f.quitter:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -6, 6)
     f.quitter:SetScript("OnClick", function() f:Hide() end)
-    f.nouvelle = Bouton(TR("Nouvelle", "New"), 90)
+    f.nouvelle = Bouton(TR("Nouvelle", "New"), 86)
     f.nouvelle:SetPoint("RIGHT", f.quitter, "LEFT", -4, 0)
 
+    -- Le portrait se clique comme l'icone : il referme la fenetre.
+    local portrait = f.PortraitContainer or f.portrait
+    if portrait then
+        local clic = CreateFrame("Button", nil, f)
+        clic:SetAllPoints(portrait)
+        clic:SetFrameLevel((f.CloseButton and f.CloseButton:GetFrameLevel() or f:GetFrameLevel()) + 2)
+        clic:SetScript("OnClick", function() f:Hide() end)
+        f.clicPortrait = clic
+    end
+    f:SetScript("OnHide", function() pcall(Suite.PlacerBoutonRaccourcis) end)
     table.insert(UISpecialFrames, "CoreSuiteMacroCore")
     f:Hide()
     fenMC = f
     return f
 end
 
+-- Ecart entre le coin haut gauche de la fenetre et le centre de son portrait.
+local function EcartPortrait(f)
+    local portrait = f.PortraitContainer or f.portrait
+    local px, py = portrait and portrait:GetCenter()
+    local fx, fy = f:GetLeft(), f:GetTop()
+    if px and fx then return px - fx, py - fy end
+    return 25, -23
+end
+
+-- L'icone au clavier prend la place du portrait (fenetre deplacee).
+function Suite.IconeSurPortrait()
+    local f = fenMC
+    if not f then return end
+    local portrait = f.PortraitContainer or f.portrait
+    local px, py = portrait and portrait:GetCenter()
+    if px then
+        Reglages().raccourcisX, Reglages().raccourcisY = math.floor(px + 0.5), math.floor(py + 0.5)
+    end
+end
+
 function Suite.BasculerMacroCore()
     local f = MacroCore()
     if not f then return false end
     if f:IsShown() then f:Hide() return true end
+    -- La fenetre s'ouvre par-dessus l'icone : son portrait a la place exacte
+    -- de l'icone au clavier, qui se cache le temps que la fenetre est ouverte.
+    local rond = Suite.boutonRaccourcis
+    local cx, cy
+    if rond then cx, cy = rond:GetCenter() end
     f:ClearAllPoints()
-    local r = Reglages()
-    if r.macroCoreX and r.macroCoreY then
-        f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", r.macroCoreX, r.macroCoreY)
-    else
-        f:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
-    end
+    f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", 0, 0)
     f:Show()
+    if cx then
+        local dx, dy = EcartPortrait(f)
+        f:ClearAllPoints()
+        f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", cx - dx, cy - dy)
+        rond:Hide()
+    else
+        f:ClearAllPoints()
+        f:SetPoint("CENTER")
+    end
     f:Raise()
     return true
 end
@@ -4389,7 +4445,7 @@ function Suite.PlacerBoutonRaccourcis()
     end
     -- L'icone au clavier, ronde comme le portrait du jeu, toujours visible.
     Habiller(b, Suite.TAILLE_RACCOURCI, true)
-    b:Show()
+    b:SetShown(not (_G.CoreSuiteMacroCore and _G.CoreSuiteMacroCore:IsShown()))
 end
 
 do
