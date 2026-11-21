@@ -669,6 +669,8 @@ local function LigneSimple(contenu, index, y, icone, texte, droite, auClic, poli
     ligne.nom:SetText(texte)
     ligne.sacs:SetText("") ligne.banque:SetText("")
     ligne.total:SetFontObject("GameFontHighlightSmall")
+    -- La colonne de droite a la meme taille que le nom.
+    ligne.total.agrandir = true
     ligne.total:SetText(droite or "")
     ligne:Show()
     return index, y + HAUTEUR_LIGNE, ligne
@@ -676,13 +678,13 @@ end
 
 -- Texte sur plusieurs lignes au besoin, jamais tronque. Meme retrait que les
 -- lignes simples. `couleur` : { r, g, b } facultatif.
--- Texte explicatif (legendes, aides) : noir a 50 % sur le parchemin, blanc
--- a 50 % sur fond sombre. Partout le meme, avec les polices du jeu.
+-- Texte explicatif (legendes, aides) : noir a 40 % sur le parchemin, blanc
+-- a 40 % sur fond sombre. Partout le meme, avec les polices du jeu.
 function NS.Explication(fs)
     if not fs then return end
     fs:SetFontObject("GameFontDisableSmall")
     local parchemin = NS.charte and NS.charte.Fond and NS.charte.Fond() == "parchemin"
-    if parchemin then fs:SetTextColor(0, 0, 0, 0.5) else fs:SetTextColor(1, 1, 1, 0.5) end
+    if parchemin then fs:SetTextColor(0, 0, 0, 0.4) else fs:SetTextColor(1, 1, 1, 0.4) end
 end
 
 local function Paragraphe(contenu, y, texte, police, couleur, x)
@@ -2584,57 +2586,54 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     local aligne = 2 + 14 + 4 + 16 + 6
     local POLICE = "GameFontHighlightSmall"
 
-    -- Une ligne de texte avec, au bord droit, son bouton Viser ce rang.
-    -- Toutes les lignes ont la meme hauteur ; le bouton est toujours au
-    -- meme bord droit.
-    local HAUT_LIGNE = 30
-    local function BoutonViser(cleB, rangCible, y0)
-        local b = BoutonAction(contenu, cleB, EstVise(rangCible) and L.GUIDE_UNAIM or L.GUIDE_AIM)
-        b:ClearAllPoints()
-        b:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -(y0 + 3))
-        b:SetScript("OnClick", function() Basculer(rangCible) end)
-        b:Show()
-        return b
-    end
-    local function LigneAViser(cleB, texte, couleur, rangCible)
-        local y0 = y
-        Paragraphe(contenu, y0 + 6, texte, POLICE, couleur, aligne)
-        if rangCible and rangCible > rang then BoutonViser(cleB, rangCible, y0) end
-        y = y0 + HAUT_LIGNE
+    -- Les trois lignes : meme police et meme pas que les lignes des etapes,
+    -- leur bouton au meme endroit que les boutons Creer.
+    local function LigneAViser(texte, couleur, rangCible)
+        local l
+        index, y, l = LigneSimple(contenu, index, y, nil, texte, "")
+        if l then
+            if couleur then l.nom:SetTextColor(couleur[1], couleur[2], couleur[3]) end
+            if rangCible and rangCible > rang then
+                PoserBoutonDeLigne(l, EstVise(rangCible) and L.GUIDE_UNAIM or L.GUIDE_AIM, function() Basculer(rangCible) end)
+            end
+        end
+        return l
     end
 
+    y = y + 4
     -- 1. Ce que les composants du compte (sacs, banque, autres personnages)
     -- donnent deja, a coup sur.
-    y = y + 2
     local okStock, planStock = pcall(catalogue.Progression, ligneMetier, rang, rangMax, nil)
     local assure = okStock and planStock and rang + (planStock.pointsSurs or 0) or rang
     if assure > rang then
-        LigneAViser("progViserSur", string.format(L.GUIDE_ALREADY, assure), VERT, assure)
+        LigneAViser(string.format(L.GUIDE_ALREADY, assure), VERT, assure)
     else
-        LigneAViser("progViserSur", L.GUIDE_ALREADY_NONE, GRIS, nil)
+        LigneAViser(L.GUIDE_ALREADY_NONE, GRIS, nil)
     end
 
     -- 2. Ce que les recettes connues permettent, composants a reunir.
     local okRec, planRec = pcall(catalogue.Progression, ligneMetier, rang, rangMax, plafondMetier)
     local atteignable = okRec and planRec and planRec.atteint or rang
     if atteignable > rang then
-        LigneAViser("progViserRecettes", string.format(L.GUIDE_RECIPES, atteignable), OR, atteignable)
+        LigneAViser(string.format(L.GUIDE_RECIPES, atteignable), OR, atteignable)
     else
-        LigneAViser("progViserRecettes", L.GUIDE_RECIPES_NONE, GRIS, nil)
+        LigneAViser(L.GUIDE_RECIPES_NONE, GRIS, nil)
     end
 
-    -- 3. Un rang de son choix : la valeur entre deux fleches, au bord droit,
-    -- et son bouton juste avant. Les fleches ne creent rien, le bouton oui.
-    contenu.libelleObjectif = contenu.libelleObjectif or contenu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    contenu.libelleObjectif:SetFontObject(POLICE)
-    contenu.libelleObjectif:SetTextColor(1, 1, 1)
-    contenu.libelleObjectif:ClearAllPoints()
-    contenu.libelleObjectif:SetPoint("TOPLEFT", contenu, "TOPLEFT", aligne, -(y + 8))
-    contenu.libelleObjectif:SetText(L.GUIDE_CHOICE)
-    contenu.libelleObjectif:Show()
+    -- 3. Un rang de son choix : la valeur entre deux fleches, juste avant le
+    -- bouton. Les fleches ne creent rien, le bouton oui. Sans choix, elles
+    -- montrent le rang vise a part (ni assure ni atteignable), pour pouvoir
+    -- ne plus le viser.
+    if not ecran.choixRang[cleObjectif] then
+        for _, v in ipairs(vises) do
+            if v ~= assure and v ~= atteignable then choix = math.max(rang + 1, math.min(plafondMetier, v)) end
+        end
+    end
+    if contenu.libelleObjectif then contenu.libelleObjectif:Hide() end
+    local ligneChoix = LigneAViser(L.GUIDE_CHOICE, nil, choix)
     contenu.etatObjectif = { valeur = choix, mini = rang + 1, maxi = plafondMetier }
     local S = NS.suite or _G.CoreSuite
-    if S and S.Curseur then
+    if S and S.Curseur and ligneChoix then
         if not contenu.curseurObjectif then
             contenu.curseurObjectif = S.Curseur(contenu, 0, 1000, 1,
                 function() return contenu.etatObjectif and contenu.etatObjectif.valeur end,
@@ -2649,14 +2648,12 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
             contenu.curseurObjectif.surParchemin = function() return NS.charte.Fond and NS.charte.Fond() == "parchemin" end
         end
         contenu.etatObjectif.poser = function(v) ecran.choixRang[cleObjectif] = v end
-        -- Le bouton au meme bord que les deux autres, les fleches juste avant.
-        local viser = BoutonViser("progViserChoix", choix, y)
         local c = contenu.curseurObjectif
         c:ClearAllPoints()
-        c:SetPoint("RIGHT", viser, "LEFT", -8, 0)
+        c:SetPoint("RIGHT", ligneChoix.plus, "LEFT", -6, 0)
+        c:SetFrameLevel(ligneChoix:GetFrameLevel() + 2)
         c:Show()
         c.Rendre()
-        c:SetAlpha(1)
         if c.boutonsPM then
             local bas, haut = choix > contenu.etatObjectif.mini, choix < contenu.etatObjectif.maxi
             c.boutonsPM[1]:SetEnabled(bas)
@@ -2664,27 +2661,12 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
             if c.boutonsPM[3] then c.boutonsPM[3]:SetEnabled(bas) c.boutonsPM[4]:SetEnabled(haut) end
         end
     end
-    y = y + HAUT_LIGNE
 
-    -- Les rangs vises, chacun avec son bouton pour ne plus le viser.
-    if #vises > 0 then
-        for _, v in ipairs(vises) do
-            LigneAViser("progVise" .. v, string.format(L.GUIDE_AIMED, v), VERT, v)
-        end
-    end
-
-    -- Le plan : les rangs vises a la suite ; sans rang vise, un apercu du
-    -- rang choisi. Les quantites s'additionnent, le detail par rang reste
-    -- lisible a droite de chaque ligne.
+    -- Rien de vise : pas d'etapes. Elles apparaissent des qu'un rang est
+    -- vise, et suivent tous les rangs vises, a la suite.
+    if #vises == 0 then return index, y + 6 end
+    y = y + 6
     local segments = catalogue.PlansVises(fiche, cleObjectif, rang, rangMax, vises)
-    local apercu = #segments == 0
-    if apercu then
-        local okP, planP = pcall(catalogue.Progression, ligneMetier, rang, rangMax, choix)
-        if okP and planP then segments = { { vise = choix, de = rang, plan = planP } } end
-        -- Bien visible : ce qui suit n'est qu'un apercu, rien n'est vise.
-        y = Paragraphe(contenu, y + 6, string.format(L.GUIDE_PREVIEW_TITLE, choix), "GameFontNormal", OR, aligne)
-        y = Paragraphe(contenu, y - 4, L.GUIDE_PREVIEW, "GameFontDisableSmall", nil, aligne)
-    end
     local objectif = segments[#segments] and segments[#segments].vise or choix
     local plan = { utilises = {}, achats = {}, manques = {}, intermediaires = {}, etapes = {}, estime = false }
     for _, seg in ipairs(segments) do
