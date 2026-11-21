@@ -2693,15 +2693,28 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     -- Tant que la recolte n'est pas faite pour tous les rangs vises, rien ne
     -- se cree : pas de fabrication partielle. Pour avancer rang par rang, on
     -- decoche les rangs plus hauts.
-    local recolteAFaire = next(plan.manques) ~= nil
+    -- Meme chose tant que les achats et la recuperation ne sont pas faits :
+    -- tout doit etre dans les sacs avant la premiere fabrication.
+    local bloque
+    if next(plan.manques) ~= nil then bloque = L.GUIDE_GATHER_FIRST end
+    if not bloque then
+        for objet, n in pairs(plan.achats) do
+            if (NS.inventaire.DisponibleDansLesSacs(objet) or 0) < n then bloque = L.GUIDE_BUY_FIRST break end
+        end
+    end
+    if not bloque then
+        for objet, n in pairs(plan.utilises) do
+            if (NS.inventaire.DisponibleDansLesSacs(objet) or 0) < n then bloque = L.GUIDE_FETCH_FIRST break end
+        end
+    end
     local function Creer(l, recette, n)
         PoserBoutonFabriquer(l, recette, n)
-        if recolteAFaire and l.fabriquer then
+        if bloque and l.fabriquer then
             l.fabriquer:SetEnabled(false)
             if l.manque then
                 l.manque:ClearAllPoints()
                 l.manque:SetPoint("RIGHT", l.fabriquer, "LEFT", -6, 0)
-                l.manque:SetText(L.GUIDE_GATHER_FIRST)
+                l.manque:SetText(bloque)
                 l.manque:SetTextColor(0.9, 0.3, 0.3)
                 l.manque:Show()
                 AncrerLibelle(l, l.manque)
