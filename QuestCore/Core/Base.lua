@@ -303,6 +303,9 @@ function ref.InfobulleDeQuete(tt, q, id, p)
     local L = NS.L
     tt:AddLine(q.titre or ref.NomDeQuete(id, p), 1, 0.82, 0)
     if q.niveau and q.niveau > 0 then tt:AddLine(string.format(L.LEVEL, q.niveau), 0.7, 0.7, 0.7) end
+    -- Qui donne la quete, comme pour les quetes pas encore prises.
+    local donneurs = ref.Donneurs(id)
+    if #donneurs > 0 then tt:AddLine(string.format(L.GIVEN_BY, table.concat(donneurs, ", ")), 0.8, 0.8, 0.8, true) end
     local r = q.recompenses
     -- Ce qu'il faut faire (texte du journal), puis le recit, en entier.
     if r and r.but then
