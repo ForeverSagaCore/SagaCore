@@ -1711,25 +1711,31 @@ function suivi.Rendre()
                 r:ClearAllPoints()
                 r:SetPoint("TOPLEFT", bilan, "TOPLEFT", 0, yB)
                 r:SetPoint("TOPRIGHT", bilan, "TOPRIGHT", 0, yB)
+                -- Deux par rangee ; un troisieme (Supprimer un parcours fini,
+                -- par exemple) passe sur une rangee de plus.
                 local n = #d.boutons
                 for m, info in ipairs(d.boutons) do
-                    local b = r.boutons[m]
+                    local b = r.boutons[m] or r.NouveauBouton(m)
                     b:SetText(info[1])
                     b.action, b.aide = info[2], info[3]
                     b:ClearAllPoints()
-                    if n == 1 then
-                        b:SetPoint("TOPLEFT", r, "TOPLEFT", 0, 0)
-                        b:SetPoint("TOPRIGHT", r, "TOPRIGHT", 0, 0)
-                    elseif m == 1 then
-                        b:SetPoint("TOPLEFT", r, "TOPLEFT", 0, 0)
-                        b:SetPoint("TOPRIGHT", r, "TOP", -2, 0)
+                    local ligne = math.floor((m - 1) / 2)
+                    local yL = -ligne * 24
+                    local seul = (m % 2 == 1) and (m == n)
+                    if seul then
+                        b:SetPoint("TOPLEFT", r, "TOPLEFT", 0, yL)
+                        b:SetPoint("TOPRIGHT", r, "TOPRIGHT", 0, yL)
+                    elseif m % 2 == 1 then
+                        b:SetPoint("TOPLEFT", r, "TOPLEFT", 0, yL)
+                        b:SetPoint("TOPRIGHT", r, "TOP", -2, yL)
                     else
-                        b:SetPoint("TOPLEFT", r, "TOP", 2, 0)
-                        b:SetPoint("TOPRIGHT", r, "TOPRIGHT", 0, 0)
+                        b:SetPoint("TOPLEFT", r, "TOP", 2, yL)
+                        b:SetPoint("TOPRIGHT", r, "TOPRIGHT", 0, yL)
                     end
                     b:Show()
                 end
-                hauteur, apres = 20, 0
+                local rangees = math.ceil(n / 2)
+                hauteur, apres = rangees * 20 + (rangees - 1) * 4, 0
             end
             r:SetHeight(hauteur)
             r:Show()
@@ -2341,7 +2347,7 @@ local function Construire()
         r.droite:SetPoint("RIGHT", r, "RIGHT", 0, 0)
         r.droite:SetJustifyH("RIGHT")
         r.boutons = {}
-        for k = 1, 2 do
+        function r.NouveauBouton(k)
             local b = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
             b:SetHeight(20)
             -- Guider, Itineraire detaille... : une fois clique, l'infobulle
@@ -2360,7 +2366,9 @@ local function Construire()
             end)
             b:SetScript("OnLeave", function(x) x.muet = nil GameTooltip:Hide() end)
             r.boutons[k] = b
+            return b
         end
+        for k = 1, 2 do r.NouveauBouton(k) end
         self.rangs[rang] = r
         return r
     end
