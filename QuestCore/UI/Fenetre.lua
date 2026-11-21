@@ -1,5 +1,12 @@
 local _, NS = ...
 
+-- Les boutons d'une quete : sans "Toute la suite" quand la suite n'a qu'une
+-- quete (le premier bouton).
+local function SansSuiteSiSeule(n, boutons)
+    if (n or 0) <= 1 then table.remove(boutons, 1) end
+    return boutons
+end
+
 -- Fenetre principale : les personnages a gauche, a droite les quetes en
 -- cours du personnage choisi (par zone, comme le journal du jeu), puis ce
 -- qu'il peut fournir aux autres et ce que les autres peuvent lui fournir.
@@ -390,7 +397,8 @@ local function RendreQuetes(contenu, p, index, y)
                     local suite = NS.parcours.Suite(p, id)
                     local cleP = p.cle
                     index = index + 1
-                    y = Poser(contenu, index, y + 2, { retrait = retrait2, boutons = {
+                    -- Une seule quete : pas de "toute la suite".
+                    y = Poser(contenu, index, y + 2, { retrait = retrait2, boutons = SansSuiteSiSeule(#suite, {
                         { string.format(L.ROUTE_MAKE_CHAIN, #suite), function()
                             local pc = NS.parcours.CreerSuite(cleP, p, idQuete)
                             if pc then
@@ -403,7 +411,7 @@ local function RendreQuetes(contenu, p, index, y)
                             etat.ajoutParcours = (etat.ajoutParcours ~= idQuete) and idQuete or nil
                             fen.Rendre()
                         end },
-                    } }) + 2
+                    }) }) + 2
                     if etat.ajoutParcours == idQuete then
                         local choix = {}
                         for _, pc in ipairs(NS.parcours.Liste(cleP)) do
@@ -1356,13 +1364,26 @@ local function RendreDisponibles(contenu, p, index, y)
         y = Poser(contenu, index, y, { retrait = RETRAIT, texte = L.AVAIL_NONE, couleur = { 0.6, 0.6, 0.6 } })
         return index, y
     end
+    -- Les quetes disponibles maintenant (pour griser les autres etapes d'une suite).
+    local dispo = {}
+    for _, z in ipairs(zones) do for _, d in ipairs(z.ids) do if not d.gris then dispo[d.id] = true end end end
     for _, z in ipairs(zones) do
         local cleZone = "dz" .. z.nom
+        -- Experience a prendre dans la zone avec les quetes du niveau du
+        -- personnage, comme dans le suivi.
+        local xpZone = 0
+        for _, d in ipairs(z.ids) do
+            if not d.gris and (d.niveau or 0) <= (p.niveau or 0) then
+                xpZone = xpZone + (tonumber(NS.ref.XPDeLaBase(d.id, p.niveau)) or 0)
+            end
+        end
         local fermee = etat.ouvertes[cleZone] == false or (etat.ouvertes[cleZone] == nil and z.nom ~= ici)
         index = index + 1
         y = Poser(contenu, index, y, { retrait = 0, depliable = true, deplie = not fermee,
             texte = z.nom .. " (" .. #z.ids .. ")" .. ((z.nom == ici) and ("   |cff4fd16a" .. L.STORY_HERE .. "|r") or ""),
             police = "GameFontNormalSmall", couleur = { 1, 0.82, 0 }, surligne = z.nom == ici,
+            droite = xpZone > 0 and string.format(L.TRACK_ZONE_XP, NS.ref.NombreLisible(xpZone)) or nil,
+            couleurDroite = { 1, 0.82, 0 },
             auClic = function()
                 -- Ouverte : on la ferme ; fermee : on l'ouvre.
                 if fermee then etat.ouvertes[cleZone] = true else etat.ouvertes[cleZone] = false end
@@ -1387,24 +1408,45 @@ local function RendreDisponibles(contenu, p, index, y)
                 if ouverte then
                     local suite = NS.parcours.Suite(p, id)
                     local cleP = p.cle
-                    index = index + 1
-                    y = Poser(contenu, index, y + 2, { retrait = RETRAIT * 2 + 18, boutons = {
-                        { string.format(L.ROUTE_MAKE_CHAIN, #suite), function()
+                    -- Quete d'une suite : toutes ses etapes, dans l'ordre. Celle-ci
+                    -- en or, celles qu'on peut prendre maintenant a leur couleur,
+                    -- les autres grisees.
+                    if #suite > 1 then
+                        index = index + 1
+                        y = Poser(contenu, index, y + 2, { retrait = RETRAIT * 2 + 18,
+                            texte = string.format(L.AVAIL_CHAIN, #suite), couleur = { 1, 0.82, 0 } })
+                        for rang, e in ipairs(suite) do
+                            local nivE = tonumber(NS.ref.Lire("QuestDB", e, "questLevel")) or 0
+                            local couleur
+                            if e == id then couleur = { 1, 0.82, 0 }
+                            elseif dispo[e] then couleur = { NS.ref.CouleurDeNiveau(nivE, p.niveau) }
+                            else couleur = { 0.5, 0.5, 0.5 } end
+                            index = index + 1
+                            y = Poser(contenu, index, y, { retrait = RETRAIT * 2 + 30,
+                                texte = string.format("%d. [%d] %s", rang, nivE, NS.ref.NomDeQuete(e, p)),
+                                couleur = couleur, survol = SurvolEtape(p, e) })
+                        end
+                    end
+                    local boutons = {}
+                    if #suite > 1 then
+                        table.insert(boutons, { string.format(L.ROUTE_MAKE_CHAIN, #suite), function()
                             local pc = NS.parcours.CreerSuite(cleP, p, id)
                             if pc then
                                 etat.page = "parcours"
                                 etat.ouvertes["pc" .. pc.id] = true
                             end
                             ParcoursChange()
-                        end, #suite > 0 },
-                        { L.ROUTE_NEW, function()
+                        end, true })
+                    end
+                    table.insert(boutons, { L.ROUTE_NEW, function()
                             NS.parcours.CreerSelection(cleP, p, id)
                             etat.page = "parcours"
                             ParcoursChange()
-                        end },
-                        { L.DUNGEON_LOCATE_GIVER, function() fen.VoirQuete(id, p) end,
-                            NS.donjons.LieuDuDonneur(id) ~= nil },
-                    } }) + 2
+                        end })
+                    table.insert(boutons, { L.DUNGEON_LOCATE_GIVER, function() fen.VoirQuete(id, p) end,
+                            NS.donjons.LieuDuDonneur(id) ~= nil })
+                    index = index + 1
+                    y = Poser(contenu, index, y + 2, { retrait = RETRAIT * 2 + 18, boutons = boutons }) + 2
                 end
             end
         end
