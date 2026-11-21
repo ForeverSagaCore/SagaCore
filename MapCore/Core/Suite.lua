@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 114
+local VERSION = 115
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -5508,20 +5508,23 @@ function Suite.FenetreAPages(o)
             page.y = page.y + hauteur
             return objet
         end
+        -- Comme les parametres de QuestCore et CraftCore : le titre de
+        -- rubrique (police des titres de la suite), son filet 22 points plus
+        -- bas, 34 points en tout, 8 de plus entre deux rubriques.
         function O.Section()
-            local t = page.cadre:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+            local t = page.cadre:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             t:SetJustifyH("LEFT")
             local filet = page.cadre:CreateTexture(nil, "ARTWORK")
-            O.Placer(t, 20, page.y > 0 and 18 or 0)
+            O.Placer(t, 22, page.y > 0 and 8 or 0)
             filet:ClearAllPoints()
-            filet:SetPoint("TOPLEFT", t, "BOTTOMLEFT", 0, -3)
+            filet:SetPoint("TOPLEFT", t, "TOPLEFT", 0, -22)
             filet:SetSize(LARGEUR_C - 10, 1)
-            page.y = page.y + 6
+            page.y = page.y + 12
             table.insert(page.sections, { t, filet })
             return t
         end
         function O.Texte(hauteur, police)
-            local t = page.cadre:CreateFontString(nil, "OVERLAY", police or "GameFontHighlight")
+            local t = page.cadre:CreateFontString(nil, "OVERLAY", police or "GameFontHighlightSmall")
             t:SetWidth(LARGEUR_C - 20)
             t:SetJustifyH("LEFT")
             t:SetWordWrap(true)
@@ -5539,11 +5542,14 @@ function Suite.FenetreAPages(o)
             t:SetPoint("TOPLEFT", page.cadre, "TOPLEFT", 16, -(page.y - (hauteur or 28)))
             return t
         end
+        -- Une ligne de reglage : libelle en petit, en retrait de 16 (comme
+        -- les parametres de QuestCore), controle cale a droite ; 30 points.
+        O.RETRAIT = 16
         function O.Rangee(hauteur, police)
             local r = CreateFrame("Frame", nil, page.cadre)
             r:SetSize(LARGEUR_C - 10, hauteur or 24)
-            r.nom = r:CreateFontString(nil, "OVERLAY", police or "GameFontHighlight")
-            r.nom:SetPoint("LEFT", 0, 0)
+            r.nom = r:CreateFontString(nil, "OVERLAY", police or "GameFontHighlightSmall")
+            r.nom:SetPoint("LEFT", O.RETRAIT, 0)
             r.nom:SetJustifyH("LEFT")
             return O.Placer(r, hauteur or 24, 6)
         end
@@ -5994,7 +6000,7 @@ local function FenetreMacrosPages()
                   page.bTout = O.Bouton(page.rTout, 200, function()
                       for _, r in ipairs(Suite.RACCOURCIS) do if Dispo(r) then Suite.CreerMacro(r) end end
                   end)
-                  page.bTout:SetPoint("LEFT", page.rTout, "LEFT", 0, 0)
+                  page.bTout:SetPoint("LEFT", page.rTout, "LEFT", O.RETRAIT, 0)
                   page.bDecocher = O.Bouton(page.rTout, 160, function()
                       Suite.ToutDecocher()
                       Suite.RafraichirRaccourcis()
@@ -6007,7 +6013,7 @@ local function FenetreMacrosPages()
                   for i = 1, #Suite.RACCOURCIS + #Suite.FAMILLES do
                       local l = O.Rangee(24)
                       l.case = O.Case(l, function(oui) if l.r then Suite.PoserRaccourciActif("r:" .. l.r.cle, oui) Suite.RafraichirRaccourcis() end end)
-                      l.case:SetPoint("LEFT", l, "LEFT", -3, 0)
+                      l.case:SetPoint("LEFT", l, "LEFT", O.RETRAIT - 3, 0)
                       l.icone = O.Icone(l)
                       l.icone:SetPoint("LEFT", l.case, "RIGHT", 4, 0)
                       l.nom:ClearAllPoints()
@@ -6056,7 +6062,7 @@ local function FenetreMacrosPages()
                               l.case:Show() l.icone:Show() l.commande:Show()
                               l.nom:ClearAllPoints()
                               l.nom:SetPoint("LEFT", l.icone, "RIGHT", 8, 0)
-                              l.nom:SetFontObject("GameFontHighlight")
+                              l.nom:SetFontObject("GameFontHighlightSmall")
                               l.icone:SetTexture("Interface\\Icons\\" .. r.icone)
                               l.nom:SetText(Suite.NomRaccourci(r))
                               l.commande:SetText("/sagacore " .. r.cle)
@@ -6083,7 +6089,7 @@ local function FenetreMacrosPages()
                   for i = 1, MAX_PERSO do
                       local l = O.Rangee(24)
                       l.case = O.Case(l, function(oui) if l.m then Suite.PoserRaccourciActif(IdPerso(l.m), oui) Suite.RafraichirRaccourcis() end end)
-                      l.case:SetPoint("LEFT", l, "LEFT", -3, 0)
+                      l.case:SetPoint("LEFT", l, "LEFT", O.RETRAIT - 3, 0)
                       l.icone = O.Icone(l)
                       l.icone:SetPoint("LEFT", l.case, "RIGHT", 4, 0)
                       l.nom:ClearAllPoints()
@@ -6146,7 +6152,7 @@ local function FenetreMacrosPages()
                   for i = 1, MAX_JEU do
                       local l = O.Rangee(24)
                       l.icone = O.Icone(l)
-                      l.icone:SetPoint("LEFT", l, "LEFT", 0, 0)
+                      l.icone:SetPoint("LEFT", l, "LEFT", O.RETRAIT, 0)
                       l.nom:ClearAllPoints()
                       l.nom:SetPoint("LEFT", l.icone, "RIGHT", 8, 0)
                       l.corps = l:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -6241,7 +6247,7 @@ local function FenetreMacrosPages()
                   for i = 1, MAX_AUTRES do
                       local l = O.Rangee(24)
                       l.icone = O.Icone(l)
-                      l.icone:SetPoint("LEFT", l, "LEFT", 0, 0)
+                      l.icone:SetPoint("LEFT", l, "LEFT", O.RETRAIT, 0)
                       l.nom:ClearAllPoints()
                       l.nom:SetPoint("LEFT", l.icone, "RIGHT", 8, 0)
                       l.qui = l:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
