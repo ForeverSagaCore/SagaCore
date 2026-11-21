@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 86
+local VERSION = 87
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4192,7 +4192,7 @@ local function MacroCore()
     local cadre = charte.Fenetre("CoreSuiteMacroCore", 300, 100,
         { portrait = false, strate = "MEDIUM", sansPied = true })
     if cadre.titre then cadre.titre:SetText("MacroCore") end
-    cadre.fermer:SetScript("OnClick", function() cadre:Hide() end)
+    cadre.fermer:SetScript("OnClick", function() Suite.ActiverMacroCore(false) end)
 
     -- Place retenue.
     local r = Reglages()
@@ -4214,7 +4214,11 @@ local function MacroCore()
     if Suite.Ancrable then pcall(Suite.Ancrable, "CoreSuiteMacroCore", cadre, "MacroCore") end
 
     -- L'icone au clavier : meme bouton que les onglets du suivi.
-    local b = CreateFrame("Button", nil, cadre)
+    -- Pose sur l'ecran (pas dans la fenetre) : il reste net quand la
+    -- fenetre devient invisible, et suit sa place.
+    local b = CreateFrame("Button", nil, UIParent)
+    b:SetFrameStrata(cadre:GetFrameStrata())
+    b:SetFrameLevel(cadre:GetFrameLevel() + 10)
     b:SetSize(24, 24)
     b:SetPoint("TOPLEFT", cadre.zone, "TOPLEFT", 2, 0)
     b.fond = b:CreateTexture(nil, "BACKGROUND")
@@ -4237,6 +4241,7 @@ local function MacroCore()
         GameTooltip:Show()
     end)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:SetScript("OnClick", function() Suite.ActiverMacroCore(not cadre.active) end)
     cadre.icone = b
 
     local filet = cadre:CreateTexture(nil, "ARTWORK")
@@ -4246,27 +4251,28 @@ local function MacroCore()
     filet:SetColorTexture(0.8, 0.65, 0.35, 0.35)
     cadre.filet = filet
 
-    -- Presque transparente quand on court, nette a l'arret (comme le suivi).
-    local attente = 0
-    cadre:SetScript("OnUpdate", function(self, ecoule)
-        attente = attente - (ecoule or 0)
-        if attente > 0 then return end
-        attente = 0.2
-        local ok, enMouvement = false, false
-        if IsPlayerMoving then ok, enMouvement = pcall(IsPlayerMoving) end
-        local survol = self.IsMouseOver and self:IsMouseOver()
-        self:SetAlpha((ok and enMouvement and not survol) and ALPHA_EN_COURSE or 1)
-    end)
-    cadre:SetScript("OnHide", function() Reglages().macroCoreFermee = true end)
-    cadre:SetScript("OnShow", function() Reglages().macroCoreFermee = nil end)
     fenMC = cadre
+    Suite.ActiverMacroCore(false)
     return cadre
+end
+
+-- Inactive : la fenetre est invisible (et ne gene pas les clics), seul le
+-- bouton se voit. Active : la fenetre apparait a l'opacite des suivis en
+-- sous-brillance.
+function Suite.ActiverMacroCore(oui)
+    local f = fenMC
+    if not f then return end
+    f.active = oui and true or nil
+    f:SetAlpha(oui and ALPHA_EN_COURSE or 0)
+    f:EnableMouse(oui and true or false)
+    if f.fermer then f.fermer:SetShown(oui and true or false) end
 end
 
 function Suite.BasculerMacroCore()
     local f = MacroCore()
     if not f then return false end
-    f:SetShown(not f:IsShown())
+    f:Show()
+    Suite.ActiverMacroCore(not f.active)
     return true
 end
 
@@ -4274,11 +4280,11 @@ end
 function Suite.PlacerBoutonRaccourcis()
     if Suite.boutonRaccourcis then Suite.boutonRaccourcis:Hide() end
     if not Suite.Prive() then
-        if fenMC then fenMC:Hide() end
+        if fenMC then fenMC:Hide() fenMC.icone:Hide() end
         return
     end
     local f = MacroCore()
-    if f and not Reglages().macroCoreFermee then f:Show() end
+    if f then f:Show() f.icone:Show() end
 end
 
 do
