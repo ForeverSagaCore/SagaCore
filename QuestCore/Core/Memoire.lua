@@ -168,21 +168,25 @@ end
 -- Marquage en jeu
 -- ---------------------------------------------------------------------------
 
+-- Valeur cachee par le jeu (combat, instance) : illisible, on n'y touche pas.
+local function Secret(v) return _G.issecretvalue and _G.issecretvalue(v) end
+
 local function Position()
     local cm = _G.C_Map
     if not (cm and cm.GetBestMapForUnit and cm.GetPlayerMapPosition) then return nil end
     local idCarte = cm.GetBestMapForUnit("player")
-    if not idCarte then return nil end
+    if not idCarte or Secret(idCarte) then return nil end
     local pos = cm.GetPlayerMapPosition(idCarte, "player")
-    if not pos then return nil end
+    if not pos or Secret(pos) then return nil end
     local x, y = pos:GetXY()
-    if not x or not y or (x == 0 and y == 0) then return nil end
+    if Secret(x) or Secret(y) or not x or not y or (x == 0 and y == 0) then return nil end
     return idCarte, x * 100, y * 100
 end
 
 local function DeGUID(guid)
-    if type(guid) ~= "string" then return nil end
-    local genre, id = guid:match("^(%a+)%-%d+%-%d+%-%d+%-%d+%-(%d+)")
+    if Secret(guid) or type(guid) ~= "string" then return nil end
+    local ok, genre, id = pcall(string.match, guid, "^(%a+)%-%d+%-%d+%-%d+%-%d+%-(%d+)")
+    if not ok then return nil end
     id = tonumber(id)
     if not id then return nil end
     if genre == "Creature" or genre == "Vehicle" then return "NpcDB", id end
