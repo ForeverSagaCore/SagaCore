@@ -240,6 +240,16 @@ local PISTAGES = {
 local exclus, iconesExclues = {}, {}
 -- Un petit sort choisi ou retire : on oublie ce qui avait ete ecarte.
 function A.OublierEcartes() exclus, iconesExclues = {}, {} end
+-- Sort ecarte de l'anneau : pistage, ou petit sort non choisi.
+local function EcarteParSort(sort)
+    if PISTAGES[sort] then return true end
+    local choisis = type(Reglages().petits) == "table" and Reglages().petits or {}
+    for _, p in ipairs(D.PETITS) do
+        if not choisis[p.cle] then for _, id in ipairs(p.ids) do if id == sort then return true end end end
+    end
+    return false
+end
+
 local function Exclu(id, icone)
     if id ~= nil and not Secret(id) and exclus[id] then return true end
     if icone ~= nil and not Secret(icone) and iconesExclues[icone] then return true end
@@ -301,29 +311,31 @@ end
 -- Source 2 : les boutons du cadre des ameliorations du jeu, tels qu'il les
 -- affiche. On ne lit rien : on recopie l'icone, la duree et le nombre de
 -- charges, tels quels, dans nos pastilles.
-local function BoutonsDe(cadre, prefixe, liste, nuisible)
+-- Un bouton n'est pris qu'une fois : le cadre des effets nuisibles du jeu
+-- peut redonner les memes boutons que celui des ameliorations.
+local function BoutonsDe(cadre, prefixe, liste, nuisible, pris)
     local avant = #liste
+    local function Prendre(b)
+        if pris[b] then return end
+        local ok, vu = pcall(b.IsShown, b)
+        if ok and vu == true then pris[b] = true table.insert(liste, b) b.suiteNuisible = nuisible end
+    end
     if cadre and type(cadre.auraFrames) == "table" then
-        for _, b in ipairs(cadre.auraFrames) do
-            local ok, vu = pcall(b.IsShown, b)
-            if ok and vu == true then table.insert(liste, b) b.suiteNuisible = nuisible end
-        end
+        for _, b in ipairs(cadre.auraFrames) do Prendre(b) end
     end
     if #liste == avant then
         for i = 1, 40 do
             local b = _G[prefixe .. i]
-            if b then
-                local ok, vu = pcall(b.IsShown, b)
-                if ok and vu == true then table.insert(liste, b) b.suiteNuisible = nuisible end
-            end
+            if b then Prendre(b) end
         end
     end
 end
 local function BoutonsDuJeu()
-    local liste = {}
-    BoutonsDe(_G.BuffFrame, "BuffButton", liste, false)
-    BoutonsDe(_G.DebuffFrame, "DebuffButton", liste, true)
-    return liste
+    local liste, pris = {}, {}
+    BoutonsDe(_G.BuffFrame, "BuffButton", liste, false, pris)
+    local nAmeliorations = #liste
+    BoutonsDe(_G.DebuffFrame, "DebuffButton", liste, true, pris)
+    return liste, nAmeliorations
 end
 
 local function Champ(b, cle)
@@ -332,7 +344,8 @@ end
 
 local function DepuisLeCadreDuJeu()
     local liste = {}
-    for _, b in ipairs(BoutonsDuJeu()) do
+    local rangAmelioration = 0
+    for _, b in ipairs((BoutonsDuJeu())) do
         local e = { bouton = b }
         local icone = Champ(b, "Icon") or Champ(b, "icon")
         if icone and icone.GetTexture then
@@ -353,6 +366,7 @@ local function DepuisLeCadreDuJeu()
             local okV, vu = pcall(icone.IsShown, icone)
             if okV and vu == false then vide = true end
         end
+        if not vide and not e.nuisible then rangAmelioration = rangAmelioration + 1 e.position = rangAmelioration end
         if not vide and not Exclu(e.id, e.icone) then table.insert(liste, e) end
     end
     return liste
@@ -726,14 +740,24 @@ local function DessinerAnneau(r)
         if #natifs > 0 then liste, source = natifs, "cadre" end
     end
     local enCombatR = InCombatLockdown and InCombatLockdown() or false
-    if enCombatR and #liste > 0 then
-        local actives = {}
-        for _, e in ipairs(liste) do
-            if e.icone ~= nil and not Secret(e.icone) and not e.nuisible then actives[e.icone] = true end
+    -- Hors combat : pour chaque amelioration, dans l'ordre du jeu, si elle a
+    -- deja sa place (reservee) ou si elle est ecartee (pistage, petit sort).
+    -- En combat, le jeu cache tout (nom, numero, image) : ses boutons sont
+    -- dans le meme ordre, les nouveaux (procs) a la suite. Le bouton n se
+    -- cache donc si l'amelioration n l'etait avant le combat.
+    if not enCombatR and source == "jeu" then
+        local nomsReserves = {}
+        for _, e in ipairs(reservees) do if e.nom and e.actif then nomsReserves[e.nom] = true end end
+        local masque = {}
+        local C = _G.C_UnitAuras
+        for i = 1, 40 do
+            local ok, a = pcall(C.GetAuraDataByIndex, "player", i, "HELPFUL")
+            if not ok or type(a) ~= "table" then break end
+            local nom = (not Secret(a.name)) and a.name or nil
+            local sort = (not Secret(a.spellId)) and a.spellId or nil
+            masque[i] = (nom and nomsReserves[nom]) or (sort and EcarteParSort(sort)) or false
         end
-        for _, e in ipairs(reservees) do
-            if not e.conso and e.icone ~= nil and type(e.icone) ~= "boolean" then e.actif = actives[e.icone] == true end
-        end
+        A.masqueAvantCombat = masque
     end
     local n, iConso, iGroupe, iAutre = 0, 0, 0, 0
     local enTrop = {}
@@ -783,8 +807,24 @@ local function DessinerAnneau(r)
     -- La file : tout le reste, sans les pistages ni ce qui a deja sa place.
     local d = Diag()
     local enCombat = InCombatLockdown and InCombatLockdown() or false
+    local boutons, nAm = BoutonsDuJeu()
     d[enCombat and "combat" or "horsCombat"] = { api = #api, erreur = erreur, source = source, montres = #liste,
-        natifs = #BoutonsDuJeu() }
+        natifs = #boutons, natifsAmeliorations = nAm, cadreHorsCombat = (not enCombat) and #DepuisLeCadreDuJeu() or nil }
+    -- Releve detaille en combat (temporaire) : combien d'images, de numeros
+    -- et de noms lisibles ; le pire moment (le plus d'icones) est garde.
+    if enCombat then
+        local x = d.combat
+        x.icones, x.ids, x.noms, x.reservees = 0, 0, 0, #reservees
+        x.images = {}
+        for _, e in ipairs(liste) do
+            if e.icone ~= nil and not Secret(e.icone) then x.icones = x.icones + 1 table.insert(x.images, tostring(e.icone)) end
+            if e.id ~= nil and not Secret(e.id) then x.ids = x.ids + 1 end
+            if e.nom ~= nil and not Secret(e.nom) then x.noms = x.noms + 1 end
+        end
+        x.reserveesImages = {}
+        for _, e in ipairs(reservees) do table.insert(x.reserveesImages, tostring(e.icone) .. (e.actif and "+" or "-")) end
+        if not d.pire or (x.montres or 0) > (d.pire.montres or 0) then d.pire = x end
+    end
     -- Petits sorts des autres non choisis : ni dans la file, ni ailleurs.
     local choisis = type(r.petits) == "table" and r.petits or {}
     for _, p in ipairs(D.PETITS) do
@@ -805,7 +845,9 @@ local function DessinerAnneau(r)
     for i, e in ipairs(liste) do
         local ic = (e.icone ~= nil and not Secret(e.icone)) and e.icone or nil
         local idLisible = e.id ~= nil and not Secret(e.id)
+        local masque = A.masqueAvantCombat
         local deja = (e.nom and dejaNoms[e.nom]) or (idLisible and dejaIds[e.id])
+            or (enCombatR and e.position and masque and masque[e.position])
             or (ic and not e.nuisible and dejaIcones[ic])
             or (ic and not idLisible and imagesVues[ic])
         if ic then imagesVues[ic] = true end
