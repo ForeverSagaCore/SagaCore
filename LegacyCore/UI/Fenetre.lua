@@ -1136,14 +1136,14 @@ local GLYPHES = { PAD1 = { "A", "Cross" }, PAD2 = { "B", "Circle" }, PADLSHOULDE
     PADLTRIGGER = { "LTrigger", "LTrigger", "LT" }, PADRTRIGGER = { "RTrigger", "RTrigger", "RT" },
     PADBACK = { "View", "Share", "Vue" },
     PADLSTICK = { "LStickIn", "LStickIn", "L3" }, PADRSTICK = { "RStickIn", "RStickIn", "R3" } }
-local function Glyphe(touche)
+local function Glyphe(touche, taille)
     local g = GLYPHES[touche] or { touche }
     local info = NS.Lecture("C_Texture.GetAtlasInfo")
     if info then
         for _, nom in ipairs({ "Gamepad_Ltr_" .. g[1] .. "_64", "Gamepad_Shp_" .. (g[2] or g[1]) .. "_64",
             "Gamepad_Gen_" .. g[1] .. "_64" }) do
             local ok, existe = pcall(info, nom)
-            if ok and existe then return "|A:" .. nom .. ":22:22|a" end
+            if ok and existe then return "|A:" .. nom .. ":" .. (taille or 22) .. ":" .. (taille or 22) .. "|a" end
         end
     end
     return "|cffffd100" .. (g[3] or g[1]) .. "|r"
@@ -1164,7 +1164,7 @@ function fen.ApresRendu()
     if not ManetteActive() then barre:Hide() return end
     local bh = cadre.contenu and cadre.contenu.boutonHeritage
     if bh then
-        bh:SetText((bh:IsShown() and bh:IsEnabled() and (Glyphe("PAD1") .. " ") or "") .. L.OPEN_LEGACY)
+        bh:SetText((bh:IsShown() and bh:IsEnabled() and (Glyphe("PAD1", 14) .. " ") or "") .. L.OPEN_LEGACY)
         bh:SetWidth((bh:GetTextWidth() or 120) + 30)
     end
     barre.texte:SetText(Glyphe("PADLSHOULDER") .. " " .. Glyphe("PADRSHOULDER") .. "  " .. L.PAD_PAGES .. "      "

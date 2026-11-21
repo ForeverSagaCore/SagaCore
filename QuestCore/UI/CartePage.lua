@@ -151,7 +151,50 @@ local function PoserQuetePointee(idCarte)
         b.ax, b.ay, b.nom, b.donneur = quetePointee.x, quetePointee.y, quetePointee.nom, quetePointee.donneur
         b:SetFrameLevel(vue.toile:GetFrameLevel() + 25)
         b:Show()
-        if b.anim and not b.anim:IsPlaying() then b.anim:Play() end
+        -- D'abord un halo dore qui s'elargit (deux fois) pour dire "c'est
+        -- ici", puis seulement le clignotement, qui reste. Comme MapCore.
+        local maintenant = NS.Appeler(GetTime) or 0
+        if not quetePointee.haloFait then
+            quetePointee.haloFait = true
+            quetePointee.debutClignote = maintenant + 1.6
+            if not b.ping then
+                local f = CreateFrame("Frame", nil, b)
+                f:SetPoint("CENTER")
+                f:SetSize(44, 44)
+                local t = f:CreateTexture(nil, "BACKGROUND")
+                t:SetAllPoints()
+                t:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
+                t:SetVertexColor(1, 0.82, 0)
+                t:SetBlendMode("ADD")
+                local ag = f:CreateAnimationGroup()
+                ag:SetLooping("REPEAT")
+                local taille = ag:CreateAnimation("Scale")
+                if taille.SetScaleFrom then taille:SetScaleFrom(0.3, 0.3) taille:SetScaleTo(1.4, 1.4)
+                else taille:SetFromScale(0.3, 0.3) taille:SetToScale(1.4, 1.4) end
+                taille:SetDuration(0.8)
+                local fondu = ag:CreateAnimation("Alpha")
+                fondu:SetFromAlpha(0.9)
+                fondu:SetToAlpha(0)
+                fondu:SetDuration(0.8)
+                f.anim = ag
+                b.ping = f
+            end
+            if b.anim then b.anim:Stop() end
+            b.t:SetAlpha(1)
+            b.ping:Show()
+            b.ping.anim:Play()
+            local ping, cible = b.ping, quetePointee
+            local plusTard = NS.Lecture("C_Timer.After")
+            if plusTard then
+                plusTard(1.6, function()
+                    ping.anim:Stop()
+                    ping:Hide()
+                    if quetePointee == cible and b:IsShown() and b.anim then b.anim:Play() end
+                end)
+            end
+        elseif maintenant >= (quetePointee.debutClignote or 0) and b.anim and not b.anim:IsPlaying() then
+            b.anim:Play()
+        end
     else
         if b.anim then b.anim:Stop() end
         b:Hide()

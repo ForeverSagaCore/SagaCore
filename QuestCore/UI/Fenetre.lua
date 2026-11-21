@@ -784,7 +784,7 @@ local function RendreParcours(contenu, p, index, y)
         local idP = pc.id
         index = index + 1
         y = Poser(contenu, index, y, { retrait = RETRAIT, depliable = true, deplie = ouvert,
-            police = "GameFontNormal", texte = pc.nom, couleur = { 1, 0.82, 0 },
+            police = "GameFontNormalSmall", texte = pc.nom, couleur = { 1, 0.82, 0 },
             droite = string.format(L.ROUTE_PROGRESS, faites, total, pct),
             couleurDroite = pct >= 100 and { 0.31, 0.82, 0.41 } or { 1, 1, 1 },
             auClic = function()
@@ -967,7 +967,7 @@ local function RendreHistoire(contenu, p, index, y)
         local fini = z.faites >= z.total
         local ici = zoneIci and (z.nom == zoneIci)
         index = index + 1
-        y = Poser(contenu, index, y, { retrait = 0, depliable = true, deplie = ouverte,
+        y = Poser(contenu, index, y, { retrait = RETRAIT, depliable = true, deplie = ouverte,
             -- Niveau de la zone a la couleur du jeu selon le personnage (gris,
             -- vert, jaune, orange, rouge), comme dans le menu de MapCore.
             texte = NiveauColore(z.niveau, p.niveau) .. z.nom
@@ -1312,7 +1312,7 @@ local function RendreDonjons(contenu, p, index, y)
                 math.floor(b * 255), (d.maxi and d.maxi ~= d.mini) and (d.mini .. "-" .. d.maxi) or tostring(d.mini))
         end
         index = index + 1
-        y = Poser(contenu, index, y, { retrait = 0, depliable = true, deplie = ouverte,
+        y = Poser(contenu, index, y, { retrait = RETRAIT, depliable = true, deplie = ouverte,
             texte = niveaux .. d.nom .. (ici and ("   |cff4fd16a" .. L.STORY_HERE .. "|r") or ""),
             police = "GameFontHighlightSmall", surligne = ici, couleur = { 1, 1, 1 },
             barre = d.total > 0 and (d.faites / d.total) or 0,
@@ -1381,7 +1381,7 @@ local function RendreDisponibles(contenu, p, index, y)
         end
         local fermee = etat.ouvertes[cleZone] == false or (etat.ouvertes[cleZone] == nil and z.nom ~= ici)
         index = index + 1
-        y = Poser(contenu, index, y, { retrait = 0, depliable = true, deplie = not fermee,
+        y = Poser(contenu, index, y, { retrait = RETRAIT, depliable = true, deplie = not fermee,
             texte = z.nom .. " (" .. #z.ids .. ")" .. ((z.nom == ici) and ("   |cff4fd16a" .. L.STORY_HERE .. "|r") or ""),
             police = "GameFontNormalSmall", couleur = { 1, 0.82, 0 }, surligne = z.nom == ici,
             droite = xpZone > 0 and string.format(L.TRACK_ZONE_XP, NS.ref.NombreLisible(xpZone)) or nil,
@@ -1398,7 +1398,7 @@ local function RendreDisponibles(contenu, p, index, y)
                 local donneurs = NS.ref.Donneurs(id)
                 local ouverte = etat.dispoOuverte == id
                 index = index + 1
-                y = Poser(contenu, index, y, { retrait = RETRAIT,
+                y = Poser(contenu, index, y, { retrait = RETRAIT * 2,
                     icone = "Interface\\GossipFrame\\AvailableQuestIcon",
                     texte = string.format("[%d] %s", d.niveau, NS.ref.NomDeQuete(id, p)), couleur = { rr, gg, bb },
                     droite = donneurs[1], couleurDroite = { 0.75, 0.75, 0.75 },
