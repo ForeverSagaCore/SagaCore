@@ -1213,8 +1213,9 @@ function recettes.Fabriquer(recette, nombre)
     local essai = { quand = NS.Horodatage(), recette = recette and recette.id, metier = ligne, nombre = nombre,
         fabriquerExiste = j.fabriquer ~= nil, ouvrirExiste = j.ouvrirMetier ~= nil,
         ouvertAvant = MetierOuvert(), fenetreAvant = FenetreDuJeuVisible() }
-    -- Enchantement (aucun objet fabrique) : jamais lance d'ici, voir plus haut.
-    if not recette or not j.fabriquer or not recette.objetProduit then
+    -- Enchantement (aucun objet fabrique) : le metier s'ouvre comme pour le
+    -- reste, puis l'objet a enchanter se choisit (voir Actions, Enchanter).
+    if not recette or not j.fabriquer then
         essai.resultat = "impossible"
         Noter(essai)
         return "impossible"
@@ -1232,6 +1233,12 @@ function recettes.Fabriquer(recette, nombre)
         essai.resultat = "ouverture"
         Noter(essai)
         return "ouverture"
+    end
+    if not recette.objetProduit then
+        if ligne ~= 333 then essai.resultat = "impossible" Noter(essai) return "impossible" end
+        essai.resultat = "enchantement"
+        Noter(essai)
+        return "enchantement"
     end
     local ok, souci = pcall(j.fabriquer, tonumber(recette.id) or recette.id, nombre)
     essai.fabrication = ok and "ok" or tostring(souci)

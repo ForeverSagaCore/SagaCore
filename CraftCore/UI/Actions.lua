@@ -17,10 +17,10 @@ local actions = NS.actions
 function actions.EtatPourFabriquer(recette)
     if not recette or NS.base.CleAffichee() ~= NS.ClePersonnage() then return nil end
     if not NS.recettes.EstApprise(recette.id) then return nil end
-    -- Un enchantement ne fabrique pas d'objet : il se pose sur un objet que
-    -- seule la fenetre du metier du jeu peut faire choisir. Lance d'ici, le
-    -- jeu bloque l'add-on. Pas de bouton.
-    if not recette.objetProduit then return nil end
+    -- Un enchantement ne fabrique pas d'objet : il se pose sur un objet,
+    -- choisi au moment de le lancer (voir Enchanter). Sans objet connu hors
+    -- enchantement, rien a lancer.
+    if not recette.objetProduit and NS.recettes.MetierDe(recette) ~= 333 then return nil end
     local manques = {}
     for _, comp in ipairs(recette.composants or {}) do
         local dispo = NS.inventaire.DisponibleDansLesSacs(comp.objet) or 0
@@ -83,6 +83,9 @@ function actions.Fabriquer(recette, nombre, garde)
             NS.Appeler(plusTard, 0.3, function() pcall(NS.ecran.Actualiser) end)
             NS.Appeler(plusTard, 1, function() pcall(NS.ecran.Actualiser) end)
         end
+    elseif resultat == "enchantement" then
+        actions.serie = nil
+        actions.Enchanter(recette)
     elseif resultat == "impossible" then
         NS.Dire(L.CRAFT_IMPOSSIBLE)
     end
@@ -328,6 +331,14 @@ local function Fermer()
 end
 fantome.Fermer = Fermer
 
+-- Rendre visible la fenetre cachee (repli de l'enchantement) : elle reste
+-- ouverte, comme si le joueur l'avait ouverte lui-meme.
+function fantome.Montrer()
+    fantome.actif = nil
+    actions.fantomeDemande = nil
+    for _, f in ipairs(Fenetres()) do Rendre(f) end
+end
+
 -- Encore une fabrication prete dans ce metier ? Alors on garde la fenetre.
 local function EncoreAFaire()
     return NS.suivi and NS.suivi.FabricationPreteIci and NS.suivi.FabricationPreteIci() or false
@@ -398,4 +409,174 @@ do
             end
         end
     end)
+end
+
+
+-- ---------------------------------------------------------------------------
+-- Enchanter. D'abord directement : l'objet se choisit dans une petite
+-- fenetre de CraftCore, puis l'enchantement s'y pose (commande du jeu
+-- CraftEnchant). Si le client ne l'a pas, ou si le jeu la refuse a
+-- l'add-on : la fenetre du metier se montre sur la recette, avec les sacs et
+-- la fiche du personnage (ou la fenetre d'echange deja ouverte) ; le joueur
+-- clique Enchanter puis l'objet, comme dans le jeu.
+-- ---------------------------------------------------------------------------
+
+local enchant = {}
+actions.enchant = enchant
+
+local function ReglagesEnchant()
+    local g = NS.base and NS.base.ReglagesGeneraux and NS.base.ReglagesGeneraux()
+    return type(g) == "table" and g or {}
+end
+
+-- Les objets qui peuvent recevoir cet enchantement (sacs et equipement).
+local function ObjetsEnchantables(recette)
+    local lire = NS.Lecture("C_TradeSkillUI.GetEnchantItems")
+    local placer = NS.Lecture("C_Item.GetItemLocation")
+    if not (lire and placer) then return nil end
+    local ok, guids = pcall(lire, tonumber(recette.id) or recette.id)
+    if not ok or type(guids) ~= "table" then return nil end
+    local nomDe = NS.Lecture("C_Item.GetItemName")
+    local iconeDe = NS.Lecture("C_Item.GetItemIcon")
+    local liste = {}
+    for _, guid in ipairs(guids) do
+        local okL, lieu = pcall(placer, guid)
+        if okL and lieu then
+            table.insert(liste, { lieu = lieu, nom = NS.Appeler(nomDe, lieu) or "?", icone = NS.Appeler(iconeDe, lieu) })
+        end
+    end
+    return liste
+end
+
+-- Solution de repli : la fenetre du metier du jeu, visible, sur la recette.
+function enchant.Repli(recette)
+    local L = NS.L
+    if actions.fantome and actions.fantome.Montrer then actions.fantome.Montrer() end
+    local ouvrir = NS.Lecture("C_TradeSkillUI.OpenRecipe")
+    if ouvrir then NS.Appeler(ouvrir, tonumber(recette.id) or recette.id) end
+    if not NS.Appeler(InCombatLockdown) then
+        if _G.OpenAllBags then pcall(_G.OpenAllBags) end
+        local echange = _G.TradeFrame and _G.TradeFrame:IsShown()
+        local fiche = _G.CharacterFrame and _G.CharacterFrame:IsShown()
+        if not echange and not fiche and _G.ToggleCharacter then pcall(_G.ToggleCharacter, "PaperDollFrame") end
+    end
+    NS.Dire(L.ENCHANT_FALLBACK)
+end
+
+-- Le jeu refuse l'action a l'add-on : on le retient et on passe au repli.
+do
+    local f = CreateFrame("Frame")
+    pcall(f.RegisterEvent, f, "ADDON_ACTION_BLOCKED")
+    pcall(f.RegisterEvent, f, "ADDON_ACTION_FORBIDDEN")
+    f:SetScript("OnEvent", function(_, _, addon, fonction)
+        if addon ~= "CraftCore" or not enchant.essai then return end
+        if not string.find(tostring(fonction), "Enchant") then return end
+        ReglagesEnchant().enchantDirectRefuse = true
+        if _G.StaticPopup_Hide then pcall(_G.StaticPopup_Hide, "ADDON_ACTION_FORBIDDEN") end
+        local r = enchant.essai
+        enchant.essai = nil
+        enchant.Repli(r)
+    end)
+end
+
+local function Poser(recette, objet)
+    local poser = NS.Lecture("C_TradeSkillUI.CraftEnchant")
+    if not poser then enchant.Repli(recette) return end
+    enchant.essai = recette
+    local ok = pcall(poser, tonumber(recette.id) or recette.id, 1, nil, objet.lieu)
+    local plusTard = NS.Lecture("C_Timer.After")
+    if plusTard then NS.Appeler(plusTard, 1, function() enchant.essai = nil end) else enchant.essai = nil end
+    if not ok and enchant.essai then
+        enchant.essai = nil
+        enchant.Repli(recette)
+    end
+end
+
+-- La petite fenetre de choix : un bouton par objet, et Annuler. Jouable a la
+-- manette (des boutons, dans la fenetre de CraftCore si elle est ouverte).
+local function Choisir(recette, objets)
+    local L = NS.L
+    local parent = UIParent
+    local c = enchant.cadre
+    if not c then
+        c = CreateFrame("Frame", "CraftCoreChoixEnchant", UIParent, "BackdropTemplate")
+        c:SetFrameStrata("DIALOG")
+        c:SetSize(300, 80)
+        if c.SetBackdrop then
+            c:SetBackdrop({ bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+                edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border", tile = true, tileSize = 32, edgeSize = 24,
+                insets = { left = 6, right = 6, top = 6, bottom = 6 } })
+        end
+        c.titre = c:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        c.titre:SetPoint("TOP", 0, -16)
+        c.boutons = {}
+        c.annuler = CreateFrame("Button", nil, c, "UIPanelButtonTemplate")
+        c.annuler:SetSize(120, 22)
+        c.annuler:SetScript("OnClick", function() c:Hide() end)
+        table.insert(_G.UISpecialFrames or {}, "CraftCoreChoixEnchant")
+        -- Manette : croix haut / bas pour choisir, A pour valider, B pour annuler.
+        c.rang = 1
+        local function Eclairer()
+            local liste = {}
+            for _, b in ipairs(c.boutons) do if b:IsShown() then table.insert(liste, b) end end
+            table.insert(liste, c.annuler)
+            c.rang = math.max(1, math.min(#liste, c.rang))
+            for i, b in ipairs(liste) do
+                if i == c.rang then b:LockHighlight() else b:UnlockHighlight() end
+            end
+            return liste
+        end
+        c.Eclairer = Eclairer
+        if c.EnableGamePadButton then
+            c:EnableGamePadButton(true)
+            c:SetScript("OnGamePadButtonDown", function(self, touche)
+                local liste = Eclairer()
+                if touche == "PADDUP" then self.rang = self.rang - 1 Eclairer()
+                elseif touche == "PADDDOWN" then self.rang = self.rang + 1 Eclairer()
+                elseif touche == "PAD1" then local b = liste[self.rang] if b then b:Click() end
+                elseif touche == "PAD2" then self:Hide() end
+            end)
+        end
+        enchant.cadre = c
+    end
+    c:SetParent(parent)
+    c:SetFrameStrata("DIALOG")
+    c:ClearAllPoints()
+    c:SetPoint("CENTER", UIParent, "CENTER", 0, 80)
+    c.titre:SetText(string.format(L.ENCHANT_PICK, recette.nom or "?"))
+    for _, b in ipairs(c.boutons) do b:Hide() end
+    local y = -44
+    for i, objet in ipairs(objets) do
+        local b = c.boutons[i]
+        if not b then
+            b = CreateFrame("Button", nil, c, "UIPanelButtonTemplate")
+            b:SetSize(260, 22)
+            c.boutons[i] = b
+        end
+        b:ClearAllPoints()
+        b:SetPoint("TOP", c, "TOP", 0, y)
+        b:SetText((objet.icone and ("|T" .. objet.icone .. ":16|t ") or "") .. objet.nom)
+        b:SetScript("OnClick", function() c:Hide() Poser(recette, objet) end)
+        b:Show()
+        y = y - 26
+    end
+    c.annuler:ClearAllPoints()
+    c.annuler:SetPoint("TOP", c, "TOP", 0, y - 6)
+    c.annuler:SetText(_G.CANCEL or "Annuler")
+    c:SetHeight(-y + 44)
+    c.rang = 1
+    c:Show()
+    c.Eclairer()
+end
+
+function actions.Enchanter(recette)
+    local L = NS.L
+    local direct = NS.Lecture("C_TradeSkillUI.CraftEnchant") and not ReglagesEnchant().enchantDirectRefuse
+    local objets = direct and ObjetsEnchantables(recette) or nil
+    if not objets then enchant.Repli(recette) return end
+    if #objets == 0 then
+        NS.Dire(L.ENCHANT_NONE)
+        return
+    end
+    Choisir(recette, objets)
 end
