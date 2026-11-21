@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 100
+local VERSION = 101
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4284,6 +4284,59 @@ local function MacroCore()
     b:SetScript("OnClick", function() Suite.ActiverMacroCore(not cadre.active) end)
     cadre.icone = b
 
+    -- A droite de l'icone : les deux suivis. Un clic les montre ou les cache.
+    cadre.suivis = {}
+    for rang, v in ipairs({
+        { "CraftCoreSuivi", "CraftCoreAPI", TR("Mes fabrications", "My crafts"), nil, "Interface\\Icons\\Trade_BlackSmithing",
+          TR("Affiche ou cache le suivi Mes fabrications.", "Shows or hides the My crafts tracker.") },
+        { "QuestCoreSuivi", "QuestCoreAPI", TR("Quêtes", "Quests"), "QuestNormal", "Interface\\GossipFrame\\AvailableQuestIcon",
+          TR("Affiche ou cache le suivi des quêtes.", "Shows or hides the quest tracker.") } }) do
+        local s = CreateFrame("Button", nil, UIParent)
+        s:SetFrameStrata(cadre:GetFrameStrata())
+        s:SetFrameLevel(cadre:GetFrameLevel() + 10)
+        s:SetSize(24, 24)
+        s:SetPoint("TOPLEFT", cadre.zone, "TOPLEFT", 2 + rang * (24 + 8), 0)
+        s.fond = s:CreateTexture(nil, "BACKGROUND")
+        s.fond:SetSize(19, 19)
+        s.fond:SetPoint("CENTER")
+        s.fond:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+        s.image = s:CreateTexture(nil, "ARTWORK")
+        s.image:SetPoint("CENTER")
+        s.image:SetSize(16, 16)
+        if not (v[4] and s.image.SetAtlas and pcall(s.image.SetAtlas, s.image, v[4]) and s.image:GetAtlas()) then
+            s.image:SetTexture(v[5])
+        end
+        if not v[4] and s.image.SetMask then pcall(s.image.SetMask, s.image, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+        s.anneau = s:CreateTexture(nil, "OVERLAY")
+        s.anneau:SetSize(41, 41)
+        s.anneau:SetPoint("TOPLEFT", s, "TOPLEFT", 0, 0)
+        s.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+        s:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
+        s.nomSuivi, s.api, s.nom, s.desc = v[1], v[2], v[3], v[6]
+        s:SetAlpha(ALPHA_EN_COURSE)
+        s:SetScript("OnClick", function(self)
+            local a = _G[self.api]
+            if a and a.BasculerSuivi then pcall(a.BasculerSuivi) end
+        end)
+        s:SetScript("OnEnter", function(self)
+            self:SetAlpha(1)
+            if Reglages().macroCoreSansInfobulle then return end
+            GameTooltip:SetOwner(self, "ANCHOR_NONE")
+            GameTooltip:ClearAllPoints()
+            local dx = (cadre:GetRight() or 0) - (self:GetRight() or 0)
+            GameTooltip:SetPoint("TOPLEFT", self, "TOPRIGHT", dx > 0 and dx or 0, 0)
+            GameTooltip:SetText(self.nom, 1, 0.82, 0)
+            GameTooltip:AddLine(self.desc, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        s:SetScript("OnLeave", function(self)
+            self:SetAlpha(ALPHA_EN_COURSE)
+            GameTooltip:Hide()
+        end)
+        s:Hide()
+        table.insert(cadre.suivis, s)
+    end
+
     local filet = cadre:CreateTexture(nil, "ARTWORK")
     filet:SetHeight(1)
     filet:SetPoint("TOPLEFT", cadre.zone, "TOPLEFT", 0, -HAUT_ONGLETS + 6)
@@ -4294,7 +4347,12 @@ local function MacroCore()
     -- Pilote : garde l'opacite d'activation ; B referme (rend la manette).
     cadre.piloteGarderAlpha = true
     cadre.piloteSurB = function() Suite.ActiverMacroCore(false) end
-    cadre.elementsPilote = function() return cadre.pastilles or {} end
+    cadre.elementsPilote = function()
+        local t = {}
+        for _, s in ipairs(cadre.suivis or {}) do table.insert(t, s) end
+        for _, b in ipairs(cadre.pastilles or {}) do table.insert(t, b) end
+        return t
+    end
     -- La manette reprend sur la derniere pastille choisie, sinon la premiere.
     cadre.piloteDepart = function()
         local d = cadre.dernierePastille
@@ -4323,6 +4381,7 @@ function Suite.ActiverMacroCore(oui)
     if not combat then
         for _, b in ipairs(f.pastilles or {}) do b:SetShown(oui and b.e ~= nil) end
     end
+    for _, sv in ipairs(f.suivis or {}) do sv:SetShown(oui and _G[sv.api] ~= nil) end
     -- Ouverte : la manette pilote MacroCore. Refermee : elle reprend son cours.
     local p = Suite.pilote
     if oui then
@@ -4516,6 +4575,7 @@ local function Figer(f, oui)
     f:EnableMouse((not oui) and f.active and true or false)
     if f.fermer then f.fermer:EnableMouse(not oui) end
     if f.icone then f.icone:EnableMouse(not oui) end
+    for _, sv in ipairs(f.suivis or {}) do sv:EnableMouse(not oui) end
     if not combat then
         for _, b in ipairs(f.pastilles or {}) do b:EnableMouse(not oui) end
     end
@@ -4608,6 +4668,126 @@ function Suite.BasculerMacroCore()
     return true
 end
 
+-- ---------------------------------------------------------------------------
+-- Suivis replies : un suivi cache (croix, macro, MacroCore) laisse a l'ecran
+-- sa premiere icone, a sa place. Un clic dessus le rouvre.
+-- ---------------------------------------------------------------------------
+
+local OUVRIR_PAR_API = { CraftCoreSuivi = "CraftCoreAPI", QuestCoreSuivi = "QuestCoreAPI" }
+local icones = {}
+
+-- La premiere icone ronde de la ligne du haut (onglet affiche en premier).
+local function PremiereIcone(f)
+    local meilleur, mh, mg
+    local function Voir(c, prof)
+        if prof > 4 then return end
+        for _, e in ipairs({ c:GetChildren() }) do
+            if e:IsShown() and e.anneau and e.image and e.GetCenter then
+                local x, y = e:GetCenter()
+                if x and y and (not meilleur or y > mh + 3 or (math.abs(y - mh) <= 3 and x < mg)) then
+                    meilleur, mh, mg = e, y, x
+                end
+            end
+            Voir(e, prof + 1)
+        end
+    end
+    Voir(f, 1)
+    return meilleur
+end
+
+local function PlacesIcones()
+    local r = Reglages()
+    r.iconesSuivis = type(r.iconesSuivis) == "table" and r.iconesSuivis or {}
+    return r.iconesSuivis
+end
+
+local function IconeDeSuivi(nom)
+    local b = icones[nom]
+    if b then return b end
+    b = CreateFrame("Button", nil, UIParent)
+    b:SetSize(24, 24)
+    b:SetFrameStrata("MEDIUM")
+    b.fond = b:CreateTexture(nil, "BACKGROUND")
+    b.fond:SetSize(19, 19)
+    b.fond:SetPoint("CENTER")
+    b.fond:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    b.image = b:CreateTexture(nil, "ARTWORK")
+    b.image:SetPoint("CENTER")
+    b.image:SetSize(16, 16)
+    b.anneau = b:CreateTexture(nil, "OVERLAY")
+    b.anneau:SetSize(41, 41)
+    b.anneau:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
+    b.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
+    b:SetScript("OnClick", function()
+        local a = _G[OUVRIR_PAR_API[nom]]
+        if a and a.BasculerSuivi then pcall(a.BasculerSuivi) end
+    end)
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(self.titre or nom, 1, 0.82, 0)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:Hide()
+    icones[nom] = b
+    return b
+end
+
+local function HabillerIcone(b, info)
+    if info.atlas and b.image.SetAtlas and pcall(b.image.SetAtlas, b.image, info.atlas) and b.image:GetAtlas() then
+        -- atlas pose
+    else
+        b.image:SetTexture(info.texture or "Interface\\Icons\\INV_Misc_QuestionMark")
+    end
+    if info.masque and b.image.SetMask and not b.masquee then
+        pcall(b.image.SetMask, b.image, "Interface\\CharacterFrame\\TempPortraitAlphaMask")
+        b.masquee = true
+    end
+    b.titre = info.titre
+end
+
+-- Le suivi se cache : on retient son icone et sa place, et on la montre.
+local function SuiviCache(nom)
+    local f = _G[nom]
+    if not f then return end
+    local e = PremiereIcone(f)
+    local info = PlacesIcones()[nom]
+    if e then
+        local x, y = e:GetCenter()
+        local k = (e:GetEffectiveScale() or 1) / (UIParent:GetEffectiveScale() or 1)
+        local atlas = e.image.GetAtlas and e.image:GetAtlas()
+        local tex = e.image:GetTexture()
+        info = { x = x * k, y = y * k, atlas = atlas, texture = (not atlas) and tex or nil,
+            masque = e.image.GetNumMaskTextures and (e.image:GetNumMaskTextures() or 0) > 0 or false,
+            titre = (f.titre and f.titre.GetText and f.titre:GetText()) or e.nom }
+        PlacesIcones()[nom] = info
+    end
+    if not info then return end
+    local b = IconeDeSuivi(nom)
+    HabillerIcone(b, info)
+    b:ClearAllPoints()
+    b:SetPoint("CENTER", UIParent, "BOTTOMLEFT", info.x, info.y)
+    b:Show()
+end
+
+local function SuiviMontre(nom)
+    if icones[nom] then icones[nom]:Hide() end
+end
+
+local function BrancherSuivis()
+    for nom in pairs(OUVRIR_PAR_API) do
+        local f = _G[nom]
+        if f and not f.suiteIconeBranchee then
+            f.suiteIconeBranchee = true
+            f:HookScript("OnHide", function() pcall(SuiviCache, nom) end)
+            f:HookScript("OnShow", function() pcall(SuiviMontre, nom) end)
+            if f:IsShown() then SuiviMontre(nom) else pcall(SuiviCache, nom) end
+        end
+    end
+end
+Suite.BrancherIconesSuivis = BrancherSuivis
+
 -- Plus de bouton rond : seule la fenetre MacroCore.
 function Suite.PlacerBoutonRaccourcis()
     if Suite.boutonRaccourcis then Suite.boutonRaccourcis:Hide() end
@@ -4615,6 +4795,7 @@ function Suite.PlacerBoutonRaccourcis()
         if fenMC then
             Suite.ActiverMacroCore(false)
             fenMC:Hide() fenMC.icone:Hide()
+            for _, sv in ipairs(fenMC.suivis or {}) do sv:Hide() end
         end
         return
     end
@@ -4625,6 +4806,7 @@ function Suite.PlacerBoutonRaccourcis()
         pcall(Suite.RemplirMacroCore)
         if f.figee then Figer(f, true) end
     end
+    pcall(BrancherSuivis)
 end
 
 do
