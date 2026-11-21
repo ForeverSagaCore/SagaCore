@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 66
+local VERSION = 67
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2552,15 +2552,27 @@ local function Pilote()
         p.choix = meilleur or liste[1]
         return p.choix, liste
     end
+    -- L'element choisi est montre comme au survol de la souris (sa propre
+    -- surbrillance, son infobulle), sans cadre ajoute, comme dans les menus de
+    -- la suite. La fenetre reste en pleine couleur tant qu'on la pilote.
+    function p.Eteindre()
+        local e = p.eclaire
+        p.eclaire = nil
+        if not e then return end
+        if e.UnlockHighlight then pcall(e.UnlockHighlight, e) end
+        local quitte = e.GetScript and e:GetScript("OnLeave")
+        if quitte then pcall(quitte, e) end
+    end
     function p.Marquer()
-        GameTooltip:Hide()
+        p.cadre:Hide()
+        local f = _G[p.nom]
+        if f and (f:GetAlpha() or 1) < 1 then f:SetAlpha(1) end
         local e = p.Courant()
-        if not e then p.cadre:Hide() return end
+        if e ~= p.eclaire then p.Eteindre() end
+        if not e then return end
         p.pos = Boite(e) or p.pos
-        p.cadre:ClearAllPoints()
-        p.cadre:SetPoint("TOPLEFT", e, "TOPLEFT", -4, 4)
-        p.cadre:SetPoint("BOTTOMRIGHT", e, "BOTTOMRIGHT", 4, -4)
-        p.cadre:Show()
+        p.eclaire = e
+        if e.LockHighlight then pcall(e.LockHighlight, e) end
         local survol = e:GetScript("OnEnter")
         if survol then pcall(survol, e) end
     end
@@ -2597,27 +2609,60 @@ local function Pilote()
         if cible and cible.Click then pcall(cible.Click, cible, "LeftButton") end
         p.choix, p.pos = nil, nil
     end
+    -- Une glyphe de touche posee contre un onglet.
+    p.glyphes = {}
+    local function Glyphe(k, touche)
+        local g = p.glyphes[k]
+        if not g then
+            g = p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            p.glyphes[k] = g
+        end
+        g:SetText(GlyphePad(touche))
+        g:ClearAllPoints()
+        g:Show()
+        return g
+    end
+    -- La croix entiere (une seule icone), sinon la fleche du haut.
+    local function Croix()
+        local info = C_Texture and C_Texture.GetAtlasInfo
+        for _, nom in ipairs({ "Gamepad_Gen_DPad_64", "Gamepad_Gen_Dpad_64", "Gamepad_Ltr_DPad_64", "Gamepad_Shp_DPad_64" }) do
+            local ok, existe = pcall(info or function() end, nom)
+            if ok and existe then return "|A:" .. nom .. ":20:20|a" end
+        end
+        return GlyphePad("PADDUP")
+    end
+    -- Les commandes : au-dessus de la fenetre, a gauche, seulement Se deplacer,
+    -- Valider et Liberer. LB / RB contre les onglets du cote (au-dessus du
+    -- premier, sous le dernier), LT / RT sur la ligne des sous-onglets.
     function p.Barre()
+        for _, g in pairs(p.glyphes) do g:Hide() end
         local f = _G[p.nom]
         if not (p.barreVisible and f) then p.barre:Hide() return end
-        local G = GlyphePad
         local esp = "      "
-        p.barre.texte:SetText(G("PADDUP") .. " " .. G("PADDDOWN") .. " " .. G("PADDLEFT") .. " " .. G("PADDRIGHT") .. "  "
-            .. TR("Se déplacer", "Move") .. esp
-            .. G("PADLSHOULDER") .. " " .. G("PADRSHOULDER") .. "  " .. TR("Onglets", "Tabs") .. esp
-            .. ((#Onglets(p.Liste(), 2) > 0) and (G("PADLTRIGGER") .. " " .. G("PADRTRIGGER") .. "  " .. TR("Sous-onglets", "Sub-tabs") .. esp) or "")
-            .. G("PAD1") .. "  " .. TR("Valider", "Select") .. esp
-            .. G("PAD2") .. "  " .. TR("Libérer", "Release"))
+        p.barre.texte:SetText(Croix() .. "  " .. TR("Se déplacer", "Move") .. esp
+            .. GlyphePad("PAD1") .. "  " .. TR("Valider", "Select") .. esp
+            .. GlyphePad("PAD2") .. "  " .. TR("Libérer", "Release"))
         p.barre:SetWidth((p.barre.texte:GetStringWidth() or 300) + 24)
         p.barre:ClearAllPoints()
-        -- Sous le suivi s'il y a la place, sinon au-dessus ; jamais hors de
-        -- l'ecran, et calee a droite si le suivi est a droite.
-        local bas, droite = f:GetBottom() or 0, (f:GetRight() or 0) > (UIParent:GetWidth() or 0) / 2
-        local cote = droite and "RIGHT" or "LEFT"
-        if bas > 50 then p.barre:SetPoint("TOP" .. cote, f, "BOTTOM" .. cote, 0, -4)
-        else p.barre:SetPoint("BOTTOM" .. cote, f, "TOP" .. cote, 0, 4) end
+        p.barre:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 0, 4)
         if p.barre.SetClampedToScreen then p.barre:SetClampedToScreen(true) end
         p.barre:Show()
+        local liste = p.Liste()
+        local un = Onglets(liste, 1)
+        if #un > 1 then
+            local premier, dernier = un[1], un[#un]
+            local vertical = math.abs((premier:GetLeft() or 0) - (dernier:GetLeft() or 0)) < 8
+            if vertical then
+                Glyphe("lb", "PADLSHOULDER"):SetPoint("BOTTOM", premier, "TOP", 0, 2)
+                Glyphe("rb", "PADRSHOULDER"):SetPoint("TOP", dernier, "BOTTOM", 0, -2)
+            end
+        end
+        local deux = Onglets(liste, 2)
+        if #deux > 1 then
+            table.sort(deux, function(a, b) return (a:GetLeft() or 0) < (b:GetLeft() or 0) end)
+            Glyphe("lt", "PADLTRIGGER"):SetPoint("RIGHT", deux[1], "LEFT", -2, 0)
+            Glyphe("rt", "PADRTRIGGER"):SetPoint("LEFT", deux[#deux], "RIGHT", 2, 0)
+        end
     end
     p:SetScript("OnGamePadButtonDown", function(self, bouton)
         local e = p.Courant()
@@ -2679,6 +2724,7 @@ function Suite.Piloter(oui, nom)
     if oui == nil then oui = not (p:IsShown() and (not nom or p.nom == nom)) end
     if not oui then
         pcall(p.EnableGamePadButton, p, false)
+        if p.Eteindre then p.Eteindre() end
         if p:IsShown() then
             local f = p.nom and _G[p.nom]
             if f and p.alphaAvant then f:SetAlpha(p.alphaAvant) end
