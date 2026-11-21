@@ -1634,6 +1634,31 @@ function suivi.LieuxManquants(objectifs)
     local liste = {}
     local d = CraftCoreDB
     suivi.matieresManquantes = manques
+    -- Les noeuds vus sans pouvoir les recolter ("Minage requis", ou deja pris)
+    -- comptent aussi, par leur nom : "Filon de cuivre" donne du "Minerai de
+    -- cuivre" (meme fin de nom), une plante porte le nom de l'herbe.
+    local function Fin(nom)
+        nom = string.lower(tostring(nom or ""))
+        return (string.match(nom, "^%S+%s+(.+)$")) or nom
+    end
+    local function Donne(nomNoeud, objet)
+        if not nomNoeud then return false end
+        local nomObjet = NS.inventaire.NomDObjet(objet)
+        if not nomObjet then return false end
+        local a, b = string.lower(nomNoeud), string.lower(nomObjet)
+        return a == b or Fin(a) == Fin(b)
+    end
+    for objet in pairs(manques) do
+        local metier = MetierDeMatiere(objet)
+        for carte, noeuds in pairs(metier and type(d) == "table" and d.noeuds or {}) do
+            for _, l in ipairs(noeuds) do
+                if l[4] == metier and Donne(l[5], objet) then
+                    table.insert(liste, { carte = carte, x = l[1], y = l[2], objet = objet,
+                        cle = objet .. ":n" .. carte .. ":" .. l[1] .. ":" .. l[2] })
+                end
+            end
+        end
+    end
     for objet in pairs(manques) do
         for carte, lieux in pairs(type(d) == "table" and d.lieux and d.lieux[objet] or {}) do
             for _, l in ipairs(lieux) do
