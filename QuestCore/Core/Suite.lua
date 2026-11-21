@@ -3022,14 +3022,19 @@ do
         self:UnregisterAllEvents()
         if not Suite.Prive() then return end
         local r = Reglages()
-        if r.macroCCRecreee then return end
         if InCombatLockdown and InCombatLockdown() then return end
         if not (_G.GetMacroIndexByName and _G.CreateMacro) then return end
-        if (_G.GetMacroIndexByName("CC") or 0) == 0 then
-            local ok = pcall(_G.CreateMacro, "CC", 132279, "/sagacore", nil)
-            if ok then r.macroCCRecreee = true end
-        else
-            r.macroCCRecreee = true
+        -- Ses macros CC (/sagacore) et RLD (/reload), effacees par erreur.
+        for _, m in ipairs({ { "CC", 132279, "/sagacore", "macroCCRecreee" },
+                             { "RLD", 1029581, "/reload", "macroRLDRecreee" } }) do
+            if not r[m[4]] then
+                if (_G.GetMacroIndexByName(m[1]) or 0) == 0 then
+                    local ok = pcall(_G.CreateMacro, m[1], m[2], m[3], nil)
+                    if ok then r[m[4]] = true end
+                else
+                    r[m[4]] = true
+                end
+            end
         end
     end)
 end
