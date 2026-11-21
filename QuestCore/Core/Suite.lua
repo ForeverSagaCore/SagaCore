@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 81
+local VERSION = 82
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4211,125 +4211,8 @@ local function MacroCore()
     elseif f.portrait then f.portrait:SetTexture(ICONE_MACROCORE) end
     if f.SetTitle then pcall(f.SetTitle, f, "MacroCore")
     elseif f.TitleText then f.TitleText:SetText("MacroCore") end
+    -- Vide pour l'instant : seulement le cadre, le portrait et le titre.
     if f.Inset then f.Inset:Hide() end
-
-    local function Bouton(texte, largeur)
-        local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-        b:SetSize(largeur, 22)
-        b:SetText(texte)
-        return b
-    end
-
-    -- Les deux onglets : macros generales, macros du personnage.
-    f.onglets = {}
-    local nomPerso = UnitName and UnitName("player") or "?"
-    for i, texte in ipairs({ TR("Générales", "General"), nomPerso }) do
-        local okT, t = pcall(CreateFrame, "Button", "CoreSuiteMacroCoreOnglet" .. i, f, "PanelTopTabButtonTemplate")
-        if not okT or not t then t = CreateFrame("Button", nil, f, "UIPanelButtonTemplate") t:SetSize(150, 24) end
-        t:SetText(texte)
-        if _G.PanelTemplates_TabResize then pcall(_G.PanelTemplates_TabResize, t, 0) end
-        if i == 1 then t:SetPoint("TOPLEFT", f, "TOPLEFT", 64, -28)
-        else t:SetPoint("LEFT", f.onglets[1], "RIGHT", 4, 0) end
-        t:SetID(i)
-        t:SetScript("OnClick", function(self)
-            f.ongletChoisi = self:GetID()
-            if _G.PanelTemplates_SetTab then pcall(_G.PanelTemplates_SetTab, f, self:GetID()) end
-        end)
-        f.onglets[i] = t
-    end
-    f.Tabs = f.onglets
-    f.numTabs = #f.onglets
-    if _G.PanelTemplates_SetNumTabs then pcall(_G.PanelTemplates_SetNumTabs, f, #f.onglets) end
-    if _G.PanelTemplates_SetTab then pcall(_G.PanelTemplates_SetTab, f, 1) end
-
-    -- La grille des macros : 6 par ligne, qui defile.
-    local okG, grille = pcall(CreateFrame, "Frame", nil, f, "InsetFrameTemplate")
-    f.grille = okG and grille or CreateFrame("Frame", nil, f)
-    f.grille:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -66)
-    f.grille:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -66)
-    local T, ECART = math.floor((L - 20 - 12 - 26 - 5 * 6) / 6), 6
-    f.grille:SetHeight(3 * (T + ECART) + 12)
-    local okS, defile = pcall(CreateFrame, "ScrollFrame", nil, f.grille, "UIPanelScrollFrameTemplate")
-    f.defile = okS and defile or CreateFrame("ScrollFrame", nil, f.grille)
-    f.defile:SetPoint("TOPLEFT", 6, -6)
-    f.defile:SetPoint("BOTTOMRIGHT", -26, 6)
-    local contenu = CreateFrame("Frame", nil, f.defile)
-    contenu:SetSize(6 * (T + ECART), 3 * (T + ECART))
-    f.defile:SetScrollChild(contenu)
-    f.cases = {}
-    for i = 1, 18 do
-        local c = CreateFrame("CheckButton", nil, contenu)
-        c:SetSize(T, T)
-        c:SetPoint("TOPLEFT", ((i - 1) % 6) * (T + ECART), -math.floor((i - 1) / 6) * (T + ECART))
-        c.fond = c:CreateTexture(nil, "BACKGROUND")
-        c.fond:SetAllPoints()
-        c.fond:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
-        c.fond:SetTexCoord(0.17, 0.83, 0.17, 0.83)
-        c.icone = c:CreateTexture(nil, "ARTWORK")
-        c.icone:SetPoint("TOPLEFT", 3, -3)
-        c.icone:SetPoint("BOTTOMRIGHT", -3, 3)
-        c.nom = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmallOutline")
-        c.nom:SetPoint("BOTTOM", 0, 3)
-        c:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-        c:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
-        f.cases[i] = c
-    end
-
-    -- La macro choisie : son icone, son nom, Modifier Nom/Icone, Sauver, Annuler.
-    local okC, choix = pcall(CreateFrame, "Frame", nil, f, "InsetFrameTemplate")
-    f.choix = okC and choix or CreateFrame("Frame", nil, f)
-    f.choix:SetPoint("TOPLEFT", f.grille, "BOTTOMLEFT", 0, -6)
-    f.choix:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 32)
-    f.iconeChoix = f.choix:CreateTexture(nil, "ARTWORK")
-    f.iconeChoix:SetSize(36, 36)
-    f.iconeChoix:SetPoint("TOPLEFT", 10, -10)
-    f.iconeChoix:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
-    f.iconeChoix:SetTexCoord(0.17, 0.83, 0.17, 0.83)
-    f.nomChoix = f.choix:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    f.nomChoix:SetPoint("TOPLEFT", f.iconeChoix, "TOPRIGHT", 10, -2)
-    f.nomChoix:SetText("")
-    f.modifier = Bouton(TR("Modifier Nom/Icône", "Change Name/Icon"), L - 20 - 56 - 90)
-    f.modifier:SetPoint("BOTTOMLEFT", f.iconeChoix, "BOTTOMRIGHT", 8, 0)
-    f.sauver = Bouton(TR("Sauver", "Save"), 76)
-    f.sauver:SetPoint("TOPRIGHT", f.choix, "TOPRIGHT", -8, -10)
-    f.annuler = Bouton(TR("Annuler", "Cancel"), 76)
-    f.annuler:SetPoint("TOPRIGHT", f.sauver, "BOTTOMRIGHT", 0, -6)
-    f.consigne = f.choix:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    f.consigne:SetPoint("TOPLEFT", f.iconeChoix, "BOTTOMLEFT", -2, -8)
-    f.consigne:SetText(TR("Tapez les commandes de la macro :", "Enter macro commands :"))
-    -- La zone de texte de la macro, qui defile.
-    local okZ, zone = pcall(CreateFrame, "Frame", nil, f.choix, "TooltipBackdropTemplate")
-    f.zoneTexte = okZ and zone or CreateFrame("Frame", nil, f.choix)
-    f.zoneTexte:SetPoint("TOPLEFT", f.consigne, "BOTTOMLEFT", 0, -4)
-    f.zoneTexte:SetPoint("BOTTOMRIGHT", f.choix, "BOTTOMRIGHT", -8, 24)
-    local okD, defT = pcall(CreateFrame, "ScrollFrame", nil, f.zoneTexte, "UIPanelScrollFrameTemplate")
-    f.defileTexte = okD and defT or CreateFrame("ScrollFrame", nil, f.zoneTexte)
-    f.defileTexte:SetPoint("TOPLEFT", 8, -8)
-    f.defileTexte:SetPoint("BOTTOMRIGHT", -28, 8)
-    f.texte = CreateFrame("EditBox", nil, f.defileTexte)
-    f.texte:SetMultiLine(true)
-    f.texte:SetAutoFocus(false)
-    f.texte:SetFontObject("GameFontHighlight")
-    f.texte:SetWidth(L - 70)
-    f.texte:SetMaxLetters(255)
-    f.texte:SetScript("OnEscapePressed", f.texte.ClearFocus)
-    f.defileTexte:SetScrollChild(f.texte)
-    f.compte = f.choix:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    f.compte:SetPoint("BOTTOM", f.choix, "BOTTOM", 0, 8)
-    local function Compter()
-        f.compte:SetText(string.format(TR("%d/255 caractères utilisés", "%d/255 characters used"), #(f.texte:GetText() or "")))
-    end
-    f.texte:SetScript("OnTextChanged", Compter)
-    Compter()
-
-    -- Le bas : Suppr. a gauche, Nouvelle et Quitter a droite.
-    f.supprimer = Bouton(TR("Suppr.", "Delete"), 76)
-    f.supprimer:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 6, 6)
-    f.quitter = Bouton(TR("Quitter", "Exit"), 76)
-    f.quitter:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -6, 6)
-    f.quitter:SetScript("OnClick", function() f:Hide() end)
-    f.nouvelle = Bouton(TR("Nouvelle", "New"), 86)
-    f.nouvelle:SetPoint("RIGHT", f.quitter, "LEFT", -4, 0)
 
     -- Le portrait se clique comme l'icone : il referme la fenetre.
     local portrait = f.PortraitContainer or f.portrait
