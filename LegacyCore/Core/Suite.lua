@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 85
+local VERSION = 86
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4189,7 +4189,7 @@ local function MacroCore()
     if fenMC then return fenMC end
     local charte = NS.charte
     if not (charte and charte.Fenetre) then return nil end
-    local cadre = charte.Fenetre("CoreSuiteMacroCore", 300, 84,
+    local cadre = charte.Fenetre("CoreSuiteMacroCore", 300, 100,
         { portrait = false, strate = "MEDIUM", sansPied = true })
     if cadre.titre then cadre.titre:SetText("MacroCore") end
     cadre.fermer:SetScript("OnClick", function() cadre:Hide() end)
