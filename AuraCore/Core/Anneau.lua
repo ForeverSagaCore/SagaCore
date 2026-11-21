@@ -158,6 +158,9 @@ local function Cercler(p, etat)
     end
 end
 
+-- Pour le bouton des buffs : la meme pastille que celles de l'anneau.
+A.Pastille, A.Cercler = function(parent) return Pastille(parent) end, function(p, etat) return Cercler(p, etat) end
+
 local anneau = {}
 local function Prendre(liste, i, parent)
     liste[i] = liste[i] or Pastille(parent)

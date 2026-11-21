@@ -281,41 +281,20 @@ end
 local function Construire()
     if bouton then return bouton end
     local b = CreateFrame("Button", "AuraCoreBoutonBuffs", UIParent)
-    -- Meme habillage que les pastilles de l'anneau : fond sombre, icone
-    -- vraiment ronde (masque circulaire, bords de l'image rognes), anneau
-    -- dore du jeu, aux memes proportions.
-    local t = 28
-    b:SetSize(t, t)
     b:SetFrameStrata("MEDIUM")
     b:SetMovable(true)
     b:SetClampedToScreen(true)
     b:RegisterForDrag("LeftButton")
     b:RegisterForClicks("LeftButtonUp")
-    b.fond = b:CreateTexture(nil, "BACKGROUND")
-    b.fond:SetSize(t * 19 / 24, t * 19 / 24)
-    b.fond:SetPoint("CENTER")
-    b.fond:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
-    b.icone = b:CreateTexture(nil, "ARTWORK")
-    b.icone:SetSize(t * 16 / 24, t * 16 / 24)
-    b.icone:SetPoint("CENTER")
-    b.icone:SetTexture(D.Icone(1243))
-    b.icone:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    if b.CreateMaskTexture then
-        local m = b:CreateMaskTexture()
-        if m then
-            m:SetTexture("Interface\\Masks\\CircleMaskScalable", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-            m:SetAllPoints(b.icone)
-            b.icone:AddMaskTexture(m)
-        end
-    end
-    b.anneau = b:CreateTexture(nil, "OVERLAY")
-    b.anneau:SetSize(t * 41 / 24, t * 41 / 24)
-    b.anneau:SetPoint("TOPLEFT", 0, 0)
-    b.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    -- Exactement une pastille de l'anneau (meme taille, meme habillage),
+    -- avec l'icone de Robustesse. Les clics vont au bouton.
+    b.p = NS.anneau.Pastille(b)
+    b.p:SetPoint("CENTER")
+    b.p:EnableMouse(false)
+    b.p.icone:SetTexture(D.Icone(1243))
     -- Illumine : une lueur qui pulse doucement autour de l'icone.
-    b.lueur = b:CreateTexture(nil, "OVERLAY", nil, 1)
-    b.lueur:SetSize(t * 1.3, t * 1.3)
-    b.lueur:SetPoint("CENTER", b.icone, "CENTER", 0, 0)
+    b.lueur = b.p:CreateTexture(nil, "OVERLAY", nil, 2)
+    b.lueur:SetPoint("CENTER", b.p.icone, "CENTER", 0, 0)
     b.lueur:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
     b.lueur:SetBlendMode("ADD")
     b.pulse = b.lueur:CreateAnimationGroup()
@@ -324,7 +303,6 @@ local function Construire()
     a:SetFromAlpha(1)
     a:SetToAlpha(0.2)
     a:SetDuration(0.8)
-    b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
     b:SetScript("OnClick", function(self)
         if self.actif then M.Envoyer() M.MettreAJour() end
     end)
@@ -360,11 +338,20 @@ function M.MettreAJour()
     local b = Construire()
     if R().boutonBuffsCache or not Canal() then b:Hide() return end
     b:Show()
+    -- La taille des icones de l'anneau.
+    local t = tonumber(R().taille) or 30
+    if b.taille ~= t then
+        b.taille = t
+        b:SetSize(t, t)
+        b.p:Taille(t)
+        b.lueur:SetSize(t * 0.95, t * 0.95)
+    end
     local manque = (not EnCombat()) and #M.Analyser() > 0
     b.actif = manque
-    b.icone:SetDesaturated(not manque)
-    b.anneau:SetDesaturated(not manque)
-    b:SetAlpha(manque and 1 or 0.5)
+    -- Comme une place de l'anneau : grise quand rien ne manque, en couleur
+    -- (et qui pulse) des qu'un buff manque.
+    NS.anneau.Cercler(b.p, manque and "actif" or "absent")
+    b.p:SetAlpha(manque and 1 or 0.45)
     b.lueur:SetShown(manque)
     if manque then
         if not b.pulse:IsPlaying() then b.pulse:Play() end
