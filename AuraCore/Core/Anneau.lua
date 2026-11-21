@@ -40,9 +40,24 @@ local function Reglages()
     r.disposition = r.disposition or "reserve"
     r.depart = r.depart or "haut"
     r.sens = r.sens or "horaire"
+    -- Places absentes : interieur estompe, cercle net (reglables, lies ou non).
+    r.absentInterieur = r.absentInterieur or 0.45
+    r.absentCercle = r.absentCercle or 1
     return r
 end
 A.Reglages = Reglages
+
+-- Opacite d'une place absente : l'interieur (fond et icone) d'un cote, le
+-- cercle dore de l'autre ; lies, le cercle suit l'interieur.
+function A.Opacite(p, absent)
+    local r = Reglages()
+    p:SetAlpha(1)
+    local dedans = absent and r.absentInterieur or 1
+    local cercle = absent and (r.absentLie and r.absentInterieur or r.absentCercle) or 1
+    p.icone:SetAlpha(dedans)
+    if p.fond then p.fond:SetAlpha(dedans) end
+    p.bordure:SetAlpha(cercle)
+end
 
 local T = NS.T
 
@@ -246,9 +261,8 @@ function A.OublierEcartes() exclus, iconesExclues = {}, {} end
 -- Sort ecarte de l'anneau : pistage, ou petit sort non choisi.
 local function EcarteParSort(sort)
     if PISTAGES[sort] then return true end
-    local choisis = type(Reglages().petits) == "table" and Reglages().petits or {}
-    for _, p in ipairs(D.PETITS) do
-        if not choisis[p.cle] then for _, id in ipairs(p.ids) do if id == sort then return true end end end
+    for _, p in ipairs(D.SUIVIS) do
+        if not D.Choisi(p) then for _, id in ipairs(p.ids) do if id == sort then return true end end end
     end
     return false
 end
@@ -271,9 +285,8 @@ local function DepuisLeJeu()
     -- Les petits sorts non choisis s'ecartent de la meme facon.
     local ecartes = {}
     for sort in pairs(PISTAGES) do ecartes[sort] = true end
-    local choisis = type(Reglages().petits) == "table" and Reglages().petits or {}
-    for _, p in ipairs(D.PETITS) do
-        if not choisis[p.cle] then for _, id in ipairs(p.ids) do ecartes[id] = true end end
+    for _, p in ipairs(D.SUIVIS) do
+        if not D.Choisi(p) then for _, id in ipairs(p.ids) do ecartes[id] = true end end
     end
     -- En combat, le jeu interdit la liste : on recopie alors ses boutons,
     -- reconnus a leur image. Les images de ces sorts sont connues d'avance :
@@ -568,7 +581,7 @@ local function Relever()
         end
         if classes[classe] or recu then
             for _, alternatives in ipairs(D.GROUPE[classe] or {}) do
-                if (classe ~= moi or Connu(alternatives)) and (classes[classe] or select(3, Premier(alternatives, buffs))) then
+                if D.Choisi(alternatives) and (classe ~= moi or Connu(alternatives)) and (classes[classe] or select(3, Premier(alternatives, buffs))) then
                     local bb, idd, nn = Premier(alternatives, buffs)
                     table.insert(reservees, { icone = (type(bb) ~= "boolean" and bb) or D.Icone(idd), actif = nn ~= nil,
                         sort = idd, classe = classe, nom = nn, index = nn and indexDes[nn], groupe = true })
@@ -725,7 +738,7 @@ local function DessinerAnneau(r)
         p.duree:ClearAllPoints()
         p.duree:SetPoint("CENTER", p, "CENTER", math.cos(a) * ecart, math.sin(a) * ecart)
         p.duree:SetTextColor(1, 1, 1)
-        p:SetAlpha(p.absent and 0.45 or 1)
+        A.Opacite(p, p.absent)
         p:Show()
     end
     -- Disposition du reste : "reserve" (sa place a ce qu'on se met soi-meme,
@@ -811,13 +824,17 @@ local function DessinerAnneau(r)
     local d = Diag()
     local enCombat = InCombatLockdown and InCombatLockdown() or false
     local boutons, nAm = BoutonsDuJeu()
+    local nNuis = 0
+    for _, e in ipairs(liste) do if e.nuisible then nNuis = nNuis + 1 end end
+    if nNuis > 0 then d.derniersNuisibles = { combat = enCombat, n = nNuis, aPart = r.nuisiblesAPart } end
     d[enCombat and "combat" or "horsCombat"] = { api = #api, erreur = erreur, source = source, montres = #liste,
         natifs = #boutons, natifsAmeliorations = nAm, cadreHorsCombat = (not enCombat) and #DepuisLeCadreDuJeu() or nil }
     -- Releve detaille en combat (temporaire) : combien d'images, de numeros
     -- et de noms lisibles ; le pire moment (le plus d'icones) est garde.
     if enCombat then
         local x = d.combat
-        x.icones, x.ids, x.noms, x.reservees = 0, 0, 0, #reservees
+        x.icones, x.ids, x.noms, x.reservees, x.nuisibles = 0, 0, 0, #reservees, 0
+        for _, e in ipairs(liste) do if e.nuisible then x.nuisibles = x.nuisibles + 1 end end
         x.images = {}
         for _, e in ipairs(liste) do
             if e.icone ~= nil and not Secret(e.icone) then x.icones = x.icones + 1 table.insert(x.images, tostring(e.icone)) end
@@ -829,9 +846,8 @@ local function DessinerAnneau(r)
         if not d.pire or (x.montres or 0) > (d.pire.montres or 0) then d.pire = x end
     end
     -- Petits sorts des autres non choisis : ni dans la file, ni ailleurs.
-    local choisis = type(r.petits) == "table" and r.petits or {}
-    for _, p in ipairs(D.PETITS) do
-        if not choisis[p.cle] then
+    for _, p in ipairs(D.SUIVIS) do
+        if not D.Choisi(p) then
             for _, id in ipairs(p.ids) do
                 local nom = D.Nom(id)
                 if nom then dejaNoms[nom] = true end

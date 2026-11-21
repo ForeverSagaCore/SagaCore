@@ -7,25 +7,75 @@ local _, NS = ...
 NS.donnees = {}
 local D = NS.donnees
 
--- Les vrais buffs de groupe : longs, donnes a tout le monde, par classe
--- qui peut les donner. Chaque entree est une liste d'alternatives (le meme
--- effet en version individuelle ou de groupe).
-D.GROUPE = {
-    PRIEST = { { 1243, 21562 } },                                   -- Robustesse
-    MAGE = { { 1459, 23028 } },                                     -- Intelligence des Arcanes
-    DRUID = { { 1126, 21849 } },                                    -- Marque du fauve
-    PALADIN = { { 19740, 25782, 19742, 25894, 20217, 25898, 1038, 25895, 19977, 25890, 20911, 25899 } }, -- Benedictions
+-- Tous les buffs que les autres peuvent donner, par classe. "vrai" : les
+-- longs buffs donnes a tout le monde (cochés par defaut, ils ont leur quart
+-- dans l'anneau) ; les autres (courts, de situation, de talent, totems) sont
+-- decoches par defaut. Chaque buff se coche ou se decoche dans la page
+-- "Buffs suivis". Les identifiants (rang 1) sont dans la partie liste de
+-- chaque entree : seul leur nom compte.
+D.SUIVIS = {
+    { classe = "PRIEST", cle = "robustesse", vrai = true, 1243, 21562 },
+    { classe = "PRIEST", cle = "esprit", 14752, 27681 },
+    { classe = "PRIEST", cle = "ombre", 976, 27683 },
+    { classe = "PRIEST", cle = "gardien", 6346 },
+    { classe = "PRIEST", cle = "bouclier", 17 },
+    { classe = "PRIEST", cle = "renovation", 139 },
+    { classe = "PRIEST", cle = "inspiration", 14893 },
+    { classe = "PRIEST", cle = "infusion", 10060 },
+    { classe = "PRIEST", cle = "abolirmaladie", 552 },
+    { classe = "MAGE", cle = "intelligence", vrai = true, 1459, 23028 },
+    { classe = "MAGE", cle = "amplifier", 1008 },
+    { classe = "MAGE", cle = "attenuer", 604 },
+    { classe = "DRUID", cle = "fauve", vrai = true, 1126, 21849 },
+    { classe = "DRUID", cle = "epines", 467 },
+    { classe = "DRUID", cle = "recuperation", 774 },
+    { classe = "DRUID", cle = "retablissement", 8936 },
+    { classe = "DRUID", cle = "innervation", 29166 },
+    { classe = "DRUID", cle = "abolirpoison", 2893 },
+    { classe = "PALADIN", cle = "benediction", vrai = true, 19740, 25782, 19742, 25894, 20217, 25898, 1038, 25895, 19977, 25890, 20911, 25899 },
+    { classe = "PALADIN", cle = "protection", 1022 },
+    { classe = "PALADIN", cle = "liberte", 1044 },
+    { classe = "PALADIN", cle = "sacrifice", 6940 },
+    { classe = "PALADIN", cle = "auras", 465, 7294, 19746, 19876, 19888, 19891, 20218 },
+    { classe = "SHAMAN", cle = "forceterre", 8076 },
+    { classe = "SHAMAN", cle = "graceair", 8836 },
+    { classe = "SHAMAN", cle = "peaupierre", 8072 },
+    { classe = "SHAMAN", cle = "fontainemana", 5677 },
+    { classe = "SHAMAN", cle = "guerison", 5672 },
+    { classe = "SHAMAN", cle = "airtranquille", 25909 },
+    { classe = "SHAMAN", cle = "resistances", 8185, 8182, 10596 },
+    { classe = "SHAMAN", cle = "marchesurleau", 546, 131 },
+    { classe = "WARRIOR", cle = "cri", 6673 },
+    { classe = "HUNTER", cle = "precision", 19506 },
+    { classe = "HUNTER", cle = "meute", 13159, 20043 },
+    { classe = "WARLOCK", cle = "respiration", 5697 },
+    { classe = "WARLOCK", cle = "invisibilite", 132, 2970 },
+    { classe = "WARLOCK", cle = "pierredame", 20707 },
 }
 
--- Les petits sorts des autres : courts, de situation ou de talent. Caches
--- par defaut ; chacun se choisit dans la page "Petits sorts".
-D.PETITS = {
-    { cle = "ombre", ids = { 976, 27683 } },    -- Protection contre l'Ombre
-    { cle = "esprit", ids = { 14752, 27681 } }, -- Esprit divin
-    { cle = "epines", ids = { 467 } },          -- Epines
-    { cle = "cri", ids = { 6673 } },            -- Cri de guerre
-    { cle = "precision", ids = { 19506 } },     -- Aura de precision
-}
+-- Coche (reglage du joueur, sinon : vrai buff coche, les autres non).
+function D.Choisi(e)
+    local r = NS.anneau and NS.anneau.Reglages and NS.anneau.Reglages() or {}
+    local s = type(r.suivis) == "table" and r.suivis or {}
+    if s[e.cle] ~= nil then return s[e.cle] == true end
+    -- Ancien reglage des petits sorts.
+    if type(r.petits) == "table" and r.petits[e.cle] then return true end
+    return e.vrai == true
+end
+
+-- Les vrais buffs, par classe (leur quart) ; les autres (la file s'ils
+-- sont coches).
+D.GROUPE, D.PETITS = {}, {}
+for _, e in ipairs(D.SUIVIS) do
+    e.ids = e.ids or {}
+    for _, id in ipairs(e) do table.insert(e.ids, id) end
+    if e.vrai then
+        D.GROUPE[e.classe] = D.GROUPE[e.classe] or {}
+        table.insert(D.GROUPE[e.classe], e)
+    else
+        table.insert(D.PETITS, e)
+    end
+end
 
 -- Ce que chaque classe se met elle-meme : une famille par place (une seule
 -- active a la fois dans une famille). Le premier rang suffit : le nom est
@@ -160,7 +210,9 @@ function M.Analyser()
     local resultat = {}
     for _, f in ipairs(FAMILLES) do
         local donneurs = donneursPar[f.classe]
-        if donneurs then
+        local entree
+        for _, e in ipairs(D.GROUPE[f.classe] or {}) do if e.ids[1] == f.ids[1] then entree = e end end
+        if donneurs and (not entree or D.Choisi(entree)) then
             local noms = {}
             for _, id in ipairs(f.ids) do
                 local n = D.Nom(id)
@@ -352,7 +404,7 @@ function M.MettreAJour()
     -- Comme une place de l'anneau : grise quand rien ne manque, en couleur
     -- (et qui pulse) des qu'un buff manque.
     NS.anneau.Cercler(b.p, manque and "actif" or "absent")
-    b.p:SetAlpha(manque and 1 or 0.45)
+    NS.anneau.Opacite(b.p, not manque)
     b.lueur:SetShown(manque)
     if manque then
         if not b.pulse:IsPlaying() then b.pulse:Play() end
@@ -396,27 +448,27 @@ local AJOUTS = {
         ["Missing buffs : "] = "Fehlende Stärkungen : ", ["Thanks!"] = "Danke!", ["You are not in a group."] = "Du bist in keiner Gruppe.",
         ["Out of combat only."] = "Nur außerhalb des Kampfes.", ["Nothing to ask : everyone has the buffs your group can give."] = "Nichts zu erbitten : alle haben die Stärkungen, die eure Gruppe geben kann.",
         ["Wait a few seconds before asking again."] = "Warte ein paar Sekunden, bevor du erneut fragst.",
-        ["Ask the group for missing buffs"] = "Gruppe um fehlende Stärkungen bitten", ["Ask"] = "Bitten", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off blendet alles aus, /auracore on zeigt es wieder, /auracore buffs bittet um fehlende Stärkungen.", ["Minor spells"] = "Kleine Zauber", ["Other players' minor spells"] = "Kleine Zauber der anderen", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "Echte Stärkungen (Segen, Seelenstärke, Arkane Intelligenz, Mal der Wildnis) haben immer ihren Platz in ihrem Viertel. Kleine Zauber, kurz oder situativ, sind ausgeblendet : hake die an, die du im Ring sehen willst.", ["Ask for missing buffs"] = "Fehlende Stärkungen erbitten", ["Shift + drag : move the button."] = "Umschalt + ziehen : Knopf verschieben.", ["Button above the portrait"] = "Knopf über dem Porträt", ["Reset"] = "Zurücksetzen" },
+        ["Ask the group for missing buffs"] = "Gruppe um fehlende Stärkungen bitten", ["Ask"] = "Bitten", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off blendet alles aus, /auracore on zeigt es wieder, /auracore buffs bittet um fehlende Stärkungen.", ["Minor spells"] = "Kleine Zauber", ["Other players' minor spells"] = "Kleine Zauber der anderen", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "Echte Stärkungen (Segen, Seelenstärke, Arkane Intelligenz, Mal der Wildnis) haben immer ihren Platz in ihrem Viertel. Kleine Zauber, kurz oder situativ, sind ausgeblendet : hake die an, die du im Ring sehen willst.", ["Ask for missing buffs"] = "Fehlende Stärkungen erbitten", ["Shift + drag : move the button."] = "Umschalt + ziehen : Knopf verschieben.", ["Button above the portrait"] = "Knopf über dem Porträt", ["Reset"] = "Zurücksetzen", ["Tracked buffs"] = "Verfolgte Stärkungen", ["The buffs you track"] = "Die Stärkungen, die du verfolgst", ["Everything each class can give you. Tick what you want to see in the ring. Real buffs (ticked by default) have their place in the group quarter ; the others follow the other icons."] = "Alles, was jede Klasse dir geben kann. Hake an, was du im Ring sehen willst. Echte Stärkungen (standardmäßig angehakt) haben ihren Platz im Gruppenviertel ; die anderen folgen den übrigen Symbolen.", ["Blessings"] = "Segen", ["Paladin auras"] = "Paladinauren", ["Resistance totems"] = "Widerstandstotems", ["Missing : inner opacity"] = "Fehlend : Deckkraft innen", ["Ring linked to the inside"] = "Ring an das Innere gekoppelt", ["Missing : ring opacity"] = "Fehlend : Deckkraft des Rings" },
     esES = { ["a blessing"] = "una bendición", ["the whole group"] = "todo el grupo", ["for"] = "para",
         ["Missing buffs : "] = "Beneficios que faltan : ", ["Thanks!"] = "¡Gracias!", ["You are not in a group."] = "No estás en un grupo.",
         ["Out of combat only."] = "Solo fuera de combate.", ["Nothing to ask : everyone has the buffs your group can give."] = "Nada que pedir : todos tienen los beneficios que tu grupo puede dar.",
         ["Wait a few seconds before asking again."] = "Espera unos segundos antes de volver a pedir.",
-        ["Ask the group for missing buffs"] = "Pedir al grupo los beneficios que faltan", ["Ask"] = "Pedir", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off lo oculta todo, /auracore on lo vuelve a mostrar, /auracore buffs pide los beneficios que faltan.", ["Minor spells"] = "Hechizos menores", ["Other players' minor spells"] = "Hechizos menores de los demás", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "Los beneficios reales (bendiciones, Entereza, Intelecto Arcano, Marca de lo Salvaje) siempre tienen su lugar en su cuarto. Los hechizos menores, cortos o de situación, están ocultos : marca los que quieras ver en el anillo.", ["Ask for missing buffs"] = "Pedir los beneficios que faltan", ["Shift + drag : move the button."] = "Mayús + arrastrar : mover el botón.", ["Button above the portrait"] = "Botón sobre el retrato", ["Reset"] = "Restablecer" },
+        ["Ask the group for missing buffs"] = "Pedir al grupo los beneficios que faltan", ["Ask"] = "Pedir", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off lo oculta todo, /auracore on lo vuelve a mostrar, /auracore buffs pide los beneficios que faltan.", ["Minor spells"] = "Hechizos menores", ["Other players' minor spells"] = "Hechizos menores de los demás", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "Los beneficios reales (bendiciones, Entereza, Intelecto Arcano, Marca de lo Salvaje) siempre tienen su lugar en su cuarto. Los hechizos menores, cortos o de situación, están ocultos : marca los que quieras ver en el anillo.", ["Ask for missing buffs"] = "Pedir los beneficios que faltan", ["Shift + drag : move the button."] = "Mayús + arrastrar : mover el botón.", ["Button above the portrait"] = "Botón sobre el retrato", ["Reset"] = "Restablecer", ["Tracked buffs"] = "Beneficios seguidos", ["The buffs you track"] = "Los beneficios que sigues", ["Everything each class can give you. Tick what you want to see in the ring. Real buffs (ticked by default) have their place in the group quarter ; the others follow the other icons."] = "Todo lo que cada clase puede darte. Marca lo que quieras ver en el anillo. Los beneficios reales (marcados por defecto) tienen su sitio en el cuarto del grupo ; los demás siguen a los otros iconos.", ["Blessings"] = "Bendiciones", ["Paladin auras"] = "Auras de paladín", ["Resistance totems"] = "Tótems de resistencia", ["Missing : inner opacity"] = "Ausentes : opacidad interior", ["Ring linked to the inside"] = "Anillo ligado al interior", ["Missing : ring opacity"] = "Ausentes : opacidad del anillo" },
     itIT = { ["a blessing"] = "una benedizione", ["the whole group"] = "tutto il gruppo", ["for"] = "per",
         ["Missing buffs : "] = "Benefici mancanti : ", ["Thanks!"] = "Grazie!", ["You are not in a group."] = "Non sei in un gruppo.",
         ["Out of combat only."] = "Solo fuori dal combattimento.", ["Nothing to ask : everyone has the buffs your group can give."] = "Niente da chiedere : tutti hanno i benefici che il gruppo può dare.",
         ["Wait a few seconds before asking again."] = "Attendi qualche secondo prima di chiedere di nuovo.",
-        ["Ask the group for missing buffs"] = "Chiedi al gruppo i benefici mancanti", ["Ask"] = "Chiedi", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off nasconde tutto, /auracore on lo mostra di nuovo, /auracore buffs chiede i benefici mancanti.", ["Minor spells"] = "Incantesimi minori", ["Other players' minor spells"] = "Incantesimi minori degli altri", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "I veri benefici (benedizioni, Tempra, Intelletto Arcano, Marchio della Natura) hanno sempre il loro posto nel loro quarto. Gli incantesimi minori, brevi o di situazione, sono nascosti : spunta quelli che vuoi vedere nell'anello.", ["Ask for missing buffs"] = "Chiedi i benefici mancanti", ["Shift + drag : move the button."] = "Maiusc + trascina : sposta il pulsante.", ["Button above the portrait"] = "Pulsante sopra il ritratto", ["Reset"] = "Ripristina" },
+        ["Ask the group for missing buffs"] = "Chiedi al gruppo i benefici mancanti", ["Ask"] = "Chiedi", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off nasconde tutto, /auracore on lo mostra di nuovo, /auracore buffs chiede i benefici mancanti.", ["Minor spells"] = "Incantesimi minori", ["Other players' minor spells"] = "Incantesimi minori degli altri", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "I veri benefici (benedizioni, Tempra, Intelletto Arcano, Marchio della Natura) hanno sempre il loro posto nel loro quarto. Gli incantesimi minori, brevi o di situazione, sono nascosti : spunta quelli che vuoi vedere nell'anello.", ["Ask for missing buffs"] = "Chiedi i benefici mancanti", ["Shift + drag : move the button."] = "Maiusc + trascina : sposta il pulsante.", ["Button above the portrait"] = "Pulsante sopra il ritratto", ["Reset"] = "Ripristina", ["Tracked buffs"] = "Benefici seguiti", ["The buffs you track"] = "I benefici che segui", ["Everything each class can give you. Tick what you want to see in the ring. Real buffs (ticked by default) have their place in the group quarter ; the others follow the other icons."] = "Tutto ciò che ogni classe può darti. Spunta ciò che vuoi vedere nell'anello. I veri benefici (spuntati di base) hanno il loro posto nel quarto del gruppo ; gli altri seguono le altre icone.", ["Blessings"] = "Benedizioni", ["Paladin auras"] = "Aure del paladino", ["Resistance totems"] = "Totem di resistenza", ["Missing : inner opacity"] = "Mancanti : opacità interna", ["Ring linked to the inside"] = "Anello legato all'interno", ["Missing : ring opacity"] = "Mancanti : opacità dell'anello" },
     ruRU = { ["a blessing"] = "благословение", ["the whole group"] = "вся группа", ["for"] = "для",
         ["Missing buffs : "] = "Не хватает эффектов : ", ["Thanks!"] = "Спасибо!", ["You are not in a group."] = "Вы не в группе.",
         ["Out of combat only."] = "Только вне боя.", ["Nothing to ask : everyone has the buffs your group can give."] = "Нечего просить : у всех есть эффекты, которые может дать группа.",
         ["Wait a few seconds before asking again."] = "Подождите несколько секунд перед новой просьбой.",
-        ["Ask the group for missing buffs"] = "Попросить группу о недостающих эффектах", ["Ask"] = "Попросить", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off скрывает всё, /auracore on показывает снова, /auracore buffs просит недостающие эффекты.", ["Minor spells"] = "Малые заклинания", ["Other players' minor spells"] = "Малые заклинания других", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "Настоящие эффекты (благословения, Стойкость, Чародейский интеллект, Знак дикой природы) всегда на своём месте в своей четверти. Малые заклинания, короткие или ситуативные, скрыты : отметьте те, что хотите видеть в кольце.", ["Ask for missing buffs"] = "Попросить недостающие эффекты", ["Shift + drag : move the button."] = "Shift + перетаскивание : переместить кнопку.", ["Button above the portrait"] = "Кнопка над портретом", ["Reset"] = "Сбросить" },
+        ["Ask the group for missing buffs"] = "Попросить группу о недостающих эффектах", ["Ask"] = "Попросить", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off скрывает всё, /auracore on показывает снова, /auracore buffs просит недостающие эффекты.", ["Minor spells"] = "Малые заклинания", ["Other players' minor spells"] = "Малые заклинания других", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "Настоящие эффекты (благословения, Стойкость, Чародейский интеллект, Знак дикой природы) всегда на своём месте в своей четверти. Малые заклинания, короткие или ситуативные, скрыты : отметьте те, что хотите видеть в кольце.", ["Ask for missing buffs"] = "Попросить недостающие эффекты", ["Shift + drag : move the button."] = "Shift + перетаскивание : переместить кнопку.", ["Button above the portrait"] = "Кнопка над портретом", ["Reset"] = "Сбросить", ["Tracked buffs"] = "Отслеживаемые эффекты", ["The buffs you track"] = "Эффекты, которые вы отслеживаете", ["Everything each class can give you. Tick what you want to see in the ring. Real buffs (ticked by default) have their place in the group quarter ; the others follow the other icons."] = "Всё, что вам может дать каждый класс. Отметьте, что хотите видеть в кольце. Настоящие эффекты (отмечены по умолчанию) стоят в четверти группы ; остальные идут следом за другими значками.", ["Blessings"] = "Благословения", ["Paladin auras"] = "Ауры паладина", ["Resistance totems"] = "Тотемы сопротивления", ["Missing : inner opacity"] = "Отсутствующие : непрозрачность внутри", ["Ring linked to the inside"] = "Кольцо связано с серединой", ["Missing : ring opacity"] = "Отсутствующие : непрозрачность кольца" },
     zhCN = { ["a blessing"] = "一个祝福", ["the whole group"] = "全队", ["for"] = "给",
         ["Missing buffs : "] = "缺少的增益 : ", ["Thanks!"] = "谢谢！", ["You are not in a group."] = "你不在队伍中。",
         ["Out of combat only."] = "仅限非战斗中。", ["Nothing to ask : everyone has the buffs your group can give."] = "无需请求 : 每个人都有队伍能给的增益。",
         ["Wait a few seconds before asking again."] = "请稍等几秒再请求。",
-        ["Ask the group for missing buffs"] = "向队伍请求缺少的增益", ["Ask"] = "请求", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off 隐藏全部，/auracore on 重新显示，/auracore buffs 请求缺少的增益。", ["Minor spells"] = "次要法术", ["Other players' minor spells"] = "他人的次要法术", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "真正的增益（祝福、坚韧、奥术智慧、野性印记）始终在各自的四分之一处。次要法术（短时或特定情况）默认隐藏 : 勾选你想在圆环中看到的。", ["Ask for missing buffs"] = "请求缺少的增益", ["Shift + drag : move the button."] = "Shift + 拖动 : 移动按钮。", ["Button above the portrait"] = "头像上方的按钮", ["Reset"] = "重置" },
+        ["Ask the group for missing buffs"] = "向队伍请求缺少的增益", ["Ask"] = "请求", ["/auracore off hides everything, /auracore on shows it again, /auracore buffs asks for missing buffs."] = "/auracore off 隐藏全部，/auracore on 重新显示，/auracore buffs 请求缺少的增益。", ["Minor spells"] = "次要法术", ["Other players' minor spells"] = "他人的次要法术", ["Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."] = "真正的增益（祝福、坚韧、奥术智慧、野性印记）始终在各自的四分之一处。次要法术（短时或特定情况）默认隐藏 : 勾选你想在圆环中看到的。", ["Ask for missing buffs"] = "请求缺少的增益", ["Shift + drag : move the button."] = "Shift + 拖动 : 移动按钮。", ["Button above the portrait"] = "头像上方的按钮", ["Reset"] = "重置", ["Tracked buffs"] = "追踪的增益", ["The buffs you track"] = "你追踪的增益", ["Everything each class can give you. Tick what you want to see in the ring. Real buffs (ticked by default) have their place in the group quarter ; the others follow the other icons."] = "每个职业能给你的一切。勾选你想在圆环中看到的。真正的增益（默认勾选）位于队伍的四分之一处；其他的排在其他图标之后。", ["Blessings"] = "祝福", ["Paladin auras"] = "圣骑士光环", ["Resistance totems"] = "抗性图腾", ["Missing : inner opacity"] = "缺少 : 内部不透明度", ["Ring linked to the inside"] = "圆圈与内部联动", ["Missing : ring opacity"] = "缺少 : 圆圈不透明度" },
 }
 for code, t in pairs(AJOUTS) do
     NS.TRAD[code] = NS.TRAD[code] or {}

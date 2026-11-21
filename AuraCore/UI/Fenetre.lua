@@ -205,6 +205,13 @@ function F.Construire()
                   page.rRemplir = O.Rangee()
                   O.Liste(page.rRemplir, function() return { { "degressif", T("Dégressif", "Decreasing") }, { "progressif", T("Progressif", "Increasing") } } end,
                       function() return R().remplissage end, function(v) R().remplissage = v Redessiner() end)
+                  page.rAbsDedans = O.Rangee()
+                  O.Curseur(page.rAbsDedans, 0.1, 1, 0.05, function() return R().absentInterieur end, function(v) R().absentInterieur = v Redessiner() end, Pct, true)
+                  page.rAbsLie = O.Rangee()
+                  page.cAbsLie = O.Case(page.rAbsLie, function(oui) R().absentLie = oui and true or nil Redessiner() end)
+                  page.cAbsLie:SetPoint("RIGHT", page.rAbsLie, "RIGHT", -8, 0)
+                  page.rAbsCercle = O.Rangee()
+                  O.Curseur(page.rAbsCercle, 0.1, 1, 0.05, function() return R().absentCercle end, function(v) R().absentCercle = v Redessiner() end, Pct, true)
                   page.rConso = O.Rangee()
                   page.cConso = O.Case(page.rConso, function(oui) R().consoVisibles = oui and true or false Redessiner() end)
                   page.cConso:SetPoint("RIGHT", page.rConso, "RIGHT", -8, 0)
@@ -242,6 +249,10 @@ function F.Construire()
                   page.rOpacite.nom:SetText(T("Opacité de l'anneau", "Ring opacity"))
                   page.rDuree.nom:SetText(T("Durée restante", "Time left"))
                   page.rRemplir.nom:SetText(T("Cercle de durée", "Duration circle"))
+                  page.rAbsDedans.nom:SetText(T("Absents : opacité de l'intérieur", "Missing : inner opacity"))
+                  page.rAbsLie.nom:SetText(T("Cercle lié à l'intérieur", "Ring linked to the inside"))
+                  page.cAbsLie:SetChecked(R().absentLie == true)
+                  page.rAbsCercle.nom:SetText(T("Absents : opacité du cercle", "Missing : ring opacity"))
                   page.rConso.nom:SetText(T("Nourriture, flacon et potion", "Food, flask and potion"))
                   page.cConso:SetChecked(R().consoVisibles ~= false)
                   page.rConsoPlace.nom:SetText(T("Leur place", "Their place"))
@@ -294,41 +305,58 @@ function F.Construire()
                   page.rSens.nom:SetText(T("Sens", "Direction"))
                   page.rDuree.nom:SetText(T("Durée restante", "Time left"))
               end },
-            { cle = "petits", icone = "Interface\\Icons\\Spell_Nature_Thorns",
-              libelle = function() return T("Petits sorts", "Minor spells") end,
+            { cle = "petits", icone = "Interface\\Icons\\Spell_Holy_WordFortitude",
+              libelle = function() return T("Buffs suivis", "Tracked buffs") end,
               construire = function(page, O)
                   page.t1 = O.Section()
                   page.intro = O.Detail(56)
-                  page.lignes = {}
-                  for _, p in ipairs(NS.donnees.PETITS) do
-                      local cle = p.cle
+                  page.lignes, page.classes = {}, {}
+                  local derniere
+                  for _, e in ipairs(NS.donnees.SUIVIS) do
+                      if e.classe ~= derniere then
+                          derniere = e.classe
+                          local t = O.Texte(20, "GameFontNormal")
+                          t.classe = e.classe
+                          table.insert(page.classes, t)
+                      end
+                      local entree = e
                       local l = O.Rangee()
                       l.icone = l:CreateTexture(nil, "ARTWORK")
                       l.icone:SetSize(18, 18)
-                      l.icone:SetPoint("LEFT", l, "LEFT", 0, 0)
+                      l.icone:SetPoint("LEFT", l, "LEFT", 12, 0)
                       l.nom:ClearAllPoints()
                       l.nom:SetPoint("LEFT", l.icone, "RIGHT", 8, 0)
                       l.case = O.Case(l, function(oui)
                           local r = R()
-                          r.petits = type(r.petits) == "table" and r.petits or {}
-                          r.petits[cle] = oui and true or nil
+                          r.suivis = type(r.suivis) == "table" and r.suivis or {}
+                          r.suivis[entree.cle] = oui and true or false
                           if NS.anneau.OublierEcartes then NS.anneau.OublierEcartes() end
                           Redessiner()
                       end)
                       l.case:SetPoint("RIGHT", l, "RIGHT", -8, 0)
-                      l.p = p
+                      l.e = e
                       table.insert(page.lignes, l)
                   end
               end,
               rendre = function(page)
-                  page.t1:SetText(T("Petits sorts des autres", "Other players' minor spells"))
-                  page.intro:SetText(T("Les vrais buffs (bénédictions, Robustesse, Intelligence des Arcanes, Marque du fauve) ont toujours leur place dans leur quart. Les petits sorts, courts ou de situation, sont cachés : cochez ceux que vous voulez voir dans l'anneau.",
-                      "Real buffs (blessings, Fortitude, Arcane Intellect, Mark of the Wild) always have their place in their quarter. Minor spells, short or situational, are hidden : tick the ones you want to see in the ring."))
-                  local choisis = type(R().petits) == "table" and R().petits or {}
+                  page.t1:SetText(T("Les buffs que vous suivez", "The buffs you track"))
+                  page.intro:SetText(T("Tout ce que chaque classe peut vous donner. Cochez ce que vous voulez voir dans l'anneau. Les vrais buffs (cochés au départ) ont leur place dans le quart du groupe ; les autres prennent la suite des icônes.",
+                      "Everything each class can give you. Tick what you want to see in the ring. Real buffs (ticked by default) have their place in the group quarter ; the others follow the other icons."))
+                  local noms = _G.LOCALIZED_CLASS_NAMES_MALE or {}
+                  local couleurs = _G.RAID_CLASS_COLORS or {}
+                  for _, t in ipairs(page.classes) do
+                      t:SetText(noms[t.classe] or t.classe)
+                      local c = couleurs[t.classe]
+                      if c then t:SetTextColor(c.r, c.g, c.b) end
+                  end
                   for _, l in ipairs(page.lignes) do
-                      l.icone:SetTexture(NS.donnees.Icone(l.p.ids[1]))
-                      l.nom:SetText(NS.donnees.Nom(l.p.ids[1]) or "?")
-                      l.case:SetChecked(choisis[l.p.cle] == true)
+                      l.icone:SetTexture(NS.donnees.Icone(l.e.ids[1]))
+                      local nom = NS.donnees.Nom(l.e.ids[1]) or "?"
+                      if l.e.cle == "benediction" then nom = T("Bénédictions", "Blessings")
+                      elseif l.e.cle == "auras" then nom = T("Auras de paladin", "Paladin auras")
+                      elseif l.e.cle == "resistances" then nom = T("Totems de résistance", "Resistance totems") end
+                      l.nom:SetText(nom)
+                      l.case:SetChecked(NS.donnees.Choisi(l.e))
                   end
               end },
     }
