@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 62
+local VERSION = 63
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -3810,6 +3810,8 @@ function Suite.Curseur(parent, mini, maxi, pas, lire, poser, format, boutons, gr
     -- Meme largeur que les listes : les bords des controles s'alignent.
     f:SetSize(200, 26)
     pas = pas or 1
+    -- Quantites limitees a 999 : les fleches restent pres du chiffre.
+    maxi = math.min(maxi or 999, 999)
     local function Arrondir(v) return mini + math.floor((v - mini) / pas + 0.5) * pas end
     local function Ecrire(v) return format and format(v) or tostring(v) end
     local function Fleche(sens, saut)
@@ -3880,9 +3882,11 @@ function Suite.Curseur(parent, mini, maxi, pas, lire, poser, format, boutons, gr
         plus:SetPoint("RIGHT", 0, 0)
     end
     local valeur = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    valeur:SetPoint("LEFT", moins, "RIGHT", 2, 0)
-    valeur:SetPoint("RIGHT", plus, "LEFT", -2, 0)
+    valeur:SetPoint("LEFT", moins, "RIGHT", 0, 0)
+    valeur:SetPoint("RIGHT", plus, "LEFT", 0, 0)
     valeur:SetJustifyH("CENTER")
+    -- Juste la place de trois chiffres entre les fleches.
+    f:SetWidth((moinsVite and 4 or 2) * 26 + 34)
     f.boutonsPM = { moins, plus, moinsVite, plusVite }
     function f.Rendre()
         local okL, v = pcall(lire)

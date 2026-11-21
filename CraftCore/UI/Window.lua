@@ -676,6 +676,19 @@ end
 
 -- Texte sur plusieurs lignes au besoin, jamais tronque. Meme retrait que les
 -- lignes simples. `couleur` : { r, g, b } facultatif.
+-- Texte explicatif (legendes, aides) : en italique, noir a 50 % sur le
+-- parchemin, blanc a 50 % sur fond sombre. Partout le meme.
+local ITALIQUE = "Interface\\AddOns\\CraftCore\\Fonts\\LiberationSans-Italic.ttf"
+function NS.Explication(fs)
+    if not fs then return end
+    fs:SetFontObject("GameFontDisableSmall")
+    local _, taille, options = fs:GetFont()
+    local ok, pose = pcall(fs.SetFont, fs, ITALIQUE, (taille or 10) + 1, options or "")
+    if not ok or pose == false then fs:SetFontObject("GameFontDisableSmall") end
+    local parchemin = NS.charte and NS.charte.Fond and NS.charte.Fond() == "parchemin"
+    if parchemin then fs:SetTextColor(0, 0, 0, 0.5) else fs:SetTextColor(1, 1, 1, 0.5) end
+end
+
 local function Paragraphe(contenu, y, texte, police, couleur, x)
     contenu.paragraphes = contenu.paragraphes or {}
     contenu.nbParagraphes = (contenu.nbParagraphes or 0) + 1
@@ -697,6 +710,7 @@ local function Paragraphe(contenu, y, texte, police, couleur, x)
     p:SetWidth(largeur - gaucheP - 8)
     p:SetText(texte)
     if couleur then p:SetTextColor(couleur[1], couleur[2], couleur[3]) else p:SetTextColor(1, 1, 1) end
+    if police == "GameFontDisableSmall" then NS.Explication(p) end
     p:Show()
     local hauteur = p:GetStringHeight() or 14
     if hauteur < 12 then hauteur = 14 end
@@ -910,7 +924,7 @@ local function RendreStocks(contenu)
             vide:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
             PoserLigne(vide, 0, false, false, nil)
             vide.icone:Hide()
-            vide.nom:SetFontObject("GameFontDisableSmall")
+            NS.Explication(vide.nom)
             ColonneCourrier(vide, true)
             vide.nom:SetText(lies and L.STOCKS_NONE_FOR_TRADE or L.STOCKS_EMPTY)
             vide.sacs:SetText("")
@@ -975,7 +989,7 @@ local function RendreStocks(contenu)
             avis:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
             PoserLigne(avis, RETRAIT_PAR_NIVEAU, false, false, nil)
             avis.icone:Hide()
-            avis.nom:SetFontObject("GameFontDisableSmall")
+            NS.Explication(avis.nom)
             ColonneCourrier(avis, true)
             avis.nom:SetText(L.STOCKS_UNCERTAIN)
             avis.sacs:SetText("")
@@ -1438,7 +1452,7 @@ local function RendreCaisses(contenu)
                 vide:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
                 PoserLigne(vide, RETRAIT_PAR_NIVEAU, false, false, nil)
                 vide.icone:Hide()
-                vide.nom:SetFontObject("GameFontDisableSmall")
+                NS.Explication(vide.nom)
                 vide.nom:SetText(L.CRATES_NO_LIST)
                 vide.sacs:SetText("") vide.banque:SetText("") vide.total:SetText("")
                 vide:Show()
@@ -1517,7 +1531,7 @@ local function RendreCaisses(contenu)
     avis:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -(y + 6))
     PoserLigne(avis, 0, false, false, nil)
     avis.icone:Hide()
-    avis.nom:SetFontObject("GameFontDisableSmall")
+    NS.Explication(avis.nom)
     avis.nom:SetText(L.CRATES_NO_FILL)
     avis.sacs:SetText("") avis.banque:SetText("") avis.total:SetText("")
     avis:Show()
@@ -2229,7 +2243,7 @@ local function RendreListeDeProjets(contenu, progressions)
                 vide:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
                 PoserLigne(vide, RETRAIT_PAR_NIVEAU, false, false, nil)
                 vide.icone:Hide()
-                vide.nom:SetFontObject("GameFontDisableSmall")
+                NS.Explication(vide.nom)
                 vide.nom:SetText(L.PROJECTS_EMPTY)
                 vide.sacs:SetText("") vide.banque:SetText("") vide.total:SetText("")
                 vide:Show()
@@ -2575,23 +2589,27 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     local POLICE = "GameFontHighlightSmall"
 
     -- Une ligne de texte avec, au bord droit, son bouton Viser ce rang.
+    -- Toutes les lignes ont la meme hauteur ; le bouton est toujours au
+    -- meme bord droit.
+    local HAUT_LIGNE = 30
+    local function BoutonViser(cleB, rangCible, y0)
+        local b = BoutonAction(contenu, cleB, EstVise(rangCible) and L.GUIDE_UNAIM or L.GUIDE_AIM)
+        b:ClearAllPoints()
+        b:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -(y0 + 3))
+        b:SetScript("OnClick", function() Basculer(rangCible) end)
+        b:Show()
+        return b
+    end
     local function LigneAViser(cleB, texte, couleur, rangCible)
         local y0 = y
-        y = Paragraphe(contenu, y, texte, POLICE, couleur, aligne)
-        if rangCible and rangCible > rang then
-            local b = BoutonAction(contenu, cleB, EstVise(rangCible) and L.GUIDE_UNAIM or L.GUIDE_AIM)
-            b:ClearAllPoints()
-            b:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -(y0 - 3))
-            b:SetScript("OnClick", function() Basculer(rangCible) end)
-            b:Show()
-            y = math.max(y, y0 + 22)
-        end
-        y = y + 6
+        Paragraphe(contenu, y0 + 6, texte, POLICE, couleur, aligne)
+        if rangCible and rangCible > rang then BoutonViser(cleB, rangCible, y0) end
+        y = y0 + HAUT_LIGNE
     end
 
     -- 1. Ce que les composants du compte (sacs, banque, autres personnages)
     -- donnent deja, a coup sur.
-    y = y + 4
+    y = y + 2
     local okStock, planStock = pcall(catalogue.Progression, ligneMetier, rang, rangMax, nil)
     local assure = okStock and planStock and rang + (planStock.pointsSurs or 0) or rang
     if assure > rang then
@@ -2615,7 +2633,7 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     contenu.libelleObjectif:SetFontObject(POLICE)
     contenu.libelleObjectif:SetTextColor(1, 1, 1)
     contenu.libelleObjectif:ClearAllPoints()
-    contenu.libelleObjectif:SetPoint("TOPLEFT", contenu, "TOPLEFT", aligne, -(y + 7))
+    contenu.libelleObjectif:SetPoint("TOPLEFT", contenu, "TOPLEFT", aligne, -(y + 8))
     contenu.libelleObjectif:SetText(L.GUIDE_CHOICE)
     contenu.libelleObjectif:Show()
     contenu.etatObjectif = { valeur = choix, mini = rang + 1, maxi = plafondMetier }
@@ -2635,9 +2653,11 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
             contenu.curseurObjectif.surParchemin = function() return NS.charte.Fond and NS.charte.Fond() == "parchemin" end
         end
         contenu.etatObjectif.poser = function(v) ecran.choixRang[cleObjectif] = v end
+        -- Le bouton au meme bord que les deux autres, les fleches juste avant.
+        local viser = BoutonViser("progViserChoix", choix, y)
         local c = contenu.curseurObjectif
         c:ClearAllPoints()
-        c:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -y)
+        c:SetPoint("RIGHT", viser, "LEFT", -8, 0)
         c:Show()
         c.Rendre()
         c:SetAlpha(1)
@@ -2647,17 +2667,11 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
             c.boutonsPM[2]:SetEnabled(haut)
             if c.boutonsPM[3] then c.boutonsPM[3]:SetEnabled(bas) c.boutonsPM[4]:SetEnabled(haut) end
         end
-        local viser = BoutonAction(contenu, "progViserChoix", EstVise(choix) and L.GUIDE_UNAIM or L.GUIDE_AIM)
-        viser:ClearAllPoints()
-        viser:SetPoint("RIGHT", c, "LEFT", -8, 0)
-        viser:SetScript("OnClick", function() Basculer(choix) end)
-        viser:Show()
     end
-    y = y + 30
+    y = y + HAUT_LIGNE
 
     -- Les rangs vises, chacun avec son bouton pour ne plus le viser.
     if #vises > 0 then
-        y = y + 4
         for _, v in ipairs(vises) do
             LigneAViser("progVise" .. v, string.format(L.GUIDE_AIMED, v), VERT, v)
         end
@@ -2671,7 +2685,9 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     if apercu then
         local okP, planP = pcall(catalogue.Progression, ligneMetier, rang, rangMax, choix)
         if okP and planP then segments = { { vise = choix, de = rang, plan = planP } } end
-        y = Paragraphe(contenu, y + 4, string.format(L.GUIDE_PREVIEW, choix), "GameFontDisableSmall", nil, aligne)
+        -- Bien visible : ce qui suit n'est qu'un apercu, rien n'est vise.
+        y = Paragraphe(contenu, y + 6, string.format(L.GUIDE_PREVIEW_TITLE, choix), "GameFontNormal", OR, aligne)
+        y = Paragraphe(contenu, y - 4, L.GUIDE_PREVIEW, "GameFontDisableSmall", nil, aligne)
     end
     local objectif = segments[#segments] and segments[#segments].vise or choix
     local plan = { utilises = {}, achats = {}, manques = {}, intermediaires = {}, etapes = {}, estime = false }
@@ -3117,7 +3133,7 @@ local function RendreRecettes(contenu)
     destination:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
     PoserLigne(destination, 0, false, false, nil)
     destination.icone:Hide()
-    destination.nom:SetFontObject("GameFontDisableSmall")
+    NS.Explication(destination.nom)
     destination.nom:SetText(L.RECIPES_TARGET)
     -- Les boutons de choix d'un rendu precedent disparaissent ; ceux de la
     -- recette en cours d'ajout sont reposes plus bas.
@@ -3134,7 +3150,7 @@ local function RendreRecettes(contenu)
     legende:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
     PoserLigne(legende, 0, false, false, nil)
     legende.icone:Hide()
-    legende.nom:SetFontObject("GameFontDisableSmall")
+    NS.Explication(legende.nom)
     legende.nom:SetText(NS.recettes.LegendeDesPaliers())
     legende.sacs:SetText("") legende.banque:SetText("") legende.total:SetText("")
     legende:Show()
@@ -3155,7 +3171,7 @@ local function RendreRecettes(contenu)
         avis:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
         PoserLigne(avis, 0, false, false, nil)
         avis.icone:Hide()
-        avis.nom:SetFontObject("GameFontDisableSmall")
+        NS.Explication(avis.nom)
         avis.nom:SetText(L.RECIPES_ALL_PROFESSIONS)
         avis.sacs:SetText("")
         avis.banque:SetText("")
