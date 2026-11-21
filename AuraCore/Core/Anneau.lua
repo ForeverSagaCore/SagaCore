@@ -262,6 +262,13 @@ local function DepuisLeJeu()
     for _, p in ipairs(D.PETITS) do
         if not choisis[p.cle] then for _, id in ipairs(p.ids) do ecartes[id] = true end end
     end
+    -- En combat, le jeu interdit la liste : on recopie alors ses boutons,
+    -- reconnus a leur image. Les images de ces sorts sont connues d'avance :
+    -- un pistage lance en combat est ecarte quand meme.
+    for sort in pairs(ecartes) do
+        local icone = D.Icone(sort)
+        if icone and icone ~= "Interface\\Icons\\INV_Misc_QuestionMark" and not Secret(icone) then iconesExclues[icone] = true end
+    end
     if C.GetPlayerAuraBySpellID then
         for sort in pairs(ecartes) do
             local ok, a = pcall(C.GetPlayerAuraBySpellID, sort)
