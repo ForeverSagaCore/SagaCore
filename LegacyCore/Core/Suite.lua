@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 87
+local VERSION = 88
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4266,6 +4266,108 @@ function Suite.ActiverMacroCore(oui)
     f:SetAlpha(oui and ALPHA_EN_COURSE or 0)
     f:EnableMouse(oui and true or false)
     if f.fermer then f.fermer:SetShown(oui and true or false) end
+    -- Les pastilles ne se cliquent que fenetre active (hors combat : le jeu
+    -- interdit de montrer ou cacher ces boutons pendant un combat).
+    if not (InCombatLockdown and InCombatLockdown()) then
+        for _, b in ipairs(f.pastilles or {}) do b:SetShown(oui and b.e ~= nil) end
+    end
+end
+
+-- Sous le filet : une ligne par famille de raccourcis (manette, ouvrir,
+-- guider, repondre, mes macros), avec seulement les raccourcis choisis.
+-- Une famille sans raccourci choisi n'apparait pas. Un filet entre deux.
+local PASTILLE, ECART_P, ECART_L = 24, 8, 8
+function Suite.RemplirMacroCore()
+    local f = fenMC
+    if not f or (InCombatLockdown and InCombatLockdown()) then return end
+    f.pastilles = f.pastilles or {}
+    f.filets = f.filets or {}
+    local parFamille = {}
+    for _, e in ipairs(Entrees()) do
+        parFamille[e.famille] = parFamille[e.famille] or {}
+        table.insert(parFamille[e.famille], e)
+    end
+    local largeur = f.zone:GetWidth()
+    if not largeur or largeur < 50 then largeur = 300 - 10 - 2 * ((NS.charte and NS.charte.MARGE) or 12) end
+    local parLigne = math.max(1, math.floor((largeur - 2 + ECART_P) / (PASTILLE + ECART_P)))
+    local n, nf = 0, 0
+    local y = -HAUT_ONGLETS + 6
+    local premiere = true
+    for _, fam in ipairs(Suite.FAMILLES) do
+        local liste = parFamille[fam.cle]
+        if liste and #liste > 0 then
+            if not premiere then
+                -- Filet entre deux familles.
+                y = y - ECART_L
+                nf = nf + 1
+                local t = f.filets[nf]
+                if not t then
+                    t = f:CreateTexture(nil, "ARTWORK")
+                    t:SetHeight(1)
+                    t:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+                    f.filets[nf] = t
+                end
+                t:ClearAllPoints()
+                t:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, y)
+                t:SetPoint("TOPRIGHT", f.zone, "TOPRIGHT", 0, y)
+                t:Show()
+            end
+            premiere = false
+            y = y - ECART_L
+            for i, e in ipairs(liste) do
+                local col = (i - 1) % parLigne
+                if i > 1 and col == 0 then y = y - PASTILLE - ECART_L end
+                n = n + 1
+                local b = f.pastilles[n]
+                if not b then
+                    b = CreateFrame("Button", nil, f, "SecureActionButtonTemplate")
+                    b:RegisterForClicks("AnyUp", "AnyDown")
+                    b:SetSize(PASTILLE, PASTILLE)
+                    b.fond = b:CreateTexture(nil, "BACKGROUND")
+                    b.fond:SetSize(19, 19)
+                    b.fond:SetPoint("CENTER")
+                    b.fond:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+                    b.image = b:CreateTexture(nil, "ARTWORK")
+                    b.image:SetPoint("CENTER")
+                    b.image:SetSize(16, 16)
+                    b.anneau = b:CreateTexture(nil, "OVERLAY")
+                    b.anneau:SetSize(41, 41)
+                    b.anneau:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
+                    b.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+                    b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
+                    b:SetScript("OnEnter", function(self)
+                        if not self.e then return end
+                        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                        GameTooltip:SetText(self.e.nom, 1, 0.82, 0)
+                        GameTooltip:Show()
+                    end)
+                    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                    f.pastilles[n] = b
+                end
+                b.e = e
+                b:SetAttribute("type", "macro")
+                if e.macro then b:SetAttribute("macrotext", nil) b:SetAttribute("macro", e.macro)
+                else b:SetAttribute("macro", nil) b:SetAttribute("macrotext", e.texte) end
+                b.image:SetTexture(e.icone or "Interface\\Icons\\INV_Misc_QuestionMark")
+                if b.image.SetMask and not b.masquee then
+                    pcall(b.image.SetMask, b.image, "Interface\\CharacterFrame\\TempPortraitAlphaMask")
+                    b.masquee = true
+                end
+                b:ClearAllPoints()
+                b:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 2 + col * (PASTILLE + ECART_P), y)
+                b:SetShown(f.active and true or false)
+            end
+            y = y - PASTILLE
+        end
+    end
+    for i = n + 1, #f.pastilles do f.pastilles[i].e = nil f.pastilles[i]:Hide() end
+    for i = nf + 1, #f.filets do f.filets[i]:Hide() end
+    -- Hauteur : barre de titre, marges, contenu (jamais sous 100 : le cadre
+    -- du jeu se deforme en dessous).
+    local charte = NS.charte
+    local marge = (charte and charte.MARGE) or 12
+    local contenu = premiere and (HAUT_ONGLETS - 6) or (-y + ECART_L)
+    f:SetHeight(math.max(100, 24 + marge + contenu + marge + 4))
 end
 
 function Suite.BasculerMacroCore()
@@ -4284,7 +4386,7 @@ function Suite.PlacerBoutonRaccourcis()
         return
     end
     local f = MacroCore()
-    if f then f:Show() f.icone:Show() end
+    if f then f:Show() f.icone:Show() pcall(Suite.RemplirMacroCore) end
 end
 
 do
