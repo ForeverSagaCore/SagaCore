@@ -2774,8 +2774,9 @@ function Suite.Piloter(oui, nom)
     f:SetAlpha(1)
     -- Pleine couleur tant qu'on la pilote : son propre fondu (survol,
     -- deplacement) ne la touche plus jusqu'a ce qu'on libere.
-    local original = getmetatable(f) and getmetatable(f).__index and getmetatable(f).__index.SetAlpha
-    if original then
+    f.SetAlpha = nil
+    local original = f.SetAlpha
+    if type(original) == "function" then
         f.SetAlpha = function(self) original(self, 1) end
         p.figee = f
     end
