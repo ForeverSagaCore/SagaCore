@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 62
+local VERSION = 111
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -1161,6 +1161,18 @@ local function GlyphePad(touche)
     return "|cffffd100" .. g[2] .. "|r"
 end
 Suite.GlyphePad = function(t) return GlyphePad(t) end
+-- La croix entiere (une seule icone), sinon la fleche du haut.
+local function GlypheCroix()
+    local info = C_Texture and C_Texture.GetAtlasInfo
+    if info then
+        for _, nom in ipairs({ "Gamepad_Gen_DPad_64", "Gamepad_Gen_Dpad_64", "Gamepad_Ltr_DPad_64", "Gamepad_Shp_DPad_64" }) do
+            local ok, existe = pcall(info, nom)
+            if ok and existe then return "|A:" .. nom .. ":20:20|a" end
+        end
+    end
+    return GlyphePad("PADDUP")
+end
+Suite.GlypheCroix = GlypheCroix
 local function ManetteActive()
     local pad = _G.C_GamePad
     if type(pad) ~= "table" or type(pad.IsEnabled) ~= "function" then return false end
@@ -1387,17 +1399,17 @@ function Suite.Entete(cadre, cleCourante)
         table.insert(rangee.boutons, b)
         precedent = b
     end
-    -- Poste de l'auteur : ImproveCore et les macros, sous les blocs
+    -- Poste de l'auteur : AuraCore et les macros, sous les blocs
     -- experimentaux.
     if Suite.Prive() then
         local extras = {
-            { cle = "ImproveCore", icone = "Interface\\Icons\\Spell_Holy_AuraOfLight", nom = "ImproveCore",
+            { cle = "AuraCore", icone = "Interface\\Icons\\Spell_Holy_AuraOfLight", nom = "AuraCore",
               action = function()
-                  if Suite.membres.ImproveCore then Suite.Ouvrir("ImproveCore")
-                  elseif SlashCmdList.IMPROVECORE then SlashCmdList.IMPROVECORE("") end
+                  if Suite.membres.AuraCore then Suite.Ouvrir("AuraCore")
+                  elseif SlashCmdList.AURACORE then SlashCmdList.AURACORE("") end
               end,
-              dispo = function() return SlashCmdList.IMPROVECORE ~= nil end },
-            { cle = "Macros", icone = "Interface\\Icons\\INV_Misc_Rune_01", action = function() Suite.OuvrirMacros() end },
+              dispo = function() return SlashCmdList.AURACORE ~= nil end },
+            { cle = "Macros", icone = "Interface\\Icons\\INV_Misc_Book_11", action = function() Suite.OuvrirMacros() end },
         }
         for _, e in ipairs(extras) do
             if not e.dispo or e.dispo() then
@@ -1480,15 +1492,15 @@ end
 
 function Suite.Voisin(cleCourante, pas)
     -- Dans l'ordre de la colonne : les add-ons installes, puis (poste de
-    -- l'auteur) ImproveCore et Macros, qui ouvrent leurs reglages.
+    -- l'auteur) AuraCore et Macros, qui ouvrent leurs reglages.
     local liste = {}
     for _, info in ipairs(Suite.Liste()) do
         if Suite.Installe(info.cle) then table.insert(liste, { cle = info.cle }) end
     end
     if Suite.Prive() then
-        if Suite.membres.ImproveCore then table.insert(liste, { cle = "ImproveCore" })
-        elseif SlashCmdList.IMPROVECORE then
-            table.insert(liste, { cle = "ImproveCore", action = function() SlashCmdList.IMPROVECORE("") end })
+        if Suite.membres.AuraCore then table.insert(liste, { cle = "AuraCore" })
+        elseif SlashCmdList.AURACORE then
+            table.insert(liste, { cle = "AuraCore", action = function() SlashCmdList.AURACORE("") end })
         end
         if Suite.membres.Macros then table.insert(liste, { cle = "Macros" })
         else table.insert(liste, { cle = "Macros", action = function() Suite.OuvrirMacros() end }) end
@@ -1525,7 +1537,7 @@ function Suite.ManetteBas(cleCourante, bouton)
     local m = _G.SagaCoreMessages and _G.SagaCoreMessages.fenetre
     if m and m:IsShown() then return true end
     if Suite.fenetreMacros and Suite.fenetreMacros:IsShown() then return true end
-    local ic = _G.ImproveCoreReglages
+    local ic = _G.AuraCoreReglages
     if ic and ic:IsShown() then return true end
     -- Menu (Start) : les reglages generaux.
     if bouton == "PADFORWARD" then
@@ -1794,7 +1806,7 @@ function Suite.Actualiser()
                 b.badge:SetShown(pastille ~= nil)
             end
         end
-        -- ImproveCore et Macros : jamais "ouverts", en retrait sauf au survol.
+        -- AuraCore et Macros : jamais "ouverts", en retrait sauf au survol.
         for _, b in ipairs(rangee.extras or {}) do
             local courant = b.cle == rangee.courante
             if b.SetChecked then b:SetChecked(courant) end
@@ -2314,19 +2326,33 @@ local function CadreGuidage()
         GameTooltip:Show()
     end)
     c:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    -- La fleche seule (celle du personnage sur la minicarte), bien centree.
-    c.fleche = c:CreateTexture(nil, "ARTWORK")
-    c.fleche:SetSize(56, 56)
-    c.fleche:SetPoint("CENTER")
+    -- Une boussole : un anneau au centre, et la fleche qui tourne autour vers
+    -- la destination. Anneau et fleche de la meme couleur (doree, verte
+    -- quand on va droit dessus).
+    c.boussole = c:CreateTexture(nil, "ARTWORK")
+    c.boussole:SetSize(54, 54)
+    c.boussole:SetPoint("TOPLEFT", c, "CENTER", -16, 16)
+    c.boussole:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    c.fondBoussole = c:CreateTexture(nil, "BACKGROUND")
+    c.fondBoussole:SetSize(25, 25)
+    c.fondBoussole:SetPoint("CENTER")
+    c.fondBoussole:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    c.fleche = c:CreateTexture(nil, "OVERLAY")
+    c.fleche:SetSize(30, 30)
     c.fleche:SetTexture("Interface\\Minimap\\MinimapArrow")
-    c.arrivee = c:CreateTexture(nil, "ARTWORK")
-    c.arrivee:SetSize(32, 32)
+    c.fleche:SetPoint("CENTER")
+    c.arrivee = c:CreateTexture(nil, "OVERLAY")
+    c.arrivee:SetSize(22, 22)
     c.arrivee:SetPoint("CENTER")
     c.arrivee:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
     c.distance = c:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     c.distance:SetPoint("TOP", c, "BOTTOM", 0, -2)
+    -- Duree estimee, en petit, sous la distance.
+    c.temps = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    c.temps:SetPoint("TOP", c.distance, "BOTTOM", 0, -1)
+    c.temps:SetTextColor(0.8, 0.8, 0.8)
     c.qui = c:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    c.qui:SetPoint("TOP", c.distance, "BOTTOM", 0, -1)
+    c.qui:SetPoint("TOP", c.temps, "BOTTOM", 0, -1)
     local attente = 0
     c:SetScript("OnUpdate", function(self, ecoule)
         attente = attente - (ecoule or 0)
@@ -2338,7 +2364,7 @@ local function CadreGuidage()
         if not ok then return end
         if not cible then
             if raison == "fini" then Suite.ArreterGuidage() return end
-            self.fleche:Hide() self.arrivee:Hide()
+            self.fleche:Hide() self.arrivee:Hide() self.temps:SetText("")
             self.distance:SetText(TG.loin)
             -- Hors de portee (autre continent...) : ou aller, si on le sait.
             self.qui:SetText(type(detail) == "string" and detail or "")
@@ -2353,16 +2379,32 @@ local function CadreGuidage()
         local ax, ay, ca = PositionJoueur()
         local bx, by, cb = PositionMonde(cible.carte, cible.x, cible.y)
         if not (ax and bx) or (ca and cb and ca ~= cb) then
-            self.fleche:Hide() self.arrivee:Hide()
+            self.fleche:Hide() self.arrivee:Hide() self.temps:SetText("")
             self.distance:SetText(TG.loin)
             return
         end
         local nord, ouest = bx - ax, by - ay
         local yards = math.sqrt(nord * nord + ouest * ouest)
         self.distance:SetText(string.format("%d m", math.floor(yards * 0.9144 + 0.5)))
+        -- Duree estimee : a la vitesse actuelle (monture comprise), sinon a
+        -- la vitesse de course a pied (7 yards par seconde).
+        local vitesse = 0
+        if _G.GetUnitSpeed then
+            local okV, v = pcall(_G.GetUnitSpeed, "player")
+            if okV and type(v) == "number" then vitesse = v end
+        end
+        if vitesse < 1 then vitesse = 7 end
+        local sec = math.floor(yards / vitesse + 0.5)
+        if sec >= 60 then
+            self.temps:SetText(string.format("%d min %02d s", math.floor(sec / 60), sec % 60))
+        else
+            self.temps:SetText(string.format("%d s", sec))
+        end
         if yards < 12 then
             self.fleche:Hide()
             self.arrivee:Show()
+            self.temps:SetText("")
+            self.boussole:SetVertexColor(0.4, 1, 0.4)
             if f.Arrivee then pcall(f.Arrivee, cible) end
             -- Message de la suite, une fois par destination.
             local cleArrivee = tostring(cible.carte) .. ":" .. math.floor((cible.x or 0) * 1000) .. ":" .. math.floor((cible.y or 0) * 1000)
@@ -2388,9 +2430,18 @@ local function CadreGuidage()
         local face = tonumber(_G.GetPlayerFacing and _G.GetPlayerFacing()) or 0
         local angle = math.atan2(ouest, nord) - face
         if self.fleche.SetRotation then self.fleche:SetRotation(angle) end
-        -- Verte quand on va droit dessus, doree sinon.
+        -- La fleche tourne autour de l'anneau, du cote de la destination.
+        self.fleche:ClearAllPoints()
+        self.fleche:SetPoint("CENTER", self, "CENTER", -math.sin(angle) * 24, math.cos(angle) * 24)
+        -- Verte quand on va droit dessus, doree sinon (anneau et fleche).
         local ecart = math.abs(((angle + math.pi) % (2 * math.pi)) - math.pi)
-        if ecart < 0.35 then self.fleche:SetVertexColor(0.4, 1, 0.4) else self.fleche:SetVertexColor(1, 0.82, 0) end
+        if ecart < 0.35 then
+            self.fleche:SetVertexColor(0.4, 1, 0.4)
+            self.boussole:SetVertexColor(0.4, 1, 0.4)
+        else
+            self.fleche:SetVertexColor(1, 0.82, 0)
+            self.boussole:SetVertexColor(1, 1, 1)
+        end
     end)
     c:Hide()
     g.cadre = c
@@ -2450,20 +2501,30 @@ end
 
 
 -- ---------------------------------------------------------------------------
--- Pilotage des fenetres de suivi a la manette (/sagacore suivis), hors combat.
--- Croix haut / bas : element precedent / suivant ; gauche / droite : l'autre
--- fenetre de suivi ; A : clic ; X : clic droit ; Y : arreter le guidage ;
--- B : rendre la manette au jeu.
+-- Prendre la main sur une fenetre de suivi a la manette (macros « Piloter
+-- mes fabrications » et « Piloter le suivi des quetes »), hors combat. La
+-- manette ne pilote plus que cette fenetre, comme un panneau du jeu :
+--   croix              se deplacer (haut, bas, gauche, droite, d'apres l'ecran)
+--   LB / RB            onglet precedent / suivant
+--   A                  valider (clic) ; X : clic droit ; Y : arreter le guidage
+--   Vue (deux carres)  montrer ou cacher la barre des commandes
+--   B                  liberer : la manette revient au jeu
 -- ---------------------------------------------------------------------------
 
+local function TR(fr, en) return Suite.Langue() == "frFR" and fr or en end
 local SUIVIS = { "CraftCoreSuivi", "QuestCoreSuivi", "TradeCoreSuivi" }
+local OUVRIR_SUIVI = {
+    CraftCoreSuivi = function() local a = _G.CraftCoreAPI if a and a.BasculerSuivi then pcall(a.BasculerSuivi) end end,
+    QuestCoreSuivi = function() local a = _G.QuestCoreAPI if a and a.BasculerSuivi then pcall(a.BasculerSuivi) end end,
+}
 
 local function Cliquables(cadre, liste)
     if not cadre or not cadre.IsVisible or not cadre:IsVisible() then return liste end
     for _, enfant in ipairs({ cadre:GetChildren() }) do
         if enfant:IsVisible() then
             local clic = enfant.GetScript and (enfant:GetScript("OnClick") or enfant:GetScript("OnMouseUp") or enfant:GetScript("OnMouseDown"))
-            if clic and enfant:GetObjectType() ~= "ScrollFrame" and (enfant:GetWidth() or 0) > 4 then
+            local actif = not (enfant.IsEnabled and not enfant:IsEnabled()) or enfant:GetScript("OnEnter") ~= nil
+            if clic and actif and enfant:GetObjectType() ~= "ScrollFrame" and (enfant:GetWidth() or 0) > 4 then
                 table.insert(liste, enfant)
             end
             Cliquables(enfant, liste)
@@ -2474,12 +2535,34 @@ end
 
 local function Elements(nom)
     local liste = Cliquables(_G[nom], {})
+    -- Boutons poses hors de la fenetre mais qui en font partie (MacroCore).
+    local f = _G[nom]
+    if f and f.elementsPilote then
+        for _, e in ipairs(f.elementsPilote()) do if e:IsVisible() then table.insert(liste, e) end end
+    end
     table.sort(liste, function(a, b)
         local ya, yb = a:GetTop() or 0, b:GetTop() or 0
         if math.abs(ya - yb) > 3 then return ya > yb end
         return (a:GetLeft() or 0) < (b:GetLeft() or 0)
     end)
     return liste
+end
+
+-- Les onglets d'un suivi : marques par la fenetre elle-meme, ongletPilote =
+-- 1 pour les onglets principaux (LB / RB), 2 pour les sous-onglets (LT / RT).
+local function Onglets(liste, niveau)
+    local t = {}
+    for _, e in ipairs(liste) do
+        local n = e.ongletPilote == true and 1 or e.ongletPilote
+        if n == niveau then table.insert(t, e) end
+    end
+    return t
+end
+
+local function Boite(e)
+    local g, h, l, ht = e:GetLeft(), e:GetTop(), e:GetWidth(), e:GetHeight()
+    if not (g and h and l and ht) then return nil end
+    return { x = g + l / 2, y = h - ht / 2, h = ht }
 end
 
 local function Pilote()
@@ -2496,50 +2579,226 @@ local function Pilote()
         p.cadre:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14 })
         p.cadre:SetBackdropBorderColor(1, 0.82, 0, 1)
     end
-    p.aide = p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    p.aide:SetPoint("TOP", UIParent, "TOP", 0, -60)
-    p.fenetre, p.rang = 1, 1
+    -- La barre des commandes, comme sous les fenetres du jeu.
+    local okBarre, barre = pcall(CreateFrame, "Frame", nil, p, "TooltipBackdropTemplate")
+    p.barre = okBarre and barre or CreateFrame("Frame", nil, p)
+    p.barre:SetFrameStrata("TOOLTIP")
+    p.barre:SetHeight(34)
+    p.barre.texte = p.barre:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    p.barre.texte:SetPoint("LEFT", p.barre, "LEFT", 12, 0)
+    p.barreVisible = true
+
+    function p.Liste() return Elements(p.nom) end
+    -- L'element choisi ; s'il a disparu (le suivi s'est redessine), le plus
+    -- proche de sa derniere place.
     function p.Courant()
-        local liste = Elements(SUIVIS[p.fenetre])
-        p.rang = math.max(1, math.min(p.rang, #liste))
-        return liste[p.rang], liste
+        local liste = p.Liste()
+        for _, e in ipairs(liste) do if e == p.choix then return e, liste end end
+        local meilleur, dMin
+        for _, e in ipairs(liste) do
+            local bx = Boite(e)
+            if bx and p.pos and not e.ongletPilote then
+                local d = (bx.x - p.pos.x) ^ 2 + (bx.y - p.pos.y) ^ 2
+                if not dMin or d < dMin then meilleur, dMin = e, d end
+            end
+        end
+        if not meilleur then
+            for _, e in ipairs(liste) do if not e.ongletPilote then meilleur = e break end end
+        end
+        p.choix = meilleur or liste[1]
+        return p.choix, liste
+    end
+    -- L'element choisi est montre comme au survol de la souris (sa propre
+    -- surbrillance, son infobulle), sans cadre ajoute, comme dans les menus de
+    -- la suite. La fenetre reste en pleine couleur tant qu'on la pilote.
+    -- L'element choisi clignote doucement (sa propre surbrillance), pour bien
+    -- le voir.
+    local function Clignoter(e, oui)
+        local h = e.GetHighlightTexture and e:GetHighlightTexture()
+        if not (h and h.CreateAnimationGroup) then return end
+        if oui then
+            if not h.suiteClignote then
+                local g = h:CreateAnimationGroup()
+                g:SetLooping("BOUNCE")
+                local a = g:CreateAnimation("Alpha")
+                a:SetFromAlpha(1)
+                a:SetToAlpha(0.15)
+                a:SetDuration(0.45)
+                h.suiteClignote = g
+            end
+            h.suiteClignote:Play()
+        elseif h.suiteClignote then
+            h.suiteClignote:Stop()
+        end
+    end
+    function p.Eteindre()
+        local e = p.eclaire
+        p.eclaire = nil
+        if not e then return end
+        pcall(Clignoter, e, false)
+        if e.UnlockHighlight then pcall(e.UnlockHighlight, e) end
+        local quitte = e.GetScript and e:GetScript("OnLeave")
+        if quitte then pcall(quitte, e) end
     end
     function p.Marquer()
-        GameTooltip:Hide()
+        p.cadre:Hide()
         local e = p.Courant()
-        if not e then p.cadre:Hide() return end
-        p.cadre:ClearAllPoints()
-        p.cadre:SetPoint("TOPLEFT", e, "TOPLEFT", -4, 4)
-        p.cadre:SetPoint("BOTTOMRIGHT", e, "BOTTOMRIGHT", 4, -4)
-        p.cadre:Show()
+        if e ~= p.eclaire then p.Eteindre() end
+        if not e then return end
+        p.pos = Boite(e) or p.pos
+        p.eclaire = e
+        if e.LockHighlight then pcall(e.LockHighlight, e) end
+        pcall(Clignoter, e, true)
         local survol = e:GetScript("OnEnter")
         if survol then pcall(survol, e) end
     end
-    function p.Changer(pas)
-        for _ = 1, #SUIVIS do
-            p.fenetre = ((p.fenetre - 1 + pas) % #SUIVIS) + 1
-            if #Elements(SUIVIS[p.fenetre]) > 0 then break end
+    function p.Deplacer(dx, dy)
+        local depart, liste = p.Courant()
+        local d = depart and Boite(depart)
+        if not d then return end
+        local meilleur, scoreMin
+        for _, e in ipairs(liste) do
+            -- Les onglets ont leur propre navigation (LB / RB, LT / RT) : la
+            -- croix ne s'y arrete pas.
+            local b = e ~= depart and not e.ongletPilote and Boite(e)
+            if b then
+                local score
+                if dy ~= 0 then
+                    local avance = (dy > 0) and (d.y - b.y) or (b.y - d.y)
+                    if avance > 4 then score = avance * 4 + math.abs(b.x - d.x) * 0.5 end
+                else
+                    local memeLigne = math.abs(b.y - d.y) < math.max(d.h, b.h) / 2 + 2
+                    local avance = (dx > 0) and (b.x - d.x) or (d.x - b.x)
+                    if memeLigne and avance > 2 then score = avance end
+                end
+                if score and (not scoreMin or score < scoreMin) then meilleur, scoreMin = e, score end
+            end
         end
-        p.rang = 1
+        if meilleur then p.choix = meilleur end
+    end
+    function p.Onglet(pas, niveau)
+        local onglets = Onglets(p.Liste(), niveau or 1)
+        if #onglets == 0 then return end
+        local rang = 1
+        for i, o in ipairs(onglets) do
+            if o.choisi or (o.GetChecked and o:GetChecked()) then rang = i end
+        end
+        local cible = onglets[((rang - 1 + pas) % #onglets) + 1]
+        if cible and cible.Click then pcall(cible.Click, cible, "LeftButton") end
+        p.choix, p.pos = nil, nil
+    end
+    -- Une glyphe de touche posee contre un onglet.
+    p.glyphes = {}
+    local function Glyphe(k, touche)
+        local g = p.glyphes[k]
+        if not g then
+            g = p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            p.glyphes[k] = g
+        end
+        g:SetText(GlyphePad(touche))
+        g:ClearAllPoints()
+        g:Show()
+        return g
+    end
+    -- La croix entiere (une seule icone), sinon la fleche du haut.
+    local function Croix()
+        local info = C_Texture and C_Texture.GetAtlasInfo
+        for _, nom in ipairs({ "Gamepad_Gen_DPad_64", "Gamepad_Gen_Dpad_64", "Gamepad_Ltr_DPad_64", "Gamepad_Shp_DPad_64" }) do
+            local ok, existe = pcall(info or function() end, nom)
+            if ok and existe then return "|A:" .. nom .. ":20:20|a" end
+        end
+        return GlyphePad("PADDUP")
+    end
+    -- Les commandes : au-dessus de la fenetre, a gauche, seulement Se deplacer,
+    -- Valider et Liberer. LB / RB contre les onglets du cote (au-dessus du
+    -- premier, sous le dernier), LT / RT sur la ligne des sous-onglets.
+    function p.Barre()
+        for _, g in pairs(p.glyphes) do g:Hide() end
+        local f = _G[p.nom]
+        if not (p.barreVisible and f) then p.barre:Hide() return end
+        local esp = "      "
+        p.barre.texte:SetText(Croix() .. "  " .. TR("Se déplacer", "Move") .. esp
+            .. GlyphePad("PAD1") .. "  " .. TR("Valider", "Select") .. esp
+            .. GlyphePad("PAD2") .. "  " .. TR("Libérer", "Release"))
+        -- De la largeur de la fenetre pilotee, posee juste au-dessus.
+        -- Exactement la largeur du cadre visible de la fenetre (le bord
+        -- dessine du jeu commence un peu apres le bord gauche du cadre).
+        p.barre:ClearAllPoints()
+        p.barre:SetPoint("BOTTOMLEFT", f, "TOPLEFT", 3.5, 4)
+        p.barre:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", 0, 4)
+        if p.barre.SetClampedToScreen then p.barre:SetClampedToScreen(true) end
+        p.barre:Show()
+        local liste = p.Liste()
+        local un = Onglets(liste, 1)
+        if #un > 1 then
+            local premier, dernier = un[1], un[#un]
+            local vertical = math.abs((premier:GetLeft() or 0) - (dernier:GetLeft() or 0)) < 8
+            if vertical then
+                Glyphe("lb", "PADLSHOULDER"):SetPoint("BOTTOM", premier, "TOP", 0, 2)
+                Glyphe("rb", "PADRSHOULDER"):SetPoint("TOP", dernier, "BOTTOM", 0, -2)
+            end
+        end
+        local deux = Onglets(liste, 2)
+        if #deux > 1 then
+            table.sort(deux, function(a, b) return (a:GetLeft() or 0) < (b:GetLeft() or 0) end)
+            -- LT et RT cote a cote, dans la fenetre, au bout de la ligne des
+            -- sous-onglets.
+            local _, yOnglet = deux[#deux]:GetCenter()
+            local haut = f:GetTop()
+            if yOnglet and haut then
+                local g = Glyphe("lt", "PADLTRIGGER")
+                g:SetText(GlyphePad("PADLTRIGGER") .. " " .. GlyphePad("PADRTRIGGER"))
+                g:SetPoint("RIGHT", f, "TOPRIGHT", -10, yOnglet - haut)
+            end
+        end
     end
     p:SetScript("OnGamePadButtonDown", function(self, bouton)
-        local e, liste = p.Courant()
-        if bouton == "PADDDOWN" then p.rang = math.min(#liste, p.rang + 1)
-        elseif bouton == "PADDUP" then p.rang = math.max(1, p.rang - 1)
-        elseif bouton == "PADDLEFT" then p.Changer(-1)
-        elseif bouton == "PADDRIGHT" then p.Changer(1)
+        local e = p.Courant()
+        if bouton == "PADDDOWN" then p.Deplacer(0, 1)
+        elseif bouton == "PADDUP" then p.Deplacer(0, -1)
+        elseif bouton == "PADDLEFT" then p.Deplacer(-1, 0)
+        elseif bouton == "PADDRIGHT" then p.Deplacer(1, 0)
+        elseif bouton == "PADLSHOULDER" then p.Onglet(-1)
+        elseif bouton == "PADRSHOULDER" then p.Onglet(1)
+        elseif bouton == "PADLTRIGGER" then p.Onglet(-1, 2)
+        elseif bouton == "PADRTRIGGER" then p.Onglet(1, 2)
         elseif bouton == "PAD1" or bouton == "PAD3" then
             local cote = bouton == "PAD1" and "LeftButton" or "RightButton"
             if e then
-                if e.Click and e:GetScript("OnClick") then pcall(e.Click, e, cote)
+                -- Pastille de MacroCore : on lance le raccourci directement.
+                local r = e.e and e.e.cle and Suite.Raccourci(e.e.cle)
+                if r then
+                    if p.nom == "CoreSuiteMacroCore" and Suite.LancerDepuisMacroCore then Suite.LancerDepuisMacroCore(r)
+                    else Suite.Lancer(r) end
+                elseif e.Click and e:GetScript("OnClick") then pcall(e.Click, e, cote)
                 else
                     local f = e:GetScript("OnMouseUp") or e:GetScript("OnMouseDown")
                     if f then pcall(f, e, cote) end
                 end
             end
         elseif bouton == "PAD4" then Suite.ArreterGuidage()
-        elseif bouton == "PAD2" then Suite.Piloter(false) return end
+        elseif bouton == "PADBACK" then p.barreVisible = not p.barreVisible
+        elseif bouton == "PAD2" then
+            local f = _G[p.nom]
+            if f and f.piloteSurB then f.piloteSurB() return end
+            if f and f.piloteFermerSurB then f:Hide() end
+            Suite.Piloter(false)
+            return
+        end
+        -- Le suivi se redessine souvent apres un clic : on remarque un peu apres.
         p.Marquer()
+        p.Barre()
+        if C_Timer and C_Timer.After then C_Timer.After(0.15, function() if p:IsShown() then p.Marquer() p.Barre() end end) end
+    end)
+    -- Le suivi ferme : on libere. (Plus de remise a pleine opacite a chaque
+    -- image : elle se battait avec le fondu du suivi et le faisait clignoter.)
+    local attente = 0
+    p:SetScript("OnUpdate", function(_, ecoule)
+        attente = attente + (ecoule or 0)
+        if attente < 0.25 then return end
+        attente = 0
+        local f = _G[p.nom]
+        if not (f and f:IsShown()) then Suite.Piloter(false) end
     end)
     p:RegisterEvent("PLAYER_REGEN_DISABLED")
     p:SetScript("OnEvent", function() Suite.Piloter(false) end)
@@ -2549,9 +2808,8 @@ local function Pilote()
 end
 
 local TP = Paresseux({
-    aide = "Gamepad : D-pad to move, A click, X right-click, Y stop guidance, B to exit",
     combat = "Not in combat.",
-    rien = "No tracking window is open.",
+    rien = "This tracker is not open.",
 })
 
 -- Touche du jeu (Echap, Options, Raccourcis, Add-ons) : piloter un suivi.
@@ -2562,23 +2820,79 @@ end
 
 function Suite.Piloter(oui, nom)
     local p = Pilote()
-    if oui == nil then oui = not (p:IsShown() and (not nom or SUIVIS[p.fenetre] == nom)) end
+    if oui == nil then oui = not (p:IsShown() and (not nom or p.nom == nom)) end
     if not oui then
         pcall(p.EnableGamePadButton, p, false)
+        if p.Eteindre then p.Eteindre() end
+        if p:IsShown() then
+            local f = p.nom and _G[p.nom]
+            if f and p.alphaAvant then f:SetAlpha(p.alphaAvant) end
+        end
+        -- La fenetre retrouve son opacite normale.
+        local fl = p.figee
+        p.figee = nil
+        if fl then
+            fl.SetAlpha = nil
+            if p.alphaAvant then fl:SetAlpha(p.alphaAvant) end
+        end
+        p.alphaAvant = nil
         p:Hide()
         GameTooltip:Hide()
+        -- Remis dans l'etat d'avant : ferme s'il l'etait.
+        local aFermer = p.refermer and _G[p.refermer]
+        p.refermer = nil
+        if aFermer and aFermer:IsShown() then aFermer:Hide() end
+        if Suite.ReprendrePanneau then Suite.ReprendrePanneau() end
+        -- La fenetre des macros reprend la main si elle est encore ouverte.
+        local retour = p.retour
+        p.retour = nil
+        local fr = retour and _G[retour]
+        if fr and fr:IsShown() and retour ~= p.nom and not (fr.piloteGarderAlpha and (not fr.active or fr.figee)) then
+            Suite.Piloter(true, retour)
+        end
         return
     end
     if InCombatLockdown and InCombatLockdown() then print("|cffffd100SagaCore|r " .. TP.combat) return end
-    p.fenetre = 1
-    for i, n in ipairs(SUIVIS) do if n == nom then p.fenetre = i end end
-    if #Elements(SUIVIS[p.fenetre]) == 0 then p.Changer(1) end
-    if #Elements(SUIVIS[p.fenetre]) == 0 then print("|cffffd100SagaCore|r " .. TP.rien) return end
-    p.rang = 1
-    p.aide:SetText(TP.aide)
+    -- Depuis la fenetre des macros : elle reste ouverte, et reprendra la main.
+    local retour = (p:IsShown() and (p.nom == "CoreSuiteMacros" or p.nom == "CoreSuiteMacroCore") and nom ~= p.nom) and p.nom or nil
+    if p:IsShown() then p.retour = nil Suite.Piloter(false) end
+    -- Sans nom : le premier suivi ouvert.
+    if not nom then
+        for _, n in ipairs(SUIVIS) do if _G[n] and _G[n]:IsShown() then nom = n break end end
+        nom = nom or SUIVIS[1]
+    end
+    local f = _G[nom]
+    -- Ferme avant d'en prendre le controle : il se referme quand on le libere.
+    local ouvertIci = false
+    if not (f and f:IsShown()) and OUVRIR_SUIVI[nom] then OUVRIR_SUIVI[nom]() f = _G[nom] ouvertIci = true end
+    if not (f and f:IsShown()) then print("|cffffd100SagaCore|r " .. TP.rien) return end
+    p.nom, p.choix, p.pos = nom, nil, nil
+    p.retour = retour
+    p.refermer = ouvertIci and f and f:IsShown() and nom or nil
+    if f.piloteDepart then p.choix = f.piloteDepart() end
+    if f.piloteGarderAlpha then
+        if Suite.SuspendrePanneau then Suite.SuspendrePanneau() end
+        p:Show()
+        pcall(p.EnableGamePadButton, p, true)
+        p.Marquer()
+        p.Barre()
+        return
+    end
+    p.alphaAvant = f:GetAlpha()
+    f:SetAlpha(1)
+    -- Pleine couleur tant qu'on la pilote : son propre fondu (survol,
+    -- deplacement) ne la touche plus jusqu'a ce qu'on libere.
+    f.SetAlpha = nil
+    local original = f.SetAlpha
+    if type(original) == "function" then
+        f.SetAlpha = function(self) original(self, 1) end
+        p.figee = f
+    end
+    if Suite.SuspendrePanneau then Suite.SuspendrePanneau() end
     p:Show()
     pcall(p.EnableGamePadButton, p, true)
     p.Marquer()
+    p.Barre()
 end
 
 
@@ -2603,48 +2917,87 @@ local function Messages(fonction, ...)
 end
 
 Suite.RACCOURCIS = {
-    { cle = "ouvrir", fr = "Ouvrir la suite", en = "Open the suite", icone = "INV_Misc_Book_11",
+    { cle = "pilotefab", desc = "Prend le contrôle à la manette du suivi Mes fabrications, en l'ouvrant s'il est fermé. La croix se déplace, A valide, B rend la main.", descEn = "Takes gamepad control of the My crafts tracker, opening it if needed. D-pad moves, A confirms, B releases.",
+      fr = "Piloter mes fabrications", en = "Drive my crafts", icone = "Trade_BlackSmithing",
+      action = function() Suite.Piloter(nil, "CraftCoreSuivi") end, dispo = function() return _G.CraftCoreAPI ~= nil end },
+    { cle = "pilotequetes", desc = "Prend le contrôle à la manette du suivi des quêtes, en l'ouvrant s'il est fermé. La croix se déplace, A valide, B rend la main.", descEn = "Takes gamepad control of the quest tracker, opening it if needed. D-pad moves, A confirms, B releases.",
+      fr = "Piloter les quêtes", en = "Drive the quests", icone = "INV_Letter_15",
+      action = function() Suite.Piloter(nil, "QuestCoreSuivi") end, dispo = function() return _G.QuestCoreAPI ~= nil end },
+    { cle = "ouvrir", desc = "Ouvre ou ferme la dernière fenêtre de la suite que tu as utilisée.", descEn = "Opens or closes the last suite window you used.",
+      fr = "Ouvrir la suite", en = "Open the suite", icone = "INV_Misc_Book_11",
       action = function()
           local premier
           for _, info in ipairs(Suite.Liste()) do if Suite.Installe(info.cle) then premier = info.cle break end end
           Suite.BasculerDernier(premier)
       end },
-    { cle = "craftcore", fr = "CraftCore", en = "CraftCore", icone = "INV_Misc_Gear_01",
+    { cle = "craftcore", desc = "Ouvre ou ferme la fenêtre principale de CraftCore.", descEn = "Opens or closes the CraftCore main window.",
+      fr = "CraftCore", en = "CraftCore", icone = "INV_Misc_Gear_01",
       action = function() Suite.Ouvrir("CraftCore") end, dispo = function() return Suite.Installe("CraftCore") end },
-    { cle = "questcore", fr = "QuestCore", en = "QuestCore", icone = "INV_Misc_Book_08",
+    { cle = "questcore", desc = "Ouvre ou ferme la fenêtre principale de QuestCore.", descEn = "Opens or closes the QuestCore main window.",
+      fr = "QuestCore", en = "QuestCore", icone = "INV_Misc_Book_08",
       action = function() Suite.Ouvrir("QuestCore") end, dispo = function() return Suite.Installe("QuestCore") end },
-    { cle = "mapcore", fr = "MapCore", en = "MapCore", icone = "INV_Misc_Map_01",
+    { cle = "mapcore", desc = "Ouvre ou ferme la fenêtre principale de MapCore.", descEn = "Opens or closes the MapCore main window.",
+      fr = "MapCore", en = "MapCore", icone = "INV_Misc_Map_01",
       action = function() Suite.Ouvrir("MapCore") end, dispo = function() return Suite.Installe("MapCore") end },
-    { cle = "legacycore", fr = "LegacyCore", en = "LegacyCore", icone = "Spell_Holy_SealOfWisdom",
+    { cle = "legacycore", desc = "Ouvre ou ferme la fenêtre principale de LegacyCore.", descEn = "Opens or closes the LegacyCore main window.",
+      fr = "LegacyCore", en = "LegacyCore", icone = "Spell_Holy_SealOfWisdom",
       action = function() Suite.Ouvrir("LegacyCore") end, dispo = function() return Suite.Installe("LegacyCore") end },
-    { cle = "fabrications", fr = "Suivi des fabrications", en = "Crafting tracker", icone = "Trade_BlackSmithing",
+    { cle = "fabrications", desc = "Affiche ou cache le suivi Mes fabrications.", descEn = "Shows or hides the My crafts tracker.",
+      fr = "Suivi des fabrications", en = "Crafting tracker", icone = "Trade_BlackSmithing",
       action = function() Api("CraftCoreAPI", "BasculerSuivi") end, dispo = function() return _G.CraftCoreAPI ~= nil end },
-    { cle = "quetes", fr = "Suivi des quêtes", en = "Quest tracker", icone = "INV_Letter_15",
+    { cle = "quetes", desc = "Affiche ou cache le suivi des quêtes.", descEn = "Shows or hides the quest tracker.",
+      fr = "Suivi des quêtes", en = "Quest tracker", icone = "INV_Letter_15",
       action = function() Api("QuestCoreAPI", "BasculerSuivi") end, dispo = function() return _G.QuestCoreAPI ~= nil end },
-    { cle = "suivis", fr = "Prendre la main sur les suivis", en = "Take over the trackers", icone = "INV_Misc_Spyglass_03",
-      action = function() Suite.Piloter() end },
-    { cle = "stop", fr = "Arrêter le guidage", en = "Stop guidance", icone = "Spell_Holy_Silence",
+    { cle = "stop", desc = "Arrête le guidage en cours.", descEn = "Stops the current guidance.",
+      fr = "Arrêter le guidage", en = "Stop guidance", icone = "Spell_Holy_Silence",
       action = function() Suite.ArreterGuidage() end },
-    { cle = "rendus", fr = "Guider les quêtes à rendre", en = "Guide quest turn-ins", icone = "INV_Misc_Note_02",
+    { cle = "rendus", desc = "Te guide vers les personnages où rendre tes quêtes terminées.", descEn = "Guides you to where your completed quests are turned in.",
+      fr = "Guider les quêtes à rendre", en = "Guide quest turn-ins", icone = "INV_Misc_Note_02",
       action = function() Api("QuestCoreAPI", "Guider", true) end, dispo = function() return _G.QuestCoreAPI ~= nil end },
-    { cle = "recolte", fr = "Guider la récolte", en = "Guide gathering", icone = "INV_Misc_Herb_01",
+    { cle = "recolte", desc = "Te guide vers les points de récolte des ressources qui manquent à tes fabrications.", descEn = "Guides you to gathering spots for the resources your crafts still need.",
+      fr = "Guider la récolte", en = "Guide gathering", icone = "INV_Misc_Herb_01",
       action = function() Api("CraftCoreAPI", "GuiderRecolte", true) end, dispo = function() return _G.CraftCoreAPI ~= nil end },
-    { cle = "metier", fr = "Monter un métier", en = "Level a profession", icone = "INV_Misc_Book_09",
+    { cle = "metier", desc = "Ouvre la page Monter un métier de CraftCore.", descEn = "Opens the CraftCore Level a profession page.",
+      fr = "Monter un métier", en = "Level a profession", icone = "INV_Misc_Book_09",
       action = function() Api("CraftCoreAPI", "MonterUnMetier") end, dispo = function() return _G.CraftCoreAPI ~= nil end },
-    { cle = "oui", fr = "Répondre oui", en = "Answer yes", icone = "Spell_ChargePositive",
+    { cle = "oui", desc = "Répond oui à la dernière question que la suite t'a posée dans la discussion.", descEn = "Answers yes to the last question the suite asked you in chat.",
+      fr = "Répondre oui", en = "Answer yes", icone = "Spell_ChargePositive",
       action = function() Messages("Repondre", true) end, dispo = function() return _G.SagaCoreMessages ~= nil end },
-    { cle = "non", fr = "Répondre non", en = "Answer no", icone = "Spell_ChargeNegative",
+    { cle = "non", desc = "Répond non à la dernière question que la suite t'a posée dans la discussion.", descEn = "Answers no to the last question the suite asked you in chat.",
+      fr = "Répondre non", en = "Answer no", icone = "Spell_ChargeNegative",
       action = function() Messages("Repondre", false) end, dispo = function() return _G.SagaCoreMessages ~= nil end },
-    { cle = "messages", fr = "Messages dans la discussion", en = "Chat messages", icone = "INV_Letter_02",
+    { cle = "messages", desc = "Ouvre les réglages des messages que la suite écrit dans la discussion.", descEn = "Opens the settings for the messages the suite writes in chat.",
+      fr = "Messages dans la discussion", en = "Chat messages", icone = "INV_Letter_02",
       action = function() Messages("OuvrirReglages") end, dispo = function() return _G.SagaCoreMessages ~= nil end },
-    { cle = "reglages", fr = "Réglages de la suite", en = "Suite settings", icone = "Trade_Engineering",
+    { cle = "reglages", desc = "Ouvre les réglages communs à toute la suite.", descEn = "Opens the settings shared by the whole suite.",
+      fr = "Réglages de la suite", en = "Suite settings", icone = "Trade_Engineering",
       action = function() Suite.OuvrirReglagesGeneraux() end },
-    { cle = "improve", fr = "Réglages ImproveCore", en = "ImproveCore settings", icone = "Spell_Holy_AuraOfLight",
-      action = function() if SlashCmdList.IMPROVECORE then SlashCmdList.IMPROVECORE("") end end,
-      dispo = function() return SlashCmdList.IMPROVECORE ~= nil end },
-    { cle = "raccourcis", fr = "Panneau des raccourcis", en = "Shortcut panel", icone = "INV_Misc_Rune_01",
+    { cle = "improve", desc = "Ouvre les réglages d'AuraCore.", descEn = "Opens the AuraCore settings.",
+      fr = "Réglages AuraCore", en = "AuraCore settings", icone = "Spell_Holy_AuraOfLight",
+      action = function() if SlashCmdList.AURACORE then SlashCmdList.AURACORE("") end end,
+      dispo = function() return SlashCmdList.AURACORE ~= nil end },
+    { cle = "raccourcis", fr = "Panneau des raccourcis", en = "Shortcut panel", icone = "INV_Misc_Book_11",
       action = function() Suite.BasculerRaccourcis() end },
 }
+
+-- Les familles de raccourcis : une ligne chacune dans le panneau, un groupe
+-- dans la page des macros. Un nouveau raccourci prend sa famille ici.
+Suite.FAMILLES = {
+    { cle = "manette", fr = "Prendre le contrôle d'une fenêtre", en = "Take control of a window" },
+    { cle = "ouvrir", fr = "Ouvrir une fenêtre", en = "Open a window" },
+    { cle = "guider", fr = "Guider", en = "Guide" },
+    { cle = "repondre", fr = "Répondre aux messages", en = "Answer messages" },
+    { cle = "perso", fr = "Mes macros", en = "My macros" },
+}
+local FAMILLE_DE = {
+    pilotefab = "manette", pilotequetes = "manette",
+    ouvrir = "ouvrir", craftcore = "ouvrir", questcore = "ouvrir", mapcore = "ouvrir", legacycore = "ouvrir",
+    fabrications = "ouvrir", quetes = "ouvrir", metier = "ouvrir", reglages = "ouvrir", improve = "ouvrir",
+    messages = "ouvrir", raccourcis = "ouvrir",
+    rendus = "guider", recolte = "guider", stop = "guider",
+    oui = "repondre", non = "repondre",
+}
+function Suite.FamilleDe(r) return r.famille or FAMILLE_DE[r.cle] or "ouvrir" end
 
 function Suite.Raccourci(cle)
     if not cle then return nil end
@@ -2663,28 +3016,101 @@ function Suite.Lancer(r)
     if not ok and Suite.Prive() then print("|cffffd100SagaCore|r " .. tostring(souci)) end
 end
 
--- Les macros du jeu : "SC " + nom court, communes au compte.
-local function NomDeMacro(r)
-    local nom = "SC " .. Suite.NomRaccourci(r)
-    return nom:sub(1, 16)
+-- Les macros du jeu, communes au compte : un nom de 3 lettres au plus (il
+-- s'affiche sur le bouton), l'icone du raccourci, et en premiere ligne une
+-- explication que le jeu n'execute pas (#), puis la commande.
+local COURTS = {
+    pilotefab = "PFa", pilotequetes = "PQu", ouvrir = "Sui", craftcore = "CrC", questcore = "QuC",
+    mapcore = "MaC", legacycore = "LeC", fabrications = "SFa", quetes = "SQu", suivis = "PSu",
+    stop = "Stp", rendus = "Ren", recolte = "Rec", metier = "Met", oui = "Oui", non = "Non",
+    messages = "Msg", reglages = "Rgl", improve = "IC", raccourcis = "Pan",
+}
+local function NomDeMacro(r) return COURTS[r.cle] or r.cle:sub(1, 3) end
+-- Une macro du jeu est a nous seulement si elle lance ce raccourci : une
+-- macro du joueur qui porte le meme nom n'est jamais touchee.
+local function IndexANous(r, nom)
+    local index = _G.GetMacroIndexByName and _G.GetMacroIndexByName(nom)
+    if not (index and index > 0) then return nil end
+    local _, _, corps = _G.GetMacroInfo(index)
+    if type(corps) == "string" and corps:find("/sagacore " .. r.cle, 1, true) then return index end
+    return nil
 end
+local function AncienNom(r) return ("SC " .. Suite.NomRaccourci(r)):sub(1, 16) end
+-- L'icone d'une macro doit venir du catalogue des icones de macro du jeu
+-- (celui de la fenetre Macros) : une image hors catalogue laisse la macro
+-- sans icone, impossible a glisser. On prend le numero de l'icone voulue s'il
+-- est au catalogue, sinon le point d'interrogation.
+local catalogue
+local function Catalogue()
+    if catalogue then return catalogue end
+    catalogue = {}
+    for _, lire in ipairs({ _G.GetMacroIcons, _G.GetMacroItemIcons }) do
+        if lire then
+            local liste = {}
+            local ok = pcall(lire, liste)
+            if ok then for _, v in ipairs(liste) do catalogue[v] = true end end
+        end
+    end
+    return catalogue
+end
+local sonde
+local function IconeDeMacro(r)
+    local chemin = "Interface\\Icons\\" .. r.icone
+    local numero = _G.GetFileIDFromPath and _G.GetFileIDFromPath(chemin)
+    if not (type(numero) == "number" and numero > 0) then
+        sonde = sonde or UIParent:CreateTexture(nil, "BACKGROUND")
+        sonde:SetTexture(chemin)
+        numero = sonde.GetTextureFileID and sonde:GetTextureFileID()
+    end
+    -- Le catalogue rend des numeros ou des noms selon le client : on verifie
+    -- l'un ou l'autre ; un catalogue illisible ne bloque rien.
+    local cat = Catalogue()
+    local avecNumeros, avecNoms = false, false
+    for k in pairs(cat) do
+        if type(k) == "number" then avecNumeros = true else avecNoms = true end
+        if avecNumeros and avecNoms then break end
+    end
+    local present = (not avecNumeros and not avecNoms)
+        or (avecNumeros and cat[numero])
+        or (avecNoms and (cat[r.icone] or cat[r.icone:lower()] or cat[r.icone:upper()]))
+    if type(numero) == "number" and numero > 0 and present then return numero end
+    if avecNoms and present then return r.icone end
+    return 134400
+end
+Suite.IconeDeMacro = IconeDeMacro
 
 function Suite.CreerMacro(r)
     if InCombatLockdown and InCombatLockdown() then return false end
     if not (_G.CreateMacro and _G.GetMacroIndexByName) then return false end
     local nom = NomDeMacro(r)
-    local corps = "/sagacore " .. r.cle
-    local index = _G.GetMacroIndexByName(nom)
-    if index and index > 0 then
-        pcall(_G.EditMacro, index, nom, r.icone, corps)
+    local corps = "#SagaCore : " .. Suite.NomRaccourci(r) .. "\n/sagacore " .. r.cle
+    -- Deja la (sous ce nom ou l'ancien "SC ...") : mise a jour, la macro garde
+    -- sa place sur les barres.
+    local index = IndexANous(r, nom) or IndexANous(r, AncienNom(r))
+    if index then
+        pcall(_G.EditMacro, index, nom, IconeDeMacro(r), corps)
         return true, index
     end
-    local ok, nouvel = pcall(_G.CreateMacro, nom, r.icone, corps, nil)
+    -- Le nom est deja pris par une macro du joueur : on ne cree rien.
+    if (_G.GetMacroIndexByName(nom) or 0) > 0 then return false end
+    local ok, nouvel = pcall(_G.CreateMacro, nom, IconeDeMacro(r), corps, nil)
     return ok and nouvel ~= nil, nouvel
 end
 
+-- Supprime la macro du jeu d'un raccourci (son nom court, ou l'ancien "SC ...").
+function Suite.SupprimerMacro(r)
+    if InCombatLockdown and InCombatLockdown() then return false end
+    if not (_G.DeleteMacro and _G.GetMacroIndexByName) then return false end
+    for _, nom in ipairs({ NomDeMacro(r), AncienNom(r) }) do
+        local index = IndexANous(r, nom)
+        if index then pcall(_G.DeleteMacro, index) end
+    end
+    return true
+end
+
 function Suite.MacroExiste(r)
-    return _G.GetMacroIndexByName and (_G.GetMacroIndexByName(NomDeMacro(r)) or 0) > 0
+    if not (_G.GetMacroIndexByName and _G.GetMacroInfo) then return false end
+    return IndexANous(r, NomDeMacro(r)) ~= nil
 end
 
 -- ---------------------------------------------------------------------------
@@ -2723,10 +3149,93 @@ local function ClePersoSuite()
     local nom, royaume = UnitName("player"), _G.SagaCoreRoyaume()
     return (nom or "?") .. " - " .. (royaume or "?")
 end
+-- Une fois : la macro « CC » du joueur (/sagacore), effacee par erreur, est
+-- recreee a la connexion si elle n'existe plus.
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:RegisterEvent("UPDATE_MACROS")
+    f:SetScript("OnEvent", function(self)
+        self:UnregisterAllEvents()
+        if not Suite.Prive() then return end
+        local r = Reglages()
+        if InCombatLockdown and InCombatLockdown() then return end
+        if not (_G.GetMacroIndexByName and _G.CreateMacro) then return end
+        -- Nos macros restees avec le point d'interrogation : leur vraie icone.
+        if _G.GetMacroInfo and _G.EditMacro then
+            for _, rac in ipairs(Suite.RACCOURCIS) do
+                local index = IndexANous(rac, NomDeMacro(rac))
+                if index then
+                    local nomM, icone, corps = _G.GetMacroInfo(index)
+                    local bonne = IconeDeMacro(rac)
+                    if (icone == 134400 or icone == "INV_MISC_QUESTIONMARK") and bonne ~= 134400 then
+                        pcall(_G.EditMacro, index, nomM, bonne, corps)
+                    end
+                end
+            end
+        end
+        -- Ses macros CC (/sagacore) et RLD (/reload), effacees par erreur.
+        for _, m in ipairs({ { "CC", 132279, "/sagacore", "macroCCRecreee" },
+                             { "RLD", 1029581, "/reload", "macroRLDRecreee" } }) do
+            if not r[m[4]] then
+                if (_G.GetMacroIndexByName(m[1]) or 0) == 0 then
+                    local ok, index = pcall(_G.CreateMacro, m[1], m[2], m[3], nil)
+                    if not (ok and index) then ok, index = pcall(_G.CreateMacro, m[1], 134400, m[3], nil) end
+                    if ok and index then
+                        r[m[4]] = true
+                        print("|cffffd100SagaCore|r " .. TR("Macro recréée : ", "Macro recreated : ") .. m[1])
+                    else
+                        print("|cffffd100SagaCore|r " .. TR("Impossible de recréer la macro ", "Could not recreate macro ") .. m[1] .. " : " .. tostring(index))
+                    end
+                else
+                    r[m[4]] = true
+                end
+            end
+        end
+    end)
+end
+
+-- Par defaut, seuls les deux pilotages sont dans le panneau. Les anciens
+-- reglages (ou tout etait coche pour essayer) repartent une fois de la.
+local ACTIFS_DEFAUT = { ["r:pilotefab"] = true, ["r:pilotequetes"] = true }
+local function MigrerRaccourcis()
+    local r = Reglages()
+    -- Remise a zero demandee (une fois) : gestionnaire de macros comme neuf.
+    if Suite.Prive() and not r.macrosRemisesAZero then
+        r.macrosRemisesAZero = true
+        r.macrosPerso = {}
+        r.raccourcisOff = {}
+        r.raccourcisMigres = {}
+    end
+    local cle = ClePersoSuite()
+    r.raccourcisMigres = type(r.raccourcisMigres) == "table" and r.raccourcisMigres or {}
+    if r.raccourcisMigres[cle] then return end
+    r.raccourcisMigres[cle] = 1
+    r.raccourcisOff = type(r.raccourcisOff) == "table" and r.raccourcisOff or {}
+    local t = {}
+    for _, rac in ipairs(Suite.RACCOURCIS) do
+        if not ACTIFS_DEFAUT["r:" .. rac.cle] then t["r:" .. rac.cle] = true end
+    end
+    for _, m in ipairs(type(r.macrosPerso) == "table" and r.macrosPerso or {}) do
+        if type(m) == "table" and m.id then t["m:" .. m.id] = true end
+    end
+    r.raccourcisOff[cle] = t
+end
 function Suite.RaccourciActif(id)
+    pcall(MigrerRaccourcis)
     local r = Reglages()
     local t = type(r.raccourcisOff) == "table" and r.raccourcisOff[ClePersoSuite()]
     return not (t and t[id])
+end
+function Suite.ToutDecocher()
+    local r = Reglages()
+    r.raccourcisOff = type(r.raccourcisOff) == "table" and r.raccourcisOff or {}
+    local t = {}
+    for _, rac in ipairs(Suite.RACCOURCIS) do t["r:" .. rac.cle] = true end
+    for _, m in ipairs(Suite.MacrosPerso and Suite.MacrosPerso() or {}) do
+        if type(m) == "table" and m.id then t["m:" .. m.id] = true end
+    end
+    r.raccourcisOff[ClePersoSuite()] = t
 end
 function Suite.PoserRaccourciActif(id, oui)
     local r = Reglages()
@@ -2857,6 +3366,13 @@ local function FenetreMacros()
     f.sectionMacros = Poser(Titre(), 18, 16)
     f.texteMacros = Poser(Texte(), 28, 4)
     f.tout = Poser(Bouton(f, L_CHOIX + 6 + L_PETIT), 22, 4)
+    f.decocher = Bouton(f, L_CHOIX)
+    f.decocher:SetPoint("LEFT", f.tout, "RIGHT", 8, 0)
+    f.decocher:SetScript("OnClick", function()
+        Suite.ToutDecocher()
+        Suite.RendreMacros()
+        Suite.RafraichirRaccourcis()
+    end)
     f.lignes = {}
     for i = 1, #Suite.RACCOURCIS do
         local l = CreateFrame("Button", nil, f)
@@ -3019,7 +3535,7 @@ local function FenetreMacros()
         f.focus = 1
         f.Elements = function()
             local liste = { f.rRond.choix, f.replacer, f.rOuverture.choix, f.rForme.choix,
-                f.rParLigne.moins, f.rParLigne.plus, f.rLignes.moins, f.rLignes.plus, f.tout }
+                f.rParLigne.moins, f.rParLigne.plus, f.rLignes.moins, f.rLignes.plus, f.tout, f.decocher }
             for _, l in ipairs(f.lignes) do
                 if l:IsShown() then
                     table.insert(liste, l.actif)
@@ -3093,6 +3609,7 @@ function Suite.RendreMacros()
     f.texteMacros:SetText(TR("Une macro par raccourci, nommée « SC ... ». Survolez une ligne pour voir sa commande. Pas en combat.",
         "One macro per shortcut, named \"SC ...\". Hover a row to see its command. Not in combat."))
     f.tout:SetText(TR("Créer toutes les macros", "Create all macros"))
+    f.decocher:SetText(TR("Tout décocher", "Uncheck all"))
     local rang = 0
     for _, l in ipairs(f.lignes) do l:Hide() end
     for _, rac in ipairs(Suite.RACCOURCIS) do
@@ -3216,8 +3733,21 @@ local function Panneau()
     Nav("CoreSuiteRaccourcisDroite", function() Suite.BougerRaccourci(1, 0) end)
     Nav("CoreSuiteRaccourcisFermer", function() Suite.FermerRaccourcis() end)
     table.insert(UISpecialFrames, "CoreSuiteRaccourcis")
+    -- Une petite fenetre discrete autour des icones, ouverte a la manette :
+    -- les commandes en haut, dedans, les icones dessous.
+    local okA, fond = pcall(CreateFrame, "Frame", nil, p, "TooltipBackdropTemplate")
+    p.aide = okA and fond or CreateFrame("Frame", nil, p)
+    p.aide:SetFrameLevel(math.max(0, p:GetFrameLevel() - 1))
+    p.aide:SetClampedToScreen(true)
+    p.aide.texte = p.aide:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p.aide.texte:SetPoint("TOPLEFT", 10, -8)
     p:SetScript("OnHide", function(self)
         GameTooltip:Hide()
+        local rond = Suite.boutonRaccourcis
+        if rond then
+            rond:SetAlpha(1)
+            if rond.icone and rond.icone.SetDesaturated then rond.icone:SetDesaturated(false) end
+        end
         if not (InCombatLockdown and InCombatLockdown()) then ClearOverrideBindings(self) end
     end)
     p:RegisterEvent("PLAYER_REGEN_DISABLED")
@@ -3229,6 +3759,7 @@ end
 
 local function LierManette(p)
     if InCombatLockdown and InCombatLockdown() then return end
+    if p.suspendu then return end
     ClearOverrideBindings(p)
     local manette = _G.C_GamePad and _G.C_GamePad.IsEnabled and select(2, pcall(_G.C_GamePad.IsEnabled)) == true
     if not manette then return end
@@ -3236,20 +3767,80 @@ local function LierManette(p)
     SetOverrideBindingClick(p, true, "PADDDOWN", "CoreSuiteRaccourcisBas")
     SetOverrideBindingClick(p, true, "PADDLEFT", "CoreSuiteRaccourcisGauche")
     SetOverrideBindingClick(p, true, "PADDRIGHT", "CoreSuiteRaccourcisDroite")
-    SetOverrideBindingClick(p, true, "PAD2", "CoreSuiteRaccourcisFermer")
-    local b = p.boutons[p.focus]
-    if b and b:IsShown() then SetOverrideBindingClick(p, true, "PAD1", b:GetName()) end
+    -- Echappe : B, et aussi Vue, Menu et la touche du jeu au centre.
+    for _, touche in ipairs({ "PAD2", "PADBACK", "PADFORWARD", "PADSYSTEM" }) do
+        SetOverrideBindingClick(p, true, touche, "CoreSuiteRaccourcisFermer")
+    end
+    if p.focus == 0 then
+        -- Sur le bouton rond : A referme le panneau.
+        SetOverrideBindingClick(p, true, "PAD1", "CoreSuiteRaccourcisFermer")
+    else
+        local b = p.boutons[p.focus]
+        if b and b:IsShown() then SetOverrideBindingClick(p, true, "PAD1", b:GetName()) end
+    end
+end
+
+-- Pendant qu'on pilote un suivi lance depuis le panneau, le panneau rend
+-- ses touches (son aide passe en gris) ; liberer le suivi les lui rend.
+function Suite.SuspendrePanneau()
+    local p = Suite.panneauRaccourcis
+    if not (p and p:IsShown()) then return end
+    p.suspendu = true
+    if not (InCombatLockdown and InCombatLockdown()) then ClearOverrideBindings(p) end
+    if p.aide then p.aide:SetAlpha(0.4) end
+end
+function Suite.ReprendrePanneau()
+    local p = Suite.panneauRaccourcis
+    if not (p and p.suspendu) then return end
+    p.suspendu = nil
+    if p.aide then p.aide:SetAlpha(1) end
+    if p:IsShown() then Suite.MarquerRaccourci() end
 end
 
 function Suite.MarquerRaccourci()
     local p = Suite.panneauRaccourcis
     if not p then return end
     GameTooltip:Hide()
+    -- Tout a 40 %, sauf l'element choisi, en pleine couleur.
+    -- Les autres en gris (icone desaturee, liseré gris), le choisi en couleur.
+    local function Teinter(b, choisi)
+        if not b then return end
+        b:SetAlpha(choisi and 1 or 0.75)
+        if b.icone and b.icone.SetDesaturated then b.icone:SetDesaturated(not choisi) end
+        if b.bordure then
+            if choisi then b.bordure:SetVertexColor(0.72, 0.6, 0.32, 1) else b.bordure:SetVertexColor(0.45, 0.45, 0.45, 1) end
+        end
+    end
+    local rond = Suite.boutonRaccourcis
+    Teinter(rond, p.focus == 0)
     for i, b in ipairs(p.boutons) do
         if b.lisere then b.lisere:SetShown(i == p.focus and b:IsShown()) end
+        Teinter(b, i == p.focus)
         if i == p.focus and b:IsShown() then
             local survol = b:GetScript("OnEnter")
             if survol then survol(b) end
+        end
+    end
+    -- L'aide : ce que fait chaque touche, a la manette seulement.
+    local manette = _G.C_GamePad and _G.C_GamePad.IsEnabled and select(2, pcall(_G.C_GamePad.IsEnabled)) == true
+    if p.aide then
+        if manette then
+            local esp = "    "
+            local function G(t) return (string.gsub(t, ":20:20|a", ":16:16|a")) end
+            p.aide.texte:SetText(G(GlypheCroix()) .. " " .. TR("Se déplacer", "Move") .. esp
+                .. G(GlyphePad("PAD1")) .. " " .. (p.focus == 0 and TR("Fermer", "Close") or TR("Lancer", "Launch")) .. esp
+                .. G(GlyphePad("PAD2")) .. " " .. TR("Rendre la manette", "Release the gamepad"))
+            local largeur = math.max(p:GetWidth() + 20, (p.aide.texte:GetStringWidth() or 200) + 20)
+            p.aide:ClearAllPoints()
+            local gauche = (Reglages().raccourcisOuverture or "gauche") == "gauche"
+            local ancre = gauche and "RIGHT" or "LEFT"
+            local dx = gauche and 10 or -10
+            p.aide:SetPoint("TOP" .. ancre, p, "TOP" .. ancre, dx, 30)
+            p.aide:SetPoint("BOTTOM" .. ancre, p, "BOTTOM" .. ancre, dx, -10)
+            p.aide:SetWidth(largeur)
+            p.aide:Show()
+        else
+            p.aide:Hide()
         end
     end
     LierManette(p)
@@ -3260,10 +3851,39 @@ end
 function Suite.BougerRaccourci(dx, dy)
     local p = Suite.panneauRaccourcis
     if not p or not p.n or p.n == 0 then return end
-    local col = p.colonnes
-    local x, y = (p.focus - 1) % col + dx, math.floor((p.focus - 1) / col) + dy
-    local cible = y * col + x + 1
-    if x >= 0 and x < col and y >= 0 and cible <= p.n then p.focus = cible end
+    local ouverture = Reglages().raccourcisOuverture or "gauche"
+    local rond = Suite.boutonRaccourcis
+    local avecRond = rond and rond:IsShown()
+    -- Depuis le bouton rond : on entre dans le panneau par la premiere icone.
+    if p.focus == 0 then
+        p.focus = 1
+        Suite.MarquerRaccourci()
+        return
+    end
+    -- Ouvert vers la gauche, les colonnes avancent vers la gauche a l'ecran.
+    if ouverture == "gauche" then dx = -dx end
+    local ici = p.places and p.places[p.focus]
+    if not ici then return end
+    local x, y = ici.col + dx, ici.lig + dy
+    local ligne = p.grille and p.grille[y]
+    local cible
+    if ligne then
+        if dy ~= 0 then
+            -- Ligne plus courte : la derniere icone de cette ligne.
+            local dernier = 0
+            for k in pairs(ligne) do dernier = math.max(dernier, k) end
+            cible = ligne[math.min(math.max(x, 0), dernier)]
+        elseif x >= 0 then
+            cible = ligne[x]
+        end
+    end
+    if cible then
+        p.focus = cible
+    elseif avecRond and ((x < 0 and (ouverture == "gauche" or ouverture == "droite"))
+        or (y < 0 and (ouverture == "haut" or ouverture == "bas"))) then
+        -- Sortie du cote du bouton rond : retour sur lui.
+        p.focus = 0
+    end
     Suite.MarquerRaccourci()
 end
 
@@ -3282,18 +3902,19 @@ local function Entrees()
     local liste = {}
     for _, r in ipairs(Suite.RACCOURCIS) do
         if Dispo(r) and r.cle ~= "raccourcis" and Suite.RaccourciActif("r:" .. r.cle) then
-            table.insert(liste, { nom = Suite.NomRaccourci(r), icone = "Interface\\Icons\\" .. r.icone, texte = "/sagacore " .. r.cle })
+            table.insert(liste, { nom = Suite.NomRaccourci(r), icone = "Interface\\Icons\\" .. r.icone, texte = "/sagacore " .. r.cle, famille = Suite.FamilleDe(r), cle = r.cle,
+                desc = r.desc and TR(r.desc, r.descEn or r.desc) or nil })
         end
     end
     for _, m in ipairs(Suite.MacrosPerso()) do
         if type(m) == "table" and Suite.RaccourciActif(IdPerso(m)) then
             if m.texte then
                 if m.texte ~= "" then
-                    table.insert(liste, { nom = m.nom or "?", icone = Suite.IconeDe and Suite.IconeDe(m.icone) or m.icone, texte = m.texte })
+                    table.insert(liste, { nom = m.nom or "?", icone = Suite.IconeDe and Suite.IconeDe(m.icone) or m.icone, texte = m.texte, famille = "perso" })
                 end
             elseif m.nom and _G.GetMacroInfo then
                 local nom, icone, corps = _G.GetMacroInfo(m.nom)
-                if nom then table.insert(liste, { nom = nom, icone = icone, macro = nom, corps = corps }) end
+                if nom then table.insert(liste, { nom = nom, icone = icone, macro = nom, corps = corps, famille = "perso" }) end
             end
         end
     end
@@ -3354,18 +3975,40 @@ Suite.HabillerRaccourci = Habiller
 
 function Suite.BasculerRaccourcis()
     if not Suite.Prive() then return end
+    if Suite.BasculerMacroCore and Suite.BasculerMacroCore() then return end
     local p = Panneau()
     if p:IsShown() then p:Hide() return end
     if InCombatLockdown and InCombatLockdown() then return end
     local r = Reglages()
-    local liste = Entrees()
-    local parLigne, lignes = r.raccourcisParLigne or 6, r.raccourcisLignes or 3
-    while #liste > parLigne * lignes do table.remove(liste) end
+    local brute = Entrees()
+    local parLigne = r.raccourcisParLigne or 6
     local T, ECART = Suite.TAILLE_RACCOURCI, 6
-    local n = #liste
     local ouverture = r.raccourcisOuverture or "gauche"
+    -- Une ligne par famille (coupee si elle depasse le nombre par ligne).
+    local liste, places = {}, {}
+    local lig = -1
+    p.grille = {}
+    for _, fam in ipairs(Suite.FAMILLES) do
+        local col = parLigne
+        for _, e in ipairs(brute) do
+            if e.famille == fam.cle then
+                if col >= parLigne then lig = lig + 1 col = 0 p.grille[lig] = {} end
+                table.insert(liste, e)
+                places[#liste] = { col = col, lig = lig }
+                p.grille[lig][col] = #liste
+                col = col + 1
+            end
+        end
+    end
+    local n = #liste
     p.n = n
-    p.colonnes = math.max(1, math.min(parLigne, n))
+    p.places = places
+    p.colonnes = 1
+    for _, ligne in pairs(p.grille) do
+        local c = 0
+        for k in pairs(ligne) do c = math.max(c, k + 1) end
+        p.colonnes = math.max(p.colonnes, c)
+    end
     for i, e in ipairs(liste) do
         local b = p.boutons[i]
         if not b then
@@ -3393,7 +4036,8 @@ function Suite.BasculerRaccourcis()
                 GameTooltip:Show()
             end)
             b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            b:HookScript("OnClick", function() if _G.C_Timer then _G.C_Timer.After(0, Suite.FermerRaccourcis) end end)
+            -- Lancer une action ne ferme pas le panneau : il reste ouvert jusqu'a
+            -- ce qu'on le ferme (B, ou le bouton rond).
             p.boutons[i] = b
         end
         b.e = e
@@ -3411,7 +4055,7 @@ function Suite.BasculerRaccourcis()
         b:ClearAllPoints()
         -- Vers la gauche, les icones partent du bouton rond vers la gauche
         -- (la premiere tout contre lui) ; les autres sens de meme.
-        local col, lig = (i - 1) % p.colonnes, math.floor((i - 1) / p.colonnes)
+        local col, lig = places[i].col, places[i].lig
         if ouverture == "gauche" then
             b:SetPoint("TOPRIGHT", p, "TOPRIGHT", -(col * (T + ECART)), -(lig * (T + ECART)))
         else
@@ -3420,7 +4064,7 @@ function Suite.BasculerRaccourcis()
         b:Show()
     end
     for i = n + 1, #p.boutons do p.boutons[i]:Hide() end
-    local nbLignes = math.max(1, math.ceil(n / p.colonnes))
+    local nbLignes = math.max(1, lig + 1)
     p:SetSize(p.colonnes * (T + ECART) - ECART, nbLignes * (T + ECART) - ECART)
     p:ClearAllPoints()
     local rond = Suite.boutonRaccourcis
@@ -3432,64 +4076,893 @@ function Suite.BasculerRaccourcis()
     else
         p:SetPoint("CENTER")
     end
-    p.focus = 1
+    -- A l'ouverture, on reste sur le bouton rond ; on entre en se deplacant.
+    p.focus = (rond and rond:IsShown()) and 0 or 1
     p:Show()
     Suite.MarquerRaccourci()
 end
 
--- Le petit bouton rond : deplacable, il retient sa place.
-function Suite.PlacerBoutonRaccourcis()
-    -- Macros et raccourcis : prives pour l'instant.
-    if not Suite.Prive() then
-        if Suite.boutonRaccourcis then Suite.boutonRaccourcis:Hide() end
-        return
+-- ---------------------------------------------------------------------------
+-- Fenetre « Macros de la suite » : une petite fenetre comme les suivis
+-- (Mes fabrications, Quetes), ouverte par le bouton rond. Un groupe repliable
+-- par famille, une ligne par raccourci ; on la pilote a la manette des
+-- qu'elle s'ouvre. Lancer un pilotage depuis elle la laisse ouverte : la
+-- manette passe a la fenetre pilotee, puis lui revient quand on libere.
+-- ---------------------------------------------------------------------------
+
+local LARGEUR_MACROS = 290
+local fenM
+
+local function FenetreMacrosSuite()
+    if fenM then return fenM end
+    local C = NS.charte
+    if not (C and C.Fenetre) then return nil end
+    local f = C.Fenetre("CoreSuiteMacros", LARGEUR_MACROS, 120, { portrait = false, strate = "MEDIUM", sansPied = true })
+    f.titre:SetText(TR("Macros de la suite", "Suite macros"))
+    f.fermer:SetScript("OnClick", function() f:Hide() end)
+    f.lignes, f.titres = {}, {}
+    f.piloteFermerSurB = true
+    -- Replier : seulement le titre.
+    local replier = CreateFrame("Button", nil, f)
+    replier:SetFrameLevel((f.fermer:GetFrameLevel() or f:GetFrameLevel()) + 1)
+    replier:SetSize(16, 16)
+    replier:SetPoint("RIGHT", f.fermer, "LEFT", -2, 0)
+    replier:SetHighlightTexture("Interface\\Buttons\\UI-PlusButton-Hilight", "ADD")
+    replier:SetScript("OnClick", function()
+        local r = Reglages()
+        r.macrosReplie = not r.macrosReplie or nil
+        Suite.DessinerFenetreMacros()
+    end)
+    f.replier = replier
+    f:SetScript("OnHide", function()
+        if Suite.pilote and Suite.pilote:IsShown() and Suite.pilote.nom == "CoreSuiteMacros" then Suite.Piloter(false) end
+        if Suite.boutonRaccourcis and Suite.boutonRaccourcis.icone then Suite.boutonRaccourcis.icone:SetDesaturated(false) end
+    end)
+    f:RegisterEvent("PLAYER_REGEN_DISABLED")
+    f:SetScript("OnEvent", function(self) if self:IsShown() then Suite.Piloter(false) end end)
+    fenM = f
+    return f
+end
+
+local function LigneM(f, i, secure)
+    local pool = secure and "lignesS" or "lignes"
+    f[pool] = f[pool] or {}
+    local b = f[pool][i]
+    if b then return b end
+    if secure then
+        b = CreateFrame("Button", "CoreSuiteMacrosS" .. i, f.zone, "SecureActionButtonTemplate")
+        b:RegisterForClicks("AnyUp", "AnyDown")
+    else
+        b = CreateFrame("Button", nil, f.zone)
     end
+    b:SetHeight(20)
+    b.icone = b:CreateTexture(nil, "ARTWORK")
+    b.icone:SetSize(16, 16)
+    b.icone:SetPoint("LEFT", 18, 0)
+    if b.CreateMaskTexture then
+        local m = b:CreateMaskTexture()
+        if m then
+            m:SetTexture("Interface\\Masks\\CircleMaskScalable", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            m:SetAllPoints(b.icone)
+            b.icone:AddMaskTexture(m)
+        end
+    end
+    b.nom = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    b.nom:SetPoint("LEFT", b.icone, "RIGHT", 6, 0)
+    b.nom:SetPoint("RIGHT", b, "RIGHT", -4, 0)
+    b.nom:SetJustifyH("LEFT")
+    b.nom:SetWordWrap(false)
+    b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(self.e and self.e.nom or "", 1, 0.82, 0)
+        local detail = self.e and (self.e.texte or self.e.corps)
+        if detail then GameTooltip:AddLine(detail, 0.7, 0.7, 0.7, true) end
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    f[pool][i] = b
+    return b
+end
+
+local function TitreM(f, i)
+    local t = f.titres[i]
+    if t then return t end
+    t = CreateFrame("Button", nil, f.zone)
+    t:SetHeight(20)
+    t.marque = t:CreateTexture(nil, "ARTWORK")
+    t.marque:SetSize(14, 14)
+    t.marque:SetPoint("LEFT", 0, 0)
+    t.nom = t:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    t.nom:SetPoint("LEFT", t.marque, "RIGHT", 4, 0)
+    t.nom:SetJustifyH("LEFT")
+    t.filet = t:CreateTexture(nil, "ARTWORK")
+    t.filet:SetHeight(1)
+    t.filet:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", 0, 0)
+    t.filet:SetPoint("BOTTOMRIGHT", t, "BOTTOMRIGHT", 0, 0)
+    t.filet:SetColorTexture(1, 0.82, 0, 0.25)
+    t:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    t:SetScript("OnClick", function(self)
+        local r = Reglages()
+        r.famillesRepliees = type(r.famillesRepliees) == "table" and r.famillesRepliees or {}
+        r.famillesRepliees[self.cle] = not r.famillesRepliees[self.cle] or nil
+        Suite.DessinerFenetreMacros()
+    end)
+    f.titres[i] = t
+    return t
+end
+
+function Suite.DessinerFenetreMacros()
+    local f = fenM
+    if not (f and f:IsShown()) then return end
+    if InCombatLockdown and InCombatLockdown() then return end
     local r = Reglages()
-    local b = Suite.boutonRaccourcis
-    if not b then
-        b = CreateFrame("Button", "CoreSuiteBoutonRaccourcis", UIParent)
-        b:SetFrameStrata("MEDIUM")
-        b:SetMovable(true)
-        b:SetClampedToScreen(true)
-        b:RegisterForDrag("LeftButton")
-        b:RegisterForClicks("LeftButtonUp")
-        b.icone = b:CreateTexture(nil, "ARTWORK")
-        b.icone:SetTexture("Interface\\Icons\\INV_Misc_Rune_01")
-        if b.CreateMaskTexture then
-            b.masque = b:CreateMaskTexture()
-            if b.masque then
-                b.masque:SetTexture("Interface\\Masks\\CircleMaskScalable", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-                b.masque:SetAllPoints(b.icone)
+    local replie = r.macrosReplie
+    f.replier:SetNormalTexture(replie and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+    for _, l in ipairs(f.lignes or {}) do l:Hide() end
+    for _, l in ipairs(f.lignesS or {}) do l:Hide() end
+    for _, t in ipairs(f.titres) do t:Hide() end
+    local y, nT, nL, nS = 0, 0, 0, 0
+    if not replie then
+        local entrees = Entrees()
+        local repliees = type(r.famillesRepliees) == "table" and r.famillesRepliees or {}
+        local largeur = LARGEUR_MACROS - 2 * ((NS.charte and NS.charte.MARGE) or 12)
+        for _, fam in ipairs(Suite.FAMILLES) do
+            local membres = {}
+            for _, e in ipairs(entrees) do if e.famille == fam.cle then table.insert(membres, e) end end
+            if #membres > 0 then
+                nT = nT + 1
+                local t = TitreM(f, nT)
+                t.cle = fam.cle
+                t:ClearAllPoints()
+                t:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, -y)
+                t:SetWidth(largeur)
+                t.marque:SetTexture(repliees[fam.cle] and "Interface\\Buttons\\UI-PlusButton-Up" or "Interface\\Buttons\\UI-MinusButton-Up")
+                t.nom:SetText(TR(fam.fr, fam.en) .. "  |cff9d9d9d" .. #membres .. "|r")
+                t:Show()
+                y = y + 24
+                if not repliees[fam.cle] then
+                    for _, e in ipairs(membres) do
+                        local b
+                        if e.macro or fam.cle == "perso" then
+                            nS = nS + 1
+                            b = LigneM(f, nS, true)
+                            b:SetAttribute("type", "macro")
+                            if e.macro then b:SetAttribute("macrotext", nil) b:SetAttribute("macro", e.macro)
+                            else b:SetAttribute("macro", nil) b:SetAttribute("macrotext", e.texte) end
+                        else
+                            nL = nL + 1
+                            b = LigneM(f, nL, false)
+                            b:SetScript("OnClick", function(self)
+                                local rac = self.e and self.e.cle and Suite.Raccourci(self.e.cle)
+                                if rac then Suite.Lancer(rac) end
+                            end)
+                        end
+                        b.e = e
+                        b.icone:SetTexture(e.icone or "Interface\\Icons\\INV_Misc_QuestionMark")
+                        b.nom:SetText(e.nom)
+                        b:ClearAllPoints()
+                        b:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, -y)
+                        b:SetWidth(largeur)
+                        b:Show()
+                        y = y + 22
+                    end
+                end
+                y = y + 4
             end
         end
-        b:SetScript("OnDragStart", function(self) self:StartMoving() end)
-        b:SetScript("OnDragStop", function(self)
-            self:StopMovingOrSizing()
-            local x, y = self:GetCenter()
-            Reglages().raccourcisX, Reglages().raccourcisY = math.floor(x + 0.5), math.floor(y + 0.5)
+    end
+    local haut = (f:GetHeight() or 0) - (f.zone:GetHeight() or 0)
+    f:SetHeight(math.max(60, (replie and 0 or y) + math.max(haut, 40)))
+    if Suite.pilote and Suite.pilote:IsShown() and Suite.pilote.nom == "CoreSuiteMacros" then
+        Suite.pilote.Marquer()
+        Suite.pilote.Barre()
+    end
+end
+
+-- Ouvrir / fermer : pres du bouton rond, puis pilotee a la manette.
+function Suite.BasculerFenetreMacros()
+    local f = FenetreMacrosSuite()
+    if not f then return false end
+    if f:IsShown() then f:Hide() return true end
+    if InCombatLockdown and InCombatLockdown() then return true end
+    if Suite.panneauRaccourcis then Suite.panneauRaccourcis:Hide() end
+    f:ClearAllPoints()
+    local rond = Suite.boutonRaccourcis
+    local ouverture = Reglages().raccourcisOuverture or "gauche"
+    if rond and rond:IsShown() then
+        if ouverture == "droite" then f:SetPoint("TOPLEFT", rond, "TOPRIGHT", 8, 0)
+        elseif ouverture == "haut" then f:SetPoint("BOTTOMLEFT", rond, "TOPLEFT", 0, 8)
+        elseif ouverture == "bas" then f:SetPoint("TOPLEFT", rond, "BOTTOMLEFT", 0, -8)
+        else f:SetPoint("TOPRIGHT", rond, "TOPLEFT", -8, 0) end
+    else
+        f:SetPoint("CENTER")
+    end
+    f:SetClampedToScreen(true)
+    f:Show()
+    Suite.DessinerFenetreMacros()
+    local manette = _G.C_GamePad and _G.C_GamePad.IsEnabled and select(2, pcall(_G.C_GamePad.IsEnabled)) == true
+    if manette then Suite.Piloter(true, "CoreSuiteMacros") end
+    return true
+end
+
+-- ---------------------------------------------------------------------------
+-- MacroCore : une fenetre comme le suivi Mes fabrications. Pour l'instant,
+-- seulement la rangee du haut (l'icone au clavier, comme un onglet du suivi)
+-- et le filet dessous.
+local ICONE_MACROCORE = "Interface\\MacroFrame\\MacroFrame-Icon"
+local ALPHA_EN_COURSE = 0.25
+local HAUT_ONGLETS = 38
+local fenMC
+
+local function MacroCore()
+    if fenMC then return fenMC end
+    local charte = NS.charte
+    if not (charte and charte.Fenetre) then return nil end
+    local cadre = charte.Fenetre("CoreSuiteMacroCore", 300, 100,
+        { portrait = false, strate = "MEDIUM", sansPied = true })
+    if cadre.titre then cadre.titre:SetText("MacroCore") end
+    cadre.fermer:SetScript("OnClick", function() Suite.ActiverMacroCore(false) end)
+
+    -- Place retenue.
+    local r = Reglages()
+    cadre:ClearAllPoints()
+    if type(r.macroCorePlace) == "table" then
+        cadre:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", r.macroCorePlace[1], r.macroCorePlace[2])
+    else
+        cadre:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+    end
+    cadre:SetScript("OnDragStart", function(self)
+        if Suite.Libre and not Suite.Libre("CoreSuiteMacroCore") then return end
+        self:StartMoving()
+    end)
+    cadre:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        local x, y = self:GetLeft(), self:GetTop()
+        if x and y then Reglages().macroCorePlace = { math.floor(x + 0.5), math.floor(y + 0.5) } end
+    end)
+    if Suite.Ancrable then pcall(Suite.Ancrable, "CoreSuiteMacroCore", cadre, "MacroCore") end
+
+    -- L'icone au clavier : meme bouton que les onglets du suivi.
+    -- Pose sur l'ecran (pas dans la fenetre) : il reste net quand la
+    -- fenetre devient invisible, et suit sa place.
+    local b = CreateFrame("Button", nil, UIParent)
+    b:SetFrameStrata(cadre:GetFrameStrata())
+    b:SetFrameLevel(cadre:GetFrameLevel() + 10)
+    b:SetSize(24, 24)
+    b:SetPoint("TOPLEFT", cadre.zone, "TOPLEFT", 2, 0)
+    b.fond = b:CreateTexture(nil, "BACKGROUND")
+    b.fond:SetSize(19, 19)
+    b.fond:SetPoint("CENTER")
+    b.fond:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    b.image = b:CreateTexture(nil, "ARTWORK")
+    b.image:SetPoint("CENTER")
+    b.image:SetSize(16, 16)
+    b.image:SetTexture(ICONE_MACROCORE)
+    if b.image.SetMask then pcall(b.image.SetMask, b.image, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+    b.anneau = b:CreateTexture(nil, "OVERLAY")
+    b.anneau:SetSize(41, 41)
+    b.anneau:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
+    b.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("MacroCore", 1, 0.82, 0)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:SetScript("OnClick", function() Suite.ActiverMacroCore(not cadre.active) end)
+    b.infobulleDe = "CoreSuiteMacroCore"
+    cadre.icone = b
+
+    -- A droite de l'icone : les deux suivis. Un clic les montre ou les cache.
+    cadre.suivis = {}
+    for rang, v in ipairs({
+        { "CraftCoreSuivi", "CraftCoreAPI", TR("Mes fabrications", "My crafts"), nil, "Interface\\Icons\\Trade_BlackSmithing",
+          TR("Affiche ou cache le suivi Mes fabrications.", "Shows or hides the My crafts tracker.") },
+        { "QuestCoreSuivi", "QuestCoreAPI", TR("Quêtes", "Quests"), "QuestNormal", "Interface\\GossipFrame\\AvailableQuestIcon",
+          TR("Affiche ou cache le suivi des quêtes.", "Shows or hides the quest tracker.") } }) do
+        local s = CreateFrame("Button", nil, UIParent)
+        s:SetFrameStrata(cadre:GetFrameStrata())
+        s:SetFrameLevel(cadre:GetFrameLevel() + 10)
+        s:SetSize(24, 24)
+        -- Tout au bord droit, pour ne pas les confondre avec l'icone de MacroCore.
+        s:SetPoint("TOPRIGHT", cadre.zone, "TOPRIGHT", -2 - (2 - rang) * (24 + 8), 0)
+        s.fond = s:CreateTexture(nil, "BACKGROUND")
+        s.fond:SetSize(19, 19)
+        s.fond:SetPoint("CENTER")
+        s.fond:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+        s.image = s:CreateTexture(nil, "ARTWORK")
+        s.image:SetPoint("CENTER")
+        s.image:SetSize(16, 16)
+        if not (v[4] and s.image.SetAtlas and pcall(s.image.SetAtlas, s.image, v[4]) and s.image:GetAtlas()) then
+            s.image:SetTexture(v[5])
+        end
+        if not v[4] and s.image.SetMask then pcall(s.image.SetMask, s.image, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+        s.anneau = s:CreateTexture(nil, "OVERLAY")
+        s.anneau:SetSize(41, 41)
+        s.anneau:SetPoint("TOPLEFT", s, "TOPLEFT", 0, 0)
+        s.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+        s:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
+        s.nomSuivi, s.api, s.nom, s.desc = v[1], v[2], v[3], v[6]
+        s.infobulleDe = "CoreSuiteMacroCore"
+        s:SetAlpha(ALPHA_EN_COURSE)
+        s:SetScript("OnClick", function(self)
+            local a = _G[self.api]
+            if a and a.BasculerSuivi then pcall(a.BasculerSuivi) end
         end)
-        b:SetScript("OnClick", function() Suite.BasculerRaccourcis() end)
-        b:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText(TR("Raccourcis de la suite", "Suite shortcuts"), 1, 0.82, 0)
-            GameTooltip:AddLine(TR("Clic : ouvrir. Glisser : déplacer.", "Click : open. Drag : move."), 1, 1, 1)
+        s:SetScript("OnEnter", function(self)
+            self:SetAlpha(1)
+            if Reglages().macroCoreSansInfobulle then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(self.nom, 1, 0.82, 0)
+            GameTooltip:AddLine(self.desc, 1, 1, 1, true)
             GameTooltip:Show()
         end)
-        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        Suite.boutonRaccourcis = b
+        s:SetScript("OnLeave", function(self)
+            self:SetAlpha(ALPHA_EN_COURSE)
+            GameTooltip:Hide()
+        end)
+        s:Hide()
+        table.insert(cadre.suivis, s)
     end
+
+    local filet = cadre:CreateTexture(nil, "ARTWORK")
+    filet:SetHeight(1)
+    filet:SetPoint("TOPLEFT", cadre.zone, "TOPLEFT", 0, -HAUT_ONGLETS + 6)
+    filet:SetPoint("TOPRIGHT", cadre.zone, "TOPRIGHT", 0, -HAUT_ONGLETS + 6)
+    filet:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+    cadre.filet = filet
+
+    -- Pilote : garde l'opacite d'activation ; B referme (rend la manette).
+    cadre.piloteGarderAlpha = true
+    cadre.piloteSurB = function() Suite.ActiverMacroCore(false) end
+    cadre.elementsPilote = function()
+        local t = {}
+        for _, s in ipairs(cadre.suivis or {}) do table.insert(t, s) end
+        for _, b in ipairs(cadre.pastilles or {}) do table.insert(t, b) end
+        return t
+    end
+    -- La manette reprend sur la derniere pastille choisie, sinon la premiere.
+    cadre.piloteDepart = function()
+        local d = cadre.dernierePastille
+        if d and d.e and d:IsShown() then return d end
+        for _, b in ipairs(cadre.pastilles or {}) do if b.e and b:IsShown() then return b end end
+    end
+    fenMC = cadre
+    Suite.ActiverMacroCore(false)
+    return cadre
+end
+
+-- Inactive : la fenetre est invisible (et ne gene pas les clics), seul le
+-- bouton se voit. Active : la fenetre apparait a l'opacite des suivis en
+-- sous-brillance.
+function Suite.ActiverMacroCore(oui)
+    local f = fenMC
+    if not f then return end
+    if f.figee then return end
+    f.active = oui and true or nil
+    f:SetAlpha(oui and ALPHA_EN_COURSE or 0)
+    f:EnableMouse(oui and true or false)
+    if f.fermer then f.fermer:SetShown(oui and true or false) end
+    -- Les pastilles ne se cliquent que fenetre active (hors combat : le jeu
+    -- interdit de montrer ou cacher ces boutons pendant un combat).
+    local combat = InCombatLockdown and InCombatLockdown()
+    if not combat then
+        for _, b in ipairs(f.pastilles or {}) do b:SetShown(oui and b.e ~= nil) end
+    end
+    for _, sv in ipairs(f.suivis or {}) do sv:SetShown(oui and _G[sv.api] ~= nil) end
+    -- Ouverte : la manette pilote MacroCore. Refermee : elle reprend son cours.
+    local p = Suite.pilote
+    if oui then
+        if not combat then Suite.Piloter(true, "CoreSuiteMacroCore") end
+    elseif p and p:IsShown() and p.nom == "CoreSuiteMacroCore" then
+        Suite.Piloter(false)
+    end
+end
+
+-- Sous le filet : une ligne par famille de raccourcis (manette, ouvrir,
+-- guider, repondre, mes macros), avec seulement les raccourcis choisis.
+-- Une famille sans raccourci choisi n'apparait pas. Un filet entre deux.
+local PASTILLE, ECART_P, ECART_L = 24, 8, 8
+function Suite.RemplirMacroCore()
+    local f = fenMC
+    if not f or (InCombatLockdown and InCombatLockdown()) then return end
+    f.pastilles = f.pastilles or {}
+    f.filets = f.filets or {}
+    f.titres = f.titres or {}
+    local nt = 0
+    local parFamille = {}
+    for _, e in ipairs(Entrees()) do
+        parFamille[e.famille] = parFamille[e.famille] or {}
+        table.insert(parFamille[e.famille], e)
+    end
+    local largeur = f.zone:GetWidth()
+    if not largeur or largeur < 50 then largeur = 300 - 10 - 2 * ((NS.charte and NS.charte.MARGE) or 12) end
+    local parLigne = math.max(1, math.floor((largeur - 2 + ECART_P) / (PASTILLE + ECART_P)))
+    local n, nf = 0, 0
+    local y = -HAUT_ONGLETS + 6
+    local premiere = true
+    for _, fam in ipairs(Suite.FAMILLES) do
+        local liste = parFamille[fam.cle]
+        if liste and #liste > 0 then
+            if not premiere then
+                -- Filet entre deux familles.
+                y = y - ECART_L
+                nf = nf + 1
+                local t = f.filets[nf]
+                if not t then
+                    t = f:CreateTexture(nil, "ARTWORK")
+                    t:SetHeight(1)
+                    t:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+                    f.filets[nf] = t
+                end
+                t:ClearAllPoints()
+                t:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, y)
+                t:SetPoint("TOPRIGHT", f.zone, "TOPRIGHT", 0, y)
+                t:Show()
+            end
+            premiere = false
+            -- Titre de la famille, comme un en-tete du suivi.
+            y = y - 6
+            nt = nt + 1
+            local tt = f.titres[nt]
+            if not tt then
+                tt = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                tt:SetTextColor(1, 0.82, 0)
+                tt:SetJustifyH("LEFT")
+                f.titres[nt] = tt
+            end
+            -- Meme police et meme taille que les en-tetes de groupe des suivis
+            -- (Fabrications rapides, Projets) : taille du suivi des quetes + 3.
+            do
+                tt:SetFontObject("GameFontNormal")
+                local fichier, _, drapeaux = tt:GetFont()
+                local d = _G.QuestCoreDB
+                local sv = type(d) == "table" and type(d.reglages) == "table" and type(d.reglages.general) == "table" and d.reglages.general.suivi
+                local taille = tonumber(type(sv) == "table" and sv.taille) or 12
+                if fichier then tt:SetFont(Suite.FichierPolice and Suite.FichierPolice(fichier) or fichier, taille + 3, drapeaux) end
+            end
+            tt:ClearAllPoints()
+            tt:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, y - 2)
+            tt:SetText(TR(fam.fr, fam.en))
+            tt:Show()
+            y = y - 24
+            for i, e in ipairs(liste) do
+                local col = (i - 1) % parLigne
+                if i > 1 and col == 0 then y = y - PASTILLE - ECART_L end
+                n = n + 1
+                local b = f.pastilles[n]
+                if not b then
+                    -- Posee sur l'ecran (pas dans la fenetre) : la pastille
+                    -- selectionnee passe a pleine opacite, les autres restent
+                    -- a celle de la fenetre.
+                    b = CreateFrame("Button", nil, UIParent, "SecureActionButtonTemplate")
+                    b:SetFrameStrata(f:GetFrameStrata())
+                    b:SetFrameLevel(f:GetFrameLevel() + 10)
+                    b:SetAlpha(ALPHA_EN_COURSE)
+                    b.infobulleDe = "CoreSuiteMacroCore"
+                    b:RegisterForClicks("AnyUp", "AnyDown")
+                    b:SetSize(PASTILLE, PASTILLE)
+                    b.fond = b:CreateTexture(nil, "BACKGROUND")
+                    b.fond:SetSize(19, 19)
+                    b.fond:SetPoint("CENTER")
+                    b.fond:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+                    b.image = b:CreateTexture(nil, "ARTWORK")
+                    b.image:SetPoint("CENTER")
+                    b.image:SetSize(16, 16)
+                    b.anneau = b:CreateTexture(nil, "OVERLAY")
+                    b.anneau:SetSize(41, 41)
+                    b.anneau:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
+                    b.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+                    b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
+                    b:SetScript("OnEnter", function(self)
+                        if not self.e then return end
+                        self:SetAlpha(1)
+                        f.dernierePastille = self
+                        -- Infobulles : reglage de la suite (actives par defaut).
+                        if Reglages().macroCoreSansInfobulle then return end
+                        -- Toujours au meme endroit, contre la fenetre (voir
+                        -- les infobulles fixes).
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetText(self.e.nom, 1, 0.82, 0)
+                        local d = self.e.desc
+                        if not d and (self.e.corps or self.e.texte) then
+                            d = TR("Lance ta macro : ", "Runs your macro : ") .. (self.e.corps or self.e.texte)
+                        end
+                        if d then GameTooltip:AddLine(d, 1, 1, 1, true) end
+                        GameTooltip:Show()
+                    end)
+                    b:SetScript("OnLeave", function(self)
+                        self:SetAlpha(ALPHA_EN_COURSE)
+                        GameTooltip:Hide()
+                    end)
+                    -- Clic souris : meme regle que la manette (la macro du
+                    -- bouton lance l'action, on observe ce qui s'ouvre).
+                    b:SetScript("PreClick", function(self)
+                        Suite.AvantLancementMacroCore()
+                        if self.e and Suite.FigerAvantMacroCore then Suite.FigerAvantMacroCore(self.e.famille) end
+                    end)
+                    b:SetScript("PostClick", function(self)
+                        if self.e then Suite.ApresLancementMacroCore(self.e.famille) end
+                    end)
+                    f.pastilles[n] = b
+                end
+                b.e = e
+                b:SetAttribute("type", "macro")
+                if e.macro then b:SetAttribute("macrotext", nil) b:SetAttribute("macro", e.macro)
+                else b:SetAttribute("macro", nil) b:SetAttribute("macrotext", e.texte) end
+                b.image:SetTexture(e.icone or "Interface\\Icons\\INV_Misc_QuestionMark")
+                if b.image.SetMask and not b.masquee then
+                    pcall(b.image.SetMask, b.image, "Interface\\CharacterFrame\\TempPortraitAlphaMask")
+                    b.masquee = true
+                end
+                b:ClearAllPoints()
+                b:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 2 + col * (PASTILLE + ECART_P), y)
+                b:SetShown(f.active and true or false)
+            end
+            y = y - PASTILLE
+        end
+    end
+    for i = n + 1, #f.pastilles do f.pastilles[i].e = nil f.pastilles[i]:Hide() end
+    for i = nf + 1, #f.filets do f.filets[i]:Hide() end
+    for i = nt + 1, #f.titres do f.titres[i]:Hide() end
+    -- Hauteur : barre de titre, marges, contenu (jamais sous 100 : le cadre
+    -- du jeu se deforme en dessous).
+    local charte = NS.charte
+    local marge = (charte and charte.MARGE) or 12
+    local contenu = premiere and (HAUT_ONGLETS - 6) or (-y + ECART_L)
+    f:SetHeight(math.max(100, 24 + marge + contenu + marge + 4))
+end
+
+-- Ce que MacroCore ouvre le remplace : tant que cette fenetre est ouverte,
+-- MacroCore n'existe plus (ni bouton, ni commande). Elle revient quand
+-- la fenetre se ferme.
+local function FenetresVisibles()
+    local vues = {}
+    local function Ajouter(c) if c and c.IsShown and c:IsShown() then vues[c] = true end end
+    for _, m in pairs(Suite.membres or {}) do
+        if m.fenetre then local ok, c = pcall(m.fenetre) if ok then Ajouter(c) end end
+    end
+    for _, n in ipairs(SUIVIS) do Ajouter(_G[n]) end
+    for _, n in ipairs(UISpecialFrames or {}) do Ajouter(_G[n]) end
+    Ajouter(Suite.reglagesGeneraux)
+    Ajouter(Suite.fenetreMacros)
+    Ajouter(_G.SagaCoreMessages and _G.SagaCoreMessages.fenetre)
+    Ajouter(_G.AuraCoreReglages)
+    return vues
+end
+local avantLancement
+function Suite.AvantLancementMacroCore() avantLancement = FenetresVisibles() end
+local veille
+-- Figee : MacroCore reste a l'ecran telle quelle, mais ne recoit plus rien
+-- (ni souris, ni manette, ni macro).
+local function Figer(f, oui)
+    f.figee = oui and true or nil
+    local combat = InCombatLockdown and InCombatLockdown()
+    f:EnableMouse((not oui) and f.active and true or false)
+    if f.fermer then f.fermer:EnableMouse(not oui) end
+    if f.icone then f.icone:EnableMouse(not oui) end
+    for _, sv in ipairs(f.suivis or {}) do sv:EnableMouse(not oui) end
+    if not combat then
+        for _, b in ipairs(f.pastilles or {}) do b:EnableMouse(not oui) end
+    end
+    if oui then
+        local p = Suite.pilote
+        if p and p:IsShown() and p.nom == "CoreSuiteMacroCore" then Suite.Piloter(false) end
+        GameTooltip:Hide()
+    end
+end
+local function Debloquer()
+    local f = fenMC
+    if not f then return end
+    f.bloquants = nil
+    f.blocPilote = nil
+    if veille then veille:Hide() end
+    Figer(f, false)
+    -- Ouverte, elle reprend la manette.
+    if f.active and not (InCombatLockdown and InCombatLockdown()) then Suite.Piloter(true, "CoreSuiteMacroCore") end
+end
+function Suite.ApresLancementMacroCore(famille)
+    local f = fenMC
+    if not f then return end
+    local avant = avantLancement or {}
+    avantLancement = nil
+    local plusTard = _G.C_Timer and _G.C_Timer.After
+    local function Regarder()
+        local nouvelles = {}
+        -- Prise de controle d'une fenetre (piloter un suivi) : MacroCore est
+        -- figee tant que la manette pilote cette fenetre, et reprend la main
+        -- des qu'on la libere (meme si la fenetre reste ouverte).
+        local pl = Suite.pilote
+        f.blocPilote = nil
+        if pl and pl:IsShown() and pl.nom and pl.nom ~= "CoreSuiteMacroCore" then
+            f.blocPilote = pl.nom
+            table.insert(nouvelles, _G[pl.nom] or f)
+        else
+            for c in pairs(FenetresVisibles()) do
+                if not avant[c] and c ~= f then table.insert(nouvelles, c) end
+            end
+        end
+        if #nouvelles == 0 then
+            -- Rien ne s'est ouvert : MacroCore reprend ses commandes.
+            if f.figee and not f.bloquants then Debloquer() end
+            return
+        end
+        f.bloquants = nouvelles
+        Figer(f, true)
+        if not veille then
+            veille = CreateFrame("Frame")
+            local attente = 0
+            veille:SetScript("OnUpdate", function(_, ecoule)
+                attente = attente - (ecoule or 0)
+                if attente > 0 then return end
+                attente = 0.25
+                local encore = false
+                local fm = fenMC
+                if fm and fm.blocPilote then
+                    local pp = Suite.pilote
+                    encore = pp and pp:IsShown() and pp.nom == fm.blocPilote or false
+                else
+                    for _, c in ipairs((fm and fm.bloquants) or {}) do if c:IsShown() then encore = true end end
+                end
+                if not encore then Debloquer() end
+            end)
+        end
+        veille:Show()
+    end
+    if plusTard then plusTard(0.2, Regarder) else Regarder() end
+end
+-- Ouvrir ou piloter une fenetre : MacroCore se fige tout de suite (elle
+-- rend la manette), le temps de voir ce qui s'ouvre.
+local function FigerAvant(famille)
+    if fenMC and (famille == "ouvrir" or famille == "manette") then Figer(fenMC, true) end
+end
+Suite.FigerAvantMacroCore = FigerAvant
+function Suite.LancerDepuisMacroCore(r)
+    Suite.AvantLancementMacroCore()
+    FigerAvant(Suite.FamilleDe(r))
+    Suite.Lancer(r)
+    Suite.ApresLancementMacroCore(Suite.FamilleDe(r))
+end
+
+function Suite.BasculerMacroCore()
+    local f = MacroCore()
+    if not f then return false end
+    -- Figee par une fenetre qu'elle a ouverte : aucune commande.
+    if f.figee then return true end
+    f:Show()
+    Suite.ActiverMacroCore(not f.active)
+    return true
+end
+
+-- ---------------------------------------------------------------------------
+-- Suivis replies : un suivi cache (croix, macro, MacroCore) laisse a l'ecran
+-- sa premiere icone, a sa place. Un clic dessus le rouvre.
+-- ---------------------------------------------------------------------------
+
+local OUVRIR_PAR_API = { CraftCoreSuivi = "CraftCoreAPI", QuestCoreSuivi = "QuestCoreAPI" }
+local icones = {}
+
+-- La premiere icone ronde de la ligne du haut (onglet affiche en premier).
+local function PremiereIcone(f)
+    local meilleur, mh, mg
+    local function Voir(c, prof)
+        if prof > 4 then return end
+        for _, e in ipairs({ c:GetChildren() }) do
+            if e:IsShown() and e.anneau and e.image and e.GetCenter then
+                local x, y = e:GetCenter()
+                if x and y and (not meilleur or y > mh + 3 or (math.abs(y - mh) <= 3 and x < mg)) then
+                    meilleur, mh, mg = e, y, x
+                end
+            end
+            Voir(e, prof + 1)
+        end
+    end
+    Voir(f, 1)
+    return meilleur
+end
+
+local function PlacesIcones()
+    local r = Reglages()
+    r.iconesSuivis = type(r.iconesSuivis) == "table" and r.iconesSuivis or {}
+    return r.iconesSuivis
+end
+
+local function IconeDeSuivi(nom)
+    local b = icones[nom]
+    if b then return b end
+    b = CreateFrame("Button", nil, UIParent)
+    b:SetSize(24, 24)
+    b:SetFrameStrata("MEDIUM")
+    b.fond = b:CreateTexture(nil, "BACKGROUND")
+    b.fond:SetSize(19, 19)
+    b.fond:SetPoint("CENTER")
+    b.fond:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    b.image = b:CreateTexture(nil, "ARTWORK")
+    b.image:SetPoint("CENTER")
+    b.image:SetSize(16, 16)
+    b.anneau = b:CreateTexture(nil, "OVERLAY")
+    b.anneau:SetSize(41, 41)
+    b.anneau:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
+    b.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
+    b:SetScript("OnClick", function()
+        local a = _G[OUVRIR_PAR_API[nom]]
+        if a and a.BasculerSuivi then pcall(a.BasculerSuivi) end
+    end)
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(self.titre or nom, 1, 0.82, 0)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:Hide()
+    icones[nom] = b
+    return b
+end
+
+local function HabillerIcone(b, info, nom)
+    local atlasPose = false
+    if info.atlas and info.atlas ~= "" and b.image.SetAtlas and pcall(b.image.SetAtlas, b.image, info.atlas)
+        and (b.image:GetAtlas() or "") ~= "" then
+        atlasPose = true
+    end
+    if not atlasPose then
+        -- Repli : l'icone connue du suivi.
+        local connue = nom == "QuestCoreSuivi" and "Interface\\GossipFrame\\AvailableQuestIcon" or "Interface\\Icons\\Trade_BlackSmithing"
+        b.image:SetTexture(info.texture or connue)
+    end
+    -- Toujours en pleine couleur, comme l'onglet choisi, meme si l'onglet
+    -- copie etait gris.
+    b.image:SetDesaturated(false)
+    b.image:SetVertexColor(1, 1, 1)
+    b.image:SetAlpha(1)
+    b.anneau:SetDesaturated(false)
+    b:SetAlpha(1)
+    if info.masque and b.image.SetMask and not b.masquee then
+        pcall(b.image.SetMask, b.image, "Interface\\CharacterFrame\\TempPortraitAlphaMask")
+        b.masquee = true
+    end
+    b.titre = info.titre
+end
+
+-- Le suivi se cache : on retient son icone et sa place, et on la montre.
+local function SuiviCache(nom)
+    local f = _G[nom]
+    if not f then return end
+    local e = PremiereIcone(f)
+    local info = PlacesIcones()[nom]
+    if e then
+        local x, y = e:GetCenter()
+        local k = (e:GetEffectiveScale() or 1) / (UIParent:GetEffectiveScale() or 1)
+        -- GetAtlas rend "" (et non nil) pour une image sans atlas.
+        local atlas = e.image.GetAtlas and e.image:GetAtlas()
+        if atlas == "" then atlas = nil end
+        local tex = e.image:GetTexture()
+        -- Une image arrondie par un masque se renomme "maskNNNN" : illisible.
+        if tex == "" or tex == 0 or (type(tex) == "string" and tex:find("^mask")) then tex = nil end
+        info = { x = x * k, y = y * k, atlas = atlas, texture = (not atlas) and tex or nil,
+            -- Les icones d'objet sont arrondies ; les atlas du jeu le sont deja.
+            masque = not atlas,
+            titre = (f.titre and f.titre.GetText and f.titre:GetText()) or e.nom }
+        -- Image illisible : celle, connue, de l'onglet copie.
+        if not info.atlas and not info.texture then
+            if nom == "QuestCoreSuivi" then
+                local route = f.vuesRoute and f.vuesRoute.divers
+                if route and route:IsShown() then
+                    info.texture, info.masque = "Interface\\Icons\\INV_Misc_Map_01", true
+                else
+                    info.atlas, info.texture, info.masque = "QuestNormal", "Interface\\GossipFrame\\AvailableQuestIcon", false
+                end
+            else
+                info.texture, info.masque = "Interface\\Icons\\Trade_BlackSmithing", true
+            end
+        end
+        PlacesIcones()[nom] = info
+    end
+    -- Ancienne image retenue illisible ("maskNNNN") : on l'oublie.
+    if info and type(info.texture) == "string" and info.texture:find("^mask") then info.texture = nil end
+    if not info then return end
+    local b = IconeDeSuivi(nom)
+    HabillerIcone(b, info, nom)
     b:ClearAllPoints()
-    local quetes = _G.QuestCoreSuivi
-    if r.raccourcisX and r.raccourcisY then
-        b:SetPoint("CENTER", UIParent, "BOTTOMLEFT", r.raccourcisX, r.raccourcisY)
-    elseif quetes and quetes:IsShown() then
-        -- Par defaut : juste a gauche du suivi des quetes.
-        b:SetPoint("TOPRIGHT", quetes, "TOPLEFT", -6, 0)
-    else
-        b:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, 140)
+    b:SetPoint("CENTER", UIParent, "BOTTOMLEFT", info.x, info.y)
+    b:Show()
+end
+
+local function SuiviMontre(nom)
+    if icones[nom] then icones[nom]:Hide() end
+end
+
+local function BrancherSuivis()
+    for nom in pairs(OUVRIR_PAR_API) do
+        local f = _G[nom]
+        if f and not f.suiteIconeBranchee then
+            f.suiteIconeBranchee = true
+            f:HookScript("OnHide", function() pcall(SuiviCache, nom) end)
+            f:HookScript("OnShow", function() pcall(SuiviMontre, nom) end)
+            if f:IsShown() then SuiviMontre(nom) else pcall(SuiviCache, nom) end
+        end
     end
-    Habiller(b, Suite.TAILLE_RACCOURCI, r.raccourcisRonds)
-    b:SetShown(not r.raccourcisCache)
+end
+Suite.BrancherIconesSuivis = BrancherSuivis
+
+-- ---------------------------------------------------------------------------
+-- Infobulles fixes : dans MacroCore, Mes fabrications et Quetes, l'infobulle
+-- est toujours au meme endroit, contre le haut de la fenetre, a droite ou a
+-- gauche (reglable). Par defaut : MacroCore et Mes fabrications a droite,
+-- Quetes a gauche.
+-- ---------------------------------------------------------------------------
+
+local FENETRES_INFOBULLE = { CoreSuiteMacroCore = "droite", CraftCoreSuivi = "droite", QuestCoreSuivi = "gauche" }
+Suite.FENETRES_INFOBULLE = FENETRES_INFOBULLE
+
+function Suite.CoteInfobulle(nom)
+    local r = Reglages()
+    local t = type(r.coteInfobulles) == "table" and r.coteInfobulles or {}
+    return t[nom] or FENETRES_INFOBULLE[nom]
+end
+function Suite.PoserCoteInfobulle(nom, cote)
+    local r = Reglages()
+    r.coteInfobulles = type(r.coteInfobulles) == "table" and r.coteInfobulles or {}
+    r.coteInfobulles[nom] = cote
+end
+
+local function FenetreDInfobulle(o)
+    local n = 0
+    while o and n < 20 do
+        if o.infobulleDe then return o.infobulleDe end
+        local nom = o.GetName and o:GetName()
+        if nom and FENETRES_INFOBULLE[nom] then return nom end
+        o = o.GetParent and o:GetParent()
+        n = n + 1
+    end
+end
+
+if not Suite.crochetInfobulles and hooksecurefunc then
+    Suite.crochetInfobulles = true
+    local enCours = false
+    hooksecurefunc(GameTooltip, "SetOwner", function(tt, owner)
+        if enCours or not owner then return end
+        local S = _G.CoreSuite
+        local ok, nom = pcall(FenetreDInfobulle, owner)
+        if not ok or not nom then return end
+        local f = _G[nom]
+        if not f then return end
+        enCours = true
+        pcall(tt.SetOwner, tt, owner, "ANCHOR_NONE")
+        enCours = false
+        tt:ClearAllPoints()
+        local cote = (S and S.CoteInfobulle and S.CoteInfobulle(nom)) or FENETRES_INFOBULLE[nom]
+        -- Collee a la fenetre, sans espace, partout pareil.
+        if cote == "gauche" then
+            tt:SetPoint("TOPRIGHT", f, "TOPLEFT", 0, 0)
+        else
+            tt:SetPoint("TOPLEFT", f, "TOPRIGHT", 0, 0)
+        end
+    end)
+end
+
+-- Plus de bouton rond : seule la fenetre MacroCore.
+function Suite.PlacerBoutonRaccourcis()
+    if Suite.boutonRaccourcis then Suite.boutonRaccourcis:Hide() end
+    if not Suite.Prive() then
+        if fenMC then
+            Suite.ActiverMacroCore(false)
+            fenMC:Hide() fenMC.icone:Hide()
+            for _, sv in ipairs(fenMC.suivis or {}) do sv:Hide() end
+        end
+        return
+    end
+    local f = MacroCore()
+    if f then
+        f:Show()
+        f.icone:Show()
+        pcall(Suite.RemplirMacroCore)
+        if f.figee then Figer(f, true) end
+    end
+    pcall(BrancherSuivis)
 end
 
 do
@@ -3532,7 +5005,7 @@ end
 -- ---------------------------------------------------------------------------
 -- Fenetre a pages, comme celles des add-ons de la suite : menu a gauche,
 -- parchemin a droite, pied avec Fermer, onglets de la suite sur le bord.
--- Sert aux Macros et a ImproveCore.
+-- Sert aux Macros et a AuraCore.
 --
 -- o = { nom, cle, titre = fonction, icone, pages = { { cle, libelle = fonction,
 --       icone, construire = fonction(page, O), rendre = fonction(page, O) } } }
@@ -3810,6 +5283,8 @@ function Suite.Curseur(parent, mini, maxi, pas, lire, poser, format, boutons, gr
     -- Meme largeur que les listes : les bords des controles s'alignent.
     f:SetSize(200, 26)
     pas = pas or 1
+    -- Quantites limitees a 999 : les fleches restent pres du chiffre.
+    maxi = math.min(maxi or 999, 999)
     local function Arrondir(v) return mini + math.floor((v - mini) / pas + 0.5) * pas end
     local function Ecrire(v) return format and format(v) or tostring(v) end
     local function Fleche(sens, saut)
@@ -3880,9 +5355,14 @@ function Suite.Curseur(parent, mini, maxi, pas, lire, poser, format, boutons, gr
         plus:SetPoint("RIGHT", 0, 0)
     end
     local valeur = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    valeur:SetPoint("LEFT", moins, "RIGHT", 2, 0)
-    valeur:SetPoint("RIGHT", plus, "LEFT", -2, 0)
+    valeur:SetPoint("LEFT", moins, "RIGHT", 0, 0)
+    valeur:SetPoint("RIGHT", plus, "LEFT", 0, 0)
     valeur:SetJustifyH("CENTER")
+    -- Meme place partout entre les fleches (assez pour 100 %, sur une seule
+    -- ligne) : toutes les fleches des reglages restent alignees.
+    valeur:SetWordWrap(false)
+    local place = 56
+    f:SetWidth((moinsVite and 4 or 2) * 26 + place)
     f.boutonsPM = { moins, plus, moinsVite, plusVite }
     function f.Rendre()
         local okL, v = pcall(lire)
@@ -4018,11 +5498,11 @@ function Suite.FenetreAPages(o)
         end
         -- Explication sous un reglage : plus petite, en retrait.
         function O.Detail(hauteur)
-            local t = page.cadre:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            -- Police des textes explicatifs : la charte les met a 40 %.
+            local t = page.cadre:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
             t:SetWidth(LARGEUR_C - 60)
             t:SetJustifyH("LEFT")
             t:SetWordWrap(true)
-            t:SetTextColor(0.8, 0.8, 0.8)
             O.Placer(t, hauteur or 28, 2)
             t:ClearAllPoints()
             t:SetPoint("TOPLEFT", page.cadre, "TOPLEFT", 16, -(page.y - (hauteur or 28)))
@@ -4401,10 +5881,10 @@ local function FenetreMacrosPages()
     local edition, choixJeu
     local MAX_PERSO, MAX_AUTRES, MAX_JEU = 24, 30, 40
     fenetreM = Suite.FenetreAPages({
-        nom = "CoreSuiteMacrosPages", cle = "Macros", icone = "Interface\\Icons\\INV_Misc_Rune_01",
+        nom = "CoreSuiteMacrosPages", cle = "Macros", icone = "Interface\\Icons\\INV_Misc_Book_11",
         titre = function() return TR("Macros", "Macros") end,
         pages = {
-            { cle = "panneau", icone = "Interface\\Icons\\INV_Misc_Rune_01",
+            { cle = "panneau", icone = "Interface\\Icons\\INV_Misc_Book_11",
               libelle = function() return TR("Le panneau", "The panel") end,
               construire = function(page, O)
                   page.t1 = O.Section()
@@ -4417,6 +5897,19 @@ local function FenetreMacrosPages()
                   page.bReplacer:SetPoint("RIGHT", page.rRond, "RIGHT", -10, 0)
                   page.cRond = O.Case(page.rRond, function(oui) Reglages().raccourcisCache = (not oui) or nil Maj() end)
                   page.cRond:SetPoint("RIGHT", page.bReplacer, "LEFT", -16, 0)
+                  -- Infobulles des raccourcis de MacroCore (actives par defaut).
+                  page.rInfo = O.Rangee()
+                  page.cInfo = O.Case(page.rInfo, function(oui) Reglages().macroCoreSansInfobulle = (not oui) or nil end)
+                  page.cInfo:SetPoint("RIGHT", page.rInfo, "RIGHT", -10, 0)
+                  -- Cote des infobulles, par fenetre.
+                  page.rCotes = {}
+                  for _, nom in ipairs({ "CoreSuiteMacroCore", "CraftCoreSuivi", "QuestCoreSuivi" }) do
+                      local rg = O.Rangee()
+                      rg.cle = nom
+                      O.Liste(rg, function() return { { "gauche", TR("À gauche", "On the left") }, { "droite", TR("À droite", "On the right") } } end,
+                          function() return Suite.CoteInfobulle(nom) end, function(v) Suite.PoserCoteInfobulle(nom, v) end)
+                      table.insert(page.rCotes, rg)
+                  end
                   page.rOuv = O.Rangee()
                   page.sOuv = O.Segments(page.rOuv, function() return {
                       { "gauche", TR("Gauche", "Left") }, { "droite", TR("Droite", "Right") },
@@ -4445,6 +5938,12 @@ local function FenetreMacrosPages()
                       "A small button on screen opens the panel : your shortcuts and macros as icons, launched with one click. Drag the button wherever you like."))
                   page.rRond.nom:SetText(TR("Bouton à l'écran", "Button on screen"))
                   page.cRond:SetChecked(not r.raccourcisCache)
+                  page.rInfo.nom:SetText(TR("Infobulles des raccourcis", "Shortcut tooltips"))
+                  page.cInfo:SetChecked(not r.macroCoreSansInfobulle)
+                  local NOMS = { CoreSuiteMacroCore = TR("Infobulles de MacroCore", "MacroCore tooltips"),
+                      CraftCoreSuivi = TR("Infobulles de Mes fabrications", "My crafts tooltips"),
+                      QuestCoreSuivi = TR("Infobulles des quêtes", "Quest tooltips") }
+                  for _, rg in ipairs(page.rCotes or {}) do rg.nom:SetText(NOMS[rg.cle]) end
                   page.bReplacer:SetText(TR("Replacer", "Reset"))
                   page.rOuv.nom:SetText(TR("Les icônes s'ouvrent", "Icons open"))
                   page.rForme.nom:SetText(TR("Forme des icônes", "Icon shape"))
@@ -4465,8 +5964,16 @@ local function FenetreMacrosPages()
                       for _, r in ipairs(Suite.RACCOURCIS) do if Dispo(r) then Suite.CreerMacro(r) end end
                   end)
                   page.bTout:SetPoint("LEFT", page.rTout, "LEFT", 0, 0)
+                  page.bDecocher = O.Bouton(page.rTout, 160, function()
+                      Suite.ToutDecocher()
+                      Suite.RafraichirRaccourcis()
+                      for _, w in ipairs(Suite.fenetresAPages or {}) do
+                          if w.cadre and w.cadre:IsShown() and w.Rendre then pcall(w.Rendre) end
+                      end
+                  end)
+                  page.bDecocher:SetPoint("LEFT", page.bTout, "RIGHT", 8, 0)
                   page.lignes = {}
-                  for i = 1, #Suite.RACCOURCIS do
+                  for i = 1, #Suite.RACCOURCIS + #Suite.FAMILLES do
                       local l = O.Rangee(24)
                       l.case = O.Case(l, function(oui) if l.r then Suite.PoserRaccourciActif("r:" .. l.r.cle, oui) Suite.RafraichirRaccourcis() end end)
                       l.case:SetPoint("LEFT", l, "LEFT", -3, 0)
@@ -4476,36 +5983,61 @@ local function FenetreMacrosPages()
                       l.nom:SetPoint("LEFT", l.icone, "RIGHT", 8, 0)
                       l.commande = l:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
                       l.commande:SetPoint("LEFT", l, "LEFT", O.X - 40, 0)
-                      l.creer = O.Bouton(l, 110, function() if l.r then Suite.CreerMacro(l.r) end end)
+                      -- Un seul bouton : Creer, ou Supprimer une fois la macro creee.
+                      l.creer = O.Bouton(l, 110, function()
+                          if not l.r then return end
+                          if Suite.MacroExiste(l.r) then Suite.SupprimerMacro(l.r) else Suite.CreerMacro(l.r) end
+                      end)
                       l.creer:SetPoint("RIGHT", l, "RIGHT", -10, 0)
                       l.etat = l:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                      l.etat:SetPoint("RIGHT", l, "RIGHT", -10, 0)
+                      l.etat:SetPoint("RIGHT", l.creer, "LEFT", -8, 0)
                       page.lignes[i] = l
                   end
               end,
               rendre = function(page)
                   page.t1:SetText(TR("Les raccourcis de la suite", "The suite's shortcuts"))
-                  page.intro:SetText(TR("La case met le raccourci dans le panneau de ce personnage. « Créer » en fait aussi une macro du jeu (« SC ... », commune au compte), à poser sur une barre.",
-                      "The box puts the shortcut in this character's panel. \"Create\" also makes it a game macro (\"SC ...\", account-wide), to put on a bar."))
+                  page.intro:SetText(TR("La case met le raccourci dans le panneau de ce personnage. « Créer » en fait aussi une macro du jeu, nommée en 3 lettres (PFa, PQu...) avec l'icône du raccourci : elle se trouve dans la fenêtre Macros du jeu (/macro), onglet Général, d'où on la fait glisser sur une barre.",
+                      "The box puts the shortcut in this character's panel. \"Create\" also makes it a game macro, with a 3-letter name (PFa, PQu...) and the shortcut's icon : find it in the game's Macros window (/macro), General tab, and drag it onto a bar."))
                   page.bTout:SetText(TR("Créer toutes les macros", "Create all macros"))
+                  page.bDecocher:SetText(TR("Tout décocher", "Uncheck all"))
                   local rang = 0
                   for _, l in ipairs(page.lignes) do l:Hide() end
-                  for _, r in ipairs(Suite.RACCOURCIS) do
-                      if Dispo(r) then
+                  -- Par famille : un titre, puis ses raccourcis.
+                  for _, fam in ipairs(Suite.FAMILLES) do
+                      local membres = {}
+                      for _, r in ipairs(Suite.RACCOURCIS) do
+                          if Dispo(r) and Suite.FamilleDe(r) == fam.cle then table.insert(membres, r) end
+                      end
+                      if #membres > 0 then
                           rang = rang + 1
-                          local l = page.lignes[rang]
-                          l.r = r
-                          l.icone:SetTexture("Interface\\Icons\\" .. r.icone)
-                          l.nom:SetText(Suite.NomRaccourci(r))
-                          l.commande:SetText("/sagacore " .. r.cle)
-                          l.case:SetChecked(Suite.RaccourciActif("r:" .. r.cle))
-                          l.case:SetShown(r.cle ~= "raccourcis")
-                          local existe = Suite.MacroExiste(r)
-                          l.creer:SetText(TR("Créer", "Create"))
-                          l.creer:SetShown(not existe)
-                          l.etat:SetText(existe and ("|cff4fd16a" .. TR("Macro créée", "Macro created") .. "|r") or "")
-                          l.etat:SetShown(existe)
-                          l:Show()
+                          local t = page.lignes[rang]
+                          t.r = nil
+                          t.case:Hide() t.icone:Hide() t.commande:Hide() t.creer:Hide() t.etat:Hide()
+                          t.nom:ClearAllPoints()
+                          t.nom:SetPoint("LEFT", t, "LEFT", 0, 0)
+                          t.nom:SetFontObject("GameFontNormal")
+                          t.nom:SetText(TR(fam.fr, fam.en))
+                          t:Show()
+                          for _, r in ipairs(membres) do
+                              rang = rang + 1
+                              local l = page.lignes[rang]
+                              l.r = r
+                              l.case:Show() l.icone:Show() l.commande:Show()
+                              l.nom:ClearAllPoints()
+                              l.nom:SetPoint("LEFT", l.icone, "RIGHT", 8, 0)
+                              l.nom:SetFontObject("GameFontHighlight")
+                              l.icone:SetTexture("Interface\\Icons\\" .. r.icone)
+                              l.nom:SetText(Suite.NomRaccourci(r))
+                              l.commande:SetText("/sagacore " .. r.cle)
+                              l.case:SetChecked(Suite.RaccourciActif("r:" .. r.cle))
+                              l.case:SetShown(r.cle ~= "raccourcis")
+                              local existe = Suite.MacroExiste(r)
+                              l.creer:SetText(existe and TR("Supprimer", "Delete") or TR("Créer", "Create"))
+                              l.creer:Show()
+                              l.etat:SetText(existe and ("|cff4fd16a" .. TR("Macro créée", "Macro created") .. "|r") or "")
+                              l.etat:SetShown(existe)
+                              l:Show()
+                          end
                       end
                   end
               end },
@@ -4527,9 +6059,17 @@ local function FenetreMacrosPages()
                       l.nom:SetPoint("LEFT", l.icone, "RIGHT", 8, 0)
                       l.genre = l:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
                       l.genre:SetPoint("LEFT", l, "LEFT", O.X - 40, 0)
+                      -- Supprimer : la macro quitte la suite, et la macro du jeu qui
+                      -- va avec est supprimee aussi.
                       l.retirer = O.Bouton(l, 90, function()
                           local liste = Suite.MacrosPerso()
-                          for k, m in ipairs(liste) do if m == l.m then table.remove(liste, k) break end end
+                          local m = l.m
+                          if m and not m.texte and m.nom and _G.GetMacroIndexByName and _G.DeleteMacro
+                              and not (InCombatLockdown and InCombatLockdown()) then
+                              local index = _G.GetMacroIndexByName(m.nom)
+                              if index and index > 0 then pcall(_G.DeleteMacro, index) end
+                          end
+                          for k, mm in ipairs(liste) do if mm == m then table.remove(liste, k) break end end
                           if edition == l.m then edition = nil end
                           Suite.RafraichirRaccourcis()
                       end)
@@ -4615,7 +6155,7 @@ local function FenetreMacrosPages()
                           l.case:SetChecked(Suite.RaccourciActif(IdPerso(mm)))
                           l.modifier:SetText(edition == mm and TR("Fermer", "Close") or TR("Modifier", "Edit"))
                           l.modifier:SetShown(ecrite)
-                          l.retirer:SetText(TR("Retirer", "Remove"))
+                          l.retirer:SetText(TR("Supprimer", "Delete"))
                           l:Show()
                       else
                           l.m = nil
@@ -4800,7 +6340,7 @@ end
 -- ---------------------------------------------------------------------------
 -- Un profil garde les reglages de la suite et de chaque add-on (pas les
 -- donnees : recettes, quetes, personnages). L'export laisse de cote ce qui
--- est prive (TradeCore, ImproveCore, le mode prive).
+-- est prive (TradeCore, AuraCore, le mode prive).
 
 local BASES = { CraftCore = "CraftCoreDB", QuestCore = "QuestCoreDB", MapCore = "MapCoreDB",
     LegacyCore = "LegacyCoreDB", TradeCore = "TradeCoreDB" }
@@ -4832,8 +6372,8 @@ function Suite.Photographier(pourExport)
             photo.addons[cle] = Copier(d.reglages)
         end
     end
-    if not pourExport and type(_G.ImproveCoreDB) == "table" then
-        photo.improve = Copier(_G.ImproveCoreDB)
+    if not pourExport and type(_G.AuraCoreDB) == "table" then
+        photo.improve = Copier(_G.AuraCoreDB)
         photo.improve.diag = nil
     end
     return photo
@@ -4854,10 +6394,10 @@ function Suite.Appliquer(photo)
             _G[base].reglages = Copier(reglages)
         end
     end
-    if type(photo.improve) == "table" and type(_G.ImproveCoreDB) == "table" then
-        local diag = _G.ImproveCoreDB.diag
-        _G.ImproveCoreDB = Copier(photo.improve)
-        _G.ImproveCoreDB.diag = diag
+    if type(photo.improve) == "table" and type(_G.AuraCoreDB) == "table" then
+        local diag = _G.AuraCoreDB.diag
+        _G.AuraCoreDB = Copier(photo.improve)
+        _G.AuraCoreDB.diag = diag
     end
     return true
 end
@@ -5245,7 +6785,7 @@ function Suite.InscrireDansOptions()
     -- Les sous-pages, dans l'ordre des modules.
     local liste = {}
     for cle, o in pairs(_G.SagaCoreOptions) do
-        local prive = (cle == "Macros" or cle == "ImproveCore") and not Suite.Prive()
+        local prive = (cle == "Macros" or cle == "AuraCore") and not Suite.Prive()
         if type(o) == "table" and type(o.elements) == "function" and not prive then table.insert(liste, { cle = cle, o = o }) end
     end
     table.sort(liste, function(a, b) return (a.o.ordre or 99) < (b.o.ordre or 99) end)
@@ -5330,7 +6870,7 @@ end }
 -- ---------------------------------------------------------------------------
 
 Suite.FENETRES_FONDU = { "CraftCoreWindow", "QuestCoreFenetre", "MapCoreFenetre", "LegacyCoreFenetre",
-    "TradeCoreFenetre", "ImproveCoreFenetre", "CoreSuiteReglages", "CoreSuiteMacros", "SagaCoreMessages" }
+    "TradeCoreFenetre", "AuraCoreFenetre", "CoreSuiteReglages", "CoreSuiteMacros", "SagaCoreMessages" }
 local ALPHA_MARCHE = 0.1
 
 local function FenetresAFondre()

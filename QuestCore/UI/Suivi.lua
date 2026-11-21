@@ -76,6 +76,9 @@ local function Ligne(index)
     if l then return l end
     l = CreateFrame("Button", nil, corps)
     pcall(l.RegisterForClicks, l, "LeftButtonUp", "RightButtonUp")
+    -- Surbrillance de la ligne (souris ou manette) : la barre du journal de
+    -- quetes du jeu.
+    l:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
     -- Marque d'etat devant le titre : les icones du journal de quetes du jeu
     -- (rond a trois points en cours, rond au point d'interrogation a rendre).
     l.marque = l:CreateTexture(nil, "ARTWORK")
@@ -381,16 +384,9 @@ local function Poser(index, y, texte, options)
         l:SetScript("OnEnter", function(self)
             self.texte:SetTextColor(1, 1, 1)
             if options.survol then
-                -- Collee au bord gauche du suivi, a hauteur de la ligne (ou a
-                -- droite si le suivi est contre le bord gauche de l'ecran).
-                GameTooltip:SetOwner(self, "ANCHOR_NONE")
-                GameTooltip:ClearAllPoints()
-                local dy = (self:GetTop() or 0) - (cadre:GetTop() or 0)
-                if (cadre:GetLeft() or 0) > 300 then
-                    GameTooltip:SetPoint("TOPRIGHT", cadre, "TOPLEFT", 0, dy)
-                else
-                    GameTooltip:SetPoint("TOPLEFT", cadre, "TOPRIGHT", 0, dy)
-                end
+                -- Toujours au meme endroit : contre le haut du suivi, du cote
+                -- choisi (la suite place l'infobulle).
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 pcall(options.survol, GameTooltip)
                 GameTooltip:Show()
             end
