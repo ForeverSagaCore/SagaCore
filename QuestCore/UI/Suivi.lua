@@ -166,6 +166,32 @@ local function Ligne(index)
     end)
     l.pion:SetScript("OnLeave", function() GameTooltip:Hide() end)
     l.pion:Hide()
+    -- A cote de la petite carte : voir la quete sur la carte de QuestCore
+    -- (meme rond, une longue-vue).
+    l.voir = CreateFrame("Button", nil, l)
+    l.voir.pasPilote = true
+    l.voir:SetSize(18, 18)
+    l.voir.fond = l.voir:CreateTexture(nil, "BACKGROUND")
+    l.voir.fond:SetSize(14, 14)
+    l.voir.fond:SetPoint("CENTER")
+    l.voir.fond:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    l.voir.t = l.voir:CreateTexture(nil, "ARTWORK")
+    l.voir.t:SetSize(12, 12)
+    l.voir.t:SetPoint("CENTER")
+    l.voir.t:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_03")
+    if l.voir.t.SetMask then pcall(l.voir.t.SetMask, l.voir.t, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+    l.voir.anneau = l.voir:CreateTexture(nil, "OVERLAY")
+    l.voir.anneau:SetSize(31, 31)
+    l.voir.anneau:SetPoint("TOPLEFT", l.voir, "TOPLEFT", 0, 0)
+    l.voir.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    l.voir:SetScript("OnClick", function(self) if self.auClic then self.auClic() end end)
+    l.voir:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(L.TURNIN_SHOW_MAP, 1, 0.82, 0)
+        GameTooltip:Show()
+    end)
+    l.voir:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    l.voir:Hide()
     corps.lignes[index] = l
     return l
 end
@@ -306,6 +332,15 @@ local function Poser(index, y, texte, options)
         l.pion:Show()
     else
         l.pion:Hide()
+    end
+    if options.voir then
+        l.voir.auClic = options.voir
+        l.voir:ClearAllPoints()
+        if options.pion then l.voir:SetPoint("RIGHT", l.pion, "LEFT", -2, 0)
+        else l.voir:SetPoint("RIGHT", l, "RIGHT", 0, 0) end
+        l.voir:Show()
+    else
+        l.voir:Hide()
     end
     -- Don : une petite icone de cadeau au bout d'une ligne d'objectif d'un
     -- membre ; la quantite est dans l'infobulle.
@@ -695,6 +730,17 @@ function suivi.PoserFavori(id, oui)
     suivi.Rendre()
 end
 
+-- Longue-vue : la quete sur la carte de QuestCore (objectifs, rendu ou
+-- donneur), sans fleche de guidage.
+local function VoirSurCarte(id, moi)
+    local ok, points = pcall(NS.carte.PointsPour, id, moi)
+    local pt = ok and points and points[1]
+    if pt and pt.carte and NS.pageCarte and NS.pageCarte.MontrerQuete then
+        NS.pageCarte.MontrerQuete(id, pt.carte, pt.x, pt.y, NS.ref.NomDeQuete(id, moi), pt.quoi, true)
+    end
+    if NS.fenetre and NS.fenetre.OuvrirCarte then NS.fenetre.OuvrirCarte() end
+end
+
 local function RendreQuete(moi, quetes, id, index, y, prefixe)
     local s = Reglages()
     local q = quetes[id]
@@ -724,26 +770,32 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
         end })
     yApresTitre = y
     if not replieQ then
+        -- Petite carte (itineraire) et longue-vue (voir sur la carte) :
+        -- toujours sur la premiere ligne sous le titre, a droite, pour
+        -- toutes les quetes.
+        local icones = moi.cle == NS.ClePersonnage() and q.complete ~= -1
+        local choisiesQ = Reglages().aRendreChoisies
+        local pionQ = icones and { actif = choisiesQ[idQuete] == true, afaire = q.complete ~= true, auClic = function()
+            choisiesQ[idQuete] = not choisiesQ[idQuete] or nil
+            suivi.Rendre()
+        end } or nil
+        local voirQ = icones and function() VoirSurCarte(idQuete, moi) end or nil
         -- Recompense (XP et or) en premier ; le survol garde le detail complet.
         local resume = NS.ref.ResumeRecompenses(q)
         if resume then
             index = index + 1
             y = Poser(index, y, string.format(L.REWARD_LINE, resume), { retrait = 22, couleur = { 1, 0.82, 0 },
                 police = "GameFontNormalSmall", petit = true, uneLigne = true,
-                margeDroite = (q.complete == true or (q.complete ~= -1 and moi.cle == NS.ClePersonnage())) and 22 or nil })
+                pion = pionQ, voir = voirQ, margeDroite = icones and 42 or nil })
             avecRecompense = true
+            pionQ, voirQ = nil, nil
         end
         if q.complete == true then
             local receveurs = NS.ref.Receveurs(id)
             index = index + 1
-            local choisies = Reglages().aRendreChoisies
-            ligneRendu = moi.cle == NS.ClePersonnage() and Ligne(index) or nil
             y = Poser(index, y, receveurs[1] and string.format(L.TRACK_TURN_IN, SansSecondNom(receveurs[1]))
                 or L.DONE, { retrait = 22, couleur = { 0.31, 0.82, 0.41 },
-                pion = moi.cle == NS.ClePersonnage() and { actif = choisies[idQuete] == true, auClic = function()
-                    choisies[idQuete] = not choisies[idQuete] or nil
-                    suivi.Rendre()
-                end } or nil })
+                pion = pionQ, voir = voirQ, margeDroite = pionQ and 42 or nil })
         elseif q.complete == -1 then
             index = index + 1
             y = Poser(index, y, L.FAILED, { retrait = 22, couleur = { 0.9, 0.3, 0.3 } })
@@ -754,20 +806,13 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
             -- Mode groupe : les membres du groupe qui ont la meme quete (et
             -- QuestCore), sous nos objectifs.
             local membres = NS.groupe and NS.groupe.Membres(id) or {}
-            -- Quete a faire : la meme petite carte que pour les quetes a
-            -- rendre, pour la mettre dans le trajet.
-            local avecPion = moi.cle == NS.ClePersonnage()
-            local choisies = Reglages().aRendreChoisies
             for rang, o in ipairs(q.objectifs or {}) do
                 index = index + 1
-                if rang == 1 and avecPion then ligneRendu = Ligne(index) end
+                local premiere = rang == 1 and pionQ ~= nil
                 y = Poser(index, y, "- " .. tostring(o.texte or ""), { retrait = 22,
                     couleur = o.fait and { 0.5, 0.5, 0.5 } or { 0.85, 0.85, 0.85 },
-                    margeDroite = avecPion and 22 or nil,
-                    pion = (rang == 1 and avecPion) and { actif = choisies[idQuete] == true, afaire = true, auClic = function()
-                        choisies[idQuete] = not choisies[idQuete] or nil
-                        suivi.Rendre()
-                    end } or nil })
+                    margeDroite = premiere and 42 or nil,
+                    pion = premiere and pionQ or nil, voir = premiere and voirQ or nil })
                 if o.type == "item" then
                     rangObjet = rangObjet + 1
                     local requis = objets[rangObjet]
@@ -843,13 +888,6 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
     -- Place du bloc, pour le faire clignoter s'il vient d'avancer.
     cadre.blocs = cadre.blocs or {}
     cadre.blocs[id] = { haut = yDebut, bas = y + 2 }
-    -- Petite carte du rendu : au milieu du bloc, a droite.
-    -- Centree sur les lignes sous le titre : jamais sur l'etoile du titre.
-    -- Sur nos lignes seulement, jamais sur celles du groupe.
-    if ligneRendu and yApresTitre then
-        ligneRendu.pion:ClearAllPoints()
-        ligneRendu.pion:SetPoint("RIGHT", cadre.corps, "TOPRIGHT", -1, -(yApresTitre + (yFinMoi or y)) / 2)
-    end
     return index, y + 6
 end
 
@@ -1158,12 +1196,21 @@ local function RendreEtapeBase(moi, id, rang, e, index, y, pion)
     local attente = e == "attente"
     local replieE = s.replies[id] == true
     local idE = id
+    -- Petite carte et longue-vue : sur la premiere ligne sous le titre,
+    -- comme pour les quetes prises ; sur le titre si l'etape est repliee.
+    local voirE = pion and function() VoirSurCarte(idE, moi) end or nil
+    local pionL, voirL = pion, voirE
+    local function Icones()
+        local p1, v1 = pionL, voirL
+        pionL, voirL = nil, nil
+        return { pion = p1, voir = v1, marge = p1 and 42 or nil }
+    end
     index = index + 1
     y = Poser(index, y, rang .. ". " .. string.format("|cff%02x%02x%02x[%d]|r %s", math.floor(r * 255),
         math.floor(g * 255), math.floor(b * 255), niveau, NS.ref.NomDeQuete(id, moi)), { uneLigne = true,
         police = Police("ObjectiveTrackerHeaderFont", "GameFontNormal"), titre = true,
         couleur = attente and { 0.6, 0.6, 0.6 } or { 1, 0.82, 0 },
-        pion = pion,
+        pion = replieE and pion or nil, voir = replieE and voirE or nil,
         survol = function(tt)
             NS.ref.InfobulleDeLaBase(tt, idE, moi)
             local textes = NS.ref.Lire("QuestDB", idE, "objectivesText")
@@ -1184,8 +1231,10 @@ local function RendreEtapeBase(moi, id, rang, e, index, y, pion)
         local xp = NS.ref.XPDeLaBase(id, moi.niveau)
         if xp and xp > 0 then
             index = index + 1
+            local ic = Icones()
             y = Poser(index, y, string.format(L.REWARD_LINE, string.format(L.REWARD_XP, xp)), { retrait = 22,
-                couleur = { 1, 0.82, 0 }, police = "GameFontNormalSmall", petit = true, uneLigne = true })
+                couleur = { 1, 0.82, 0 }, police = "GameFontNormalSmall", petit = true, uneLigne = true,
+                pion = ic.pion, voir = ic.voir, margeDroite = ic.marge })
         end
         local textes = NS.ref.Lire("QuestDB", id, "objectivesText")
         if type(textes) == "table" then
@@ -1194,7 +1243,9 @@ local function RendreEtapeBase(moi, id, rang, e, index, y, pion)
                 local ligne = tostring(t):match("^%s*(.-)%s*$")
                 if ligne ~= "" then
                     index = index + 1
-                    y = Poser(index, y, "- " .. ligne, { retrait = 22, couleur = { 0.85, 0.85, 0.85 } })
+                    local ic = Icones()
+                    y = Poser(index, y, "- " .. ligne, { retrait = 22, couleur = { 0.85, 0.85, 0.85 },
+                        pion = ic.pion, voir = ic.voir, margeDroite = ic.marge })
                 end
             end
         end
@@ -1209,7 +1260,9 @@ local function RendreEtapeBase(moi, id, rang, e, index, y, pion)
             couleurDetail = { 0.6, 0.6, 0.6 }
         end
         index = index + 1
+        local ic = Icones()
         y = Poser(index, y, detail, { retrait = 22, couleur = couleurDetail,
+            pion = ic.pion, voir = ic.voir, margeDroite = ic.marge,
             auClic = (NS.fenetre and NS.fenetre.VoirQuete) and function() NS.fenetre.VoirQuete(idE, moi, true) end or nil })
     end
     return index, y + 6
@@ -1291,22 +1344,52 @@ RendreVueParcours = function(moi, index, y)
                 index = index + 1
                 y = Poser(index, y, L.ROUTE_ALL_DONE, { retrait = 22, couleur = { 0.31, 0.82, 0.41 } }) + 6
             else
-                -- Les etapes faites disparaissent ; le numero reste celui du
-                -- parcours.
                 -- La petite carte d'une etape : la garder dans l'itineraire
                 -- (guidage et carte) ou l'en retirer ; retiree, elle reste en
                 -- bas, grisee, pour la remettre.
+                -- Trois groupes lisibles : en cours (quetes prises), a faire
+                -- (a prendre), fait (en vert, coche) ; le numero reste celui
+                -- du parcours.
+                local enCours, aFaire, faites = {}, {}, {}
                 for rang, id in ipairs(pc.etapes) do
                     local e = NS.parcours.EtatEtape(moi, id)
                     if (e == "cours" or e == "rendre") and moi.quetes[id] then
-                        index, y = RendreQuete(moi, moi.quetes, id, index, y, rang .. ". ")
-                    elseif e ~= "faite" then
-                        local idQ = id
-                        index, y = RendreEtapeBase(moi, id, rang, e, index, y, { actif = true, aide = L.ROUTE_STEP_HELP,
+                        table.insert(enCours, { rang = rang, id = id })
+                    elseif e == "faite" then
+                        table.insert(faites, { rang = rang, id = id })
+                    else
+                        table.insert(aFaire, { rang = rang, id = id, e = e })
+                    end
+                end
+                local function Groupe(titre, n, couleur)
+                    index = index + 1
+                    y = Poser(index, y, titre .. " (" .. n .. ")", { uneLigne = true, couleur = couleur,
+                        police = "GameFontNormalSmall", petit = true }) + 2
+                end
+                if #enCours > 0 then
+                    Groupe(L.TRACK_SECTION_ACTIVE, #enCours, { 0.4, 0.75, 1 })
+                    for _, t in ipairs(enCours) do
+                        index, y = RendreQuete(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
+                    end
+                end
+                if #aFaire > 0 then
+                    Groupe(L.ROUTE_GROUP_TODO, #aFaire, { 1, 0.82, 0 })
+                    for _, t in ipairs(aFaire) do
+                        local idQ = t.id
+                        index, y = RendreEtapeBase(moi, t.id, t.rang, t.e, index, y, { actif = true, aide = L.ROUTE_STEP_HELP,
                             auClic = function()
                                 if suivi.PasserEtape then suivi.PasserEtape(idP, idQ) end
                                 suivi.Rendre()
                             end })
+                    end
+                end
+                if #faites > 0 then
+                    Groupe(L.ROUTE_GROUP_DONE, #faites, { 0.25, 0.9, 0.25 })
+                    for _, t in ipairs(faites) do
+                        index = index + 1
+                        y = Poser(index, y, "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t " .. t.rang .. ". "
+                            .. NS.ref.NomDeQuete(t.id, moi), { uneLigne = true, couleur = { 0.25, 0.9, 0.25 },
+                            police = "GameFontNormalSmall", petit = true }) + 2
                     end
                 end
                 local retirees = {}
