@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 74
+local VERSION = 75
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2902,21 +2902,37 @@ local COURTS = {
 }
 local function NomDeMacro(r) return COURTS[r.cle] or r.cle:sub(1, 3) end
 local function AncienNom(r) return ("SC " .. Suite.NomRaccourci(r)):sub(1, 16) end
--- L'icone d'une macro se donne par son numero de fichier (un chemin n'est pas
--- accepte : la macro restait sans icone, impossible a glisser).
+-- L'icone d'une macro doit venir du catalogue des icones de macro du jeu
+-- (celui de la fenetre Macros) : une image hors catalogue laisse la macro
+-- sans icone, impossible a glisser. On prend le numero de l'icone voulue s'il
+-- est au catalogue, sinon le point d'interrogation.
+local catalogue
+local function Catalogue()
+    if catalogue then return catalogue end
+    catalogue = {}
+    for _, lire in ipairs({ _G.GetMacroIcons, _G.GetMacroItemIcons }) do
+        if lire then
+            local liste = {}
+            local ok = pcall(lire, liste)
+            if ok then for _, v in ipairs(liste) do catalogue[v] = true end end
+        end
+    end
+    return catalogue
+end
 local sonde
 local function IconeDeMacro(r)
     local chemin = "Interface\\Icons\\" .. r.icone
     local numero = _G.GetFileIDFromPath and _G.GetFileIDFromPath(chemin)
     if not (type(numero) == "number" and numero > 0) then
-        -- Le numero lu sur une texture qui charge l'icone.
         sonde = sonde or UIParent:CreateTexture(nil, "BACKGROUND")
         sonde:SetTexture(chemin)
         numero = sonde.GetTextureFileID and sonde:GetTextureFileID()
     end
-    if type(numero) == "number" and numero > 0 then return numero end
+    local cat = Catalogue()
+    if type(numero) == "number" and numero > 0 and (next(cat) == nil or cat[numero]) then return numero end
     return 134400
 end
+Suite.IconeDeMacro = IconeDeMacro
 
 function Suite.CreerMacro(r)
     if InCombatLockdown and InCombatLockdown() then return false end
