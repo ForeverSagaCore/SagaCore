@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 88
+local VERSION = 89
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2695,7 +2695,10 @@ local function Pilote()
         elseif bouton == "PAD1" or bouton == "PAD3" then
             local cote = bouton == "PAD1" and "LeftButton" or "RightButton"
             if e then
-                if e.Click and e:GetScript("OnClick") then pcall(e.Click, e, cote)
+                -- Pastille de MacroCore : on lance le raccourci directement.
+                local r = e.e and e.e.cle and Suite.Raccourci(e.e.cle)
+                if r then Suite.Lancer(r)
+                elseif e.Click and e:GetScript("OnClick") then pcall(e.Click, e, cote)
                 else
                     local f = e:GetScript("OnMouseUp") or e:GetScript("OnMouseDown")
                     if f then pcall(f, e, cote) end
@@ -2705,6 +2708,7 @@ local function Pilote()
         elseif bouton == "PADBACK" then p.barreVisible = not p.barreVisible
         elseif bouton == "PAD2" then
             local f = _G[p.nom]
+            if f and f.piloteSurB then f.piloteSurB() return end
             if f and f.piloteFermerSurB then f:Hide() end
             Suite.Piloter(false)
             return
@@ -2766,14 +2770,15 @@ function Suite.Piloter(oui, nom)
         -- La fenetre des macros reprend la main si elle est encore ouverte.
         local retour = p.retour
         p.retour = nil
-        if retour and _G[retour] and _G[retour]:IsShown() and retour ~= p.nom then
+        local fr = retour and _G[retour]
+        if fr and fr:IsShown() and retour ~= p.nom and not (fr.piloteGarderAlpha and not fr.active) then
             Suite.Piloter(true, retour)
         end
         return
     end
     if InCombatLockdown and InCombatLockdown() then print("|cffffd100SagaCore|r " .. TP.combat) return end
     -- Depuis la fenetre des macros : elle reste ouverte, et reprendra la main.
-    local retour = (p:IsShown() and p.nom == "CoreSuiteMacros" and nom ~= "CoreSuiteMacros") and "CoreSuiteMacros" or nil
+    local retour = (p:IsShown() and (p.nom == "CoreSuiteMacros" or p.nom == "CoreSuiteMacroCore") and nom ~= p.nom) and p.nom or nil
     if p:IsShown() then p.retour = nil Suite.Piloter(false) end
     -- Sans nom : le premier suivi ouvert.
     if not nom then
@@ -2785,6 +2790,14 @@ function Suite.Piloter(oui, nom)
     if not (f and f:IsShown()) then print("|cffffd100SagaCore|r " .. TP.rien) return end
     p.nom, p.choix, p.pos = nom, nil, nil
     p.retour = retour
+    if f.piloteGarderAlpha then
+        if Suite.SuspendrePanneau then Suite.SuspendrePanneau() end
+        p:Show()
+        pcall(p.EnableGamePadButton, p, true)
+        p.Marquer()
+        p.Barre()
+        return
+    end
     p.alphaAvant = f:GetAlpha()
     f:SetAlpha(1)
     -- Pleine couleur tant qu'on la pilote : son propre fondu (survol,
@@ -2824,47 +2837,66 @@ local function Messages(fonction, ...)
 end
 
 Suite.RACCOURCIS = {
-    { cle = "pilotefab", fr = "Piloter mes fabrications", en = "Drive my crafts", icone = "Trade_BlackSmithing",
+    { cle = "pilotefab", desc = "Prend le contrôle à la manette du suivi Mes fabrications, en l'ouvrant s'il est fermé. La croix se déplace, A valide, B rend la main.", descEn = "Takes gamepad control of the My crafts tracker, opening it if needed. D-pad moves, A confirms, B releases.",
+      fr = "Piloter mes fabrications", en = "Drive my crafts", icone = "Trade_BlackSmithing",
       action = function() Suite.Piloter(nil, "CraftCoreSuivi") end, dispo = function() return _G.CraftCoreAPI ~= nil end },
-    { cle = "pilotequetes", fr = "Piloter les quêtes", en = "Drive the quests", icone = "INV_Letter_15",
+    { cle = "pilotequetes", desc = "Prend le contrôle à la manette du suivi des quêtes, en l'ouvrant s'il est fermé. La croix se déplace, A valide, B rend la main.", descEn = "Takes gamepad control of the quest tracker, opening it if needed. D-pad moves, A confirms, B releases.",
+      fr = "Piloter les quêtes", en = "Drive the quests", icone = "INV_Letter_15",
       action = function() Suite.Piloter(nil, "QuestCoreSuivi") end, dispo = function() return _G.QuestCoreAPI ~= nil end },
-    { cle = "ouvrir", fr = "Ouvrir la suite", en = "Open the suite", icone = "INV_Misc_Book_11",
+    { cle = "ouvrir", desc = "Ouvre ou ferme la dernière fenêtre de la suite que tu as utilisée.", descEn = "Opens or closes the last suite window you used.",
+      fr = "Ouvrir la suite", en = "Open the suite", icone = "INV_Misc_Book_11",
       action = function()
           local premier
           for _, info in ipairs(Suite.Liste()) do if Suite.Installe(info.cle) then premier = info.cle break end end
           Suite.BasculerDernier(premier)
       end },
-    { cle = "craftcore", fr = "CraftCore", en = "CraftCore", icone = "INV_Misc_Gear_01",
+    { cle = "craftcore", desc = "Ouvre ou ferme la fenêtre principale de CraftCore.", descEn = "Opens or closes the CraftCore main window.",
+      fr = "CraftCore", en = "CraftCore", icone = "INV_Misc_Gear_01",
       action = function() Suite.Ouvrir("CraftCore") end, dispo = function() return Suite.Installe("CraftCore") end },
-    { cle = "questcore", fr = "QuestCore", en = "QuestCore", icone = "INV_Misc_Book_08",
+    { cle = "questcore", desc = "Ouvre ou ferme la fenêtre principale de QuestCore.", descEn = "Opens or closes the QuestCore main window.",
+      fr = "QuestCore", en = "QuestCore", icone = "INV_Misc_Book_08",
       action = function() Suite.Ouvrir("QuestCore") end, dispo = function() return Suite.Installe("QuestCore") end },
-    { cle = "mapcore", fr = "MapCore", en = "MapCore", icone = "INV_Misc_Map_01",
+    { cle = "mapcore", desc = "Ouvre ou ferme la fenêtre principale de MapCore.", descEn = "Opens or closes the MapCore main window.",
+      fr = "MapCore", en = "MapCore", icone = "INV_Misc_Map_01",
       action = function() Suite.Ouvrir("MapCore") end, dispo = function() return Suite.Installe("MapCore") end },
-    { cle = "legacycore", fr = "LegacyCore", en = "LegacyCore", icone = "Spell_Holy_SealOfWisdom",
+    { cle = "legacycore", desc = "Ouvre ou ferme la fenêtre principale de LegacyCore.", descEn = "Opens or closes the LegacyCore main window.",
+      fr = "LegacyCore", en = "LegacyCore", icone = "Spell_Holy_SealOfWisdom",
       action = function() Suite.Ouvrir("LegacyCore") end, dispo = function() return Suite.Installe("LegacyCore") end },
-    { cle = "fabrications", fr = "Suivi des fabrications", en = "Crafting tracker", icone = "Trade_BlackSmithing",
+    { cle = "fabrications", desc = "Affiche ou cache le suivi Mes fabrications.", descEn = "Shows or hides the My crafts tracker.",
+      fr = "Suivi des fabrications", en = "Crafting tracker", icone = "Trade_BlackSmithing",
       action = function() Api("CraftCoreAPI", "BasculerSuivi") end, dispo = function() return _G.CraftCoreAPI ~= nil end },
-    { cle = "quetes", fr = "Suivi des quêtes", en = "Quest tracker", icone = "INV_Letter_15",
+    { cle = "quetes", desc = "Affiche ou cache le suivi des quêtes.", descEn = "Shows or hides the quest tracker.",
+      fr = "Suivi des quêtes", en = "Quest tracker", icone = "INV_Letter_15",
       action = function() Api("QuestCoreAPI", "BasculerSuivi") end, dispo = function() return _G.QuestCoreAPI ~= nil end },
-    { cle = "suivis", fr = "Prendre la main sur les suivis", en = "Take over the trackers", icone = "INV_Misc_Spyglass_03",
+    { cle = "suivis", desc = "Prend le contrôle à la manette du premier suivi ouvert (fabrications ou quêtes). La croix se déplace, A valide, B rend la main.", descEn = "Takes gamepad control of the first open tracker (crafts or quests). D-pad moves, A confirms, B releases.",
+      fr = "Prendre la main sur les suivis", en = "Take over the trackers", icone = "INV_Misc_Spyglass_03",
       action = function() Suite.Piloter() end },
-    { cle = "stop", fr = "Arrêter le guidage", en = "Stop guidance", icone = "Spell_Holy_Silence",
+    { cle = "stop", desc = "Arrête le guidage en cours.", descEn = "Stops the current guidance.",
+      fr = "Arrêter le guidage", en = "Stop guidance", icone = "Spell_Holy_Silence",
       action = function() Suite.ArreterGuidage() end },
-    { cle = "rendus", fr = "Guider les quêtes à rendre", en = "Guide quest turn-ins", icone = "INV_Misc_Note_02",
+    { cle = "rendus", desc = "Te guide vers les personnages où rendre tes quêtes terminées.", descEn = "Guides you to where your completed quests are turned in.",
+      fr = "Guider les quêtes à rendre", en = "Guide quest turn-ins", icone = "INV_Misc_Note_02",
       action = function() Api("QuestCoreAPI", "Guider", true) end, dispo = function() return _G.QuestCoreAPI ~= nil end },
-    { cle = "recolte", fr = "Guider la récolte", en = "Guide gathering", icone = "INV_Misc_Herb_01",
+    { cle = "recolte", desc = "Te guide vers les points de récolte des ressources qui manquent à tes fabrications.", descEn = "Guides you to gathering spots for the resources your crafts still need.",
+      fr = "Guider la récolte", en = "Guide gathering", icone = "INV_Misc_Herb_01",
       action = function() Api("CraftCoreAPI", "GuiderRecolte", true) end, dispo = function() return _G.CraftCoreAPI ~= nil end },
-    { cle = "metier", fr = "Monter un métier", en = "Level a profession", icone = "INV_Misc_Book_09",
+    { cle = "metier", desc = "Ouvre la page Monter un métier de CraftCore.", descEn = "Opens the CraftCore Level a profession page.",
+      fr = "Monter un métier", en = "Level a profession", icone = "INV_Misc_Book_09",
       action = function() Api("CraftCoreAPI", "MonterUnMetier") end, dispo = function() return _G.CraftCoreAPI ~= nil end },
-    { cle = "oui", fr = "Répondre oui", en = "Answer yes", icone = "Spell_ChargePositive",
+    { cle = "oui", desc = "Répond oui à la dernière question que la suite t'a posée dans la discussion.", descEn = "Answers yes to the last question the suite asked you in chat.",
+      fr = "Répondre oui", en = "Answer yes", icone = "Spell_ChargePositive",
       action = function() Messages("Repondre", true) end, dispo = function() return _G.SagaCoreMessages ~= nil end },
-    { cle = "non", fr = "Répondre non", en = "Answer no", icone = "Spell_ChargeNegative",
+    { cle = "non", desc = "Répond non à la dernière question que la suite t'a posée dans la discussion.", descEn = "Answers no to the last question the suite asked you in chat.",
+      fr = "Répondre non", en = "Answer no", icone = "Spell_ChargeNegative",
       action = function() Messages("Repondre", false) end, dispo = function() return _G.SagaCoreMessages ~= nil end },
-    { cle = "messages", fr = "Messages dans la discussion", en = "Chat messages", icone = "INV_Letter_02",
+    { cle = "messages", desc = "Ouvre les réglages des messages que la suite écrit dans la discussion.", descEn = "Opens the settings for the messages the suite writes in chat.",
+      fr = "Messages dans la discussion", en = "Chat messages", icone = "INV_Letter_02",
       action = function() Messages("OuvrirReglages") end, dispo = function() return _G.SagaCoreMessages ~= nil end },
-    { cle = "reglages", fr = "Réglages de la suite", en = "Suite settings", icone = "Trade_Engineering",
+    { cle = "reglages", desc = "Ouvre les réglages communs à toute la suite.", descEn = "Opens the settings shared by the whole suite.",
+      fr = "Réglages de la suite", en = "Suite settings", icone = "Trade_Engineering",
       action = function() Suite.OuvrirReglagesGeneraux() end },
-    { cle = "improve", fr = "Réglages ImproveCore", en = "ImproveCore settings", icone = "Spell_Holy_AuraOfLight",
+    { cle = "improve", desc = "Ouvre les réglages d'ImproveCore.", descEn = "Opens the ImproveCore settings.",
+      fr = "Réglages ImproveCore", en = "ImproveCore settings", icone = "Spell_Holy_AuraOfLight",
       action = function() if SlashCmdList.IMPROVECORE then SlashCmdList.IMPROVECORE("") end end,
       dispo = function() return SlashCmdList.IMPROVECORE ~= nil end },
     { cle = "raccourcis", fr = "Panneau des raccourcis", en = "Shortcut panel", icone = "INV_Misc_Book_11",
@@ -2874,7 +2906,7 @@ Suite.RACCOURCIS = {
 -- Les familles de raccourcis : une ligne chacune dans le panneau, un groupe
 -- dans la page des macros. Un nouveau raccourci prend sa famille ici.
 Suite.FAMILLES = {
-    { cle = "manette", fr = "Prendre la main à la manette", en = "Take control with the gamepad" },
+    { cle = "manette", fr = "Prendre le contrôle d'une fenêtre", en = "Take control of a window" },
     { cle = "ouvrir", fr = "Ouvrir une fenêtre", en = "Open a window" },
     { cle = "guider", fr = "Guider", en = "Guide" },
     { cle = "repondre", fr = "Répondre aux messages", en = "Answer messages" },
@@ -3793,7 +3825,8 @@ local function Entrees()
     local liste = {}
     for _, r in ipairs(Suite.RACCOURCIS) do
         if Dispo(r) and r.cle ~= "raccourcis" and Suite.RaccourciActif("r:" .. r.cle) then
-            table.insert(liste, { nom = Suite.NomRaccourci(r), icone = "Interface\\Icons\\" .. r.icone, texte = "/sagacore " .. r.cle, famille = Suite.FamilleDe(r), cle = r.cle })
+            table.insert(liste, { nom = Suite.NomRaccourci(r), icone = "Interface\\Icons\\" .. r.icone, texte = "/sagacore " .. r.cle, famille = Suite.FamilleDe(r), cle = r.cle,
+                desc = r.desc and TR(r.desc, r.descEn or r.desc) or nil })
         end
     end
     for _, m in ipairs(Suite.MacrosPerso()) do
@@ -4251,6 +4284,9 @@ local function MacroCore()
     filet:SetColorTexture(0.8, 0.65, 0.35, 0.35)
     cadre.filet = filet
 
+    -- Pilote : garde l'opacite d'activation ; B referme (rend la manette).
+    cadre.piloteGarderAlpha = true
+    cadre.piloteSurB = function() Suite.ActiverMacroCore(false) end
     fenMC = cadre
     Suite.ActiverMacroCore(false)
     return cadre
@@ -4268,8 +4304,16 @@ function Suite.ActiverMacroCore(oui)
     if f.fermer then f.fermer:SetShown(oui and true or false) end
     -- Les pastilles ne se cliquent que fenetre active (hors combat : le jeu
     -- interdit de montrer ou cacher ces boutons pendant un combat).
-    if not (InCombatLockdown and InCombatLockdown()) then
+    local combat = InCombatLockdown and InCombatLockdown()
+    if not combat then
         for _, b in ipairs(f.pastilles or {}) do b:SetShown(oui and b.e ~= nil) end
+    end
+    -- Ouverte : la manette pilote MacroCore. Refermee : elle reprend son cours.
+    local p = Suite.pilote
+    if oui then
+        if not combat then Suite.Piloter(true, "CoreSuiteMacroCore") end
+    elseif p and p:IsShown() and p.nom == "CoreSuiteMacroCore" then
+        Suite.Piloter(false)
     end
 end
 
@@ -4282,6 +4326,8 @@ function Suite.RemplirMacroCore()
     if not f or (InCombatLockdown and InCombatLockdown()) then return end
     f.pastilles = f.pastilles or {}
     f.filets = f.filets or {}
+    f.titres = f.titres or {}
+    local nt = 0
     local parFamille = {}
     for _, e in ipairs(Entrees()) do
         parFamille[e.famille] = parFamille[e.famille] or {}
@@ -4313,7 +4359,23 @@ function Suite.RemplirMacroCore()
                 t:Show()
             end
             premiere = false
-            y = y - ECART_L
+            -- Titre de la famille, comme un en-tete du suivi.
+            y = y - 6
+            nt = nt + 1
+            local tt = f.titres[nt]
+            if not tt then
+                tt = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                local fichier, _, drapeaux = tt:GetFont()
+                if fichier then tt:SetFont(fichier, 15, drapeaux) end
+                tt:SetTextColor(1, 0.82, 0)
+                tt:SetJustifyH("LEFT")
+                f.titres[nt] = tt
+            end
+            tt:ClearAllPoints()
+            tt:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, y - 2)
+            tt:SetText(TR(fam.fr, fam.en))
+            tt:Show()
+            y = y - 24
             for i, e in ipairs(liste) do
                 local col = (i - 1) % parLigne
                 if i > 1 and col == 0 then y = y - PASTILLE - ECART_L end
@@ -4339,6 +4401,11 @@ function Suite.RemplirMacroCore()
                         if not self.e then return end
                         GameTooltip:SetOwner(self, "ANCHOR_TOP")
                         GameTooltip:SetText(self.e.nom, 1, 0.82, 0)
+                        local d = self.e.desc
+                        if not d and (self.e.corps or self.e.texte) then
+                            d = TR("Lance ta macro : ", "Runs your macro : ") .. (self.e.corps or self.e.texte)
+                        end
+                        if d then GameTooltip:AddLine(d, 1, 1, 1, true) end
                         GameTooltip:Show()
                     end)
                     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -4362,6 +4429,7 @@ function Suite.RemplirMacroCore()
     end
     for i = n + 1, #f.pastilles do f.pastilles[i].e = nil f.pastilles[i]:Hide() end
     for i = nf + 1, #f.filets do f.filets[i]:Hide() end
+    for i = nt + 1, #f.titres do f.titres[i]:Hide() end
     -- Hauteur : barre de titre, marges, contenu (jamais sous 100 : le cadre
     -- du jeu se deforme en dessous).
     local charte = NS.charte
