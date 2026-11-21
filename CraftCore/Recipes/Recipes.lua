@@ -878,24 +878,75 @@ end
 -- composants de recolte sont la ; avec un objectif, ce qui manque est compte.
 -- Ce que les rangs vises du personnage prennent dans ses stocks, objet par
 -- objet : la banque le propose a la sortie, comme pour un projet.
+-- Plusieurs rangs vises par metier (82 puis 90...) : liste triee. Les
+-- anciennes fiches gardaient un seul nombre, toujours accepte.
+function recettes.RangsVises(fiche, cle)
+    local v = type(fiche) == "table" and type(fiche.objectifsProgression) == "table"
+        and fiche.objectifsProgression[tostring(cle)]
+    if type(v) ~= "table" then v = { v } end
+    local t, vus = {}, {}
+    for _, r in pairs(v) do
+        r = tonumber(r)
+        if r and not vus[r] then vus[r] = true table.insert(t, r) end
+    end
+    table.sort(t)
+    return t
+end
+
+function recettes.PoserRangsVises(fiche, cle, liste)
+    if type(fiche) ~= "table" then return end
+    fiche.objectifsProgression = type(fiche.objectifsProgression) == "table" and fiche.objectifsProgression or {}
+    local t = {}
+    for _, r in ipairs(liste or {}) do table.insert(t, r) end
+    table.sort(t)
+    fiche.objectifsProgression[tostring(cle)] = (#t > 0) and t or nil
+end
+
+-- Ajoute (oui) ou retire un rang vise.
+function recettes.Viser(fiche, cle, rang, oui)
+    rang = tonumber(rang)
+    if not rang then return end
+    local t = {}
+    for _, r in ipairs(recettes.RangsVises(fiche, cle)) do if r ~= rang then table.insert(t, r) end end
+    if oui then table.insert(t, rang) end
+    recettes.PoserRangsVises(fiche, cle, t)
+end
+
+-- Les rangs vises d'un metier, a la suite : chacun part du precedent, et ce
+-- que le precedent prend dans les stocks n'est pas compte deux fois.
+-- Rend { { vise, de, plan }, ... }, du plus bas au plus haut.
+function recettes.PlansVises(fiche, cle, rang, rangMax, liste)
+    local res, pris, de = {}, {}, rang
+    for _, vise in ipairs(liste or recettes.RangsVises(fiche, cle)) do
+        if de and vise > de then
+            local ok, plan = pcall(recettes.Progression, tonumber(cle), de, rangMax, vise, pris)
+            if ok and plan then
+                table.insert(res, { vise = vise, de = de, plan = plan })
+                for objet, n in pairs(plan.utilises or {}) do pris[objet] = (pris[objet] or 0) + n end
+            end
+            de = vise
+        end
+    end
+    return res
+end
+
 function recettes.BesoinsDesObjectifs(fiche)
     local besoins = {}
     fiche = fiche or (NS.base and NS.base.Personnage and NS.base.Personnage())
     if type(fiche) ~= "table" or type(fiche.objectifsProgression) ~= "table" then return besoins end
-    for cle, vise in pairs(fiche.objectifsProgression) do
+    for cle in pairs(fiche.objectifsProgression) do
         local sien = type(fiche.metiers) == "table" and fiche.metiers[tostring(cle)]
-        if type(sien) == "table" and sien.rang and tonumber(vise) and tonumber(vise) > sien.rang then
-            local ok, plan = pcall(recettes.Progression, tonumber(cle), sien.rang, sien.rangMax, tonumber(vise))
-            if ok and plan then
-                for objet, n in pairs(plan.utilises or {}) do besoins[objet] = (besoins[objet] or 0) + n end
-                for objet, n in pairs(plan.achats or {}) do besoins[objet] = (besoins[objet] or 0) + n end
+        if type(sien) == "table" and sien.rang then
+            for _, seg in ipairs(recettes.PlansVises(fiche, cle, sien.rang, sien.rangMax)) do
+                for objet, n in pairs(seg.plan.utilises or {}) do besoins[objet] = (besoins[objet] or 0) + n end
+                for objet, n in pairs(seg.plan.achats or {}) do besoins[objet] = (besoins[objet] or 0) + n end
             end
         end
     end
     return besoins
 end
 
-function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif)
+function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, dejaPris)
     local resultat = { depart = rangDepart, atteint = rangDepart, etapes = {}, achats = {}, manques = {},
         estime = false, arret = nil }
     if not ligneDeMetier or not rangDepart then resultat.arret = "inconnu" return resultat end
@@ -910,7 +961,9 @@ function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif)
 
     local stock = {}
     local function Stock(objet)
-        if stock[objet] == nil then stock[objet] = NS.inventaire.TotalPossede(objet) end
+        if stock[objet] == nil then
+            stock[objet] = math.max(0, (NS.inventaire.TotalPossede(objet) or 0) - (dejaPris and dejaPris[objet] or 0))
+        end
         return stock[objet]
     end
 

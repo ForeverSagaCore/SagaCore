@@ -63,14 +63,15 @@ local function BesoinsDe(cle)
             end
             local chezLui = NS.projets.StocksDuPersonnage()
             local deja = {}
-            for cleM, vise in pairs(fiche.objectifsProgression) do
+            for cleM in pairs(fiche.objectifsProgression) do
                 local ligne = tonumber(cleM)
                 local sien = type(fiche.metiers) == "table" and fiche.metiers[tostring(cleM)]
                 if ligne and type(sien) == "table" and sien.rang and not avecProjet[tostring(cleM)] then
-                    local ok, plan = pcall(catalogue.Progression, ligne, sien.rang, sien.rangMax, vise)
-                    for objet, n in pairs(ok and plan and plan.utilises or {}) do
-                        objet = tonumber(objet)
-                        if objet then deja[objet] = (deja[objet] or 0) + (tonumber(n) or 0) end
+                    for _, seg in ipairs(catalogue.PlansVises(fiche, cleM, sien.rang, sien.rangMax)) do
+                        for objet, n in pairs(seg.plan.utilises or {}) do
+                            objet = tonumber(objet)
+                            if objet then deja[objet] = (deja[objet] or 0) + (tonumber(n) or 0) end
+                        end
                     end
                 end
             end

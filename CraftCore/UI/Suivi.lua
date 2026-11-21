@@ -135,12 +135,14 @@ local function ObjectifsDeProgression(liste)
     for _, projet in ipairs(NS.projets and NS.projets.Tous and NS.projets.Tous(false) or {}) do
         if projet.progression and not projet.horsSuivi then avecProjet[tostring(projet.progression)] = true end
     end
-    for cle, vise in pairs(fiche.objectifsProgression) do
+    for cle in pairs(fiche.objectifsProgression) do
         local ligne = tonumber(cle)
         local sien = type(fiche.metiers) == "table" and fiche.metiers[tostring(cle)]
         if ligne and type(sien) == "table" and sien.rang and not avecProjet[tostring(cle)] then
             local nom = sien.nom or catalogue.NomDuMetier(ligne) or "?"
-            local plan = catalogue.Progression(ligne, sien.rang, sien.rangMax, vise)
+            -- Un objectif par rang vise, a la suite (82, puis 90...).
+            for _, seg in ipairs(catalogue.PlansVises(fiche, cle, sien.rang, sien.rangMax)) do
+            local vise, plan = seg.vise, seg.plan
             local requis = {}
             for _, etape in ipairs(plan.etapes or {}) do
                 for _, comp in ipairs(etape.recette.composants or {}) do
@@ -182,7 +184,7 @@ local function ObjectifsDeProgression(liste)
             if sien.rang >= vise then pct = 1
             elseif total > 0 then pct = (total - manque) / total
             else pct = 0 end
-            table.insert(liste, { cle = "prog" .. cle, ligne = ligne, nom = string.format(L.GOAL_PROG, nom, vise), genre = "progression",
+            table.insert(liste, { cle = "prog" .. cle .. ":" .. vise, ligne = ligne, vise = vise, nom = string.format(L.GOAL_PROG, nom, vise), genre = "progression",
                 detail = string.format(L.GOAL_PROG_DETAIL, sien.rang, vise), pct = pct, atteint = sien.rang >= vise,
                 matieres = Matieres(requis, plan.manques), achats = plan.achats,
                 -- Les recettes du plan, dans l'ordre : le bouton Creer les lance.
@@ -195,6 +197,7 @@ local function ObjectifsDeProgression(liste)
                     end
                     return t
                 end)() })
+            end
         end
     end
 end

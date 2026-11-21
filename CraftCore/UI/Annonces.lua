@@ -76,15 +76,19 @@ end
 local function Objectifs(avecRecolte)
     local fiche = NS.base and NS.base.Personnage and NS.base.Personnage()
     if not (fiche and type(fiche.objectifsProgression) == "table" and NS.recettes) then return end
-    for cle, vise in pairs(fiche.objectifsProgression) do
-        local ligne, rangVise = tonumber(cle), tonumber(vise)
+    for cle in pairs(fiche.objectifsProgression) do
+        local ligne = tonumber(cle)
         local sien = type(fiche.metiers) == "table" and fiche.metiers[tostring(cle)]
-        if ligne and rangVise and type(sien) == "table" and sien.rang then
+        if ligne and type(sien) == "table" and sien.rang then
             local nom = NomDuMetier(fiche, ligne)
+            local plans = {}
+            for _, seg in ipairs(NS.recettes.PlansVises(fiche, cle, sien.rang, sien.rangMax)) do plans[seg.vise] = seg.plan end
+            for _, rangVise in ipairs(NS.recettes.RangsVises(fiche, cle)) do
             if sien.rang >= rangVise then
                 Dire("rang", { metier = nom, rang = rangVise }, nil, ligne .. ":" .. rangVise)
             else
-                local ok, plan = pcall(NS.recettes.Progression, ligne, sien.rang, sien.rangMax, rangVise)
+                local plan = plans[rangVise]
+                local ok = plan ~= nil
                 if ok and plan then
                     if next(plan.manques or {}) then
                         if avecRecolte then
@@ -105,6 +109,7 @@ local function Objectifs(avecRecolte)
                         end
                     end
                 end
+            end
             end
         end
     end

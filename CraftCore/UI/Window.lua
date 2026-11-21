@@ -2185,8 +2185,8 @@ local function RendreListeDeProjets(contenu, progressions)
         if deProgression then
             local fiche = NS.base.FicheAffichee()
             local sien = fiche and type(fiche.metiers) == "table" and fiche.metiers[tostring(projet.progression)]
-            local vise = projet.rangVise or (fiche and type(fiche.objectifsProgression) == "table"
-                and fiche.objectifsProgression[tostring(projet.progression)])
+            local tousVises = NS.recettes.RangsVises(fiche, projet.progression)
+            local vise = projet.rangVise or tousVises[#tousVises]
             if type(sien) == "table" and sien.rang then
                 local texte = vise and string.format(L.GOAL_PROG_DETAIL, sien.rang, vise)
                     or string.format(L.PROG_CURRENT_RANK, sien.rang)
@@ -2464,21 +2464,23 @@ RendreRangsVises = function(contenu, index, y, gardees)
             end
             y = y + 4
             local ligneMetier = o.ligne
-            local voir = BoutonAction(contenu, "voirPlan" .. ligneMetier, L.PROGRESSIONS_SEE_PLAN)
+            local voir = BoutonAction(contenu, "voirPlan" .. o.cle, L.PROGRESSIONS_SEE_PLAN)
             voir:SetScript("OnClick", function()
                 ecran.progOuvert = ligneMetier
                 ecran.Montrer("progression")
             end)
-            local arreter = BoutonAction(contenu, "arreter" .. ligneMetier, L.PROGRESSIONS_STOP)
+            local arreter = BoutonAction(contenu, "arreter" .. o.cle, L.PROGRESSIONS_STOP)
             arreter:SetScript("OnClick", function()
                 local fiche = NS.base.FicheAffichee()
-                if fiche and type(fiche.objectifsProgression) == "table" then
+                if fiche and o.vise then
+                    NS.recettes.Viser(fiche, ligneMetier, o.vise, false)
+                elseif fiche and type(fiche.objectifsProgression) == "table" then
                     fiche.objectifsProgression[tostring(ligneMetier)] = nil
                 end
                 if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
                 ecran.Montrer(ecran.page)
             end)
-            gardees["voirPlan" .. ligneMetier], gardees["arreter" .. ligneMetier] = true, true
+            gardees["voirPlan" .. o.cle], gardees["arreter" .. o.cle] = true, true
             y = RangeeDeBoutons(contenu, { voir, arreter }, y, RETRAIT_PAR_NIVEAU)
         end
         y = y + 4
@@ -2546,21 +2548,25 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     local VERT, OR, GRIS = { 0.31, 0.82, 0.41 }, { 1, 0.82, 0 }, { 0.62, 0.62, 0.62 }
     local fiche = NS.base.FicheAffichee()
     local cleObjectif = tostring(ligneMetier)
-    local enregistre = fiche and type(fiche.objectifsProgression) == "table" and tonumber(fiche.objectifsProgression[cleObjectif])
-    -- Rang vise deja atteint : l'objectif est fini, il n'est plus garde. La
-    -- valeur montree n'est alors qu'une proposition, pas suivie.
-    if enregistre and enregistre <= rang then
-        fiche.objectifsProgression[cleObjectif] = nil
-        enregistre = nil
+    -- Les rangs vises du metier (plusieurs possibles). Un rang atteint est
+    -- fini : il n'est plus garde.
+    local vises = {}
+    for _, v in ipairs(catalogue.RangsVises(fiche, cleObjectif)) do if v > rang then table.insert(vises, v) end end
+    if fiche then catalogue.PoserRangsVises(fiche, cleObjectif, vises) end
+    local function EstVise(v)
+        for _, x in ipairs(vises) do if x == v then return true end end
+        return false
     end
-    local objectif = enregistre or math.min(rang + 10, rangMax or (rang + 10))
-    if objectif <= rang then objectif = math.min(rang + 1, rangMax or (rang + 1)) end
-    local function PoserObjectif(valeur)
+    local function Basculer(v)
         if not fiche then return end
-        fiche.objectifsProgression = type(fiche.objectifsProgression) == "table" and fiche.objectifsProgression or {}
-        fiche.objectifsProgression[cleObjectif] = valeur
+        catalogue.Viser(fiche, cleObjectif, v, not EstVise(v))
         if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
+        ecran.Montrer(ecran.page)
     end
+    local plafondMetier = rangMax or (rang + 75)
+    ecran.choixRang = ecran.choixRang or {}
+    local choix = tonumber(ecran.choixRang[cleObjectif]) or math.min(rang + 10, plafondMetier)
+    choix = math.max(rang + 1, math.min(plafondMetier, choix))
     local gauche = RETRAIT_PAR_NIVEAU + retraitCourant
 
     -- Tout le bloc s'aligne sur le nom du metier (apres son marqueur et son
@@ -2568,22 +2574,51 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     local aligne = 2 + 14 + 4 + 16 + 6
     local POLICE = "GameFontHighlightSmall"
 
-    -- Ce que les composants du compte donnent deja, a coup sur.
-    local okStock, planStock = pcall(catalogue.Progression, ligneMetier, rang, rangMax, nil)
-    if okStock and planStock and (planStock.pointsSurs or 0) > 0 then
-        y = Paragraphe(contenu, y + 4, string.format(L.GUIDE_ALREADY, rang + planStock.pointsSurs), POLICE, VERT, aligne)
+    -- Une ligne de texte avec, au bord droit, son bouton Viser ce rang.
+    local function LigneAViser(cleB, texte, couleur, rangCible)
+        local y0 = y
+        y = Paragraphe(contenu, y, texte, POLICE, couleur, aligne)
+        if rangCible and rangCible > rang then
+            local b = BoutonAction(contenu, cleB, EstVise(rangCible) and L.GUIDE_UNAIM or L.GUIDE_AIM)
+            b:ClearAllPoints()
+            b:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -(y0 - 3))
+            b:SetScript("OnClick", function() Basculer(rangCible) end)
+            b:Show()
+            y = math.max(y, y0 + 22)
+        end
+        y = y + 6
     end
 
-    -- Le rang vise : la valeur entre deux fleches, au bord droit, comme
-    -- partout dans la suite. Jouable a la manette.
+    -- 1. Ce que les composants du compte (sacs, banque, autres personnages)
+    -- donnent deja, a coup sur.
     y = y + 4
+    local okStock, planStock = pcall(catalogue.Progression, ligneMetier, rang, rangMax, nil)
+    local assure = okStock and planStock and rang + (planStock.pointsSurs or 0) or rang
+    if assure > rang then
+        LigneAViser("progViserSur", string.format(L.GUIDE_ALREADY, assure), VERT, assure)
+    else
+        LigneAViser("progViserSur", L.GUIDE_ALREADY_NONE, GRIS, nil)
+    end
+
+    -- 2. Ce que les recettes connues permettent, composants a reunir.
+    local okRec, planRec = pcall(catalogue.Progression, ligneMetier, rang, rangMax, plafondMetier)
+    local atteignable = okRec and planRec and planRec.atteint or rang
+    if atteignable > rang then
+        LigneAViser("progViserRecettes", string.format(L.GUIDE_RECIPES, atteignable), OR, atteignable)
+    else
+        LigneAViser("progViserRecettes", L.GUIDE_RECIPES_NONE, GRIS, nil)
+    end
+
+    -- 3. Un rang de son choix : la valeur entre deux fleches, au bord droit,
+    -- et son bouton juste avant. Les fleches ne creent rien, le bouton oui.
     contenu.libelleObjectif = contenu.libelleObjectif or contenu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    contenu.libelleObjectif:SetFontObject("GameFontNormalSmall")
+    contenu.libelleObjectif:SetFontObject(POLICE)
+    contenu.libelleObjectif:SetTextColor(1, 1, 1)
     contenu.libelleObjectif:ClearAllPoints()
     contenu.libelleObjectif:SetPoint("TOPLEFT", contenu, "TOPLEFT", aligne, -(y + 7))
-    contenu.libelleObjectif:SetText(enregistre and L.GUIDE_TARGET or L.GUIDE_TARGET_OFF)
+    contenu.libelleObjectif:SetText(L.GUIDE_CHOICE)
     contenu.libelleObjectif:Show()
-    contenu.etatObjectif = { valeur = objectif, mini = rang + 1, maxi = rangMax or (rang + 75) }
+    contenu.etatObjectif = { valeur = choix, mini = rang + 1, maxi = plafondMetier }
     local S = NS.suite or _G.CoreSuite
     if S and S.Curseur then
         if not contenu.curseurObjectif then
@@ -2599,40 +2634,69 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                 end, nil, nil, 5)
             contenu.curseurObjectif.surParchemin = function() return NS.charte.Fond and NS.charte.Fond() == "parchemin" end
         end
-        contenu.etatObjectif.poser = PoserObjectif
+        contenu.etatObjectif.poser = function(v) ecran.choixRang[cleObjectif] = v end
         local c = contenu.curseurObjectif
         c:ClearAllPoints()
         c:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -y)
         c:Show()
         c.Rendre()
-        -- Pas encore suivi : la valeur proposee est attenuee.
-        c:SetAlpha(enregistre and 1 or 0.55)
-        -- Bornes du metier : fleches grisees au bout.
+        c:SetAlpha(1)
         if c.boutonsPM then
-            local bas, haut = objectif > contenu.etatObjectif.mini, objectif < contenu.etatObjectif.maxi
+            local bas, haut = choix > contenu.etatObjectif.mini, choix < contenu.etatObjectif.maxi
             c.boutonsPM[1]:SetEnabled(bas)
             c.boutonsPM[2]:SetEnabled(haut)
             if c.boutonsPM[3] then c.boutonsPM[3]:SetEnabled(bas) c.boutonsPM[4]:SetEnabled(haut) end
         end
-        if enregistre then
-            local oublier = BoutonAction(contenu, "progOublier", L.PROGRESSIONS_STOP)
-            oublier:ClearAllPoints()
-            oublier:SetPoint("RIGHT", c, "LEFT", -8, 0)
-            oublier:SetScript("OnClick", function() PoserObjectif(nil) ecran.Montrer(ecran.page) end)
-            oublier:Show()
-        end
+        local viser = BoutonAction(contenu, "progViserChoix", EstVise(choix) and L.GUIDE_UNAIM or L.GUIDE_AIM)
+        viser:ClearAllPoints()
+        viser:SetPoint("RIGHT", c, "LEFT", -8, 0)
+        viser:SetScript("OnClick", function() Basculer(choix) end)
+        viser:Show()
     end
     y = y + 30
 
-    local plan = catalogue.Progression(ligneMetier, rang, rangMax, objectif)
-    if plan.atteint >= objectif then
-        y = Paragraphe(contenu, y, string.format(L.PROG_GOAL_OK, objectif), POLICE, VERT, aligne)
-    else
-        y = Paragraphe(contenu, y, string.format(L.PROG_GOAL_PARTIAL, objectif, plan.atteint), POLICE, OR, aligne)
+    -- Les rangs vises, chacun avec son bouton pour ne plus le viser.
+    if #vises > 0 then
+        y = y + 4
+        for _, v in ipairs(vises) do
+            LigneAViser("progVise" .. v, string.format(L.GUIDE_AIMED, v), VERT, v)
+        end
+    end
+
+    -- Le plan : les rangs vises a la suite ; sans rang vise, un apercu du
+    -- rang choisi. Les quantites s'additionnent, le detail par rang reste
+    -- lisible a droite de chaque ligne.
+    local segments = catalogue.PlansVises(fiche, cleObjectif, rang, rangMax, vises)
+    local apercu = #segments == 0
+    if apercu then
+        local okP, planP = pcall(catalogue.Progression, ligneMetier, rang, rangMax, choix)
+        if okP and planP then segments = { { vise = choix, de = rang, plan = planP } } end
+        y = Paragraphe(contenu, y + 4, string.format(L.GUIDE_PREVIEW, choix), "GameFontDisableSmall", nil, aligne)
+    end
+    local objectif = segments[#segments] and segments[#segments].vise or choix
+    local plan = { utilises = {}, achats = {}, manques = {}, intermediaires = {}, etapes = {}, estime = false }
+    for _, seg in ipairs(segments) do
+        for _, champ in ipairs({ "utilises", "achats", "manques", "intermediaires" }) do
+            for objet, n in pairs(seg.plan[champ] or {}) do plan[champ][objet] = (plan[champ][objet] or 0) + n end
+        end
+        if seg.plan.estime then plan.estime = true end
+    end
+    local function ParRang(champ, objet)
+        if #segments < 2 then return "" end
+        local morceaux = {}
+        for _, seg in ipairs(segments) do
+            local n = seg.plan[champ] and seg.plan[champ][objet]
+            if n and n > 0 then table.insert(morceaux, string.format(L.GUIDE_SPLIT, seg.vise, n)) end
+        end
+        return (#morceaux > 0) and ("  |cff9d9d9d(" .. table.concat(morceaux, ", ") .. ")|r") or ""
+    end
+    local dernier = segments[#segments]
+    if dernier and dernier.plan.atteint < dernier.vise then
+        y = Paragraphe(contenu, y, string.format(L.PROG_GOAL_PARTIAL, dernier.vise, dernier.plan.atteint), POLICE, OR, aligne)
         local raisons = { aucuneRecette = L.PROG_STOP_NORECIPE, plusRien = L.PROG_STOP_NOORANGE,
             plafond = string.format(L.PROG_STOP_CAP, rangMax or 0) }
-        if plan.arret and raisons[plan.arret] then
-            y = Paragraphe(contenu, y, raisons[plan.arret], POLICE, GRIS, aligne)
+        if dernier.plan.arret and raisons[dernier.plan.arret] then
+            y = Paragraphe(contenu, y, raisons[dernier.plan.arret], POLICE, GRIS, aligne)
         end
     end
 
@@ -2683,7 +2747,7 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                 table.insert(morceaux, d.nom .. " " .. math.min(d.total, reste))
                 reste = reste - d.total
             end
-            if #morceaux > 0 then table.insert(aRecuperer, { objet = e.objet, n = e.n - enSacs, ou = table.concat(morceaux, ", ") }) end
+            if #morceaux > 0 then table.insert(aRecuperer, { objet = e.objet, n = e.n - enSacs, ou = table.concat(morceaux, ", ") .. ParRang("utilises", e.objet) }) end
         end
     end
     if next(plan.utilises or {}) then
@@ -2725,10 +2789,10 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     if next(plan.manques) then
         if Etape(L.GUIDE_GATHER, false) then
             for _, e in ipairs(Trie(plan.manques)) do
-                index, y = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), "")
+                index, y = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), ParRang("manques", e.objet))
             end
             BoutonDEtape("progRecolte", L.GUIDE_GATHER_GO, function()
-                PoserObjectif(objectif)
+                if #vises == 0 and fiche then catalogue.Viser(fiche, cleObjectif, objectif, true) end
                 if NS.suivi and NS.suivi.Guider then NS.suivi.Guider(true) end
                 ecran.Montrer(ecran.page)
             end)
@@ -2748,7 +2812,7 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                 for _, c in ipairs(r and r.composants or {}) do
                     table.insert(morceaux, c.quantite * e.n .. " " .. Nom(c.objet))
                 end
-                local avec = #morceaux > 0 and string.format(L.PROG_CRAFT_WITH, table.concat(morceaux, ", ")) or ""
+                local avec = (#morceaux > 0 and string.format(L.PROG_CRAFT_WITH, table.concat(morceaux, ", ")) or "") .. ParRang("intermediaires", e.objet)
                 local l
                 index, y, l = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), avec)
                 if l and r then PoserBoutonFabriquer(l, r, e.n) end
@@ -2757,9 +2821,15 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     end
 
     -- 5. Monter le metier : les recettes, dans l'ordre.
-    if #plan.etapes > 0 then
+    local nbEtapes = 0
+    for _, seg in ipairs(segments) do nbEtapes = nbEtapes + #(seg.plan.etapes or {}) end
+    if nbEtapes > 0 then
         if Etape(L.GUIDE_LEVEL, false) then
-            for _, etape in ipairs(plan.etapes) do
+            for _, seg in ipairs(segments) do
+            if #segments > 1 then
+                y = Paragraphe(contenu, y + 4, string.format(L.GUIDE_SEGMENT, seg.de, seg.vise), "GameFontNormalSmall", nil, aligne)
+            end
+            for _, etape in ipairs(seg.plan.etapes or {}) do
                 local objet = etape.recette.objetProduit
                 local rangs = string.format(L.PROG_RANKS, etape.de, etape.a)
                 if etape.probable then rangs = rangs .. "  " .. L.PROG_PROBABLE_TAG end
@@ -2779,6 +2849,7 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                         l:SetScript("OnLeave", function() GameTooltip:Hide() end)
                     end
                 end
+            end
             end
             y = Paragraphe(contenu, y + 2, L.GUIDE_LEVEL_HELP, "GameFontDisableSmall")
         end
