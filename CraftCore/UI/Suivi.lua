@@ -1415,6 +1415,18 @@ local function NoterLieux()
     if type(d) ~= "table" then return end
     local source = NS.Appeler(NS.Lecture("GetLootSourceInfo"), 1)
     local peche = NS.Appeler(NS.Lecture("IsFishingLoot"))
+    -- Trace des dernieres ramasses (pour comprendre ce qui n'est pas note).
+    pcall(function()
+        local trace = { quand = NS.Horodatage(), source = tostring(source), sort = tostring(SortRecent()) }
+        for slot = 1, tonumber(NS.Appeler(NS.Lecture("GetNumLootItems"))) or 0 do
+            local lien = NS.Appeler(NS.Lecture("GetLootSlotLink"), slot)
+            local objet = type(lien) == "string" and tonumber(string.match(lien, "item:(%d+)"))
+            if objet then table.insert(trace, objet .. "=" .. tostring(MetierDeMatiere(objet))) end
+        end
+        d.traceLieux = type(d.traceLieux) == "table" and d.traceLieux or {}
+        table.insert(d.traceLieux, trace)
+        while #d.traceLieux > 12 do table.remove(d.traceLieux, 1) end
+    end)
     if not peche and not (type(source) == "string" and string.find(source, "^GameObject")) then return end
     local carte = NS.Appeler(NS.Lecture("C_Map.GetBestMapForUnit"), "player")
     local pos = carte and NS.Appeler(NS.Lecture("C_Map.GetPlayerMapPosition"), carte, "player")
@@ -1726,9 +1738,10 @@ function suivi.Guider(oui)
         cacheManques.quand = -100
         cibleRecolteQuand = -100
         if NS.marchands and NS.marchands.OterDrapeau then pcall(NS.marchands.OterDrapeau) end
-        S.Guider("CraftCore", fournisseurRecolte)
-        -- On dit ou mene la fleche, sinon le clic semble ne rien faire.
+        -- On dit ou mene la fleche, sinon le clic semble ne rien faire. Sans
+        -- lieu a viser, pas de fleche (elle restait figee sur hors de portee).
         local okC, cible, raison = pcall(ChercherCible)
+        if okC and cible then S.Guider("CraftCore", fournisseurRecolte) else S.ArreterGuidage("CraftCore") end
         local L = NS.L
         local texte
         if okC and cible then

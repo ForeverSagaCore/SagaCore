@@ -102,6 +102,10 @@ function NS.Dire(message)
     if not DEFAULT_CHAT_FRAME then return end
     local prefixe = (NS.L and NS.L.PREFIX) or "CraftCore: "
     DEFAULT_CHAT_FRAME:AddMessage(prefixe .. tostring(message))
+    -- Aussi dans l'onglet SagaCore de la discussion, s'il est ouvert.
+    local M = _G.SagaCoreMessages
+    local onglet = M and M.CadreOnglet and M.CadreOnglet()
+    if onglet and onglet ~= DEFAULT_CHAT_FRAME and onglet.AddMessage then onglet:AddMessage(prefixe .. tostring(message)) end
 end
 
 function NS.Horodatage()
