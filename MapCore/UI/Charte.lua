@@ -236,8 +236,20 @@ local function Proche(a, b, c, x, y, z)
     return math.abs(a - x) < 0.01 and math.abs(b - y) < 0.01 and math.abs(c - z) < 0.01
 end
 
+-- Couleur d'une classe du jeu (sauf le blanc, celui des textes ordinaires) :
+-- elle reste telle quelle sur le parchemin, les joueurs y retrouvent leur classe.
+local function CouleurDeClasse(r, g, b)
+    if r > 0.99 and g > 0.99 and b > 0.99 then return false end
+    for _, c in pairs(_G.RAID_CLASS_COLORS or {}) do
+        if type(c) == "table" and c.r and math.abs(c.r - r) < 0.01 and math.abs(c.g - g) < 0.01 and math.abs(c.b - b) < 0.01 then return true end
+    end
+    return false
+end
+
 -- Une ligne de texte : a l'encre sur parchemin, rendue a sa couleur sur noir.
+-- fs.couleurPropre : jamais encree (nom de classe, meme blanc pour le pretre).
 local function EncrerTexte(fs, parchemin)
+    if fs.couleurPropre then return end
     local r, g, b, a = fs:GetTextColor()
     if not r then return end
     local texte = fs:GetText()
@@ -252,7 +264,7 @@ local function EncrerTexte(fs, parchemin)
         fs.couleurOrigine = parchemin and { r, g, b, a } or nil
     end
     if parchemin then
-        if not (fs.encre and Proche(r, g, b, fs.encre[1], fs.encre[2], fs.encre[3])) then
+        if not (fs.encre and Proche(r, g, b, fs.encre[1], fs.encre[2], fs.encre[3])) and not CouleurDeClasse(r, g, b) then
             fs.couleurOrigine = { r, g, b, a }
             local er, eg, eb = charte.Encre(r, g, b)
             fs:SetTextColor(er, eg, eb, a)
@@ -260,6 +272,9 @@ local function EncrerTexte(fs, parchemin)
         end
         if type(texte) == "string" and texte ~= fs.texteEncre and string.find(texte, "|c%x%x") then
             local encre = string.gsub(texte, "|c(%x%x)(%x%x)(%x%x)(%x%x)", function(aa, rr, gg, bb)
+                if CouleurDeClasse(tonumber(rr, 16) / 255, tonumber(gg, 16) / 255, tonumber(bb, 16) / 255) then
+                    return "|c" .. aa .. rr .. gg .. bb
+                end
                 return "|c" .. aa .. EncreHexa(rr, gg, bb)
             end)
             fs.texteOrigine = texte

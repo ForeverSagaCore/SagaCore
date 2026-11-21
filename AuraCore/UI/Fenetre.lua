@@ -330,9 +330,19 @@ function F.Construire()
                   local derniere
                   for _, e in ipairs(NS.donnees.SUIVIS) do
                       if e.classe ~= derniere then
+                          -- Entre deux classes : un filet et un vrai espace ; le
+                          -- nom de la classe tout pres de son premier sort.
+                          if derniere then
+                              local filet = page.cadre:CreateTexture(nil, "ARTWORK")
+                              filet:SetColorTexture(0.54, 0.39, 0.17, 0.6)
+                              filet:SetSize(page.cadre:GetWidth() - 10, 1)
+                              O.Placer(filet, 1, 10)
+                          end
                           derniere = e.classe
-                          local t = O.Texte(20, "GameFontNormal")
+                          local t = O.Texte(14, "GameFontNormal")
                           t.classe = e.classe
+                          -- La couleur de la classe telle que le jeu la definit.
+                          t.couleurPropre = true
                           table.insert(page.classes, t)
                       end
                       local entree = e
@@ -363,7 +373,7 @@ function F.Construire()
                   for _, t in ipairs(page.classes) do
                       t:SetText(noms[t.classe] or t.classe)
                       local c = couleurs[t.classe]
-                      if c then t:SetTextColor(c.r, c.g, c.b) end
+                      if c then t:SetTextColor(c.r, c.g, c.b, 1) end
                   end
                   for _, l in ipairs(page.lignes) do
                       l.icone:SetTexture(NS.donnees.Icone(l.e.ids[1]))

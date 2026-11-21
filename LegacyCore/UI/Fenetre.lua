@@ -155,6 +155,8 @@ local function Poser(contenu, index, y, o)
     l.gauche:SetText(o.texte or "")
     local c = o.couleur or BLANC
     l.gauche:SetTextColor(c[1], c[2], c[3])
+    -- Couleur de classe : la vraie, jamais encree (le pretre reste blanc).
+    l.gauche.couleurPropre = c.classe or nil
     l.droite:SetText(o.droite or "")
     local cd = o.couleurDroite or GRIS
     l.droite:SetTextColor(cd[1], cd[2], cd[3])
@@ -544,7 +546,7 @@ end
 -- Un palier : la coche du jeu quand il est atteint, le sablier sinon.
 local function CouleurDeClasse(classe)
     local c = _G.RAID_CLASS_COLORS and classe and _G.RAID_CLASS_COLORS[classe]
-    if c then return { c.r, c.g, c.b } end
+    if c then return { c.r, c.g, c.b, classe = true } end
     return BLANC
 end
 
