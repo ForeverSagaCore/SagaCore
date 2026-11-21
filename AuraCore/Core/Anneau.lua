@@ -711,7 +711,26 @@ local function DessinerAnneau(r)
     -- grisee si elle manque, puis la file), "suite" (chacun a la file, a
     -- place fixe), "equilibre" (repartis sur tout l'arc, ils bougent).
     local dispo = r.disposition or "reserve"
-    local montrees, dejaNoms, dejaIds = {}, {}, {}
+    local montrees, dejaNoms, dejaIds, dejaIcones = {}, {}, {}, {}
+    -- La liste des ameliorations, lue d'abord : en combat, elle dit aussi
+    -- (par leur image) quelles places reservees sont actives.
+    local liste, source = {}, "jeu"
+    local api, erreur = DepuisLeJeu()
+    liste = api
+    if #api == 0 then
+        local natifs = DepuisLeCadreDuJeu()
+        if #natifs > 0 then liste, source = natifs, "cadre" end
+    end
+    local enCombatR = InCombatLockdown and InCombatLockdown() or false
+    if enCombatR and #liste > 0 then
+        local actives = {}
+        for _, e in ipairs(liste) do
+            if e.icone ~= nil and not Secret(e.icone) and not e.nuisible then actives[e.icone] = true end
+        end
+        for _, e in ipairs(reservees) do
+            if not e.conso and e.icone ~= nil and type(e.icone) ~= "boolean" then e.actif = actives[e.icone] == true end
+        end
+    end
     local n, iConso, iGroupe, iAutre = 0, 0, 0, 0
     local enTrop = {}
     for _, e in ipairs(reservees) do
@@ -737,6 +756,7 @@ local function DessinerAnneau(r)
             Poser(p, angle)
             if e.nom then dejaNoms[e.nom] = true end
             if e.idAura then dejaIds[e.idAura] = true end
+            if e.icone ~= nil and type(e.icone) ~= "boolean" then dejaIcones[e.icone] = true end
         end
     end
     -- Buffs de groupe sans place dans leur quart : a la suite, apres le soi.
@@ -750,19 +770,13 @@ local function DessinerAnneau(r)
             Poser(p, angle)
             if e.nom then dejaNoms[e.nom] = true end
             if e.idAura then dejaIds[e.idAura] = true end
+            if e.icone ~= nil and type(e.icone) ~= "boolean" then dejaIcones[e.icone] = true end
         end
     end
     local debutFile = n
     local anglesFile = {}
     for i = iAutre + 1, #autres do table.insert(anglesFile, autres[i]) end
     -- La file : tout le reste, sans les pistages ni ce qui a deja sa place.
-    local liste, source = {}, "jeu"
-    local api, erreur = DepuisLeJeu()
-    liste = api
-    if #api == 0 then
-        local natifs = DepuisLeCadreDuJeu()
-        if #natifs > 0 then liste, source = natifs, "cadre" end
-    end
     local d = Diag()
     local enCombat = InCombatLockdown and InCombatLockdown() or false
     d[enCombat and "combat" or "horsCombat"] = { api = #api, erreur = erreur, source = source, montres = #liste,
@@ -781,8 +795,16 @@ local function DessinerAnneau(r)
     local vus, aPlacer = {}, {}
     -- Effets nuisibles : sur leur propre cercle, si l'option est cochee.
     local aPart = r.nuisiblesAPart and {} or nil
+    -- Doublons : deja a sa place (par nom, numero ou image), ou deux fois le
+    -- meme bouton recopie du jeu (meme image, sans numero lisible).
+    local imagesVues = {}
     for i, e in ipairs(liste) do
-        local deja = (e.nom and dejaNoms[e.nom]) or (e.id ~= nil and not Secret(e.id) and dejaIds[e.id])
+        local ic = (e.icone ~= nil and not Secret(e.icone)) and e.icone or nil
+        local idLisible = e.id ~= nil and not Secret(e.id)
+        local deja = (e.nom and dejaNoms[e.nom]) or (idLisible and dejaIds[e.id])
+            or (ic and not e.nuisible and dejaIcones[ic])
+            or (ic and not idLisible and imagesVues[ic])
+        if ic then imagesVues[ic] = true end
         if not deja and aPart and e.nuisible then
             table.insert(aPart, { cle = CleAura(e, i), e = e })
             deja = true
