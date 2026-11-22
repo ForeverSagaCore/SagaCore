@@ -647,3 +647,9 @@ L.NAV_LEVEL_UP_THIS = "Migliorare questa professione"
 L.NAV_STOCKS_ALL = "Tutte le mie scorte"
 L.STOCKS_OTHER_ITEMS = "Altri oggetti"
 L.PROG_THIS_NONE = "Questa professione non si migliora creando : niente da proporre qui."
+
+-- Stocks : recherche et objet choisi
+L.STOCKS_SEARCH = "Cerca un oggetto"
+L.STOCKS_SHOW_ALL = "Mostra tutto"
+L.STOCKS_NOBODY = "Nessun personaggio ne ha."
+L.STOCKS_SEARCH_NONE = "Nessun oggetto corrisponde alla ricerca."

@@ -435,11 +435,54 @@ local function ColonneCourrier(ligne, oui)
     end
 end
 
+-- Cinquieme colonne (le total des stocks), tout a droite.
+local function ColonneSomme(ligne, oui)
+    if not ligne.somme then
+        if not oui then return end
+        ligne.somme = ligne:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        ligne.somme:SetPoint("RIGHT", ligne, "RIGHT", -8, 0)
+        ligne.somme:SetJustifyH("RIGHT")
+    end
+    ligne.somme:SetText("")
+    ligne.somme:SetWidth(ligne.sacs:GetWidth() or 45)
+    ligne.somme:SetShown(oui == true)
+    ligne.total:ClearAllPoints()
+    if oui then
+        ligne.total:SetPoint("RIGHT", ligne.somme, "LEFT", -12, 0)
+    else
+        ligne.total:SetPoint("RIGHT", ligne, "RIGHT", -8, 0)
+    end
+end
+
+-- Bande legere a la couleur de classe, derriere la ligne d'un personnage.
+local function BandeDeClasse(ligne, c)
+    if not ligne.bande then
+        if not c then return end
+        ligne.bande = ligne:CreateTexture(nil, "BACKGROUND")
+        ligne.bande:SetAllPoints()
+    end
+    if c then
+        ligne.bande:SetColorTexture(1, 1, 1, 1)
+        local ok = ligne.bande.SetGradient and _G.CreateColor and pcall(ligne.bande.SetGradient, ligne.bande, "HORIZONTAL",
+            _G.CreateColor(c.r, c.g, c.b, 0.3), _G.CreateColor(c.r, c.g, c.b, 0))
+        if not ok then ligne.bande:SetColorTexture(c.r, c.g, c.b, 0.18) end
+        ligne.bande:Show()
+    else
+        ligne.bande:Hide()
+    end
+end
+
 local function PoserLigne(ligne, retrait, depliable, deplie, auClic)
     -- Une ligne reutilisee ne garde jamais l'infobulle de sa page precedente.
     ligne:SetScript("OnEnter", nil)
     ligne:SetScript("OnLeave", nil)
     ColonneCourrier(ligne, false)
+    ColonneSomme(ligne, false)
+    BandeDeClasse(ligne, nil)
+    ligne.nom.couleurPropre = nil
+    ligne.filet:ClearAllPoints()
+    ligne.filet:SetPoint("BOTTOMLEFT", ligne, "BOTTOMLEFT", 8, 0)
+    ligne.filet:SetPoint("BOTTOMRIGHT", ligne, "BOTTOMRIGHT", -8, 0)
     ligne.moins:Hide()
     ligne.plus:Hide()
     if ligne.fabriquer then ligne.fabriquer:Hide() end
@@ -817,6 +860,17 @@ local function RendreAtelier(contenu)
     contenu:SetHeight(math.max(y, 1))
 end
 
+-- Texte ramene a une forme simple pour chercher : minuscules, sans accents.
+local ACCENTS = { ["é"] = "e", ["è"] = "e", ["ê"] = "e", ["ë"] = "e", ["É"] = "e", ["È"] = "e", ["Ê"] = "e",
+    ["à"] = "a", ["â"] = "a", ["ä"] = "a", ["À"] = "a", ["Â"] = "a", ["î"] = "i", ["ï"] = "i", ["Î"] = "i",
+    ["ô"] = "o", ["ö"] = "o", ["Ô"] = "o", ["ù"] = "u", ["û"] = "u", ["ü"] = "u", ["Û"] = "u",
+    ["ç"] = "c", ["Ç"] = "c", ["œ"] = "oe", ["’"] = "'" }
+local function Simplifier(texte)
+    texte = tostring(texte or "")
+    for avec, sans in pairs(ACCENTS) do texte = string.gsub(texte, avec, sans) end
+    return string.lower(texte)
+end
+
 local function RendreStocks(contenu, tous)
     local base = NS.base
     local inventaire = NS.inventaire
@@ -849,12 +903,12 @@ local function RendreStocks(contenu, tous)
     local courant = NS.ClePersonnage()
     local index = 0
     local y = 0
+    local pageStocks = ecran.page
 
     local tousLesPersos = base.TousLesPersonnages()
     local titre
     index, y, titre = EnTeteDePage(contenu, index, y, tous and L.NAV_STOCKS_ALL or L.NAV_STOCKS)
-    local pageStocks = ecran.page
-    if #tousLesPersos > 1 and titre then
+    if #tousLesPersos > 1 and titre and not ecran.objetStock then
         PoserBoutonDeLigne(titre, choix == "tous" and L.STOCKS_THIS_CHAR_SHORT or L.STOCKS_ALL_SHORT,
             function()
                 if choix == "tous" then
@@ -871,6 +925,165 @@ local function RendreStocks(contenu, tous)
         titre.plus:SetPoint("RIGHT", titre, "RIGHT", -4, 0)
     end
 
+    -- Champ de recherche, sous le titre, avant le premier personnage.
+    if not contenu.rechercheStock then
+        local ok, champ = pcall(CreateFrame, "EditBox", nil, contenu, "SearchBoxTemplate")
+        if not ok or not champ then champ = CreateFrame("EditBox", nil, contenu, "InputBoxTemplate") end
+        champ:SetSize(260, 20)
+        champ:SetAutoFocus(false)
+        champ:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        champ:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+        champ:HookScript("OnTextChanged", function(self)
+            local texte = self:GetText() or ""
+            if texte == (ecran.rechercheStock or "") then return end
+            ecran.rechercheStock = texte
+            ecran.objetStock = nil
+            ecran.Montrer(ecran.page)
+        end)
+        if champ.Instructions then champ.Instructions:SetText(L.STOCKS_SEARCH) end
+        contenu.rechercheStock = champ
+    end
+    local champ = contenu.rechercheStock
+    champ:ClearAllPoints()
+    champ:SetPoint("TOPLEFT", contenu, "TOPLEFT", 8, -(y + 2))
+    if (champ:GetText() or "") ~= (ecran.rechercheStock or "") then champ:SetText(ecran.rechercheStock or "") end
+    champ:Show()
+    y = y + 30
+    local mots = {}
+    for mot in string.gmatch(Simplifier(ecran.rechercheStock or ""), "%S+") do table.insert(mots, mot) end
+    local function Garde(objet)
+        if #mots == 0 then return true end
+        local nom = Simplifier(inventaire.NomDObjet(objet))
+        for _, mot in ipairs(mots) do if not string.find(nom, mot, 1, true) then return false end end
+        return true
+    end
+
+    -- Un personnage : son nom a la couleur exacte de sa classe.
+    local function CouleurDe(fiche)
+        local jeton = fiche and fiche.jetonClasse
+        -- Fiche sans jeton : sa classe retrouvee par son nom traduit.
+        if not jeton and fiche and type(fiche.classe) == "string" then
+            for _, noms in ipairs({ _G.LOCALIZED_CLASS_NAMES_MALE, _G.LOCALIZED_CLASS_NAMES_FEMALE }) do
+                for cle, nom in pairs(type(noms) == "table" and noms or {}) do
+                    if nom == fiche.classe then jeton = cle break end
+                end
+                if jeton then break end
+            end
+        end
+        return jeton and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[jeton] or nil
+    end
+    local function NommerPersonnage(fs, fiche, suite)
+        local c = CouleurDe(fiche)
+        local nom = NS.inventaire.NomCourt(fiche.cle)
+        if c then
+            fs:SetTextColor(c.r, c.g, c.b)
+            fs.couleurPropre = true
+        end
+        fs:SetText(nom .. (suite and ("|cff8c8c8c" .. suite .. "|r") or ""))
+    end
+    local function Chiffre(n) return (n and n > 0) and tostring(n) or "" end
+    -- Les cinq colonnes : sacs, banque, courrier, autres persos, total.
+    local function Colonnes(l, sacs, banque, courrier, autres, somme)
+        ColonneCourrier(l, true)
+        ColonneSomme(l, true)
+        l.sacs:SetText(Chiffre(sacs))
+        l.banque:SetText(Chiffre(banque))
+        l.courrier:SetText(Chiffre(courrier))
+        l.total:SetText(Chiffre(autres))
+        l.somme:SetText(Chiffre(somme))
+    end
+    local function EnTetesDeColonnes(l, avecAutres)
+        ColonneCourrier(l, true)
+        ColonneSomme(l, true)
+        l.sacs:SetText(L.COL_BAGS)
+        l.banque:SetText(L.COL_BANK)
+        l.courrier:SetText(L.COL_MAIL)
+        l.total:SetText(avecAutres and L.COL_OTHERS or "")
+        l.somme:SetText(L.COL_TOTAL)
+    end
+    local function NouvelleLigne(retrait, auClic, decalage)
+        index = index + 1
+        local l = LigneDeTableau(contenu, index)
+        l:ClearAllPoints()
+        l:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -(y + (decalage or 0)))
+        l:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -(y + (decalage or 0)))
+        PoserLigne(l, retrait, false, false, auClic)
+        return l
+    end
+    local function Message(texte, retrait)
+        local l = NouvelleLigne(retrait, nil)
+        l.icone:Hide()
+        l.nom:SetFontObject("GameFontDisableSmall")
+        l.nom:SetText(texte)
+        l.sacs:SetText("") l.banque:SetText("") l.total:SetText("")
+        l:Show()
+        y = y + HAUTEUR_LIGNE
+    end
+
+    -- Un objet choisi (clic ou bouton A) : qui en a combien, et le total.
+    if ecran.objetStock then
+        local objet = ecran.objetStock
+        local tete = NouvelleLigne(0, nil)
+        local icone = NS.jeu.iconeObjet and NS.Appeler(NS.jeu.iconeObjet, tonumber(objet))
+        if icone then tete.icone:SetTexture(icone) tete.icone:Show() else tete.icone:Hide() end
+        tete.nom:SetFontObject("GameFontNormal")
+        if NS.objets and NS.objets.CouleurDuNom then tete.nom:SetTextColor(NS.objets.CouleurDuNom(tonumber(objet))) end
+        tete.nom:SetText(inventaire.NomDObjet(objet))
+        tete.sacs:SetText("") tete.banque:SetText("") tete.total:SetText("")
+        PoserBoutonDeLigne(tete, L.STOCKS_SHOW_ALL, function()
+            ecran.objetStock = nil
+            ecran.Montrer(pageStocks)
+        end, 130)
+        tete.plus:ClearAllPoints()
+        tete.plus:SetPoint("RIGHT", tete, "RIGHT", -4, 0)
+        tete:SetHeight(HAUTEUR_LIGNE + 4)
+        tete:Show()
+        y = y + HAUTEUR_LIGNE + 10
+        local entete = NouvelleLigne(RETRAIT_PAR_NIVEAU, nil)
+        entete.icone:Hide()
+        entete.nom:SetText("")
+        EnTetesDeColonnes(entete, false)
+        entete:Show()
+        y = y + HAUTEUR_LIGNE + 2
+        local tS, tB, tC, n = 0, 0, 0, 0
+        for _, fiche in ipairs(tousLesPersos) do
+            local sacs, banque, courrier = inventaire.SacsEtBanque(fiche, objet)
+            courrier = courrier or 0
+            if sacs + banque + courrier > 0 then
+                n = n + 1
+                tS, tB, tC = tS + sacs, tB + banque, tC + courrier
+                local l = NouvelleLigne(RETRAIT_PAR_NIVEAU, nil)
+                l.icone:Hide()
+                l.nom:SetFontObject("GameFontHighlightSmall")
+                NommerPersonnage(l.nom, fiche)
+                BandeDeClasse(l, CouleurDe(fiche))
+                Colonnes(l, sacs, banque, courrier, 0, sacs + banque + courrier)
+                l:Show()
+                y = y + HAUTEUR_LIGNE + 2
+            end
+        end
+        if n == 0 then
+            Message(L.STOCKS_NOBODY, RETRAIT_PAR_NIVEAU)
+        else
+            local somme = NouvelleLigne(RETRAIT_PAR_NIVEAU, nil, 4)
+            somme.icone:Hide()
+            somme.nom:SetFontObject("GameFontNormal")
+            somme.nom:SetTextColor(1, 0.82, 0)
+            somme.nom:SetText(L.COL_TOTAL)
+            Colonnes(somme, tS, tB, tC, 0, tS + tB + tC)
+            somme.filet:ClearAllPoints()
+            somme.filet:SetPoint("TOPLEFT", somme, "TOPLEFT", RETRAIT_PAR_NIVEAU, 2)
+            somme.filet:SetPoint("TOPRIGHT", somme, "TOPRIGHT", -8, 2)
+            somme.filet:SetColorTexture(1, 0.82, 0, 0.25)
+            somme.filet:Show()
+            somme:Show()
+            y = y + HAUTEUR_LIGNE + 8
+        end
+        CacherLignesAuDela(contenu, index + 1)
+        contenu:SetHeight(math.max(y, 1))
+        return
+    end
+
     local fiches = {}
     for _, fiche in ipairs(tousLesPersos) do
         if choix == "tous" or fiche.cle == choix then
@@ -879,28 +1092,21 @@ local function RendreStocks(contenu, tous)
     end
     if #fiches == 0 then fiches = tousLesPersos end
 
-    for _, fiche in ipairs(fiches) do
-        -- En-tete du personnage.
-        index = index + 1
-        local entete = LigneDeTableau(contenu, index)
-        entete:ClearAllPoints()
-        entete:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
-        entete:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
-        PoserLigne(entete, 0, false, false, nil)
+    -- Retraits : le personnage, puis le metier, puis ses objets.
+    local retraitObjet = tous and (RETRAIT_PAR_NIVEAU * 2) or RETRAIT_PAR_NIVEAU
+
+    for rangFiche, fiche in ipairs(fiches) do
+        -- En-tete du personnage : son nom a la couleur de sa classe, sur une
+        -- bande legere de cette couleur, et les titres des colonnes.
+        local entete = NouvelleLigne(0, nil)
         entete.icone:Hide()
         entete.nom:SetFontObject("GameFontNormal")
-        entete.nom:SetTextColor(1, 0.82, 0)
-        entete.nom:SetText(string.format(L.STOCKS_READ_AT, NS.inventaire.NomCourt(fiche.cle),
-            base.ReleveDe(fiche) or "?"))
-        -- Trois colonnes, toujours les memes : sacs du personnage, sa banque,
-        -- et ce que ses autres personnages du meme camp detiennent.
-        ColonneCourrier(entete, true)
-        entete.sacs:SetText(L.COL_BAGS)
-        entete.banque:SetText(L.COL_BANK)
-        entete.courrier:SetText(L.COL_MAIL)
-        entete.total:SetText(L.COL_OTHERS)
+        NommerPersonnage(entete.nom, fiche, string.format(L.STOCKS_READ_AT, "", base.ReleveDe(fiche) or "?"))
+        BandeDeClasse(entete, CouleurDe(fiche))
+        entete:SetHeight(HAUTEUR_LIGNE + 4)
+        EnTetesDeColonnes(entete, true)
         entete:Show()
-        y = y + HAUTEUR_LIGNE + 4
+        y = y + HAUTEUR_LIGNE + 10
 
         -- Sur un seul personnage, on montre aussi ce qu'il n'a pas mais que
         -- ses autres personnages detiennent : c'est ce qui se rapatrie. Vue
@@ -920,15 +1126,15 @@ local function RendreStocks(contenu, tous)
 
         local lignes = {}
         for cle in pairs(objetsVus) do
-          if (not lies) or lies[tonumber(cle)] then
-            local sacs, banque, courrier = inventaire.SacsEtBanque(fiche, cle)
-            courrier = courrier or 0
-            local autres, detail = inventaire.DetailChezLesAutres(fiche, cle)
-            if sacs + banque + courrier + autres > 0 then
-                table.insert(lignes, { objet = cle, sacs = sacs, banque = banque, courrier = courrier,
-                    autres = autres, detail = detail, total = sacs + banque + courrier })
+            if ((not lies) or lies[tonumber(cle)]) and Garde(cle) then
+                local sacs, banque, courrier = inventaire.SacsEtBanque(fiche, cle)
+                courrier = courrier or 0
+                local autres, detail = inventaire.DetailChezLesAutres(fiche, cle)
+                if sacs + banque + courrier + autres > 0 then
+                    table.insert(lignes, { objet = cle, sacs = sacs, banque = banque, courrier = courrier,
+                        autres = autres, detail = detail, total = sacs + banque + courrier })
+                end
             end
-          end
         end
         table.sort(lignes, function(a, b)
             if a.total ~= b.total then return a.total > b.total end
@@ -959,75 +1165,62 @@ local function RendreStocks(contenu, tous)
 
         -- Un filtre qui ne laisse rien le dit, au lieu de laisser un blanc.
         if #lignes == 0 then
-            index = index + 1
-            local vide = LigneDeTableau(contenu, index)
-            vide:ClearAllPoints()
-            vide:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
-            vide:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
-            PoserLigne(vide, 0, false, false, nil)
-            vide.icone:Hide()
-            vide.nom:SetFontObject("GameFontDisableSmall")
-            ColonneCourrier(vide, true)
-            vide.nom:SetText(lies and L.STOCKS_NONE_FOR_TRADE or L.STOCKS_EMPTY)
-            vide.sacs:SetText("")
-            vide.banque:SetText("")
-            vide.total:SetText("")
-            vide:Show()
-            y = y + HAUTEUR_LIGNE
+            Message((#mots > 0 and L.STOCKS_SEARCH_NONE) or (lies and L.STOCKS_NONE_FOR_TRADE) or L.STOCKS_EMPTY, RETRAIT_PAR_NIVEAU)
         end
 
+        local premierInter = true
         for _, l in ipairs(lignes) do
           if l.intertitre then
-            index = index + 1
-            local inter = LigneDeTableau(contenu, index)
-            inter:ClearAllPoints()
-            inter:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -(y + 4))
-            inter:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -(y + 4))
-            PoserLigne(inter, RETRAIT_PAR_NIVEAU, false, false, nil)
+            -- Le metier : comme une categorie de Mes recettes, au retrait du
+            -- personnage plus un cran, avec son filet.
+            if not premierInter then y = y + 6 end
+            premierInter = false
+            local inter = NouvelleLigne(RETRAIT_PAR_NIVEAU, nil)
             if l.icone then inter.icone:SetTexture(l.icone) inter.icone:Show() else inter.icone:Hide() end
-            inter.nom:SetFontObject("GameFontNormalSmall")
-            inter.nom:SetTextColor(1, 0.82, 0)
+            inter.nom.agrandir = false
+            if NS.charte.Fond() == "parchemin" then
+                PoliceDeTitre(inter.nom)
+                inter.nom:SetTextColor(0.42, 0.18, 0.02)
+                inter.filet:SetColorTexture(0.42, 0.18, 0.02, 0.45)
+            else
+                inter.nom:SetFontObject("GameFontNormal")
+                inter.nom:SetTextColor(1, 0.82, 0)
+                inter.filet:SetColorTexture(1, 0.82, 0, 0.25)
+            end
             inter.nom:SetText(l.intertitre)
-            ColonneCourrier(inter, true)
-            inter.sacs:SetText("")
-            inter.banque:SetText("")
-            inter.courrier:SetText("")
-            inter.total:SetText("")
-            inter:EnableMouse(false)
-            inter:SetScript("OnEnter", nil)
-            inter:SetScript("OnLeave", nil)
+            inter.filet:ClearAllPoints()
+            inter.filet:SetPoint("BOTTOMLEFT", inter, "BOTTOMLEFT", RETRAIT_PAR_NIVEAU, 0)
+            inter.filet:SetPoint("BOTTOMRIGHT", inter, "BOTTOMRIGHT", -8, 0)
+            inter.filet:Show()
+            inter.sacs:SetText("") inter.banque:SetText("") inter.total:SetText("")
+            inter:SetHeight(HAUTEUR_LIGNE + 6)
             inter:Show()
-            y = y + HAUTEUR_LIGNE + 4
+            y = y + HAUTEUR_LIGNE + 6 + 6
           else
-            index = index + 1
-            local ligne = LigneDeTableau(contenu, index)
-            ligne:ClearAllPoints()
-            ligne:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
-            ligne:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
-            PoserLigne(ligne, RETRAIT_PAR_NIVEAU, false, false, nil)
+            local objet, detail, nomFiche = tonumber(l.objet), l.detail, fiche.cle
+            local cleObjet = l.objet
+            -- Clic (ou bouton A) : cet objet chez tous les personnages.
+            local ligne = NouvelleLigne(retraitObjet, function()
+                ecran.objetStock = cleObjet
+                ecran.Montrer(pageStocks)
+            end)
             ligne.nom:SetFontObject("GameFontHighlightSmall")
             if NS.objets and NS.objets.CouleurDuNom then
-                ligne.nom:SetTextColor(NS.objets.CouleurDuNom(tonumber(l.objet)))
+                ligne.nom:SetTextColor(NS.objets.CouleurDuNom(objet))
             end
             ligne.nom:SetText(inventaire.NomDObjet(l.objet))
-            local icone = NS.jeu.iconeObjet and NS.Appeler(NS.jeu.iconeObjet, tonumber(l.objet))
+            local icone = NS.jeu.iconeObjet and NS.Appeler(NS.jeu.iconeObjet, objet)
             if icone then
                 ligne.icone:SetTexture(icone)
                 ligne.icone:Show()
             else
                 ligne.icone:Hide()
             end
-            ColonneCourrier(ligne, true)
-            ligne.sacs:SetText(l.sacs > 0 and tostring(l.sacs) or "")
-            ligne.banque:SetText(l.banque > 0 and tostring(l.banque) or "")
-            ligne.courrier:SetText(l.courrier > 0 and tostring(l.courrier) or "")
-            ligne.total:SetText(l.autres > 0 and tostring(l.autres) or "")
+            Colonnes(ligne, l.sacs, l.banque, l.courrier, l.autres, l.total + l.autres)
 
             -- Au survol, qui detient combien, personnage par personnage, et
             -- dans quelle boite aux lettres.
-            local objet, detail, nomFiche = tonumber(l.objet), l.detail, fiche.cle
             local sacsIci, banqueIci, courrierIci = l.sacs, l.banque, l.courrier
-            ligne:EnableMouse(true)
             ligne:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(inventaire.NomDObjet(objet))
@@ -1047,21 +1240,7 @@ local function RendreStocks(contenu, tous)
         end
 
         if fiche.quantitesIncertaines then
-            index = index + 1
-            local avis = LigneDeTableau(contenu, index)
-            avis:ClearAllPoints()
-            avis:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
-            avis:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
-            PoserLigne(avis, RETRAIT_PAR_NIVEAU, false, false, nil)
-            avis.icone:Hide()
-            avis.nom:SetFontObject("GameFontDisableSmall")
-            ColonneCourrier(avis, true)
-            avis.nom:SetText(L.STOCKS_UNCERTAIN)
-            avis.sacs:SetText("")
-            avis.banque:SetText("")
-            avis.total:SetText("")
-            avis:Show()
-            y = y + HAUTEUR_LIGNE
+            Message(L.STOCKS_UNCERTAIN, retraitObjet)
         end
 
         y = y + ESPACE_SECTION
@@ -3065,7 +3244,7 @@ local function RendreProgression(contenu, seulLigne)
         ligne:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
         ligne:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
         local ligneMetier = m.ligne
-        PoserLigne(ligne, 0, seulLigne == nil, ouvert, seulLigne == nil and function()
+        PoserLigne(ligne, RETRAIT_PAR_NIVEAU, seulLigne == nil, ouvert, seulLigne == nil and function()
             ecran.progOuvert = (ecran.progOuvert ~= ligneMetier) and ligneMetier or false
             ecran.Montrer(ecran.page)
         end or nil)
@@ -3091,7 +3270,7 @@ local function RendreProgression(contenu, seulLigne)
         ligne:Show()
         y = y + HAUTEUR_LIGNE + 2
         if ouvert and sien then
-            retraitCourant = RETRAIT_PAR_NIVEAU
+            retraitCourant = RETRAIT_PAR_NIVEAU * 2
             local okD, iD, yD = pcall(RendreProgressionDuMetier, contenu, index, y, m.ligne, sien)
             retraitCourant = 0
             if not okD then error(iD, 0) end
@@ -3103,16 +3282,6 @@ local function RendreProgression(contenu, seulLigne)
     contenu:SetHeight(math.max(y, 1))
 end
 
--- Texte ramene a une forme simple pour chercher : minuscules, sans accents.
-local ACCENTS = { ["é"] = "e", ["è"] = "e", ["ê"] = "e", ["ë"] = "e", ["É"] = "e", ["È"] = "e", ["Ê"] = "e",
-    ["à"] = "a", ["â"] = "a", ["ä"] = "a", ["À"] = "a", ["Â"] = "a", ["î"] = "i", ["ï"] = "i", ["Î"] = "i",
-    ["ô"] = "o", ["ö"] = "o", ["Ô"] = "o", ["ù"] = "u", ["û"] = "u", ["ü"] = "u", ["Û"] = "u",
-    ["ç"] = "c", ["Ç"] = "c", ["œ"] = "oe", ["’"] = "'" }
-local function Simplifier(texte)
-    texte = tostring(texte or "")
-    for avec, sans in pairs(ACCENTS) do texte = string.gsub(texte, avec, sans) end
-    return string.lower(texte)
-end
 
 -- Mots qui ne font pas une famille de recettes (adjectifs, liaisons).
 local MOTS_NEUTRES = {}
@@ -4555,6 +4724,8 @@ function ecran.Montrer(cle)
         ecran.metier = ecran.metier or memoire.metier
     end
     ecran.page = cle or ecran.page or "stocks"
+    -- L'objet choisi dans les stocks ne suit pas sur une autre page.
+    if ecran.page ~= "stocks" and ecran.page ~= "stocksTous" then ecran.objetStock = nil end
     for _, p in ipairs(PAGES) do if p.cle == ecran.page then ecran.pageMenu = ecran.page end end
     if NS.base.SuivreLaSuite then pcall(NS.base.SuivreLaSuite) end
     -- Arrive par LT / RT depuis un autre add-on : premier ou dernier onglet
@@ -4699,6 +4870,7 @@ function ecran.Montrer(cle)
         end
         if fenetre.contenu.recherche and ecran.page ~= "recettes" then fenetre.contenu.recherche:Hide() end
         if fenetre.contenu.rechercheCommande and ecran.page ~= "commandes" then fenetre.contenu.rechercheCommande:Hide() end
+        if fenetre.contenu.rechercheStock and ecran.page ~= "stocks" and ecran.page ~= "stocksTous" then fenetre.contenu.rechercheStock:Hide() end
         if fenetre.contenu.caseConnues and ecran.page ~= "recettes" then
             fenetre.contenu.caseConnues:Hide()
             fenetre.contenu.caseConnues.libelle:Hide()
@@ -4791,6 +4963,12 @@ function ecran.Montrer(cle)
     local okF, souciF = pcall(function()
         local parchemin = NS.charte.Fond() == "parchemin"
         if fenetre.parchemin then fenetre.parchemin.Montrer(parchemin) end
+        -- Les libelles poses directement sur la page (Parametres, cases a
+        -- cocher) ont la taille des lignes, partout la meme.
+        for _, region in ipairs({ fenetre.contenu:GetRegions() }) do
+            if region.GetObjectType and region:GetObjectType() == "FontString" and region.GetFontObject
+                and region:GetFontObject() == _G.GameFontHighlightSmall then region.agrandir = true end
+        end
         for _, zone in ipairs({ fenetre.contenu, fenetre.zoneFixe, fenetre.bandeau }) do
             NS.charte.Encrer(zone, parchemin)
         end

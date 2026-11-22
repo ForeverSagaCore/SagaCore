@@ -740,3 +740,9 @@ L.NAV_STOCKS_ALL = "Tous mes stocks"
 L.STOCKS_OTHER_ITEMS = "Autres objets"
 L.PROG_THIS_NONE = "Ce métier ne se monte pas en fabriquant : rien à proposer ici."
 L.NAV_RECIPES = "Mes recettes"
+
+-- Stocks : recherche et objet choisi
+L.STOCKS_SEARCH = "Chercher un objet"
+L.STOCKS_SHOW_ALL = "Tout afficher"
+L.STOCKS_NOBODY = "Aucun personnage n'en a."
+L.STOCKS_SEARCH_NONE = "Aucun objet ne correspond à la recherche."

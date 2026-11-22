@@ -647,3 +647,9 @@ L.NAV_LEVEL_UP_THIS = "Diesen Beruf steigern"
 L.NAV_STOCKS_ALL = "Alle meine Vorräte"
 L.STOCKS_OTHER_ITEMS = "Andere Gegenstände"
 L.PROG_THIS_NONE = "Dieser Beruf wird nicht durch Herstellen gesteigert : hier gibt es nichts vorzuschlagen."
+
+-- Stocks : recherche et objet choisi
+L.STOCKS_SEARCH = "Gegenstand suchen"
+L.STOCKS_SHOW_ALL = "Alle anzeigen"
+L.STOCKS_NOBODY = "Kein Charakter besitzt welche."
+L.STOCKS_SEARCH_NONE = "Kein Gegenstand passt zur Suche."

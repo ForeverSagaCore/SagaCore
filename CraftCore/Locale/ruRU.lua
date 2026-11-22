@@ -647,3 +647,9 @@ L.NAV_LEVEL_UP_THIS = "Прокачать эту профессию"
 L.NAV_STOCKS_ALL = "Все мои запасы"
 L.STOCKS_OTHER_ITEMS = "Другие предметы"
 L.PROG_THIS_NONE = "Эта профессия не прокачивается созданием предметов : здесь нечего предложить."
+
+-- Stocks : recherche et objet choisi
+L.STOCKS_SEARCH = "Найти предмет"
+L.STOCKS_SHOW_ALL = "Показать всё"
+L.STOCKS_NOBODY = "Ни у одного персонажа нет."
+L.STOCKS_SEARCH_NONE = "Нет предметов по запросу."

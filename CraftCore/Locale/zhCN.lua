@@ -647,3 +647,9 @@ L.NAV_LEVEL_UP_THIS = "提升此专业"
 L.NAV_STOCKS_ALL = "我的全部库存"
 L.STOCKS_OTHER_ITEMS = "其他物品"
 L.PROG_THIS_NONE = "此专业无法通过制作提升 : 这里没有可推荐的内容。"
+
+-- Stocks : recherche et objet choisi
+L.STOCKS_SEARCH = "搜索物品"
+L.STOCKS_SHOW_ALL = "全部显示"
+L.STOCKS_NOBODY = "没有角色拥有。"
+L.STOCKS_SEARCH_NONE = "没有符合搜索的物品。"

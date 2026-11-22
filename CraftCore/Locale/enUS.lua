@@ -741,3 +741,9 @@ L.NAV_STOCKS_ALL = "All my stocks"
 L.STOCKS_OTHER_ITEMS = "Other items"
 L.PROG_THIS_NONE = "This profession is not levelled by crafting : nothing to suggest here."
 L.NAV_RECIPES = "My recipes"
+
+-- Stocks : recherche et objet choisi
+L.STOCKS_SEARCH = "Search an item"
+L.STOCKS_SHOW_ALL = "Show all"
+L.STOCKS_NOBODY = "No character has any."
+L.STOCKS_SEARCH_NONE = "No item matches the search."
