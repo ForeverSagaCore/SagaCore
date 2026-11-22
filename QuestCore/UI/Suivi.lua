@@ -1597,6 +1597,14 @@ RendreVueParcours = function(moi, index, y)
     local categorie = s.routeCategorie or "divers"
     if categorie == "recolte" then return RendreTournee(index, y) end
     local cle = NS.ClePersonnage()
+    -- Les parcours termines s'en vont d'eux-memes (et leur guidage avec).
+    if moi and NS.parcours and NS.parcours.Nettoyer then
+        for _, idR in ipairs(NS.parcours.Nettoyer(cle, moi)) do
+            if NS.guidage and NS.guidage.Actif() and NS.guidage.ParcoursGuide() == idR then NS.guidage.Basculer(false) end
+            if type(s.parcoursOuverts) == "table" then s.parcoursOuverts[idR] = nil end
+            if NS.carte and NS.carte.Invalider then NS.carte.Invalider() end
+        end
+    end
     local liste = {}
     for _, pc in ipairs((moi and NS.parcours) and NS.parcours.Liste(cle) or {}) do
         if CategorieDe(pc) == categorie then table.insert(liste, pc) end
