@@ -1586,6 +1586,13 @@ local function RendreReglages(contenu)
                 S.PoserParDefaut(self:GetChecked() and true or false)
                 ecran.Montrer("reglages")
             end)
+            -- Fenetres effacees quand on se deplace (jamais en vol).
+            contenu.caseFondu = CreateFrame("CheckButton", nil, contenu, "UICheckButtonTemplate")
+            contenu.caseFondu:SetSize(24, 24)
+            contenu.caseFondu.libelle = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            contenu.caseFondu:SetScript("OnClick", function(self)
+                if S.PoserFonduEnMarche then S.PoserFonduEnMarche(self:GetChecked() and true or false) end
+            end)
             -- Compositions : fond, fond des suivis et panneau, enregistres ensemble.
             contenu.libelleCompo = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             contenu.listeCompo = S.ListeDeroulante(contenu, function() return S.OptionsComposition() end,
@@ -1655,6 +1662,10 @@ local function RendreReglages(contenu)
             contenu.caseDefaut:SetChecked(S.ParDefaut())
             contenu.caseDefaut:Show()
             contenu.caseDefaut.libelle:Show()
+            contenu.caseFondu.libelle:SetText(fr and "Effacer les fenêtres quand je me déplace (jamais en vol)" or "Fade windows while I move (never in flight)")
+            contenu.caseFondu:SetChecked(not S.FonduEnMarche or S.FonduEnMarche())
+            contenu.caseFondu:Show()
+            contenu.caseFondu.libelle:Show()
         end
         if contenu.listeCompo then
             local fr = S.Langue and S.Langue() == "frFR"
@@ -1765,6 +1776,12 @@ local function RendreReglages(contenu)
             contenu.caseDefaut.libelle:ClearAllPoints()
             contenu.caseDefaut.libelle:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 6))
             contenu.caseDefaut:SetHitRectInsets(-(largeur - RETRAIT_PAR_NIVEAU - 40), 0, 0, 0)
+            yy = yy + 32
+            contenu.caseFondu:ClearAllPoints()
+            contenu.caseFondu:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -yy)
+            contenu.caseFondu.libelle:ClearAllPoints()
+            contenu.caseFondu.libelle:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 6))
+            contenu.caseFondu:SetHitRectInsets(-(largeur - RETRAIT_PAR_NIVEAU - 40), 0, 0, 0)
             yy = yy + 32
         end
         for _, pr in ipairs({ { contenu.libelleFond, contenu.listeFond }, { contenu.libelleFondSuivis, contenu.listeFondSuivis },
