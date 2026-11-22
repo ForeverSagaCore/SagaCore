@@ -805,3 +805,6 @@ L.GEAR_PRES_1_TIP = "Sources in the left menu, one at a time. The simplest to st
 L.GEAR_PRES_2_TIP = "Sources as tabs above the slots, one at a time."
 L.GEAR_PRES_3_TIP = "All sources in one list, each with its title ; switched on or off on the left."
 L.SETTING_GEAR_ALL_LEVELS = "All levels"
+L.ASSIST_ALSO_BANK = "also x%d in the bank"
+L.ASSIST_NOTHING_IN_BAGS = "Nothing in bags : take it from the bank first."
+L.ASSIST_PICK_SEND = "Several mails : LB / RB to pick, Y to prepare."

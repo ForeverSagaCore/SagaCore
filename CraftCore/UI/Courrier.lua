@@ -443,10 +443,26 @@ local function PreparerEnvoi(envoi)
 
     -- Onglet d'envoi, destinataire, objet du courrier.
     if _G.MailFrameTab2 and _G.MailFrameTab2.Click then pcall(_G.MailFrameTab2.Click, _G.MailFrameTab2) end
-    if _G.SendMailNameEditBox then pcall(_G.SendMailNameEditBox.SetText, _G.SendMailNameEditBox, envoi.nom) end
-    if _G.SendMailSubjectEditBox then
-        pcall(_G.SendMailSubjectEditBox.SetText, _G.SendMailSubjectEditBox, L().ASSIST_SUBJECT)
+    -- Le champ du destinataire n'a pas le meme nom selon les versions du
+    -- jeu : on cherche le premier qui existe, et on le remplit comme si on
+    -- l'avait tape (le jeu verifie le nom a la saisie).
+    local function Champ(noms)
+        for _, chemin in ipairs(noms) do
+            local c = _G
+            for morceau in string.gmatch(chemin, "[^%.]+") do c = type(c) == "table" and c[morceau] or nil end
+            if type(c) == "table" and c.SetText then return c end
+        end
+        return nil
     end
+    local function Remplir(champ, texte)
+        if not champ then return end
+        pcall(champ.SetText, champ, texte)
+        if champ.SetCursorPosition then pcall(champ.SetCursorPosition, champ, #texte) end
+        local quandChange = champ.GetScript and champ:GetScript("OnTextChanged")
+        if quandChange then pcall(quandChange, champ, true) end
+    end
+    Remplir(Champ({ "SendMailNameEditBox", "SendMailFrame.SendMailNameEditBox", "SendMailFrame.NameEditBox" }), envoi.nom)
+    Remplir(Champ({ "SendMailSubjectEditBox", "SendMailFrame.SendMailSubjectEditBox", "SendMailFrame.SubjectEditBox" }), L().ASSIST_SUBJECT)
 
     local maximum = tonumber(_G.ATTACHMENTS_MAX_SEND) or 12
     local function CaseDePieceLibre()
@@ -587,6 +603,17 @@ function courrier.ToutSortir()
     if not ok then enCours = false Lacher() NS.base.NoterIncident("sortie de banque", souci) end
 end
 
+-- Choisir l'envoi suivant / precedent (manette).
+function courrier.ChoisirEnvoi(pas)
+    local liste = courrier.preparables or {}
+    if #liste < 2 then return end
+    local rang = 1
+    for k, e in ipairs(liste) do if e.cle == courrier.envoiChoisi then rang = k end end
+    rang = ((rang - 1 + pas) % #liste) + 1
+    courrier.envoiChoisi = liste[rang].cle
+    if courrier.Actualiser then courrier.Actualiser() end
+end
+
 function courrier.PreparerEnvoi(envoi)
     local ok, souci = pcall(PreparerEnvoi, envoi)
     if not ok then enCours = false Lacher() NS.base.NoterIncident("preparation d'envoi", souci) end
@@ -723,7 +750,7 @@ local function Relais()
         local maintenant = NS.Appeler(_G.GetTime) or 0
         if maintenant - dernier < 0.4 then return end
         dernier = maintenant
-        local b = panneau and panneau.boutons[1]
+        local b = panneau and (panneau.boutonY or panneau.boutons[1])
         if b and b:IsShown() and b:IsEnabled() then b:Click("LeftButton") end
     end)
     return relaisManette
@@ -739,6 +766,21 @@ local function LierManette(actif)
         -- Y, pas A : A reste au jeu pour prendre et poser les objets de la
         -- banque et des sacs.
         pcall(_G.SetOverrideBindingClick, panneau, true, "PAD4", "CraftCoreAssistantManette", "LeftButton")
+        -- Plusieurs envois a la boite aux lettres : LB / RB choisit lequel.
+        if panneau.plusieursEnvois then
+            for _, sens in ipairs({ { "PADLSHOULDER", -1 }, { "PADRSHOULDER", 1 } }) do
+                local nomB = "CraftCoreAssistantEnvoi" .. (sens[2] < 0 and "Avant" or "Apres")
+                local b = _G[nomB]
+                if not b then
+                    b = CreateFrame("Button", nomB, UIParent)
+                    b:Hide()
+                    pcall(b.RegisterForClicks, b, "AnyDown")
+                    local pas = sens[2]
+                    b:SetScript("OnClick", function() courrier.ChoisirEnvoi(pas) end)
+                end
+                pcall(_G.SetOverrideBindingClick, panneau, true, sens[1], nomB, "LeftButton")
+            end
+        end
 
     end
 end
@@ -880,19 +922,67 @@ local function Remplir(plan)
             end
         end
     elseif lieu == "courrier" then
+        -- Seul ce qui est dans les sacs se joint ; ce qui est en banque est
+        -- indique a cote, a sortir a la prochaine visite. Un envoi sans rien
+        -- dans les sacs ne se prepare pas. Plusieurs envois : on choisit
+        -- lequel (clic, ou LB / RB a la manette), Y le prepare.
+        local preparables = {}
+        for _, envoi in ipairs(plan.envois) do
+            local enSacs = 0
+            for _, l in ipairs(envoi.lignes) do enSacs = enSacs + math.max(0, l.quantite - (l.enBanque or 0)) end
+            envoi.enSacs = enSacs
+            if enSacs > 0 then table.insert(preparables, envoi) end
+        end
+        local cleChoisie = courrier.envoiChoisi
+        local choisi
+        for _, e in ipairs(preparables) do if e.cle == cleChoisie then choisi = e end end
+        choisi = choisi or preparables[1]
+        courrier.envoiChoisi = choisi and choisi.cle or nil
+        courrier.preparables = preparables
+        panneau.plusieursEnvois = #preparables > 1
+        panneau.boutonY = nil
+        if #preparables > 1 and courrier.ToucheManette() then
+            nt = nt + 1
+            local t = Texte(nt, "GameFontDisableSmall")
+            t:ClearAllPoints()
+            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 0, -y)
+            t:SetWidth(largeur)
+            t:SetText(L().ASSIST_PICK_SEND)
+            y = y + 16
+        end
         for rang, envoi in ipairs(plan.envois) do
             if rang > 1 then y = y + 6 end
             vide = false
+            local estChoisi = (envoi == choisi)
             Titre(string.format(L().ASSIST_SEND_TO, envoi.nom))
+            local titre = panneau.textes[nt]
+            if titre and #preparables > 1 and not estChoisi then titre:SetFontObject("GameFontDisable") end
             Lignes(envoi.lignes, function(l)
-                local droite = "x" .. l.quantite
-                if l.enBanque > 0 then droite = droite .. "  " .. string.format(L().ASSIST_IN_BANK, l.enBanque) end
+                local enSacs = math.max(0, l.quantite - (l.enBanque or 0))
+                local droite = enSacs > 0 and ("x" .. enSacs) or ""
+                if (l.enBanque or 0) > 0 then
+                    droite = droite .. (enSacs > 0 and "  " or "") .. "|cff8c8c8c" .. string.format(L().ASSIST_ALSO_BANK, l.enBanque) .. "|r"
+                end
                 if l.caisse then droite = droite .. "  |cff8c8c8c" .. L().ASSIST_FOR_CRATE .. "|r" end
                 if l.commande then droite = droite .. "  |cff8c8c8c" .. L().ASSIST_FOR_ORDER .. "|r" end
                 return droite
             end)
-            if Lire("ClickSendMailItemButton") then
-                Action(L().ASSIST_PREPARE, function() courrier.PreparerEnvoi(envoi) end)
+            if envoi.enSacs > 0 and Lire("ClickSendMailItemButton") then
+                local e = envoi
+                Action(L().ASSIST_PREPARE, function()
+                    courrier.envoiChoisi = e.cle
+                    courrier.PreparerEnvoi(e)
+                end)
+                if estChoisi then panneau.boutonY = panneau.boutons[nb] end
+                if #preparables > 1 and not estChoisi then panneau.boutons[nb]:SetAlpha(0.6) else panneau.boutons[nb]:SetAlpha(1) end
+            elseif envoi.enSacs == 0 then
+                nt = nt + 1
+                local t = Texte(nt, "GameFontDisableSmall")
+                t:ClearAllPoints()
+                t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 0, -y)
+                t:SetWidth(largeur)
+                t:SetText(L().ASSIST_NOTHING_IN_BAGS)
+                y = y + 16
             end
         end
         if #plan.demandes > 0 then

@@ -804,3 +804,6 @@ L.GEAR_PRES_1_TIP = "Les origines dans le menu de gauche, une à la fois. La plu
 L.GEAR_PRES_2_TIP = "Les origines en onglets au-dessus des emplacements, une à la fois."
 L.GEAR_PRES_3_TIP = "Toutes les origines dans une seule liste, chacune avec son titre ; allumées ou éteintes à gauche."
 L.SETTING_GEAR_ALL_LEVELS = "Tous les niveaux"
+L.ASSIST_ALSO_BANK = "aussi x%d en banque"
+L.ASSIST_NOTHING_IN_BAGS = "Rien dans les sacs : à sortir de la banque d'abord."
+L.ASSIST_PICK_SEND = "Plusieurs envois : LB / RB pour choisir, Y pour préparer."
