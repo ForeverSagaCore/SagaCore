@@ -1349,11 +1349,10 @@ end
 -- Parametres de StuffCore : la presentation de Mon equipement et jusqu'a
 -- quel niveau les objets sont proposes.
 local function RendreReglagesStuff(contenu)
-    local index, y = 0, 0
-    local titre
-    index, y, titre = EnTeteDePage(contenu, index, y, L.NAV_SETTINGS)
-    CacherLignesAuDela(contenu, index + 1)
-    local yy = y - 18
+    -- Comme les Parametres de CraftCore : pas d'en-tete de page, la
+    -- premiere section en haut, ses reglages au premier retrait.
+    CacherLignesAuDela(contenu, 1)
+    local yy = -18
     do
         -- Equipement : la presentation de Mon equipement (1, 2 ou 3, avec ce
         -- qu'elle montre), et jusqu'a quel niveau les objets sont proposes.
@@ -4700,8 +4699,11 @@ local function PoserIndicesManette(win)
     -- LT / RT : au dessus du premier onglet de droite, sous le dernier.
     local premierOnglet = win.onglets and win.ordreOnglets and win.onglets[win.ordreOnglets[1] or ""]
     premierOnglet = premierOnglet or win.ongletCaisses
+    local dernierOnglet = win.ongletCaisses
+    -- StuffCore n'a pas d'onglet a droite : ni LT ni RT.
+    if ecran.EstStuff(ecran.page) then premierOnglet, dernierOnglet = nil, nil end
     Marque(win, "lt", "PADLTRIGGER", premierOnglet, "BOTTOM", "TOP", 0, 12)
-    Marque(win, "rt", "PADRTRIGGER", win.ongletCaisses, "TOP", "BOTTOM", 0, -10)
+    Marque(win, "rt", "PADRTRIGGER", dernierOnglet, "TOP", "BOTTOM", 0, -10)
     -- Croix gauche / droite : apres le dernier portrait de personnage.
     Marque(win, "dg", "PADDLEFT", win.dernierPortrait, "LEFT", "RIGHT", 10, 0)
     Marque(win, "dd", "PADDRIGHT", win.marquesManette.dg, "LEFT", "RIGHT", 2, 0)
