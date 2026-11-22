@@ -1868,6 +1868,7 @@ local function Onglet(f)
     o:SetSize(TAILLE_ONGLET, TAILLE_ONGLET)
     local fond = o:CreateTexture(nil, "BACKGROUND")
     fond:SetTexture("Interface\\SpellBook\\SpellBook-SkillLineTab")
+    do local S = NS.suite or _G.CoreSuite if S and S.TeinteOnglet then S.TeinteOnglet(fond) end end
     fond:SetSize(TAILLE_ONGLET * 2, TAILLE_ONGLET * 2)
     fond:SetPoint("TOPLEFT", -3, 12)
     o.Icon = o:CreateTexture(nil, "ARTWORK")

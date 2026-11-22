@@ -1896,6 +1896,7 @@ local function CreerOngletLateral(fenetreMere, icone, auClic)
     onglet:SetSize(TAILLE_ONGLET, TAILLE_ONGLET)
     local fond = onglet:CreateTexture(nil, "BACKGROUND")
     fond:SetTexture("Interface\\SpellBook\\SpellBook-SkillLineTab")
+    do local S = NS.suite or _G.CoreSuite if S and S.TeinteOnglet then S.TeinteOnglet(fond) end end
     fond:SetSize(TAILLE_ONGLET * 2, TAILLE_ONGLET * 2)
     fond:SetPoint("TOPLEFT", -3, 12)
     local face = onglet:CreateTexture(nil, "ARTWORK")

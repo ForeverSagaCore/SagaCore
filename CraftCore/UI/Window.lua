@@ -199,6 +199,7 @@ local function CreerOngletLateral(fenetreMere, precedent, icone, auClic)
     onglet:SetSize(TAILLE_ONGLET, TAILLE_ONGLET)
     local fond = onglet:CreateTexture(nil, "BACKGROUND")
     fond:SetTexture("Interface\\SpellBook\\SpellBook-SkillLineTab")
+    do local S = NS.suite or _G.CoreSuite if S and S.TeinteOnglet then S.TeinteOnglet(fond) end end
     fond:SetSize(TAILLE_ONGLET * 2, TAILLE_ONGLET * 2)
     fond:SetPoint("TOPLEFT", -3, 12)
     local face = onglet:CreateTexture(nil, "ARTWORK")
@@ -308,6 +309,9 @@ local function LigneDeTableau(contenu, index)
     ligne.total:SetPoint("RIGHT", ligne, "RIGHT", -8, 0)
     ligne.total:SetJustifyH("RIGHT")
     ligne.total:SetWidth(45)
+    -- Jamais sur deux lignes.
+    ligne.total:SetWordWrap(false)
+    if ligne.total.SetMaxLines then ligne.total:SetMaxLines(1) end
 
     ligne.banque = ligne:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     ligne.banque:SetPoint("RIGHT", ligne.total, "LEFT", -12, 0)
@@ -726,6 +730,7 @@ local function LigneSimple(contenu, index, y, icone, texte, droite, auClic, poli
     ligne.total.pasExplication = nil
     -- La ligne a pu servir de titre (calee a droite) : calage de la page.
     ligne.total:SetJustifyH(contenu.largeurEtat and "LEFT" or "RIGHT")
+    ligne.total:SetWordWrap(false)
     ligne.total:SetText(droite or "")
     ligne:Show()
     return index, y + HAUTEUR_LIGNE, ligne

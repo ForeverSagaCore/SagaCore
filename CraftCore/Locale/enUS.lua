@@ -755,5 +755,5 @@ L.GUIDE_ALREADY_PROBABLE = "With what you already have : no guaranteed point, ab
 L.GUIDE_SURE_UNTIL = "Guaranteed up to rank %d (orange recipes)."
 L.GUIDE_SURE_NONE = "No guaranteed point (no orange recipe)."
 L.GUIDE_LUCK_PLANNED = "Beyond, yellow recipes : the game gives the point at random. The planned number of crafts is enough 19 times out of 20 ; you may have items left."
-L.PROG_PROBABLE_PLANNED = "(yellow, random : %d on average, plus margin)"
+L.PROG_PROBABLE_PLANNED = "(yellow, avg %d)"
 L.GUIDE_FETCH_COUNT = "%d needed, %d already in bags"

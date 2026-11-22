@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 116
+local VERSION = 117
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -1096,6 +1096,12 @@ end
 
 Suite.entetes = Suite.entetes or {}
 
+-- Contour des onglets lateraux (dessin du grimoire, gris de lui-meme) :
+-- teinte au brun des fenetres du jeu. Le meme partout dans la suite.
+function Suite.TeinteOnglet(texture)
+    if texture and texture.SetVertexColor then texture:SetVertexColor(0.95, 0.74, 0.5) end
+end
+
 local function OngletLateral(parent, info, auClic)
     -- L'onglet du grimoire du jeu, dessin retourne pour le bord gauche :
     -- c'est un fichier (pas un atlas), le retournement tient. Meme dessin
@@ -1105,6 +1111,7 @@ local function OngletLateral(parent, info, auClic)
     b.fond = b:CreateTexture(nil, "BACKGROUND")
     b.fond:SetTexture("Interface\\SpellBook\\SpellBook-SkillLineTab")
     b.fond:SetTexCoord(1, 0, 0, 1)
+    Suite.TeinteOnglet(b.fond)
     b.fond:SetSize(68, 68)
     b.fond:SetPoint("TOPRIGHT", b, "TOPRIGHT", 3, 12)
     b.icone = b:CreateTexture(nil, "ARTWORK")

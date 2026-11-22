@@ -754,5 +754,5 @@ L.GUIDE_ALREADY_PROBABLE = "Avec ce que vous avez déjà : aucun point assuré, 
 L.GUIDE_SURE_UNTIL = "Sûr jusqu'au rang %d (recettes orange)."
 L.GUIDE_SURE_NONE = "Aucun point sûr (pas de recette orange)."
 L.GUIDE_LUCK_PLANNED = "Au-delà, recettes jaunes : le jeu donne le point au hasard. Le nombre de fabrications prévu suffit 19 fois sur 20 ; il peut vous rester des objets."
-L.PROG_PROBABLE_PLANNED = "(jaune, au hasard : %d en moyenne, plus de marge)"
+L.PROG_PROBABLE_PLANNED = "(jaune, moy. %d)"
 L.GUIDE_FETCH_COUNT = "il en faut %d, %d déjà dans les sacs"
