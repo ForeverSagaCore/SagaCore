@@ -71,6 +71,15 @@ local function Construire()
     f.tuiles, f.points, f.poi = {}, {}, {}
     f.nom = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     f.nom:SetPoint("TOP", f, "TOP", 0, -8)
+    -- Les objectifs du champ de bataille, en direct, sous la carte.
+    f.objectifs = {}
+    for i = 1, 6 do
+        local t = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        t:SetPoint("TOP", i == 1 and f or f.objectifs[i - 1], "BOTTOM", 0, i == 1 and -4 or -2)
+        t:SetShadowOffset(1, -1)
+        t:SetWordWrap(false)
+        f.objectifs[i] = t
+    end
     f.fleche = f.toile:CreateTexture(nil, "OVERLAY", nil, 7)
     f.fleche:SetTexture("Interface\\Minimap\\MinimapArrow")
     f.fleche:SetSize(22, 22)
@@ -200,12 +209,27 @@ local function PointsDInteret(f, carte)
     end
 end
 
+-- En mouvement ? La vitesse du jeu quand elle est lisible ; sinon (en champ
+-- de bataille, le jeu peut la cacher) le deplacement de notre position sur
+-- la carte. Jamais en vol.
+local derniereX, derniereY, bougeJusque = nil, nil, 0
 local function EnMouvement()
-    local ok, v = pcall(GetUnitSpeed, "player")
-    if not ok or (_G.issecretvalue and _G.issecretvalue(v)) then return false end
-    if (tonumber(v) or 0) <= 0 then return false end
     if _G.UnitOnTaxi and NS.Appeler(_G.UnitOnTaxi, "player") then return false end
-    return true
+    local ok, v = pcall(GetUnitSpeed, "player")
+    if ok and not (_G.issecretvalue and _G.issecretvalue(v)) and tonumber(v) then
+        if tonumber(v) > 0 then return true end
+    end
+    local maintenant = (GetTime and GetTime()) or 0
+    local carte = Nombre(NS.Appeler(Lire("C_Map.GetBestMapForUnit"), "player"))
+    local position = Lire("C_Map.GetPlayerMapPosition")
+    if carte and position then
+        local x, y = XY(NS.Appeler(position, carte, "player"))
+        if x and derniereX and (math.abs(x - derniereX) + math.abs(y - derniereY)) > 0.00005 then
+            bougeJusque = maintenant + 0.4
+        end
+        derniereX, derniereY = x, y
+    end
+    return maintenant < bougeJusque
 end
 
 -- La boucle : quatre fois par seconde les positions, toutes les deux
@@ -258,6 +282,12 @@ function C.Demarrer()
         if attentePoi <= 0 then
             attentePoi = 2
             PointsDInteret(f, carte)
+        end
+        -- Objectifs : quatre fois par seconde, comme les positions.
+        local textes = NS.honneur.Objectifs()
+        for i, t in ipairs(f.objectifs) do
+            t:SetText(textes[i] or "")
+            t:SetShown(textes[i] ~= nil)
         end
     end)
 end
