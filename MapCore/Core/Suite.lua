@@ -1319,18 +1319,56 @@ UI.MODERNE = {
 }
 local function Moderne() return Suite.Habillage() == "moderne" end
 UI.EstModerne = Moderne
+-- Regles de surete, pour ne jamais gener le jeu ni un autre add-on :
+--   * aucun champ n'est ecrit sur les cadres : l'etat est garde ici, a part ;
+--   * un cadre protege (boutons d'action securises...) ou interdit n'est
+--     jamais touche, ni ce qu'il contient ;
+--   * rien en combat : on attend la fin du combat ;
+--   * aucune boucle permanente : une fenetre est habillee quand elle
+--     s'affiche, puis repassee seulement tant qu'elle reste ouverte ;
+--   * a la moindre erreur, l'habillage s'arrete pour la session (un seul
+--     message), au lieu de se repeter.
+local fait = setmetatable({}, { __mode = "k" })    -- cadre deja habille
+local plats = setmetatable({}, { __mode = "k" })   -- cadre -> son aplat
+local carres = setmetatable({}, { __mode = "k" })  -- case -> son carre
+local enPanne = false
+local function Panne(err)
+    if enPanne then return end
+    enPanne = true
+    print("|cffffd100SagaCore|r " .. (Suite.Langue() == "frFR"
+        and "Apparence moderne arrêtée pour cette session (erreur)." or "Modern look stopped for this session (error).")
+        .. " " .. tostring(err or ""):sub(1, 120))
+end
+local function Actif()
+    return not enPanne and Moderne() and not (InCombatLockdown and InCombatLockdown())
+end
+-- Un cadre qu'on a le droit de toucher : un vrai cadre, ni interdit ni protege.
+local function Touchable(f)
+    if type(f) ~= "table" or type(f.GetObjectType) ~= "function" then return false end
+    if f.IsForbidden then local ok, oui = pcall(f.IsForbidden, f) if not ok or oui then return false end end
+    if f.IsProtected then
+        local ok, p1, p2 = pcall(f.IsProtected, f)
+        if not ok or p1 or p2 then return false end
+    end
+    return true
+end
+local function Visible(c)
+    if not Touchable(c) or type(c.IsShown) ~= "function" then return false end
+    local ok, oui = pcall(c.IsShown, c)
+    return ok and oui and true or false
+end
 local function Plat(f, fond, bord)
-    if not f.suitePlat then
-        local ok, b = pcall(CreateFrame, "Frame", nil, f, "BackdropTemplate")
-        b = ok and b or CreateFrame("Frame", nil, f)
+    local b = plats[f]
+    if not b then
+        local ok, nb = pcall(CreateFrame, "Frame", nil, f, "BackdropTemplate")
+        b = ok and nb or CreateFrame("Frame", nil, f)
         b:SetAllPoints()
         b:SetFrameLevel(math.max(0, (f:GetFrameLevel() or 1) - 1))
         if b.SetBackdrop then
             b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
         end
-        f.suitePlat = b
+        plats[f] = b
     end
-    local b = f.suitePlat
     if b.SetBackdropColor then
         b:SetBackdropColor(fond[1], fond[2], fond[3], fond[4] or 1)
         b:SetBackdropBorderColor(bord[1], bord[2], bord[3], bord[4] or 1)
@@ -1346,8 +1384,8 @@ local function Effacer(t)
 end
 -- Une fenetre de la suite : le cadre du jeu, ou un aplat sombre bord fin.
 function UI.HabillerFenetre(cadre)
-    if not (cadre and Moderne()) or cadre.suiteHabillee then return end
-    cadre.suiteHabillee = true
+    if not (Actif() and Touchable(cadre)) or fait[cadre] then return end
+    fait[cadre] = true
     for _, cle in ipairs({ "NineSlice", "Bg", "TitleBg", "TopTileStreaks", "PortraitContainer", "portrait", "PortraitFrame" }) do
         Effacer(cadre[cle])
     end
@@ -1359,8 +1397,8 @@ function UI.HabillerFenetre(cadre)
 end
 -- Un bouton du jeu (UIPanelButtonTemplate) : aplat, bord fin, survol clair.
 function UI.HabillerBouton(b)
-    if not (b and Moderne()) or b.suiteHabille then return end
-    b.suiteHabille = true
+    if not (Actif() and Touchable(b)) or fait[b] then return end
+    fait[b] = true
     for _, cle in ipairs({ "Left", "Middle", "Right", "LeftDisabled", "MiddleDisabled", "RightDisabled" }) do Effacer(b[cle]) end
     for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture" }) do
         if b[f] then pcall(b[f], b, "") end
@@ -1373,15 +1411,15 @@ function UI.HabillerBouton(b)
 end
 -- Une case a cocher : carre plat, coche a la couleur d'accent.
 function UI.HabillerCase(c)
-    if not (c and Moderne()) or c.suiteHabille then return end
-    c.suiteHabille = true
+    if not (Actif() and Touchable(c)) or fait[c] then return end
+    fait[c] = true
     for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture" }) do if c[f] then pcall(c[f], c, "") end end
     local coche = c.GetCheckedTexture and c:GetCheckedTexture()
     if coche then local a = UI.MODERNE.accent coche:SetVertexColor(a[1], a[2], a[3]) end
     local h = c.GetHighlightTexture and c:GetHighlightTexture()
     if h then h:SetTexture("Interface\\Buttons\\WHITE8X8") local s = UI.MODERNE.survol h:SetVertexColor(s[1], s[2], s[3], s[4]) end
-    local fond = c.suiteCarre or CreateFrame("Frame", nil, c)
-    c.suiteCarre = fond
+    local fond = carres[c] or CreateFrame("Frame", nil, c)
+    carres[c] = fond
     fond:ClearAllPoints()
     fond:SetPoint("CENTER")
     local w = math.max(10, math.floor((c:GetWidth() or 20) * 0.6))
@@ -1391,12 +1429,13 @@ function UI.HabillerCase(c)
 end
 -- Un onglet lateral (icone) : sans le dessin du grimoire, un carre plat.
 function UI.HabillerOnglet(o)
-    if not (o and Moderne()) or o.suiteHabille then return end
-    o.suiteHabille = true
+    if not (Actif() and Touchable(o)) or fait[o] then return end
+    fait[o] = true
     local icone = o.icone or o.Icon
+    local survol = o.GetHighlightTexture and o:GetHighlightTexture()
+    local coche = o.GetCheckedTexture and o:GetCheckedTexture()
     for _, r in ipairs({ o:GetRegions() }) do
-        if r ~= icone and r.GetObjectType and r:GetObjectType() == "Texture" and r ~= (o.GetHighlightTexture and o:GetHighlightTexture())
-            and r ~= (o.GetCheckedTexture and o:GetCheckedTexture()) then
+        if r ~= icone and r ~= survol and r ~= coche and r.GetObjectType and r:GetObjectType() == "Texture" then
             Effacer(r)
         end
     end
@@ -1406,7 +1445,7 @@ function UI.HabillerOnglet(o)
 end
 -- Tout ce qu'une fenetre contient : chaque element reconnu prend l'habillage.
 local function Reconnaitre(f)
-    local genre = f.GetObjectType and f:GetObjectType()
+    local genre = f:GetObjectType()
     if genre == "Button" and f.Left and f.Right and f.Middle then UI.HabillerBouton(f) return end
     if genre == "CheckButton" then
         if (f.Icon or f.icone) and (f:GetWidth() or 0) >= 28 then UI.HabillerOnglet(f)
@@ -1414,45 +1453,87 @@ local function Reconnaitre(f)
     end
 end
 function UI.HabillerArbre(racine, profondeur)
-    if not (racine and Moderne()) then return end
+    if not (Actif() and Touchable(racine)) then return end
     profondeur = profondeur or 0
     if profondeur > 12 or not racine.GetChildren then return end
     for _, enfant in ipairs({ racine:GetChildren() }) do
-        pcall(Reconnaitre, enfant)
-        UI.HabillerArbre(enfant, profondeur + 1)
+        -- Un cadre protege et tout ce qu'il contient restent tels quels.
+        if Touchable(enfant) then
+            Reconnaitre(enfant)
+            UI.HabillerArbre(enfant, profondeur + 1)
+        end
     end
 end
--- Les fenetres de la suite ouvertes sont repassees deux fois par seconde (un
--- element ajoute apres coup prend l'habillage aussi).
-do
-    local veille = CreateFrame("Frame")
-    local attente = 1
-    -- Visible sans risque : un nom global peut etre autre chose qu'un cadre,
-    -- et un autre add-on peut avoir remplace IsShown.
-    local function Visible(c)
-        if type(c) ~= "table" or type(c.IsShown) ~= "function" then return false end
-        local ok, oui = pcall(c.IsShown, c)
-        return ok and oui and true or false
+-- Les fenetres de la suite : habillees a l'affichage, puis repassees une fois
+-- par seconde seulement tant qu'au moins une reste ouverte (une page qui
+-- change ajoute des boutons). Fermees, plus rien ne tourne.
+local ouvertes = setmetatable({}, { __mode = "k" })
+local accrochees = setmetatable({}, { __mode = "k" })
+local veille = CreateFrame("Frame")
+veille:Hide()
+local function Habiller(c)
+    local ok, err = pcall(function()
+        UI.HabillerFenetre(c)
+        UI.HabillerArbre(c)
+    end)
+    if not ok then Panne(err) veille:Hide() end
+end
+local attente = 0
+veille:SetScript("OnUpdate", function(self, ecoule)
+    attente = attente - (ecoule or 0)
+    if attente > 0 then return end
+    attente = 1
+    if enPanne or not Moderne() then self:Hide() return end
+    if InCombatLockdown and InCombatLockdown() then return end
+    local reste = false
+    for c in pairs(ouvertes) do
+        if Visible(c) then reste = true Habiller(c) else ouvertes[c] = nil end
     end
-    veille:SetScript("OnUpdate", function(_, ecoule)
+    if not reste then self:Hide() end
+end)
+local function Accrocher(c)
+    if accrochees[c] or not Touchable(c) or type(c.HookScript) ~= "function" then return end
+    accrochees[c] = true
+    local function Montre(self)
+        if enPanne or not Moderne() then return end
+        ouvertes[self] = true
+        attente = 0
+        veille:Show()
+    end
+    pcall(c.HookScript, c, "OnShow", Montre)
+    if Visible(c) then Montre(c) end
+end
+-- Les fenetres connues de la suite, accrochees une fois chacune. On les
+-- cherche a la connexion puis toutes les 2 secondes (une fenetre est creee
+-- a sa premiere ouverture) ; chercher ne touche a rien.
+local function Chercher()
+    if enPanne or not Moderne() then return end
+    for _, m in pairs(Suite.membres or {}) do
+        if type(m) == "table" and type(m.fenetre) == "function" then
+            local ok, c = pcall(m.fenetre)
+            if ok then Accrocher(c) end
+        end
+    end
+    for _, n in ipairs(Suite.FENETRES_FONDU or {}) do if type(n) == "string" then Accrocher(_G[n]) end end
+    for _, w in ipairs(Suite.fenetresAPages or {}) do if type(w) == "table" then Accrocher(w.cadre) end end
+    for _, n in ipairs({ "CraftCoreSuivi", "QuestCoreSuivi", "CoreSuiteMacroCore", "CraftCoreAssistant" }) do Accrocher(_G[n]) end
+end
+do
+    local chercheur = CreateFrame("Frame")
+    local t = 0
+    chercheur:RegisterEvent("PLAYER_REGEN_ENABLED")
+    chercheur:SetScript("OnEvent", function()
+        -- Fin du combat : on reprend ce qui attendait.
+        if next(ouvertes) then attente = 0 veille:Show() end
+    end)
+    chercheur:SetScript("OnUpdate", function(self, ecoule)
+        t = t - (ecoule or 0)
+        if t > 0 then return end
+        t = 2
         if _G.CoreSuite ~= Suite then return end
-        attente = attente - (ecoule or 0)
-        if attente > 0 then return end
-        attente = 0.5
-        if not Moderne() then return end
-        local vues = {}
-        for _, m in pairs(Suite.membres or {}) do
-            if m.fenetre then local ok, c = pcall(m.fenetre) if ok and Visible(c) then vues[c] = true end end
-        end
-        for _, n in ipairs(Suite.FENETRES_FONDU or {}) do local c = _G[n] if Visible(c) then vues[c] = true end end
-        for _, w in ipairs(Suite.fenetresAPages or {}) do if Visible(w.cadre) then vues[w.cadre] = true end end
-        for _, n in ipairs({ "CraftCoreSuivi", "QuestCoreSuivi", "CoreSuiteMacroCore", "CraftCoreAssistant" }) do
-            local c = _G[n] if Visible(c) then vues[c] = true end
-        end
-        for c in pairs(vues) do
-            pcall(UI.HabillerFenetre, c)
-            pcall(UI.HabillerArbre, c)
-        end
+        if enPanne or not Moderne() then self:SetScript("OnUpdate", nil) return end
+        local ok, err = pcall(Chercher)
+        if not ok then Panne(err) end
     end)
 end
 
