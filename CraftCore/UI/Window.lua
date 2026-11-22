@@ -1113,13 +1113,13 @@ local function RendreStocks(contenu, tous)
             if sacs + banque + courrier > 0 then
                 n = n + 1
                 tS, tB, tC = tS + sacs, tB + banque, tC + courrier
-                local l = NouvelleLigne(RETRAIT_PAR_NIVEAU, nil)
-                l.icone:Hide()
-                l.nom:SetFontObject("GameFontHighlightSmall")
-                NommerPersonnage(l.nom, fiche)
+                -- Le meme en-tete que dans la liste : portrait, nom, releve.
+                local l = NouvelleLigne(0, nil)
+                LigneDePersonnage(l, fiche, fiche.cle == courant, CouleurDe(fiche),
+                    string.format(L.STOCKS_READ_ON, base.ReleveDe(fiche) or "?"), "")
                 Colonnes(l, sacs, banque, courrier, 0, sacs + banque + courrier)
                 l:Show()
-                y = y + HAUTEUR_LIGNE + 2
+                y = y + 38 + 6
             end
         end
         if n == 0 then
@@ -4540,11 +4540,21 @@ local function Construire()
         bouton:SetPoint("RIGHT", menu, "RIGHT", 0, 0)
         if precedent and page.filet then
             -- Filet entre deux groupes, avec de l'air de part et d'autre.
+            -- Un pixel d'ecran exact, cale sur la grille : tous les filets
+            -- ont la meme epaisseur, ou qu'ils tombent.
             local filet = menu:CreateTexture(nil, "ARTWORK")
-            filet:SetHeight(1)
             filet:SetColorTexture(0.8, 0.65, 0.35, 0.35)
-            filet:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 6, -6)
-            filet:SetPoint("TOPRIGHT", precedent, "BOTTOMRIGHT", -6, -6)
+            if filet.SetSnapToPixelGrid then filet:SetSnapToPixelGrid(false) filet:SetTexelSnappingBias(0) end
+            local PU = _G.PixelUtil
+            if PU and PU.SetHeight and PU.SetPoint then
+                PU.SetHeight(filet, 1, 1)
+                PU.SetPoint(filet, "TOPLEFT", precedent, "BOTTOMLEFT", 6, -6)
+                PU.SetPoint(filet, "TOPRIGHT", precedent, "BOTTOMRIGHT", -6, -6)
+            else
+                filet:SetHeight(1)
+                filet:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 6, -6)
+                filet:SetPoint("TOPRIGHT", precedent, "BOTTOMRIGHT", -6, -6)
+            end
             bouton:SetPoint("TOP", precedent, "BOTTOM", 0, -13)
         elseif precedent then
             bouton:SetPoint("TOP", precedent, "BOTTOM", 0, -2)
