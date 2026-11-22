@@ -1629,17 +1629,35 @@ local function RendreReglages(contenu)
             yy = yy + 32
           end
         end
-        -- Equipement : jusqu'a combien de niveaux au-dessus du sien les
-        -- objets sont proposes (de 5 en 5).
+        -- Equipement : la presentation de Mon equipement (1, 2 ou 3, avec ce
+        -- qu'elle montre), et jusqu'a quel niveau les objets sont proposes.
         local S2 = _G.CoreSuite
-        if S2 and S2.Curseur then
+        if S2 and S2.Curseur and S2.ListeDeroulante and NS.equipement then
+            local G = NS.base.ReglagesGeneraux()
             if not contenu.titreEquipReg then
                 contenu.titreEquipReg = contenu:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                contenu.libellePresentation = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                contenu.listePresentation = S2.ListeDeroulante(contenu,
+                    { { 1, L.GEAR_PRES_1 }, { 2, L.GEAR_PRES_2 }, { 3, L.GEAR_PRES_3 } },
+                    function() return NS.equipement.Scenario() end,
+                    function(v) NS.equipement.PoserScenario(tonumber(v) or 1) end,
+                    function() ecran.Montrer("reglages") end)
+                contenu.textePresentation = contenu:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+                contenu.textePresentation:SetJustifyH("LEFT")
+                contenu.textePresentation:SetWordWrap(false)
                 contenu.libelleMarge = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                contenu.curseurMarge = S2.Curseur(contenu, 0, 60, 5,
+                contenu.curseurMarge = S2.Curseur(contenu, 0, 60, 1,
                     function() return tonumber(NS.base.ReglagesGeneraux().margeEquipement) or 10 end,
-                    function(v) NS.base.ReglagesGeneraux().margeEquipement = v ecran.Montrer("reglages") end)
+                    function(v) NS.base.ReglagesGeneraux().margeEquipement = v ecran.Montrer("reglages") end,
+                    nil, nil, 5)
                 contenu.curseurMarge.surParchemin = function() return NS.charte.Fond and NS.charte.Fond() == "parchemin" end
+                contenu.caseTousNiveaux = CreateFrame("CheckButton", nil, contenu, "UICheckButtonTemplate")
+                contenu.caseTousNiveaux:SetSize(24, 24)
+                contenu.caseTousNiveaux.libelle = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                contenu.caseTousNiveaux:SetScript("OnClick", function(self)
+                    NS.base.ReglagesGeneraux().tousNiveauxEquipement = self:GetChecked() and true or nil
+                    ecran.Montrer("reglages")
+                end)
             end
             contenu.titreEquipReg:SetText(L.SETTING_GEAR)
             contenu.titreEquipReg:ClearAllPoints()
@@ -1647,15 +1665,41 @@ local function RendreReglages(contenu)
             contenu.titreEquipReg:Show()
             StyleDeTitre(contenu.titreEquipReg)
             yy = yy + 18 + 40
+            contenu.libellePresentation:SetText(L.GEAR_PRES_LABEL)
+            contenu.libellePresentation:ClearAllPoints()
+            contenu.libellePresentation:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 7))
+            contenu.libellePresentation:Show()
+            contenu.listePresentation:ClearAllPoints()
+            contenu.listePresentation:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -yy)
+            contenu.listePresentation:Show()
+            contenu.listePresentation.Rendre()
+            yy = yy + 28
+            contenu.textePresentation:SetText(L["GEAR_PRES_" .. NS.equipement.Scenario() .. "_TIP"])
+            contenu.textePresentation:ClearAllPoints()
+            contenu.textePresentation:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -yy)
+            contenu.textePresentation:SetPoint("RIGHT", contenu, "RIGHT", -10, 0)
+            contenu.textePresentation:Show()
+            yy = yy + 24
+            local tous = G.tousNiveauxEquipement == true
             contenu.libelleMarge:SetText(L.SETTING_GEAR_MARGIN)
             contenu.libelleMarge:ClearAllPoints()
             contenu.libelleMarge:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 7))
             contenu.libelleMarge:Show()
+            contenu.libelleMarge:SetAlpha(tous and 0.4 or 1)
             contenu.curseurMarge:ClearAllPoints()
             contenu.curseurMarge:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -yy)
-            contenu.curseurMarge:Show()
+            contenu.curseurMarge:SetShown(not tous)
             if contenu.curseurMarge.Rendre then contenu.curseurMarge.Rendre() end
-            contenu.dernierReglage = contenu.curseurMarge
+            yy = yy + 32
+            contenu.caseTousNiveaux.libelle:SetText(L.SETTING_GEAR_ALL_LEVELS)
+            contenu.caseTousNiveaux.libelle:ClearAllPoints()
+            contenu.caseTousNiveaux.libelle:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 6))
+            contenu.caseTousNiveaux.libelle:Show()
+            contenu.caseTousNiveaux:ClearAllPoints()
+            contenu.caseTousNiveaux:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -yy)
+            contenu.caseTousNiveaux:SetChecked(tous)
+            contenu.caseTousNiveaux:Show()
+            contenu.dernierReglage = contenu.caseTousNiveaux
             yy = yy + 32
         end
     end
@@ -4738,34 +4782,9 @@ local function Construire()
         table.insert(win.menuEquip, b)
         return b
     end
+    -- La presentation (1, 2 ou 3) se choisit dans les Parametres.
     win.scenariosEquip = {}
     local precedentE
-    for n = 1, 3 do
-        local b = LigneEquip("Interface\\Icons\\INV_Scroll_0" .. n, function()
-            if NS.equipement then NS.equipement.PoserScenario(n) end
-            NS.ecran.selectionObjets = {}
-            ecran.Montrer("equipement")
-        end)
-        if precedentE then b:SetPoint("TOP", precedentE, "BOTTOM", 0, -2) else b:SetPoint("TOP", menu, "TOP", 0, 0) end
-        b.scenario = n
-        win.scenariosEquip[n] = b
-        precedentE = b
-    end
-    win.filetEquip = menu:CreateTexture(nil, "ARTWORK")
-    win.filetEquip:SetColorTexture(0.8, 0.65, 0.35, 0.35)
-    do
-        local PU = _G.PixelUtil
-        if PU and PU.SetHeight and PU.SetPoint then
-            PU.SetHeight(win.filetEquip, 1, 1)
-            PU.SetPoint(win.filetEquip, "TOPLEFT", precedentE, "BOTTOMLEFT", 6, -6)
-            PU.SetPoint(win.filetEquip, "TOPRIGHT", precedentE, "BOTTOMRIGHT", -6, -6)
-        else
-            win.filetEquip:SetHeight(1)
-            win.filetEquip:SetPoint("TOPLEFT", precedentE, "BOTTOMLEFT", 6, -6)
-            win.filetEquip:SetPoint("TOPRIGHT", precedentE, "BOTTOMRIGHT", -6, -6)
-        end
-    end
-    win.filetEquip:Hide()
     local ICONES_ORIGINE = {
         possede = "Interface\\Icons\\INV_Misc_Bag_08", craftInterne = "Interface\\Icons\\Trade_BlackSmithing",
         craftExterne = "Interface\\Icons\\INV_Misc_Coin_02", monde = "Interface\\Icons\\INV_Misc_Map_01",
@@ -4781,7 +4800,7 @@ local function Construire()
             NS.ecran.selectionObjets = {}
             ecran.Montrer("equipement")
         end)
-        b:SetPoint("TOP", precedentE, "BOTTOM", 0, premiereOrigine and -13 or -2)
+        if precedentE then b:SetPoint("TOP", precedentE, "BOTTOM", 0, -2) else b:SetPoint("TOP", menu, "TOP", 0, 0) end
         premiereOrigine = false
         b.origine = cat
         win.originesEquip[cat] = b
@@ -5045,7 +5064,6 @@ function ecran.Montrer(cle)
             b:SetShown(surEquip)
             MarquerLigneDeMenu(b, n == scen)
         end
-        if fenetre.filetEquip then fenetre.filetEquip:SetShown(surEquip and scen ~= 2) end
         for cat, b in pairs(fenetre.originesEquip or {}) do
             local texte = b.text or b.Text or (b.GetFontString and b:GetFontString())
             if texte then texte:SetText(L["GEAR_CAT_" .. cat]) end
@@ -5205,8 +5223,10 @@ function ecran.Montrer(cle)
                 if x then x:Hide() end
             end
             if fenetre.contenu.listeFondSuivis then fenetre.contenu.listeFondSuivis:Hide() end
-            for _, x in ipairs({ fenetre.contenu.titreEquipReg, fenetre.contenu.titreEquipReg and fenetre.contenu.titreEquipReg.filet,
-                fenetre.contenu.libelleMarge, fenetre.contenu.curseurMarge }) do
+            local cc = fenetre.contenu
+            for _, x in ipairs({ cc.titreEquipReg, cc.titreEquipReg and cc.titreEquipReg.filet, cc.libelleMarge, cc.curseurMarge,
+                cc.libellePresentation, cc.listePresentation, cc.textePresentation, cc.caseTousNiveaux,
+                cc.caseTousNiveaux and cc.caseTousNiveaux.libelle }) do
                 if x then x:Hide() end
             end
             for _, c in ipairs({ fenetre.contenu.caseInfobulles, fenetre.contenu.caseAssistant, fenetre.contenu.caseSuivi,

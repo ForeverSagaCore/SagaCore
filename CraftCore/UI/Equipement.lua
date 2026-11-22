@@ -181,15 +181,13 @@ local function CreerLigneStat(bandeau, index)
     ligne.cle:SetJustifyH("LEFT")
     ligne.cle:SetWordWrap(false)
 
+    -- Trois colonnes alignees a gauche : porte, nouveau, ecart.
     for rang = 1, 3 do
         local colonne = ligne:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        colonne:SetWidth(84)
-        colonne:SetJustifyH("RIGHT")
-        if rang == 1 then
-            colonne:SetPoint("LEFT", ligne, "LEFT", 150, 0)
-        else
-            colonne:SetPoint("LEFT", ligne.colonnes[rang - 1], "RIGHT", 6, 0)
-        end
+        colonne:SetWidth(58)
+        colonne:SetJustifyH("LEFT")
+        colonne:SetWordWrap(false)
+        colonne:SetPoint("LEFT", ligne, "LEFT", 140 + (rang - 1) * 62, 0)
         ligne.colonnes[rang] = colonne
     end
     ligne.cle:SetPoint("RIGHT", ligne.colonnes[1], "LEFT", -6, 0)
@@ -293,6 +291,7 @@ function equipement.Construire(contenu, bandeau)
     depot:SetScript("OnClick", function(_, bouton)
         if bouton == "RightButton" then
             NS.ecran.objetDepose = nil
+            NS.ecran.selectionObjets = {}
             equipement.Rendre(contenu, bandeau)
             return
         end
@@ -300,8 +299,9 @@ function equipement.Construire(contenu, bandeau)
     end)
     depot:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        if NS.ecran.objetDepose and GameTooltip.SetItemByID then
-            pcall(GameTooltip.SetItemByID, GameTooltip, NS.ecran.objetDepose)
+        local montre = NS.ecran.objetDepose or next(NS.ecran.selectionObjets or {})
+        if montre and GameTooltip.SetItemByID then
+            pcall(GameTooltip.SetItemByID, GameTooltip, montre)
             GameTooltip:AddLine(L.GEAR_DROP_CLEAR, 0.6, 0.6, 0.6)
         else
             GameTooltip:SetText(L.GEAR_DROP_TITLE)
@@ -377,6 +377,7 @@ local function RendreBandeau(bandeau, porte, choisis)
         bandeau.titre:SetText("")
         bandeau.contre:SetText(L.GEAR_PICK)
         for _, ligne in ipairs(bandeau.stats or {}) do ligne:Hide() end
+        for _, t in ipairs(bandeau.titresCol or {}) do for _, fs in ipairs(t) do fs:Hide() end end
         return
     end
     bandeau:Show()
@@ -424,8 +425,8 @@ local function RendreBandeau(bandeau, porte, choisis)
         local colonne = math.floor((index - 1) / LIGNES_PAR_COLONNE)
         local rang = (index - 1) % LIGNES_PAR_COLONNE
         ligne:ClearAllPoints()
-        ligne:SetPoint("TOPLEFT", bandeau, "TOPLEFT", 8 + colonne * 330, -34 - rang * 15)
-        ligne:SetWidth(320)
+        ligne:SetPoint("TOPLEFT", bandeau, "TOPLEFT", 8 + colonne * 345, -50 - rang * 13)
+        ligne:SetWidth(330)
 
         local libelle = (cle == "__niveau") and L.EQUIP_LEVEL:gsub("%%d", ""):gsub("%s+$", "")
             or NS.objets.LibelleDeStat(cle)
@@ -436,26 +437,43 @@ local function RendreBandeau(bandeau, porte, choisis)
         ligne.colonnes[1]:SetText(Chiffre(base))
         ligne.colonnes[1]:SetTextColor(0.55, 0.55, 0.55)
 
-        for rangChoisi = 1, 2 do
-            local colonneTexte = ligne.colonnes[rangChoisi + 1]
-            local c = choisis[rangChoisi]
-            if c then
-                local valeur = (cle == "__niveau") and (c.niveau or 0)
-                    or ((c.stats and c.stats[cle]) or 0)
-                local ecart = valeur - base
-                colonneTexte:SetText(Chiffre(valeur) .. "  " .. (ecart > 0 and "+" or "") .. Chiffre(ecart))
-                if ecart > 0 then colonneTexte:SetTextColor(0.31, 0.82, 0.41)
-                elseif ecart < 0 then colonneTexte:SetTextColor(0.85, 0.40, 0.37)
-                else colonneTexte:SetTextColor(0.55, 0.55, 0.55) end
-                colonneTexte:Show()
-            else
-                colonneTexte:SetText("")
-                colonneTexte:Hide()
-            end
-        end
+        local c = choisis[1]
+        local valeur = c and ((cle == "__niveau") and (c.niveau or 0) or ((c.stats and c.stats[cle]) or 0)) or 0
+        local ecart = valeur - base
+        ligne.colonnes[2]:SetText(Chiffre(valeur))
+        ligne.colonnes[3]:SetText((ecart > 0 and "+" or "") .. Chiffre(ecart))
+        local r, g, b = 0.55, 0.55, 0.55
+        if ecart > 0 then r, g, b = 0.31, 0.82, 0.41 elseif ecart < 0 then r, g, b = 0.85, 0.40, 0.37 end
+        ligne.colonnes[2]:SetTextColor(r, g, b)
+        ligne.colonnes[3]:SetTextColor(r, g, b)
+        ligne.colonnes[2]:Show()
+        ligne.colonnes[3]:Show()
         ligne:Show()
     end
     for suite = index + 1, #(bandeau.stats or {}) do bandeau.stats[suite]:Hide() end
+    -- Titres des colonnes, au-dessus de chaque bloc de statistiques.
+    bandeau.titresCol = bandeau.titresCol or {}
+    local blocs = math.max(1, math.ceil(index / LIGNES_PAR_COLONNE))
+    for bloc = 1, 2 do
+        local t = bandeau.titresCol[bloc]
+        if not t then
+            t = {}
+            for rang = 1, 3 do
+                local fs = bandeau:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                fs:SetJustifyH("LEFT")
+                fs:SetWidth(58)
+                fs:SetWordWrap(false)
+                t[rang] = fs
+            end
+            bandeau.titresCol[bloc] = t
+        end
+        for rang, fs in ipairs(t) do
+            fs:ClearAllPoints()
+            fs:SetPoint("TOPLEFT", bandeau, "TOPLEFT", 8 + (bloc - 1) * 345 + 140 + (rang - 1) * 62, -36)
+            fs:SetText(({ L.GEAR_COL_WORN, L.GEAR_COL_NEW, L.GEAR_COL_DIFF })[rang])
+            fs:SetShown(bloc <= blocs)
+        end
+    end
 end
 
 function equipement.Rendre(contenu, bandeau)
@@ -485,8 +503,20 @@ function equipement.Rendre(contenu, bandeau)
         end
     end
     vue.choix:ClearAllPoints()
-    vue.choix:SetPoint("TOPLEFT", vue, "TOPLEFT", LARGEUR_COLONNE * 2 + 18, -decalage)
+    vue.choix:SetPoint("TOPLEFT", vue, "TOPLEFT", LARGEUR_COLONNE * 2 + 34, -decalage)
     vue.choix:SetPoint("BOTTOMRIGHT", vue, "BOTTOMRIGHT", 0, 0)
+    -- Un separateur leger entre la poupee et la liste.
+    if not vue.separateur then
+        vue.separateur = vue:CreateTexture(nil, "ARTWORK")
+        vue.separateur:SetColorTexture(0.42, 0.18, 0.02, 0.18)
+        if vue.separateur.SetSnapToPixelGrid then vue.separateur:SetSnapToPixelGrid(false) vue.separateur:SetTexelSnappingBias(0) end
+    end
+    vue.separateur:ClearAllPoints()
+    local PU = _G.PixelUtil
+    if PU and PU.SetWidth then PU.SetWidth(vue.separateur, 1, 1) else vue.separateur:SetWidth(1) end
+    vue.separateur:SetPoint("TOPLEFT", vue, "TOPLEFT", LARGEUR_COLONNE * 2 + 22, -(decalage + 4))
+    vue.separateur:SetPoint("BOTTOMLEFT", vue, "BOTTOMLEFT", LARGEUR_COLONNE * 2 + 22, 8)
+    vue.separateur:Show()
     vue.onglets = vue.onglets or {}
     local precedentOnglet
     for rang, cat in ipairs(NS.sources.ORDRE) do
@@ -589,7 +619,8 @@ function equipement.Rendre(contenu, bandeau)
 
     -- Toutes les sources de cet emplacement, deja filtrees par ce que le
     -- personnage peut porter et par son niveau (plus la marge reglee).
-    local marge = tonumber(NS.base.ReglagesGeneraux().margeEquipement) or 10
+    local G = NS.base.ReglagesGeneraux()
+    local marge = G.tousNiveauxEquipement and 999 or (tonumber(G.margeEquipement) or 10)
     if NS.sources.Etat() == "absent" then
         NS.sources.Construire(function()
             if NS.ecran.page == "equipement" and contenu:IsVisible() then equipement.Rendre(contenu, bandeau) end
@@ -648,14 +679,15 @@ function equipement.Rendre(contenu, bandeau)
     -- dernier, qui decalerait la liste vers la droite.
     local ancreHaut = (#matieres > 0 and choix.filtres[1]) or choix.sousTitre
     vue.depot:Show()
-    if NS.ecran.objetDepose then
-        vue.depot.image:SetTexture(NS.Appeler(NS.jeu.iconeObjet, NS.ecran.objetDepose))
+    -- Dans la case : l'objet depose, sinon celui choisi dans la liste.
+    local montre = NS.ecran.objetDepose or next(NS.ecran.selectionObjets or {})
+    if montre then
+        vue.depot.image:SetTexture(NS.Appeler(NS.jeu.iconeObjet, montre))
         vue.depot.image:Show()
-        vue.depot.texte:SetText(NS.inventaire.NomDObjet(NS.ecran.objetDepose))
     else
         vue.depot.image:Hide()
-        vue.depot.texte:SetText(L.GEAR_DROP)
     end
+    vue.depot.texte:SetText(L.GEAR_DROP)
 
     -- Les candidats : seulement ce qui ameliore ce qui est porte (au moins +1
     -- dans une statistique, meme si d'autres baissent). Selon le scenario de
@@ -695,7 +727,12 @@ function equipement.Rendre(contenu, bandeau)
             end
         end
     end
+    -- Presentation 3 : toutes les origines, les unes sous les autres, chacune
+    -- avec son titre ; dans chaque origine, le plus gros gain d'abord.
+    local rangCat = {}
+    for k, cat in ipairs(NS.sources.ORDRE) do rangCat[cat] = k end
     table.sort(retenus, function(a, b)
+        if a.cat ~= b.cat then return rangCat[a.cat] < rangCat[b.cat] end
         if a.total ~= b.total then return a.total > b.total end
         return a.c.id < b.c.id
     end)
@@ -739,8 +776,36 @@ function equipement.Rendre(contenu, bandeau)
         return table.concat(morceaux, ", ")
     end
 
+    local catPrecedente
     for _, r in ipairs(retenus) do
         local c = r.c
+        if scenario == 3 and r.cat ~= catPrecedente then
+            catPrecedente = r.cat
+            index = index + 1
+            local titreCat = CreerLigneCandidat(liste, index)
+            titreCat:ClearAllPoints()
+            titreCat:SetPoint("TOPLEFT", liste, "TOPLEFT", 0, -(y + (index > 1 and 6 or 0)))
+            titreCat:SetPoint("TOPRIGHT", liste, "TOPRIGHT", 0, -(y + (index > 1 and 6 or 0)))
+            titreCat.icone:Hide()
+            if titreCat.gains then titreCat.gains:Hide() end
+            if titreCat.coche then titreCat.coche:Hide() end
+            if titreCat.palier then titreCat.palier:Hide() end
+            titreCat.fond:Hide()
+            titreCat.nom:ClearAllPoints()
+            titreCat.nom:SetPoint("TOPLEFT", titreCat, "TOPLEFT", 2, -4)
+            titreCat.nom:SetPoint("RIGHT", titreCat, "RIGHT", -4, 0)
+            titreCat.nom:SetFontObject("GameFontNormal")
+            titreCat.nom:SetTextColor(1, 0.82, 0)
+            titreCat.nom:SetText(L["GEAR_CAT_" .. r.cat])
+            titreCat.etat:SetText("")
+            titreCat:SetScript("OnEnter", nil)
+            titreCat:SetScript("OnLeave", nil)
+            titreCat:SetScript("OnClick", nil)
+            titreCat:EnableMouse(false)
+            titreCat:SetHeight(22)
+            titreCat:Show()
+            y = y + 22 + (index > 1 and 6 or 0)
+        end
         index = index + 1
         local ligne = CreerLigneCandidat(liste, index)
         ligne:ClearAllPoints()
@@ -756,21 +821,14 @@ function equipement.Rendre(contenu, bandeau)
         ligne.nom:SetText(((info and info.nom) or ("objet " .. tostring(c.id))) .. niveauTexte)
         ligne.nom:SetTextColor(NS.objets.CouleurDuNom(c.id))
         local prov = c.provenance or ""
-        if scenario == 3 then prov = L["GEAR_CAT_" .. r.cat] .. " : " .. prov end
         ligne.etat:SetText(prov)
         ligne.etat:SetTextColor(0.62, 0.62, 0.62)
-        if not ligne.gains then
-            ligne.gains = ligne:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            ligne.gains:SetPoint("TOPRIGHT", ligne, "TOPRIGHT", -4, -4)
-            ligne.gains:SetJustifyH("RIGHT")
-            ligne.gains:SetWordWrap(false)
-        end
-        ligne.gains:SetText(TexteGains(r.gains))
-        ligne.gains:SetTextColor(0.31, 0.82, 0.41)
-        ligne.gains:Show()
+        -- Le nom en entier : les gains se lisent en bas, a la comparaison.
+        if ligne.gains then ligne.gains:Hide() end
         ligne.nom:ClearAllPoints()
         ligne.nom:SetPoint("TOPLEFT", ligne, "TOPLEFT", 25, -4)
-        ligne.nom:SetPoint("RIGHT", ligne.gains, "LEFT", -6, 0)
+        ligne.nom:SetPoint("RIGHT", ligne, "RIGHT", -4, 0)
+        ligne:EnableMouse(true)
         if ligne.coche then ligne.coche:Hide() end
         if ligne.palier then ligne.palier:Hide() end
 

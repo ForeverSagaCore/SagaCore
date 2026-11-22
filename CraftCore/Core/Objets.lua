@@ -82,10 +82,24 @@ function objets.Stats(identifiantOuLien)
 end
 
 -- Libelle d'une statistique, pris dans les libelles du jeu.
+-- Resistances : le jeu nomme la stat ITEM_MOD_FIRE_RESISTANCE_SHORT sans en
+-- donner le libelle ; on prend celui de l'ecole (RESISTANCE2_NAME...).
+local ECOLES = { HOLY = 1, FIRE = 2, NATURE = 3, FROST = 4, SHADOW = 5, ARCANE = 6 }
 function objets.LibelleDeStat(cle)
     local valeur = _G[cle]
     if type(valeur) == "string" and valeur ~= "" then return valeur end
-    return cle
+    local ecole = type(cle) == "string" and string.match(cle, "^ITEM_MOD_(%u+)_RESISTANCE")
+    if ecole and ECOLES[ecole] then
+        local nom = _G["RESISTANCE" .. ECOLES[ecole] .. "_NAME"]
+        if type(nom) == "string" and nom ~= "" then return nom end
+    end
+    -- Jamais un code brut a l'ecran : sa version courte, en mots.
+    if type(cle) == "string" then
+        local court = cle:gsub("^ITEM_MOD_", ""):gsub("_SHORT$", ""):gsub("_NAME$", ""):gsub("_", " ")
+        court = court:lower():gsub("^%l", string.upper)
+        return court
+    end
+    return tostring(cle)
 end
 
 -- Ordre d'affichage : l'armure d'abord, puis les caracteristiques, puis le
