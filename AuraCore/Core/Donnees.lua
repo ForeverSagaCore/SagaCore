@@ -203,6 +203,18 @@ local FAMILLES = {
     { classe = "MAGE", ids = { 1459, 23028 }, mana = true },              -- Intelligence des arcanes
     { classe = "DRUID", ids = { 1126, 21849 } },                          -- Marque du fauve
     { classe = "PALADIN", ids = D.GROUPE.PALADIN[1], benediction = true }, -- une benediction par paladin
+    -- Ce qui agit sur tout le groupe sans se lancer sur chacun : une aura de
+    -- paladin, le cri de guerre, un totem de chaman. Demande seulement a la
+    -- classe presente dans le groupe, pour ceux qui n'en ont aucun.
+    { classe = "PALADIN", ids = { 465, 7294, 19746, 19876, 19888, 19891, 20218 }, libelle = function() return T("une aura", "an aura") end },
+    { classe = "WARRIOR", ids = { 6673 } },                                -- Cri de guerre
+    { classe = "SHAMAN", ids = { 8076, 8836, 5677, 8072, 8185, 8182, 10596, 25909 }, libelle = function() return T("un totem", "a totem") end },
+    -- Auras de talent ou de haut niveau : seulement si quelqu'un l'a deja
+    -- (preuve que le joueur la possede), pour ceux qui sont hors de portee.
+    { classe = "HUNTER", ids = { 19506 }, siVu = true },                   -- Aura de precision
+    { classe = "HUNTER", ids = { 20043 }, siVu = true },                   -- Aspect de la nature
+    { classe = "DRUID", ids = { 17007 }, siVu = true },                    -- Chef de la meute
+    { classe = "DRUID", ids = { 24907 }, siVu = true },                    -- Aura de selenien
 }
 local MANA = { PRIEST = true, MAGE = true, WARLOCK = true, DRUID = true, PALADIN = true, SHAMAN = true, HUNTER = true }
 
@@ -298,7 +310,7 @@ function M.Analyser()
                     if concerne and Compte(m) < besoin then table.insert(manquants, m.nom) end
                 end
                 if #manquants > 0 then
-                    local buff = f.benediction and T("une bénédiction", "a blessing") or (D.Nom(f.ids[1]) or "?")
+                    local buff = (f.libelle and f.libelle()) or (f.benediction and T("une bénédiction", "a blessing")) or (D.Nom(f.ids[1]) or "?")
                     table.insert(resultat, { buff = buff, manquants = manquants, donneurs = donneurs, complets = complets,
                         tous = #manquants == #membres and #membres > 1 })
                 end
@@ -431,9 +443,19 @@ function M.Envoyer()
     -- bataille et en instance surtout) ; un message differe (minuterie) y est
     -- refuse, avec le message d'echec d'interface. Le groupe d'abord, puis
     -- chaque donneur en chuchotement.
-    for _, texte in ipairs(messages) do pcall(envoyer, texte, canal) end
+    -- Un envoi refuse par le jeu est dit dans la discussion (une fois), avec
+    -- sa raison : on sait ainsi ce qui bloque.
+    local signale = false
+    local function Envoi(texte, genre, cible)
+        local ok, err = pcall(envoyer, texte, genre, nil, cible)
+        if not ok and not signale then
+            signale = true
+            NS.Dire(T("Envoi refusé par le jeu (", "Sending refused by the game (") .. tostring(genre) .. ") : " .. tostring(err))
+        end
+    end
+    for _, texte in ipairs(messages) do Envoi(texte, canal) end
     for _, c in ipairs(M.Chuchotements(analyse)) do
-        for _, texte in ipairs(c.messages) do pcall(envoyer, texte, "WHISPER", nil, c.cible) end
+        for _, texte in ipairs(c.messages) do Envoi(texte, "WHISPER", c.cible) end
     end
 end
 

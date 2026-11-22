@@ -161,6 +161,27 @@ function H.Objectifs()
             end
         end
     end
+    -- Sinon : les textes affiches par le jeu lui-meme en haut de l'ecran
+    -- (les cadres de ses objectifs), lus tels quels.
+    if #textes == 0 then
+        local racine = _G.UIWidgetTopCenterContainerFrame
+        local vus = {}
+        local function Lire(cadre, profondeur)
+            if not cadre or profondeur > 4 or (cadre.IsShown and not cadre:IsShown()) then return end
+            for _, r in ipairs({ cadre:GetRegions() }) do
+                if r.GetObjectType and r:GetObjectType() == "FontString" and r:IsShown() then
+                    local ok, texte = pcall(r.GetText, r)
+                    if ok and type(texte) == "string" and texte ~= "" and not vus[texte]
+                        and not (_G.issecretvalue and _G.issecretvalue(texte)) then
+                        vus[texte] = true
+                        table.insert(textes, (texte:gsub("|n", " "):gsub("\n", " ")))
+                    end
+                end
+            end
+            for _, enfant in ipairs({ cadre:GetChildren() }) do Lire(enfant, profondeur + 1) end
+        end
+        if racine then pcall(Lire, racine, 0) end
+    end
     -- Ancienne interface (clients plus anciens).
     if #textes == 0 then
         local n = Nombre(Appel("GetNumWorldStateUI")) or 0
