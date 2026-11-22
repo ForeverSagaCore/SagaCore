@@ -164,7 +164,9 @@ local function Membres()
         if UnitIsDeadOrGhost and UnitIsDeadOrGhost(unite) then return end
         if UnitIsConnected and not UnitIsConnected(unite) then return end
         local _, classe = UnitClass(unite)
-        table.insert(liste, { unite = unite, nom = Court(nom), classe = classe })
+        -- Le nom complet (avec le royaume s'il est autre) : pour chuchoter.
+        local complet = (_G.GetUnitName and _G.GetUnitName(unite, true)) or nom
+        table.insert(liste, { unite = unite, nom = Court(nom), complet = complet, classe = classe })
     end
     Ajouter("player")
     local raid = _G.IsInRaid and _G.IsInRaid()
@@ -199,8 +201,9 @@ end
 -- Ce qui manque : { { buff, manquants = {noms}, donneurs = {noms} }, ... }.
 function M.Analyser()
     local membres = Membres()
-    local donneursPar, auras = {}, {}
+    local donneursPar, auras, complets = {}, {}, {}
     for _, m in ipairs(membres) do
+        complets[m.nom] = m.complet or m.nom
         if m.classe then
             donneursPar[m.classe] = donneursPar[m.classe] or {}
             table.insert(donneursPar[m.classe], m.nom)
@@ -236,7 +239,7 @@ function M.Analyser()
                 end
                 if #manquants > 0 then
                     local buff = f.benediction and T("une bénédiction", "a blessing") or (D.Nom(f.ids[1]) or "?")
-                    table.insert(resultat, { buff = buff, manquants = manquants, donneurs = donneurs,
+                    table.insert(resultat, { buff = buff, manquants = manquants, donneurs = donneurs, complets = complets,
                         tous = #manquants == #membres and #membres > 1 })
                 end
             end
@@ -245,25 +248,78 @@ function M.Analyser()
     return resultat
 end
 
--- Le texte du message, en morceaux de moins de 255 caracteres.
-function M.Messages(analyse)
-    local parts = {}
-    for _, a in ipairs(analyse) do
-        local qui = a.tous and T("tout le groupe", "the whole group") or table.concat(a.manquants, ", ")
-        table.insert(parts, string.format("%s %s %s (%s)", a.buff, T("pour", "for"), qui, table.concat(a.donneurs, ", ")))
-    end
-    if #parts == 0 then return {} end
-    local messages, courant = {}, T("Buffs manquants : ", "Missing buffs : ")
-    for k, p in ipairs(parts) do
-        local suite = (k == #parts) and (p .. ". " .. T("Merci !", "Thanks!")) or (p .. " ; ")
-        if #courant + #suite > 250 then
+-- Met des morceaux de texte bout a bout en messages de moins de 250
+-- caracteres (la limite du jeu est 255). Un morceau trop long a lui seul
+-- (beaucoup de noms) est coupe entre deux noms, jamais au milieu d'un nom.
+local LIMITE = 250
+local function Decouper(entete, morceaux, fin)
+    local messages, courant = {}, entete
+    local function Pousser(texte)
+        if #courant + #texte > LIMITE and courant ~= "" and courant ~= entete then
             table.insert(messages, courant)
             courant = ""
         end
-        courant = courant .. suite
+        courant = courant .. texte
     end
-    table.insert(messages, courant)
+    for k, m in ipairs(morceaux) do
+        local dernier = k == #morceaux
+        if #m.tete + #m.queue + #table.concat(m.noms, ", ") <= LIMITE - #entete then
+            Pousser(m.tete .. table.concat(m.noms, ", ") .. m.queue .. (dernier and fin or " ; "))
+        else
+            -- Les noms par paquets : chaque paquet repete le debut du morceau.
+            local paquet = {}
+            local function Vider(estDernier)
+                if #paquet == 0 then return end
+                Pousser(m.tete .. table.concat(paquet, ", ") .. m.queue .. (estDernier and dernier and fin or " ; "))
+                paquet = {}
+            end
+            for i, nom in ipairs(m.noms) do
+                if #m.tete + #m.queue + #table.concat(paquet, ", ") + #nom + 6 > LIMITE - #entete then Vider(false) end
+                table.insert(paquet, nom)
+                if i == #m.noms then Vider(true) end
+            end
+        end
+    end
+    if courant ~= "" and courant ~= entete then table.insert(messages, courant) end
     return messages
+end
+
+-- Le message au groupe, en autant de morceaux que necessaire.
+function M.Messages(analyse)
+    local morceaux = {}
+    for _, a in ipairs(analyse) do
+        local noms = a.tous and { T("tout le groupe", "the whole group") } or a.manquants
+        table.insert(morceaux, { tete = a.buff .. " " .. T("pour", "for") .. " ", noms = noms,
+            queue = " (" .. table.concat(a.donneurs, ", ") .. ")" })
+    end
+    if #morceaux == 0 then return {} end
+    return Decouper(T("Buffs manquants : ", "Missing buffs : "), morceaux, ". " .. T("Merci !", "Thanks!"))
+end
+
+-- Un chuchotement a chaque joueur qui peut donner un buff manquant : ce
+-- qu'il doit lancer et sur qui. Jamais a soi-meme. { {cible, messages} }.
+function M.Chuchotements(analyse)
+    local moi = _G.UnitName and _G.UnitName("player")
+    local parDonneur, ordre = {}, {}
+    for _, a in ipairs(analyse) do
+        for _, d in ipairs(a.donneurs) do
+            if d ~= moi then
+                if not parDonneur[d] then
+                    parDonneur[d] = { cible = (a.complets and a.complets[d]) or d, morceaux = {} }
+                    table.insert(ordre, d)
+                end
+                local noms = a.tous and { T("tout le groupe", "the whole group") } or a.manquants
+                table.insert(parDonneur[d].morceaux, { tete = a.buff .. " " .. T("pour", "for") .. " ", noms = noms, queue = "" })
+            end
+        end
+    end
+    local liste = {}
+    for _, d in ipairs(ordre) do
+        local e = parDonneur[d]
+        table.insert(liste, { cible = e.cible, nom = d,
+            messages = Decouper(T("Peux-tu lancer : ", "Could you cast : "), e.morceaux, ". " .. T("Merci !", "Thanks!")) })
+    end
+    return liste
 end
 
 local function Canal()
@@ -282,9 +338,14 @@ local function EnCombat() return _G.InCombatLockdown and _G.InCombatLockdown() e
 function M.Apercu()
     if not Canal() then return T("Vous n'êtes pas en groupe.", "You are not in a group.") end
     if EnCombat() then return T("Hors combat seulement.", "Out of combat only.") end
-    local messages = M.Messages(M.Analyser())
+    local analyse = M.Analyser()
+    local messages = M.Messages(analyse)
     if #messages == 0 then return T("Rien à demander : chacun a les buffs que le groupe peut donner.", "Nothing to ask : everyone has the buffs your group can give.") end
-    return table.concat(messages, " ")
+    local qui = {}
+    for _, c in ipairs(M.Chuchotements(analyse)) do table.insert(qui, c.nom) end
+    local texte = table.concat(messages, " ")
+    if #qui > 0 then texte = texte .. "  " .. T("Chuchoté aussi à : ", "Also whispered to : ") .. table.concat(qui, ", ") end
+    return texte
 end
 
 local dernier = 0
@@ -297,14 +358,26 @@ function M.Envoyer()
         NS.Dire(T("Attendez quelques secondes avant de redemander.", "Wait a few seconds before asking again."))
         return
     end
-    local messages = M.Messages(M.Analyser())
+    local analyse = M.Analyser()
+    local messages = M.Messages(analyse)
     if #messages == 0 then
         NS.Dire(T("Rien à demander : chacun a les buffs que le groupe peut donner.", "Nothing to ask : everyone has the buffs your group can give."))
         return
     end
     dernier = maintenant
     local envoyer = (_G.C_ChatInfo and _G.C_ChatInfo.SendChatMessage) or _G.SendChatMessage
-    for _, texte in ipairs(messages) do pcall(envoyer, texte, canal) end
+    -- Tout part a la suite, un message toutes les 0,4 seconde : le groupe
+    -- d'abord, puis chaque donneur en chuchotement (le jeu coupe ce qui part
+    -- trop vite).
+    local file = {}
+    for _, texte in ipairs(messages) do table.insert(file, { texte, canal }) end
+    for _, c in ipairs(M.Chuchotements(analyse)) do
+        for _, texte in ipairs(c.messages) do table.insert(file, { texte, "WHISPER", c.cible }) end
+    end
+    for i, m in ipairs(file) do
+        local function Partir() pcall(envoyer, m[1], m[2], nil, m[3]) end
+        if i == 1 or not (_G.C_Timer and _G.C_Timer.After) then Partir() else _G.C_Timer.After((i - 1) * 0.4, Partir) end
+    end
 end
 
 -- ---------------------------------------------------------------------------
