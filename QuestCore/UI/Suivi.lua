@@ -293,6 +293,21 @@ local function NomDeMembre(nom)
     return "|cff66c7ff" .. tostring(nom) .. "|r"
 end
 
+-- Les membres du groupe (avec QuestCore) qui ont cette quete dans leur
+-- journal : "Groupe : Paltank (en cours), Bigdheal (a rendre)". nil sinon.
+-- Sert aux quetes qui ne sont pas dans mon journal (suites, prerequis,
+-- quetes de donjon) ; celles de mon journal montrent deja chacun en detail.
+local function TexteDuGroupe(id)
+    local membres = NS.groupe and NS.groupe.Membres and NS.groupe.Membres(id) or {}
+    if #membres == 0 then return nil end
+    local morceaux = {}
+    for _, m in ipairs(membres) do
+        local etat = (m.etat == 1 and L.GROUP_STATE_DONE) or (m.etat == -1 and L.GROUP_STATE_FAILED) or L.GROUP_STATE_ON
+        table.insert(morceaux, NomDeMembre(m.nom) .. " (" .. etat .. ")")
+    end
+    return string.format(L.TRACK_GROUP_LINE, table.concat(morceaux, ", "))
+end
+
 -- Une ligne de texte, au retrait donne, sur plusieurs lignes au besoin.
 local function Poser(index, y, texte, options)
     local corps = cadre.corps
@@ -1114,6 +1129,12 @@ local function RendreAvecChaine(moi, quetes, id, index, y, prefixe)
                     uneLigne = true, titre = true, marque = "suite", couleur = { 0.55, 0.55, 0.55 },
                     police = Police("ObjectiveTrackerHeaderFont", "GameFontNormal"),
                     survol = function(tt) NS.ref.InfobulleDeLaBase(tt, idC, moi) end }) + 4
+                local groupeC = TexteDuGroupe(c)
+                if groupeC then
+                    index = index + 1
+                    y = Poser(index, y - 4, groupeC, { retrait = 22, couleur = { 0.85, 0.85, 0.85 },
+                        police = "GameFontNormalSmall", petit = true, uneLigne = true }) + 4
+                end
             end
         end
     end
@@ -1482,6 +1503,13 @@ RendreEtapeBase = function(moi, id, rang, e, index, y, pion)
             suivi.Rendre()
         end })
     if not replieE then
+        local groupeE = TexteDuGroupe(id)
+        if groupeE then
+            index = index + 1
+            local ic = Icones()
+            y = Poser(index, y, groupeE, { retrait = 22, couleur = { 0.85, 0.85, 0.85 }, police = "GameFontNormalSmall",
+                petit = true, uneLigne = true, pion = ic.pion, voir = ic.voir, margeDroite = ic.marge })
+        end
         local xp = NS.ref.XPDeLaBase(id, moi.niveau)
         if xp and xp > 0 then
             index = index + 1
