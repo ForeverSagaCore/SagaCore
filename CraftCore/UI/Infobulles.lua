@@ -289,11 +289,27 @@ do
         local id = LireId and sac and case and tonumber(NS.Appeler(LireId, sac, case))
         local oui = Prive() and id and utiles[id] or false
         if oui and not bouton.craftCoreMarque then
-            local m = bouton:CreateTexture(nil, "OVERLAY", nil, 7)
+            -- Une pastille ronde comme celles de la minicarte, un peu en retrait
+            -- du coin : fond sombre, roue dentee, anneau dore du jeu.
+            local m = CreateFrame("Frame", nil, bouton)
             m:SetSize(14, 14)
-            m:SetPoint("TOPLEFT", bouton, "TOPLEFT", 1, -1)
-            m:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
-            if m.SetMask then pcall(m.SetMask, m, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+            m:SetPoint("TOPLEFT", bouton, "TOPLEFT", 3, -3)
+            m:SetFrameLevel(bouton:GetFrameLevel() + 5)
+            m.fond = m:CreateTexture(nil, "BACKGROUND")
+            m.fond:SetSize(12, 12)
+            m.fond:SetPoint("CENTER")
+            m.fond:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+            m.fond:SetVertexColor(0, 0, 0, 0.85)
+            m.image = m:CreateTexture(nil, "ARTWORK")
+            m.image:SetSize(9, 9)
+            m.image:SetPoint("CENTER")
+            m.image:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
+            if m.image.SetMask then pcall(m.image.SetMask, m.image, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+            m.anneau = m:CreateTexture(nil, "OVERLAY")
+            m.anneau:SetSize(24, 24)
+            m.anneau:SetPoint("TOPLEFT", m, "TOPLEFT", 0, 0)
+            m.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+            m:EnableMouse(false)
             bouton.craftCoreMarque = m
         end
         if bouton.craftCoreMarque then bouton.craftCoreMarque:SetShown(oui and true or false) end
