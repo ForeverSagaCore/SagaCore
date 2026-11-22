@@ -946,19 +946,25 @@ end
 
 local dejaRendues = {}
 local traitsPoses = 0
-local function Trait(x, haut, bas)
+-- Un trait fin, de la couleur de l'anneau dore, accroche au rond d'une
+-- quete et au rond de la suivante : centre au pixel, d'un bord a l'autre.
+local function Trait(ligneA, ligneB)
     local corps = cadre.corps
+    local a = (ligneA.rond and ligneA.rond:IsShown() and ligneA.rond) or ligneA.marque
+    local b = (ligneB.rond and ligneB.rond:IsShown() and ligneB.rond) or ligneB.marque
+    if not (a and b) then return end
     corps.traits = corps.traits or {}
     traitsPoses = traitsPoses + 1
     local t = corps.traits[traitsPoses]
     if not t then
-        t = corps:CreateTexture(nil, "ARTWORK")
-        t:SetColorTexture(1, 0.82, 0, 0.45)
+        t = corps:CreateTexture(nil, "BACKGROUND")
+        t:SetColorTexture(0.8, 0.65, 0.3, 0.7)
         corps.traits[traitsPoses] = t
     end
     t:ClearAllPoints()
-    t:SetPoint("TOPLEFT", corps, "TOPLEFT", x, -haut)
-    t:SetSize(2, math.max(1, bas - haut))
+    t:SetWidth(1)
+    t:SetPoint("TOP", a, "BOTTOM", 0, 3)
+    t:SetPoint("BOTTOM", b, "TOP", 0, -3)
     t:Show()
 end
 
@@ -980,17 +986,17 @@ local function RendreAvecChaine(moi, quetes, id, index, y, prefixe)
     -- Les quetes deja rendues ne s'affichent plus : la premiere qui reste
     -- prend leur place, deroulee (dans le journal, ou a prendre) ; les
     -- suivantes, en gris, sans detail, reliees par un trait vertical.
-    local hauts = {}
+    local hauts = {}   -- la ligne de titre de chaque quete de la suite
     local tete, apres = false, 0
     for _, c in ipairs(chaine) do
         dejaRendues[c] = true
         local fait = moi.faites and moi.faites[c]
         if quetes[c] then
-            table.insert(hauts, y)
+            table.insert(hauts, index + 1)
             index, y = RendreQuete(moi, quetes, c, index, y, c == id and prefixe or nil)
             tete = true
         elseif not fait and not tete then
-            table.insert(hauts, y)
+            table.insert(hauts, index + 1)
             index, y = RendreEtapeBase(moi, c, nil, NS.parcours.EtatEtape(moi, c), index, y)
             tete = true
         elseif not fait then
@@ -998,7 +1004,7 @@ local function RendreAvecChaine(moi, quetes, id, index, y, prefixe)
             if apres <= 6 then
                 local niveau = tonumber(NS.ref.Lire("QuestDB", c, "questLevel")) or 0
                 local idC = c
-                table.insert(hauts, y)
+                table.insert(hauts, index + 1)
                 index = index + 1
                 y = Poser(index, y, string.format("[%d] %s", niveau, NS.ref.NomDeQuete(c, moi)), {
                     uneLigne = true, titre = true, marque = "suite", couleur = { 0.55, 0.55, 0.55 },
@@ -1008,7 +1014,7 @@ local function RendreAvecChaine(moi, quetes, id, index, y, prefixe)
         end
     end
     -- Les traits, d'un rond au suivant (ronds a 1 point du bord, 18 de large).
-    for k = 1, #hauts - 1 do Trait(10, hauts[k] + 20, hauts[k + 1] + 3) end
+    for k = 1, #hauts - 1 do Trait(Ligne(hauts[k]), Ligne(hauts[k + 1])) end
     return index, y + 4
 end
 
