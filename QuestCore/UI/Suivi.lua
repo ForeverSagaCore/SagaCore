@@ -2195,7 +2195,9 @@ function suivi.Rendre()
         if s.vue == "favoris" and not s.replie then
             cadre:SetHeight(math.min(math.max(s.hauteur or HAUTEUR, HAUTEUR_MINI), HauteurMaxi()))
             BasDeListe(false)
-            local _, yFin = RendreVueFavoris(moi, 0, 0)
+            -- Le rond de la premiere quete deborde au-dessus de sa ligne : un
+            -- peu d'air sous le filet, comme sous un titre de zone ailleurs.
+            local _, yFin = RendreVueFavoris(moi, 0, 6)
             corps:SetHeight(math.max(yFin, 1))
             return
         end
