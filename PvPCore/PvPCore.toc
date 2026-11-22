@@ -18,6 +18,7 @@ Core\Honneur.lua
 Core\Victoires.lua
 Core\Champ.lua
 Core\Parties.lua
+Core\Files.lua
 UI\Carte.lua
 UI\Fenetre.lua
 PvPCore.lua

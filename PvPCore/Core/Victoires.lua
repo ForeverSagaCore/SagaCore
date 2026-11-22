@@ -164,7 +164,7 @@ function V.Cibles(maxi)
 end
 
 -- Reglages (pour tous les personnages) et objectif de la semaine (par personnage).
-local DEFAUTS = { infobulle = true, resume = true }
+local DEFAUTS = { infobulle = true, resume = true, files = true }
 function V.Reglages()
     PvPCoreDB = type(PvPCoreDB) == "table" and PvPCoreDB or {}
     PvPCoreDB.reglages = type(PvPCoreDB.reglages) == "table" and PvPCoreDB.reglages or {}
@@ -196,7 +196,8 @@ local function SurUnite(tooltip)
     if not V.Reglages().infobulle or not tooltip or not tooltip.GetUnit then return end
     local ok, _, unite = pcall(tooltip.GetUnit, tooltip)
     if not ok or type(unite) ~= "string" or Secret(unite) then return end
-    if not NS.Appeler(UnitIsPlayer, unite) then return end
+    local joueur = NS.Appeler(UnitIsPlayer, unite)
+    if Secret(joueur) or not joueur then return end
     local adverse = NS.Appeler(_G.UnitCanAttack, "player", unite)
     if Secret(adverse) or not adverse then return end
     local nom, royaume = NS.Appeler(UnitName, unite)

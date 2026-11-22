@@ -128,6 +128,39 @@ function C.LireScores()
     end
     return lignes
 end
+-- Vos chiffres de la partie en cours (tableau des scores), relus au plus
+-- toutes les 20 secondes : le jeu met le tableau a jour de lui-meme.
+local derniereDemande = -100
+function C.MesChiffres()
+    local maintenant = Horloge()
+    if maintenant - derniereDemande >= 20 and _G.RequestBattlefieldScoreData then
+        derniereDemande = maintenant
+        pcall(_G.RequestBattlefieldScoreData)
+    end
+    local moi = NS.Appeler(UnitName, "player")
+    if type(moi) ~= "string" then return nil end
+    for _, l in ipairs(C.LireScores()) do
+        if l.nom == moi or l.nom:match("^([^%-]+)") == moi then
+            return { cm = Nombre(l.cm), vh = Nombre(l.vh), morts = Nombre(l.morts), honneur = Nombre(l.honneur) }
+        end
+    end
+end
+
+-- Le porteur de notre camp (il est dans notre groupe : sa position est connue).
+function C.PorteurAllie()
+    local camp = NS.Appeler(UnitFactionGroup, "player")
+    local p = etat.porteurs[camp == "Horde" and "Horde" or "Alliance"]
+    return p and p.nom, camp
+end
+-- Le minuteur de capture d'un point d'interet, en secondes restantes.
+function C.ResteCapture(id)
+    local c = etat.captures[id]
+    if not c then return nil end
+    local reste = c.fin - Horloge()
+    if reste <= 0 then return nil end
+    return reste, c.camp
+end
+
 local UNITES = { "target", "focus", "mouseover" }
 local function UniteDe(nom)
     local raid = NS.Appeler(_G.IsInRaid)
@@ -135,7 +168,7 @@ local function UniteDe(nom)
     for i = 1, math.min(n, 40) do
         local u = raid and ("raid" .. i) or ("party" .. i)
         local nu = NS.Appeler(UnitName, u)
-        if nu == nom and not Secret(nu) then return u end
+        if not Secret(nu) and nu == nom then return u end
     end
     for _, u in ipairs(UNITES) do
         local nu = NS.Appeler(UnitName, u)
@@ -143,7 +176,8 @@ local function UniteDe(nom)
     end
     for i = 1, 40 do
         local u = "nameplate" .. i
-        if NS.Appeler(UnitExists, u) then
+        local existe = NS.Appeler(UnitExists, u)
+        if not Secret(existe) and existe then
             local nu = NS.Appeler(UnitName, u)
             if not Secret(nu) and nu == nom then return u end
         end

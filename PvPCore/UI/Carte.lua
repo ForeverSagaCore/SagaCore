@@ -28,6 +28,9 @@ local function Nombre(v)
     if _G.issecretvalue and _G.issecretvalue(v) then return nil end
     return tonumber(v)
 end
+local function Secret(v) return _G.issecretvalue and _G.issecretvalue(v) or false end
+-- Vrai seulement si la reponse est lisible (une valeur secrete compte pour non).
+local function Vrai(v) return not Secret(v) and v and true or false end
 local function XY(pos)
     if type(pos) ~= "table" then return nil end
     local ok, x, y = pcall(function() if pos.GetXY then return pos:GetXY() end return pos.x, pos.y end)
@@ -48,6 +51,7 @@ function C.Forcer(mode)
 end
 
 local cadre
+local Minuteurs
 local function Construire()
     if cadre then return cadre end
     local ok, f = pcall(CreateFrame, "Frame", "PvPCoreCarte", UIParent, "TooltipBackdropTemplate")
@@ -86,6 +90,10 @@ local function Construire()
     f.fleche:SetTexture("Interface\\Minimap\\MinimapArrow")
     f.fleche:SetSize(22, 22)
     f.fleche:Hide()
+    -- Le drapeau porte par un joueur de notre camp, sur son point.
+    f.drapeau = f.toile:CreateTexture(nil, "OVERLAY", nil, 6)
+    f.drapeau:SetSize(18, 18)
+    f.drapeau:Hide()
     f:Hide()
     cadre = f
     C.cadre = f
@@ -150,13 +158,22 @@ local function Positions(f, carte)
     local position = Lire("C_Map.GetPlayerMapPosition")
     for _, p in ipairs(f.points) do p:Hide() end
     f.fleche:Hide()
+    f.drapeau:Hide()
     if not position then return end
+    local porteur, camp
+    if NS.champ and R().porteurs then porteur, camp = NS.champ.PorteurAllie() end
+    -- Notre porteur tient le drapeau adverse.
+    local function Drapeau(x, y)
+        f.drapeau:SetTexture(camp == "Horde" and "Interface\\WorldStateFrame\\AllianceFlag" or "Interface\\WorldStateFrame\\HordeFlag")
+        PoserSur(f, f.drapeau, x, y)
+        f.drapeau:Show()
+    end
     local raid = NS.Appeler(_G.IsInRaid)
     local n = NS.Appeler(_G.GetNumGroupMembers) or 0
     local rang = 0
     for i = 1, n do
         local unite = raid and ("raid" .. i) or ("party" .. i)
-        if NS.Appeler(UnitExists, unite) and not NS.Appeler(UnitIsUnit, unite, "player") then
+        if Vrai(NS.Appeler(UnitExists, unite)) and not Vrai(NS.Appeler(UnitIsUnit, unite, "player")) then
             local x, y = XY(NS.Appeler(position, carte, unite))
             if x then
                 rang = rang + 1
@@ -165,9 +182,13 @@ local function Positions(f, carte)
                 local c = classe and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[classe]
                 if c then p:SetVertexColor(c.r, c.g, c.b, 1) else p:SetVertexColor(0.8, 0.8, 0.8, 1) end
                 -- Mort : en gris.
-                if NS.Appeler(UnitIsDeadOrGhost, unite) then p:SetVertexColor(0.35, 0.35, 0.35, 1) end
+                if Vrai(NS.Appeler(UnitIsDeadOrGhost, unite)) then p:SetVertexColor(0.35, 0.35, 0.35, 1) end
                 PoserSur(f, p, x, y)
                 p:Show()
+                if porteur then
+                    local nu = NS.Appeler(UnitName, unite)
+                    if not Secret(nu) and nu == porteur then Drapeau(x, y) end
+                end
             end
         end
     end
@@ -177,12 +198,16 @@ local function Positions(f, carte)
         local face = Nombre(NS.Appeler(_G.GetPlayerFacing))
         if face and f.fleche.SetRotation then f.fleche:SetRotation(face) end
         f.fleche:Show()
+        if porteur then
+            local nu = NS.Appeler(UnitName, "player")
+            if not Secret(nu) and nu == porteur then Drapeau(x, y) end
+        end
     end
 end
 
 -- Les points d'interet de la carte (bases, tours, cimetieres, drapeaux).
 local function PointsDInteret(f, carte)
-    for _, p in ipairs(f.poi) do p:Hide() end
+    for _, p in ipairs(f.poi) do p:Hide() p.minuteur:Hide() end
     local pourCarte = Lire("C_AreaPoiInfo.GetAreaPOIForMap")
     local info = Lire("C_AreaPoiInfo.GetAreaPOIInfo")
     if not (pourCarte and info) then return end
@@ -195,7 +220,17 @@ local function PointsDInteret(f, carte)
         if x then
             rang = rang + 1
             local t = f.poi[rang]
-            if not t then t = f.toile:CreateTexture(nil, "OVERLAY", nil, 3) t:SetSize(16, 16) f.poi[rang] = t end
+            if not t then
+                t = f.toile:CreateTexture(nil, "OVERLAY", nil, 3)
+                t:SetSize(16, 16)
+                -- Le minuteur de capture, sous l'icone.
+                t.minuteur = f.toile:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                t.minuteur:SetPoint("TOP", t, "BOTTOM", 0, 1)
+                t.minuteur:SetShadowOffset(1, -1)
+                t.minuteur:Hide()
+                f.poi[rang] = t
+            end
+            t.id = id
             local pose = false
             if type(poi.atlasName) == "string" and poi.atlasName ~= "" then pose = pcall(t.SetAtlas, t, poi.atlasName) end
             if not pose and poi.textureIndex and _G.GetPOITextureCoords then
@@ -207,6 +242,23 @@ local function PointsDInteret(f, carte)
                 end
             end
             if pose then PoserSur(f, t, x, y) t:Show() end
+        end
+    end
+end
+
+-- Les minuteurs de capture sur la carte, sous l'icone de chaque point.
+Minuteurs = function(f)
+    local voir = NS.champ and R().minuteurs
+    for _, t in ipairs(f.poi) do
+        local reste, camp
+        if voir and t:IsShown() then reste, camp = NS.champ.ResteCapture(t.id) end
+        if reste then
+            local c = NS.champ.CouleurCamp(camp)
+            t.minuteur:SetText(NS.champ.Minutes(reste))
+            t.minuteur:SetTextColor(c[1], c[2], c[3])
+            t.minuteur:Show()
+        else
+            t.minuteur:Hide()
         end
     end
 end
@@ -281,6 +333,7 @@ function C.Demarrer()
             attentePoi = 0
         end
         Positions(f, carte)
+        Minuteurs(f)
         if attentePoi <= 0 then
             attentePoi = 2
             PointsDInteret(f, carte)
