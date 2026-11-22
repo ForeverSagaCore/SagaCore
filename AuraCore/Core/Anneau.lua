@@ -761,20 +761,6 @@ local function DessinerAnneau(r)
     -- En combat, le jeu cache tout (nom, numero, image) : ses boutons sont
     -- dans le meme ordre, les nouveaux (procs) a la suite. Le bouton n se
     -- cache donc si l'amelioration n l'etait avant le combat.
-    if not enCombatR and source == "jeu" then
-        local nomsReserves = {}
-        for _, e in ipairs(reservees) do if e.nom and e.actif then nomsReserves[e.nom] = true end end
-        local masque = {}
-        local C = _G.C_UnitAuras
-        for i = 1, 40 do
-            local ok, a = pcall(C.GetAuraDataByIndex, "player", i, "HELPFUL")
-            if not ok or type(a) ~= "table" then break end
-            local nom = (not Secret(a.name)) and a.name or nil
-            local sort = (not Secret(a.spellId)) and a.spellId or nil
-            masque[i] = (nom and nomsReserves[nom]) or (sort and EcarteParSort(sort)) or false
-        end
-        A.masqueAvantCombat = masque
-    end
     local n, iConso, iGroupe, iAutre = 0, 0, 0, 0
     local enTrop = {}
     for _, e in ipairs(reservees) do
@@ -816,6 +802,21 @@ local function DessinerAnneau(r)
             if e.idAura then dejaIds[e.idAura] = true end
             if e.icone ~= nil and type(e.icone) ~= "boolean" then dejaIcones[e.icone] = true end
         end
+    end
+    -- Seulement ce qui a vraiment une place (dejaNoms) : en disposition
+    -- "suite" ou "equilibre", un aspect n'a pas de place reservee, il est
+    -- dans la file et ne doit pas etre cache en combat.
+    if not enCombatR and source == "jeu" then
+        local masque = {}
+        local C = _G.C_UnitAuras
+        for i = 1, 40 do
+            local ok, a = pcall(C.GetAuraDataByIndex, "player", i, "HELPFUL")
+            if not ok or type(a) ~= "table" then break end
+            local nom = (not Secret(a.name)) and a.name or nil
+            local sort = (not Secret(a.spellId)) and a.spellId or nil
+            masque[i] = (nom and dejaNoms[nom]) or (sort and EcarteParSort(sort)) or false
+        end
+        A.masqueAvantCombat = masque
     end
     local debutFile = n
     local anglesFile = {}
