@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 126
+local VERSION = 127
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -148,6 +148,7 @@ end
 local DICO = {
     frFR = {
         ["Show or hide everything"] = "Tout afficher ou tout masquer",
+        ["Open"] = "Ouvrir",
         ["Click: show everything"] = "Clic : tout afficher",
         ["Click: hide everything"] = "Clic : tout masquer",
         ["Faction theme"] = "Thème de faction",
@@ -1147,6 +1148,88 @@ local function OngletLateral(parent, info, auClic)
         GameTooltip:Hide()
     end)
     return b
+end
+
+-- ---------------------------------------------------------------------------
+-- Acces direct depuis les fenetres du jeu (essai, mode prive seulement) : dans
+-- chaque fenetre officielle liee a un add-on de la suite, un onglet du jeu en
+-- bas a droite ouvre cet add-on. Metiers et fenetre d'un metier : CraftCore ;
+-- fiche du personnage : StuffCore ; journal de quetes : QuestCore ; carte du
+-- monde : MapCore (et QuestCore quand le journal y est ouvert).
+-- ---------------------------------------------------------------------------
+Suite.ACCES_JEU = {
+    { fenetres = { "ProfessionsBookFrame", "ProfessionsFrame", "TradeSkillFrame" }, cles = { "CraftCore" } },
+    { fenetres = { "CharacterFrame" }, cles = { "StuffCore" } },
+    { fenetres = { "QuestLogFrame" }, cles = { "QuestCore" } },
+    { fenetres = { "WorldMapFrame" }, cles = { "MapCore", "QuestCore" } },
+}
+local function IconeDe(cle)
+    for _, info in ipairs(Suite.ORDRE) do if info.cle == cle then return info.icone end end
+    return "Interface\\Icons\\INV_Misc_QuestionMark"
+end
+local function OngletJeu(fenetre, cle, rang)
+    fenetre.suiteAcces = fenetre.suiteAcces or {}
+    local b = fenetre.suiteAcces[cle]
+    if not b then
+        b = CreateFrame("Button", nil, fenetre)
+        b:SetSize(32, 32)
+        -- L'onglet lateral du grimoire du jeu, tel quel (bord droit).
+        b.fond = b:CreateTexture(nil, "BACKGROUND")
+        b.fond:SetTexture("Interface\\SpellBook\\SpellBook-SkillLineTab")
+        b.fond:SetSize(64, 64)
+        b.fond:SetPoint("TOPLEFT", b, "TOPLEFT", -3, 11)
+        b.icone = b:CreateTexture(nil, "ARTWORK")
+        b.icone:SetAllPoints()
+        b.icone:SetTexture(IconeDe(cle))
+        b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+        b:SetScript("OnClick", function() Suite.Ouvrir(cle) end)
+        b:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(cle, 1, 0.82, 0)
+            GameTooltip:AddLine(TX("Open") .. " " .. cle, 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        fenetre.suiteAcces[cle] = b
+    end
+    b:ClearAllPoints()
+    -- En bas a droite, le premier tout en bas, les suivants au-dessus.
+    b:SetPoint("BOTTOMLEFT", fenetre, "BOTTOMRIGHT", 0, 40 + (rang - 1) * 48)
+    return b
+end
+function Suite.PoserAccesJeu()
+    if not Suite.Prive() then return end
+    for _, a in ipairs(Suite.ACCES_JEU) do
+        for _, nom in ipairs(a.fenetres) do
+            local f = _G[nom]
+            if f and f.HookScript and not f.suiteAccesBranche then
+                f.suiteAccesBranche = true
+                local liste = a.cles
+                local function Mettre(self)
+                    local rang = 0
+                    for _, cle in ipairs(liste) do
+                        local b = OngletJeu(self, cle, rang + 1)
+                        local ok = Suite.Installe(cle) and Suite.Prive()
+                        b:SetShown(ok and true or false)
+                        if ok then rang = rang + 1 end
+                    end
+                end
+                pcall(f.HookScript, f, "OnShow", Mettre)
+                if f:IsShown() then pcall(Mettre, f) end
+            end
+        end
+    end
+end
+do
+    -- Certaines fenetres du jeu se chargent a la demande : on reessaie a
+    -- chaque add-on charge.
+    local ecoute = CreateFrame("Frame")
+    ecoute:RegisterEvent("PLAYER_LOGIN")
+    ecoute:RegisterEvent("ADDON_LOADED")
+    ecoute:SetScript("OnEvent", function()
+        if _G.CoreSuite ~= Suite then return end
+        pcall(Suite.PoserAccesJeu)
+    end)
 end
 
 -- Point d'attache des onglets lateraux : au ras du bord de la fenetre, a la

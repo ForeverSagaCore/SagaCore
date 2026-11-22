@@ -261,3 +261,83 @@ end
 
 -- Index des projets par objet, partage avec le suivi de recolte.
 infobulles.Index = function() return Index() end
+
+-- ---------------------------------------------------------------------------
+-- Sacs (essai, mode prive) : une petite marque sur un objet qui sert a un de
+-- vos objectifs (rang vise, projet, fabrication rapide). Au survol, l'objectif
+-- est dans l'infobulle comme d'habitude.
+-- ---------------------------------------------------------------------------
+do
+    local utiles = {}
+    local function Prive()
+        local S = NS.suite or _G.CoreSuite
+        return S and S.Prive and S.Prive() or false
+    end
+    local function Recalculer()
+        utiles = {}
+        if not (NS.suivi and NS.suivi.Objectifs) then return end
+        local ok, liste = pcall(NS.suivi.Objectifs)
+        for _, o in ipairs(ok and liste or {}) do
+            for _, m in ipairs(o.matieres or {}) do
+                if m.objet and (m.requis or 0) > 0 then utiles[tonumber(m.objet)] = true end
+            end
+        end
+    end
+    local LireId = NS.Lecture("C_Container.GetContainerItemID") or NS.Lecture("GetContainerItemID")
+    local function Marquer(bouton, sac, case)
+        if not bouton then return end
+        local id = LireId and sac and case and tonumber(NS.Appeler(LireId, sac, case))
+        local oui = Prive() and id and utiles[id] or false
+        if oui and not bouton.craftCoreMarque then
+            local m = bouton:CreateTexture(nil, "OVERLAY", nil, 7)
+            m:SetSize(14, 14)
+            m:SetPoint("TOPLEFT", bouton, "TOPLEFT", 1, -1)
+            m:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
+            if m.SetMask then pcall(m.SetMask, m, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+            bouton.craftCoreMarque = m
+        end
+        if bouton.craftCoreMarque then bouton.craftCoreMarque:SetShown(oui and true or false) end
+    end
+    local function ParcourirSacs()
+        local function Cadre(f)
+            if not (f and f.IsShown and f:IsShown()) then return end
+            if f.EnumerateValidItems then
+                for _, b in f:EnumerateValidItems() do
+                    local sac = b.GetBagID and b:GetBagID()
+                    pcall(Marquer, b, sac, b:GetID())
+                end
+            else
+                local nom = f.GetName and f:GetName()
+                for j = 1, 40 do
+                    local b = nom and _G[nom .. "Item" .. j]
+                    if not b then break end
+                    pcall(Marquer, b, f:GetID(), b:GetID())
+                end
+            end
+        end
+        Cadre(_G.ContainerFrameCombinedBags)
+        for i = 1, 13 do Cadre(_G["ContainerFrame" .. i]) end
+    end
+    local f = CreateFrame("Frame")
+    local attente
+    local function Bientot()
+        if attente then return end
+        attente = true
+        local plusTard = NS.Lecture("C_Timer.After")
+        local faire = function() attente = false Recalculer() ParcourirSacs() end
+        if plusTard then NS.Appeler(plusTard, 0.5, faire) else faire() end
+    end
+    for _, ev in ipairs({ "BAG_UPDATE_DELAYED", "PLAYER_LOGIN", "BAG_OPEN", "TRADE_SKILL_LIST_UPDATE" }) do
+        pcall(f.RegisterEvent, f, ev)
+    end
+    f:SetScript("OnEvent", Bientot)
+    -- A l'ouverture d'un sac du jeu.
+    local function Brancher(cadre)
+        if cadre and cadre.HookScript and not cadre.craftCoreBranche then
+            cadre.craftCoreBranche = true
+            pcall(cadre.HookScript, cadre, "OnShow", Bientot)
+        end
+    end
+    Brancher(_G.ContainerFrameCombinedBags)
+    for i = 1, 13 do Brancher(_G["ContainerFrame" .. i]) end
+end
