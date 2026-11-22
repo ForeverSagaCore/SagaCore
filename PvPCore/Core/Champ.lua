@@ -273,7 +273,7 @@ function C.Lignes(options)
                 local cc = classe and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[classe]
                 local couleur = cc and { cc.r, cc.g, cc.b } or C.CouleurCamp(camp)
                 local vie = Vie(p.nom)
-                table.insert(l, { texte = T("Drapeau : ", "Flag : ") .. p.nom .. (vie and ("  " .. vie .. " %") or "") .. "  ·  " .. Minutes(maintenant - p.depuis),
+                table.insert(l, { texte = T("Porteur " .. C.NomCamp(camp) .. " : ", C.NomCamp(camp) .. " carrier : ") .. p.nom .. (vie and ("  " .. vie .. " %") or "") .. "  ·  " .. Minutes(maintenant - p.depuis),
                     couleur = couleur, nom = p.nom })
             end
         end
