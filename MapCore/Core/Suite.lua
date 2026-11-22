@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 120
+local VERSION = 122
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -73,6 +73,9 @@ NS.suite = Suite
 
 -- Les add-ons de la suite, dans l'ordre d'affichage, avec l'icone du jeu de
 -- chacun. Un add-on absent reste montre, grise : on sait qu'il existe.
+-- L'icone de MacroCore, la meme partout (colonne de gauche, fenetre,
+-- pastille) : celle des macros du jeu.
+Suite.ICONE_MACROCORE = "Interface\\MacroFrame\\MacroFrame-Icon"
 Suite.ORDRE = {
     { cle = "CraftCore", icone = "Interface\\Icons\\INV_Misc_Gear_01" },
     { cle = "QuestCore", icone = "Interface\\Icons\\INV_Misc_Book_08" },
@@ -1439,7 +1442,7 @@ function Suite.Entete(cadre, cleCourante)
               dispo = function() return SlashCmdList.AURACORE ~= nil end },
         }
         if Suite.Prive() then
-            table.insert(extras, { cle = "Macros", icone = "Interface\\Icons\\INV_Misc_Book_11", action = function() Suite.OuvrirMacros() end })
+            table.insert(extras, { cle = "Macros", icone = Suite.ICONE_MACROCORE, action = function() Suite.OuvrirMacros() end })
         end
         for _, e in ipairs(extras) do
             if not e.dispo or e.dispo() then
@@ -2987,18 +2990,6 @@ Suite.RACCOURCIS = {
           for _, info in ipairs(Suite.Liste()) do if Suite.Installe(info.cle) then premier = info.cle break end end
           Suite.BasculerDernier(premier)
       end },
-    { cle = "craftcore", desc = "Ouvre ou ferme la fenêtre principale de CraftCore.", descEn = "Opens or closes the CraftCore main window.",
-      fr = "CraftCore", en = "CraftCore", icone = "INV_Misc_Gear_01",
-      action = function() Suite.Ouvrir("CraftCore") end, dispo = function() return Suite.Installe("CraftCore") end },
-    { cle = "questcore", desc = "Ouvre ou ferme la fenêtre principale de QuestCore.", descEn = "Opens or closes the QuestCore main window.",
-      fr = "QuestCore", en = "QuestCore", icone = "INV_Misc_Book_08",
-      action = function() Suite.Ouvrir("QuestCore") end, dispo = function() return Suite.Installe("QuestCore") end },
-    { cle = "mapcore", desc = "Ouvre ou ferme la fenêtre principale de MapCore.", descEn = "Opens or closes the MapCore main window.",
-      fr = "MapCore", en = "MapCore", icone = "INV_Misc_Map_01",
-      action = function() Suite.Ouvrir("MapCore") end, dispo = function() return Suite.Installe("MapCore") end },
-    { cle = "legacycore", desc = "Ouvre ou ferme la fenêtre principale de LegacyCore.", descEn = "Opens or closes the LegacyCore main window.",
-      fr = "LegacyCore", en = "LegacyCore", icone = "Spell_Holy_SealOfWisdom",
-      action = function() Suite.Ouvrir("LegacyCore") end, dispo = function() return Suite.Installe("LegacyCore") end },
     { cle = "fabrications", desc = "Affiche ou cache le suivi Mes fabrications.", descEn = "Shows or hides the My crafts tracker.",
       fr = "Suivi des fabrications", en = "Crafting tracker", icone = "Trade_BlackSmithing",
       action = function() Api("CraftCoreAPI", "BasculerSuivi") end, dispo = function() return _G.CraftCoreAPI ~= nil end },
@@ -3058,6 +3049,30 @@ local FAMILLE_DE = {
     rendus = "guider", recolte = "guider", stop = "guider",
     oui = "repondre", non = "repondre",
 }
+-- Un raccourci par add-on de la suite, tire de sa liste (Suite.ORDRE) :
+-- un add-on ajoute a la suite a son raccourci partout, sans rien oublier.
+do
+    local rang = 1
+    for k2, r in ipairs(Suite.RACCOURCIS) do if r.cle == "ouvrir" then rang = k2 + 1 end end
+    for _, info in ipairs(Suite.ORDRE) do
+        local nom = info.cle
+        local cle = string.lower(nom)
+        local deja = false
+        for _, r in ipairs(Suite.RACCOURCIS) do if r.cle == cle then deja = true end end
+        if not deja then
+            table.insert(Suite.RACCOURCIS, rang, {
+                cle = cle, fr = nom, en = nom,
+                desc = "Ouvre ou ferme la fenêtre principale de " .. nom .. ".",
+                descEn = "Opens or closes the " .. nom .. " main window.",
+                icone = (string.gsub(info.icone or "INV_Misc_QuestionMark", "^[Ii]nterface\\[Ii]cons\\", "")),
+                action = function() Suite.Ouvrir(nom) end,
+                dispo = function() return Suite.Installe(nom) end,
+            })
+            rang = rang + 1
+        end
+    end
+end
+
 function Suite.FamilleDe(r) return r.famille or FAMILLE_DE[r.cle] or "ouvrir" end
 
 function Suite.Raccourci(cle)
@@ -3082,7 +3097,7 @@ end
 -- explication que le jeu n'execute pas (#), puis la commande.
 local COURTS = {
     pilotefab = "PFa", pilotequetes = "PQu", ouvrir = "Sui", craftcore = "CrC", questcore = "QuC",
-    mapcore = "MaC", legacycore = "LeC", fabrications = "SFa", quetes = "SQu", suivis = "PSu",
+    mapcore = "MaC", legacycore = "LeC", stuffcore = "StC", tradecore = "TrC", fabrications = "SFa", quetes = "SQu", suivis = "PSu",
     stop = "Stp", rendus = "Ren", recolte = "Rec", metier = "Met", oui = "Oui", non = "Non",
     messages = "Msg", reglages = "Rgl", improve = "IC", raccourcis = "Pan",
 }
@@ -4351,10 +4366,21 @@ end
 -- MacroCore : une fenetre comme le suivi Mes fabrications. Pour l'instant,
 -- seulement la rangee du haut (l'icone au clavier, comme un onglet du suivi)
 -- et le filet dessous.
-local ICONE_MACROCORE = "Interface\\MacroFrame\\MacroFrame-Icon"
+local ICONE_MACROCORE = Suite.ICONE_MACROCORE
 local ALPHA_EN_COURSE = 0.25
 local HAUT_ONGLETS = 38
 local fenMC
+-- Opacite de MacroCore au repos : pleine quand elle est active ; en
+-- sous-brillance quand elle est figee par une fenetre qu'elle a ouverte. En
+-- marche, le fondu commun de la suite l'efface comme les autres fenetres.
+function Suite.AlphaReposMC() return (fenMC and fenMC.figee) and ALPHA_EN_COURSE or 1 end
+function Suite.AlphaMC(a)
+    local f = fenMC
+    if not f then return end
+    f:SetAlpha(a)
+    for _, b in ipairs(f.pastilles or {}) do pcall(b.SetAlpha, b, a) end
+    for _, sv in ipairs(f.suivis or {}) do pcall(sv.SetAlpha, sv, a) end
+end
 
 local function MacroCore()
     if fenMC then return fenMC end
@@ -4364,6 +4390,24 @@ local function MacroCore()
         { portrait = false, strate = "MEDIUM", sansPied = true })
     if cadre.titre then cadre.titre:SetText("MacroCore") end
     cadre.fermer:SetScript("OnClick", function() Suite.ActiverMacroCore(false) end)
+    -- Ses reglages, en haut a gauche, comme les suivis : la petite roue.
+    do
+        local roue = CreateFrame("Button", nil, cadre)
+        roue:SetSize(14, 14)
+        roue:SetPoint("TOPLEFT", cadre, "TOPLEFT", 19, -5)
+        local fermer = cadre.fermer or cadre.CloseButton
+        roue:SetFrameLevel(math.max(cadre:GetFrameLevel() + 20, (fermer and fermer:GetFrameLevel() or 0) + 2))
+        roue:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
+        roue:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+        roue:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(TR("Réglages de MacroCore", "MacroCore settings"), 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        roue:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        roue:SetScript("OnClick", function() Suite.OuvrirMacros() end)
+        cadre.boutonReglages = roue
+    end
 
     -- Place retenue.
     local r = Reglages()
@@ -4447,7 +4491,7 @@ local function MacroCore()
         s:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
         s.nomSuivi, s.api, s.nom, s.desc = v[1], v[2], v[3], v[6]
         s.infobulleDe = "CoreSuiteMacroCore"
-        s:SetAlpha(ALPHA_EN_COURSE)
+        s:SetAlpha(Suite.AlphaReposMC())
         s:SetScript("OnClick", function(self)
             local a = _G[self.api]
             if a and a.BasculerSuivi then pcall(a.BasculerSuivi) end
@@ -4461,7 +4505,7 @@ local function MacroCore()
             GameTooltip:Show()
         end)
         s:SetScript("OnLeave", function(self)
-            self:SetAlpha(ALPHA_EN_COURSE)
+            self:SetAlpha(cadre:GetAlpha())
             GameTooltip:Hide()
         end)
         s:Hide()
@@ -4503,7 +4547,7 @@ function Suite.ActiverMacroCore(oui)
     if not f then return end
     if f.figee then return end
     f.active = oui and true or nil
-    f:SetAlpha(oui and ALPHA_EN_COURSE or 0)
+    Suite.AlphaMC(oui and Suite.AlphaReposMC() or 0)
     f:EnableMouse(oui and true or false)
     if f.fermer then f.fermer:SetShown(oui and true or false) end
     -- Les pastilles ne se cliquent que fenetre active (hors combat : le jeu
@@ -4601,7 +4645,7 @@ function Suite.RemplirMacroCore()
                     b = CreateFrame("Button", nil, UIParent, "SecureActionButtonTemplate")
                     b:SetFrameStrata(f:GetFrameStrata())
                     b:SetFrameLevel(f:GetFrameLevel() + 10)
-                    b:SetAlpha(ALPHA_EN_COURSE)
+                    b:SetAlpha(f:GetAlpha())
                     b.infobulleDe = "CoreSuiteMacroCore"
                     b:RegisterForClicks("AnyUp", "AnyDown")
                     b:SetSize(PASTILLE, PASTILLE)
@@ -4635,7 +4679,7 @@ function Suite.RemplirMacroCore()
                         GameTooltip:Show()
                     end)
                     b:SetScript("OnLeave", function(self)
-                        self:SetAlpha(ALPHA_EN_COURSE)
+                        self:SetAlpha(f:GetAlpha())
                         GameTooltip:Hide()
                     end)
                     -- Clic souris : meme regle que la manette (la macro du
@@ -4705,6 +4749,7 @@ local veille
 -- (ni souris, ni manette, ni macro).
 local function Figer(f, oui)
     f.figee = oui and true or nil
+    if f.active then Suite.AlphaMC(Suite.AlphaReposMC()) end
     local combat = InCombatLockdown and InCombatLockdown()
     f:EnableMouse((not oui) and f.active and true or false)
     if f.fermer then f.fermer:EnableMouse(not oui) end
@@ -5994,7 +6039,7 @@ local function FenetreMacrosPages()
     local edition, choixJeu
     local MAX_PERSO, MAX_AUTRES, MAX_JEU = 24, 30, 40
     fenetreM = Suite.FenetreAPages({
-        nom = "CoreSuiteMacrosPages", cle = "Macros", icone = "Interface\\Icons\\INV_Misc_Book_11",
+        nom = "CoreSuiteMacrosPages", cle = "Macros", icone = Suite.ICONE_MACROCORE,
         titre = function() return TR("Macros", "Macros") end,
         pages = {
             { cle = "panneau", icone = "Interface\\Icons\\INV_Misc_Book_11",
@@ -7021,6 +7066,18 @@ do
             if math.abs(actuel - cible) >= 0.01 then
                 if actuel < cible then actuel = math.min(cible, actuel + pas) else actuel = math.max(cible, actuel - pas) end
                 f:SetAlpha(actuel)
+                enCours = true
+            end
+        end
+        -- MacroCore active : meme fondu, pastilles comprises ; au repos, son
+        -- opacite propre (pleine, ou sous-brillance si figee).
+        local mc = _G.CoreSuiteMacroCore
+        if mc and mc.active and Suite.AlphaMC then
+            local cibleMC = (cible < 1) and ALPHA_MARCHE or Suite.AlphaReposMC()
+            local actuel = mc:GetAlpha() or 1
+            if math.abs(actuel - cibleMC) >= 0.01 then
+                if actuel < cibleMC then actuel = math.min(cibleMC, actuel + pas) else actuel = math.max(cibleMC, actuel - pas) end
+                Suite.AlphaMC(actuel)
                 enCours = true
             end
         end
