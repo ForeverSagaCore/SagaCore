@@ -4694,6 +4694,7 @@ local function PoserIndicesManette(win)
             if b:IsShown() then premiere = premiere or b derniere = b end
         end
     end
+    if ecran.page == "caisses" then premiere, derniere = nil, nil end
     Marque(win, "lb", "PADLSHOULDER", premiere, "RIGHT", "RIGHT", -2, 0)
     Marque(win, "rb", "PADRSHOULDER", derniere, "RIGHT", "RIGHT", -2, 0)
     -- LT / RT : au dessus du premier onglet de droite, sous le dernier.
@@ -5115,8 +5116,10 @@ function ecran.Montrer(cle)
     do
         local stuff = ecran.EstStuff(ecran.page)
         if fenetre.titre then fenetre.titre:SetText(stuff and "StuffCore" or L.WINDOW_TITLE) end
-        for _, b in pairs(fenetre.boutons) do b:SetShown(not stuff) end
-        for _, f in ipairs(fenetre.filetsMenu or {}) do f:SetShown(not stuff) end
+        -- Les caisses sont seules : pas de menu de CraftCore a cote.
+        local seul = stuff or ecran.page == "caisses"
+        for _, b in pairs(fenetre.boutons) do b:SetShown(not seul) end
+        for _, f in ipairs(fenetre.filetsMenu or {}) do f:SetShown(not seul) end
         local scen = NS.equipement and NS.equipement.Scenario() or 1
         -- Les origines (presentations 1 et 3) restent dans le menu sur toutes
         -- les pages de StuffCore : c'est par elles qu'on va a l'equipement.
@@ -5515,6 +5518,8 @@ end
 -- onglet de droite, on revient a la section du menu qu'on avait quittee.
 function ecran.PageVoisine(pas)
     if not fenetre then ecran.Montrer() return end
+    -- Les caisses n'ont pas de menu : LB / RB n'y font rien.
+    if ecran.page == "caisses" then return end
     -- StuffCore : ses trois pages.
     if ecran.EstStuff(ecran.page) then
         -- Presentation 1 : les origines du menu, puis les Parametres.

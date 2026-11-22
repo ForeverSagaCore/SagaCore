@@ -135,11 +135,20 @@ end
 
 -- Rapproche un libelle de pack d'un objet possede, en cherchant le nom d'objet
 -- contenu dans le libelle. Sans correspondance nette, on ne devine pas : nil.
+local FORMES = {}
 local function RapprocherDUnObjet(libelle, parNom)
     local recherche = SansPluriel(libelle)
     local meilleur, meilleureLongueur
-    for nom, entree in pairs(parNom) do
-        local compare = SansPluriel(nom)
+    -- Les formes sans pluriel sont calculees une fois par liste de noms.
+    if not parNom[FORMES] then
+        local formes = {}
+        for nom, entree in pairs(parNom) do
+            if type(nom) == "string" then table.insert(formes, { SansPluriel(nom), entree }) end
+        end
+        parNom[FORMES] = formes
+    end
+    for _, f in ipairs(parNom[FORMES]) do
+        local compare, entree = f[1], f[2]
         if #compare >= 4 and string.find(recherche, compare, 1, true) then
             if not meilleureLongueur or #compare > meilleureLongueur then
                 meilleur, meilleureLongueur = entree, #compare
