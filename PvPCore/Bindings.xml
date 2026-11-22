@@ -5,4 +5,7 @@
 	<Binding name="PVPCORE_CACHEE">
 		PvPCore_CarteCachee()
 	</Binding>
+	<Binding name="PVPCORE_FENETRE">
+		PvPCore_Fenetre()
+	</Binding>
 </Bindings>
