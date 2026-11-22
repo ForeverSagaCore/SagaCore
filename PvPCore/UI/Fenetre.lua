@@ -121,6 +121,7 @@ local function PageReglages()
             local c = S.Curseur(page.rObjectif, 0, 999, 1, function() return V().Objectif() end,
                 function(v) V().PoserObjectif(v) end, function(v) return tostring(math.floor(v)) end, true, 5)
             c:SetPoint("RIGHT", page.rObjectif, "RIGHT", -10, 0)
+            c.surParchemin = function() return NS.charte and NS.charte.Fond and NS.charte.Fond() == "parchemin" end
             for _, b in ipairs(c.boutonsPM or {}) do table.insert(page.focus, b) end
             table.insert(page.controles, c)
             page.dObjectif = O.Detail(28)

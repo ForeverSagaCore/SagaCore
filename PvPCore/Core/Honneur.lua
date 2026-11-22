@@ -122,7 +122,7 @@ function H.Rubriques()
         Ligne(a, T("Honneur estimé", "Estimated honour"), Lisible((V.HonneurDuJour())))
         if (j.bonus or 0) > 0 then Ligne(a, T("Dont honneur bonus", "Of which bonus honour"), Lisible(j.bonus)) end
         local ph = V.HonneurParHeure()
-        if ph then Ligne(a, T("Honneur par heure (session)", "Honour per hour (session)"), Lisible(ph)) end
+        if ph then Ligne(a, T("Honneur par heure", "Honour per hour"), Lisible(ph)) end
 
         -- Objectif de la semaine (honneur vise, 15 victoires pour etre classe).
         local objectif = V.Objectif() * 1000

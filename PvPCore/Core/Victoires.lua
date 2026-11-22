@@ -30,13 +30,14 @@ function V.Motif(format)
     if type(format) ~= "string" or format == "" then return nil end
     if motifs[format] then return motifs[format] end
     local ordre, rang = {}, 0
-    local p = format:gsub("%%(%d?)%$?([sd])", function(pos, genre)
+    -- "%%" est un % ecrit : mis de cote avant de lire les valeurs.
+    local p = format:gsub("%%%%", "\002"):gsub("%%(%d?)%$?([sd])", function(pos, genre)
         rang = rang + 1
         table.insert(ordre, tonumber(pos) or rang)
         return "\001" .. genre
     end)
     p = p:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%0")
-    p = p:gsub("\001s", "(.-)"):gsub("\001d", "([%%d%%s%%.,]+)")
+    p = p:gsub("\001s", "(.-)"):gsub("\001d", "([%%d%%s%%.,]+)"):gsub("\002", "%%%%")
     local m = { motif = "^" .. p .. "$", ordre = ordre }
     motifs[format] = m
     return m

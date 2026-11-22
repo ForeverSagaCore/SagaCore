@@ -378,3 +378,9 @@ _G.BINDING_NAME_PVPCORE_OPAQUE = NS.T("Carte : entièrement visible (ou retour a
 _G.BINDING_NAME_PVPCORE_CACHEE = NS.T("Carte : cachée (ou retour au réglage)", "Map : hidden (or back to settings)")
 function _G.PvPCore_CarteOpaque() C.Forcer("opaque") end
 function _G.PvPCore_CarteCachee() C.Forcer("cachee") end
+_G.BINDING_NAME_PVPCORE_FENETRE = NS.T("Fenêtre de PvPCore (honneur, parties, réglages)", "PvPCore window (honour, matches, settings)")
+function _G.PvPCore_Fenetre()
+    local w = NS.fenetre and NS.fenetre.w
+    if w and w.cadre and w.cadre:IsShown() then w.cadre:Hide() return end
+    if NS.fenetre and NS.fenetre.Ouvrir then NS.fenetre.Ouvrir() end
+end
