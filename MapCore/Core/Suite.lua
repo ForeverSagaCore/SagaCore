@@ -2654,34 +2654,61 @@ local function CadreGuidage()
             e:SetShown(not externe)
         end
         self:EnableMouse(not externe)
+        -- La fleche de l'add-on d'itineraire met un instant a paraitre : en
+        -- attendant (au plus 2 s), rien sous elle, pour ne pas s'afficher au
+        -- milieu de sa boussole puis sauter dessous.
+        local enAttenteFleche = false
         if self.changer then
             local fl = externe and FlecheExterne()
+            local maintenant = (_G.GetTime and _G.GetTime()) or 0
+            if not externe then self.debutExterne = nil
+            elseif not self.debutExterne then self.debutExterne = maintenant end
             self.changer:ClearAllPoints()
             if fl and fl:IsShown() then
                 self.changer:SetPoint("TOP", BasDeFleche(fl), "BOTTOM", 0, -8)
             elseif externe then
+                enAttenteFleche = maintenant - (self.debutExterne or maintenant) < 2
                 self.changer:SetPoint("TOP", self, "CENTER", 0, 0)
             else
                 self.changer:SetPoint("TOP", self.qui, "BOTTOM", 0, -6)
             end
+            if enAttenteFleche then self.changer:Hide() end
         end
         -- Avec un add-on d'itineraire, il ne montre que l'etape en cours : le
         -- compte des etapes reste celui de la suite, sous Changer de guide.
+        -- Sous Changer de guide : l'add-on de la suite qui guide et ce qu'il
+        -- guide (QuestCore : Vers le niveau 25), puis le compte des etapes
+        -- quand il y en a plusieurs (Etape 2 sur 10).
         if not self.etape then
             self.etape = self:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             self.etape:SetPoint("TOP", self.changer or self, "BOTTOM", 0, -4)
             self.etape:SetWordWrap(false)
             self.etape:SetShadowOffset(1, -1)
+            self.compte = self:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            self.compte:SetPoint("TOP", self.etape, "BOTTOM", 0, -2)
+            self.compte:SetWordWrap(false)
+            self.compte:SetShadowOffset(1, -1)
         end
-        if externe and cible.rang and cible.total and cible.total > 1 then
+        if externe and not enAttenteFleche then
             local fr = Suite.Langue() == "frFR"
-            -- Devant : l'add-on de la suite qui tient ce compte (QuestCore...).
             local qui = tostring(Suite.guide.cle or ""):gsub("Pointee$", "")
-            local compte = string.format(fr and "Étape %d sur %d" or "Step %d of %d", cible.rang, cible.total)
-            self.etape:SetText(qui ~= "" and ("|cffffd100" .. qui .. "|r : " .. compte) or compte)
-            self.etape:Show()
+            local nomF = f.nom
+            if type(nomF) == "function" then local okN, n = pcall(nomF) nomF = okN and n or nil end
+            local quoi = cible.guidage or nomF or cible.titre
+            quoi = type(quoi) == "string" and quoi:gsub("[\r\n].*$", "") or ""
+            local ligne = qui ~= "" and ("|cffffd100" .. qui .. "|r") or ""
+            if quoi ~= "" then ligne = (ligne ~= "" and (ligne .. " : ") or "") .. quoi end
+            self.etape:SetText(ligne)
+            self.etape:SetShown(ligne ~= "")
+            if cible.rang and cible.total and cible.total > 1 then
+                self.compte:SetText(string.format(fr and "Étape %d sur %d" or "Step %d of %d", cible.rang, cible.total))
+                self.compte:Show()
+            else
+                self.compte:Hide()
+            end
         else
             self.etape:Hide()
+            self.compte:Hide()
         end
         -- Plus d'add-on de trajet pour ce guidage : ce qu'on lui avait envoye
         -- s'efface, la fleche de la suite reste seule.

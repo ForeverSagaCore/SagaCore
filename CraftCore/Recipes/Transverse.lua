@@ -565,10 +565,11 @@ function sources.Candidats(code, fiche, marge)
         Garder("possede", c.objet, { provenance = string.format(c.ou == "banque" and L.GEAR_IN_BANK or L.GEAR_IN_BAGS, c.nomCourt) })
     end
     for _, c in ipairs(candidats.moi) do
-        Garder("craftInterne", c.objet, { recette = c.recette, provenance = c.pret and L.RECIPES_CAN_CRAFT or L.GEAR_SRC_MINE_MISSING, pret = c.pret })
+        Garder("craftInterne", c.objet, { recette = c.recette, groupe = "connue",
+            provenance = c.pret and L.RECIPES_CAN_CRAFT or L.GEAR_SRC_MINE_MISSING, pret = c.pret })
     end
     for _, c in ipairs(candidats.autres) do
-        Garder("craftInterne", c.objet, { recette = c.recette, provenance = string.format(L.GEAR_MAKER, c.nomCourt) })
+        Garder("craftInterne", c.objet, { recette = c.recette, groupe = "connue", provenance = string.format(L.GEAR_MAKER, c.nomCourt) })
     end
     -- Plus tard : une recette du metier d'un de ses personnages, pas encore apprise.
     local metiers = MetiersDuCompte()
@@ -579,9 +580,23 @@ function sources.Candidats(code, fiche, marge)
             local qui = ligne and metiers[ligne] and metiers[ligne][1]
             if qui then
                 local rangR = NS.recettes.RangRequis and NS.recettes.RangRequis(recette)
-                Garder("craftInterne", objet, { recette = tonumber(cle) or cle, plusTard = true,
-                    provenance = rangR and string.format(L.GEAR_SRC_LATER, NS.inventaire.NomCourt(qui.cle), rangR)
-                        or string.format(L.GEAR_SRC_LATER_NORANK, NS.inventaire.NomCourt(qui.cle)) })
+                -- Comment l'apprendre : a looter (au hasard d'un butin), ou a
+                -- apprendre (formateur, marchand, quete...), dit en clair.
+                local nature, lignes
+                if NS.recettes.CommentApprendre then
+                    local okA, n, l = pcall(NS.recettes.CommentApprendre, recette)
+                    if okA then nature, lignes = n, l end
+                end
+                local groupe = (nature == "RECIPES_HOW_DROP") and "looter" or "apprendre"
+                local comment = nature and L[nature] or L.RECIPES_HOW_TRAINER
+                -- Le detail (vendeur, monstre, quete), sauf la simple supposition du formateur.
+                local detail = type(lignes) == "table" and lignes[1] or nil
+                if detail == L.RECIPES_HOW_TRAINER_GUESS or nature == "RECIPES_HOW_TRAINER" then detail = nil end
+                local quiNom = NS.inventaire.NomCourt(qui.cle)
+                local texte = rangR and string.format(L.GEAR_SRC_HOW_RANK, quiNom, rangR, detail or comment)
+                    or string.format(L.GEAR_SRC_HOW, quiNom, detail or comment)
+                Garder("craftInterne", objet, { recette = tonumber(cle) or cle, plusTard = true, groupe = groupe,
+                    provenance = texte })
             end
         end
     end
