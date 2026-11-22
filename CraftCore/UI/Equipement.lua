@@ -64,22 +64,32 @@ local function ObjetPorteDe(fiche, nomEmplacement, estConnecte)
         local numero = NS.emplacements.Numero(nomEmplacement)
         if numero and j.objetEquipe then
             local id = tonumber(NS.Appeler(j.objetEquipe, "player", numero))
-            if id then return id end
+            if id then
+                local lien = j.lienObjetEquipe and NS.Appeler(j.lienObjetEquipe, "player", numero)
+                return id, type(lien) == "string" and lien or nil
+            end
         end
     end
     local porte = fiche and fiche.equipement and fiche.equipement[nomEmplacement]
-    return porte and porte.id or nil
+    return porte and porte.id or nil, porte and porte.lien or nil
 end
 
-local function InfosObjet(id)
+-- Le nom ecrit dans le lien d'un objet porte : connu meme quand le jeu n'a
+-- pas encore la fiche de l'objet (objets propres au serveur, par exemple).
+local function NomDuLien(lien)
+    return type(lien) == "string" and string.match(lien, "|h%[(.-)%]|h") or nil
+end
+
+local function InfosObjet(id, lien)
     if not id then return nil end
     local info = NS.objets.Info(id)
+    local nom = (info and info.nom) or NomDuLien(lien)
     return {
         id = id,
-        nom = info and info.nom,
+        nom = nom,
         niveau = info and info.niveau,
-        icone = info and info.icone,
-        stats = NS.objets.Stats(id),
+        icone = (info and info.icone) or NS.Appeler(NS.jeu.iconeObjet, id),
+        stats = NS.objets.Stats(id) or (lien and NS.objets.Stats(lien)),
     }
 end
 
@@ -518,6 +528,20 @@ function equipement.Rendre(contenu, bandeau)
     vue.separateur:SetPoint("BOTTOMLEFT", vue, "BOTTOMLEFT", LARGEUR_COLONNE * 2 + 22, 8)
     vue.separateur:Show()
     vue.onglets = vue.onglets or {}
+    equipement.onglets = vue.onglets
+    -- Onglets tous de la meme largeur, celle du libelle le plus long : jamais
+    -- coupes.
+    local largeurOnglet = 0
+    do
+        local mesure = vue.mesureOnglet or vue:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        vue.mesureOnglet = mesure
+        mesure:Hide()
+        for _, cat in ipairs(NS.sources.ORDRE) do
+            mesure:SetText(L["GEAR_CAT_" .. cat])
+            largeurOnglet = math.max(largeurOnglet, mesure:GetStringWidth() or 80)
+        end
+        largeurOnglet = math.floor(largeurOnglet + 44)
+    end
     local precedentOnglet
     for rang, cat in ipairs(NS.sources.ORDRE) do
         local o = vue.onglets[rang]
@@ -530,11 +554,9 @@ function equipement.Rendre(contenu, bandeau)
             vue.onglets[rang] = o
         end
         o:SetText(L["GEAR_CAT_" .. cat])
-        local largeurTexte = (o.GetFontString and o:GetFontString() and o:GetFontString():GetStringWidth()) or 80
-        o:SetWidth(largeurTexte + 30)
         o:ClearAllPoints()
         if precedentOnglet then o:SetPoint("LEFT", precedentOnglet, "RIGHT", 2, 0)
-        else o:SetPoint("TOPLEFT", vue, "TOPLEFT", 4, 0) end
+        else o:SetPoint("TOPLEFT", vue, "TOPLEFT", 28, 0) end -- la place de LT
         precedentOnglet = o
         local actif = equipement.Categorie() == cat
         if actif then
@@ -544,6 +566,11 @@ function equipement.Rendre(contenu, bandeau)
             if _G.PanelTemplates_DeselectTab then pcall(_G.PanelTemplates_DeselectTab, o) end
             o:SetAlpha(0.75)
         end
+        -- Apres le jeu (qui retaille ses onglets au plus juste) : notre largeur,
+        -- et le libelle en entier.
+        o:SetWidth(largeurOnglet)
+        local fs = o.GetFontString and o:GetFontString()
+        if fs then fs:SetWidth(largeurOnglet - 16) fs:SetWordWrap(false) end
         o:SetScript("OnClick", function()
             equipement.PoserCategorie(cat)
             NS.ecran.selectionObjets = {}
@@ -555,8 +582,8 @@ function equipement.Rendre(contenu, bandeau)
     -- Emplacements.
     for _, emplacement in ipairs(NS.emplacements.DuPersonnage) do
         local bouton = vue.cases[emplacement.nom]
-        local objet = ObjetPorteDe(fiche, emplacement.nom, estConnecte)
-        local info = objet and NS.objets.Info(objet)
+        local objet, lienObjet = ObjetPorteDe(fiche, emplacement.nom, estConnecte)
+        local info = objet and InfosObjet(objet, lienObjet)
 
         bouton.ou:SetText(NS.emplacements.LibelleDuSlot(emplacement))
         if info and info.nom then
@@ -594,12 +621,12 @@ function equipement.Rendre(contenu, bandeau)
         if e.nom == vue.choisi then emplacementChoisi = e break end
     end
 
-    local objetPorte = ObjetPorteDe(fiche, vue.choisi, estConnecte)
-    local porte = InfosObjet(objetPorte)
+    local objetPorte, lienPorte = ObjetPorteDe(fiche, vue.choisi, estConnecte)
+    local porte = InfosObjet(objetPorte, lienPorte)
 
     local choix = vue.choix
     choix.titre:SetText(NS.emplacements.LibelleDuSlot(emplacementChoisi))
-    choix.sousTitre:SetText(porte and porte.nom or L.EQUIP_EMPTY)
+    choix.sousTitre:SetText(porte and (porte.nom or L.EQUIP_NOT_READ) or L.EQUIP_EMPTY)
 
     -- Filtres de matiere : seulement les armures que ce personnage peut porter.
     -- La meilleure pour sa classe et son niveau est la preference, active par
@@ -736,6 +763,11 @@ function equipement.Rendre(contenu, bandeau)
         if a.total ~= b.total then return a.total > b.total end
         return a.c.id < b.c.id
     end)
+    -- L'objet porte pas encore lu : la page se redessinera a son arrivee.
+    if objetPorte and not (porte and porte.nom and porte.stats) then
+        enAttente = enAttente + 1
+        NS.sources.Charger(objetPorte)
+    end
     vue.enAttente = enAttente
 
     -- Legende : ce qui est en cours de lecture, ou l'etat de la base.

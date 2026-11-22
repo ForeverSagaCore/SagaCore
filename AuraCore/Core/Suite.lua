@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 119
+local VERSION = 120
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4679,11 +4679,16 @@ end
 -- Ce que MacroCore ouvre le remplace : tant que cette fenetre est ouverte,
 -- MacroCore n'existe plus (ni bouton, ni commande). Elle revient quand
 -- la fenetre se ferme.
+-- Chaque fenetre est notee avec ce qu'elle montre : une meme fenetre peut
+-- servir deux add-ons (CraftCore et StuffCore). Passer de l'un a l'autre
+-- compte comme une nouvelle fenetre.
 local function FenetresVisibles()
     local vues = {}
-    local function Ajouter(c) if c and c.IsShown and c:IsShown() then vues[c] = true end end
-    for _, m in pairs(Suite.membres or {}) do
-        if m.fenetre then local ok, c = pcall(m.fenetre) if ok then Ajouter(c) end end
+    local function Ajouter(c, cle)
+        if c and c.IsShown and c:IsShown() then vues[c] = cle or true end
+    end
+    for cle, m in pairs(Suite.membres or {}) do
+        if m.fenetre then local ok, c = pcall(m.fenetre) if ok then Ajouter(c, tostring(cle)) end end
     end
     for _, n in ipairs(SUIVIS) do Ajouter(_G[n]) end
     for _, n in ipairs(UISpecialFrames or {}) do Ajouter(_G[n]) end
@@ -4741,8 +4746,8 @@ function Suite.ApresLancementMacroCore(famille)
             f.blocPilote = pl.nom
             table.insert(nouvelles, _G[pl.nom] or f)
         else
-            for c in pairs(FenetresVisibles()) do
-                if not avant[c] and c ~= f then table.insert(nouvelles, c) end
+            for c, cle in pairs(FenetresVisibles()) do
+                if c ~= f and avant[c] ~= cle then table.insert(nouvelles, c) end
             end
         end
         if #nouvelles == 0 then
@@ -5085,6 +5090,41 @@ end
 local function TxtC(t) if type(t) == "function" then local ok, v = pcall(t) return ok and v or "" end return t or "" end
 
 -- La liste ouverte, commune a toutes les listes deroulantes de la suite.
+-- Manette sur une liste ouverte : elle prend la croix (haut / bas), A
+-- choisit l'option allumee, B referme. Commun a toutes les listes de la suite.
+local function ManetteDeListe(l, capteur)
+    function l.Allumer(i)
+        local visibles = {}
+        for _, it in ipairs(l.items) do if it:IsShown() then table.insert(visibles, it) end end
+        if #visibles == 0 then return end
+        i = math.max(1, math.min(#visibles, i or 1))
+        l.index = i
+        for k, it in ipairs(visibles) do
+            if k == i then it:LockHighlight() else it:UnlockHighlight() end
+        end
+        l.visibles = visibles
+    end
+    if l.EnableGamePadButton then
+        l:SetScript("OnGamePadButtonDown", function(_, bouton)
+            if bouton == "PADDUP" then l.Allumer((l.index or 1) - 1)
+            elseif bouton == "PADDDOWN" then l.Allumer((l.index or 1) + 1)
+            elseif bouton == "PAD1" then
+                local it = l.visibles and l.visibles[l.index or 1]
+                if it then it:Click("LeftButton") end
+            elseif bouton == "PAD2" or bouton == "PADBACK" then l:Hide()
+            end
+        end)
+    end
+    l:SetScript("OnShow", function()
+        capteur:Show()
+        if l.EnableGamePadButton then pcall(l.EnableGamePadButton, l, true) end
+    end)
+    l:SetScript("OnHide", function()
+        capteur:Hide()
+        if l.EnableGamePadButton then pcall(l.EnableGamePadButton, l, false) end
+    end)
+end
+
 local function ListeCommune()
     if Suite.liste then return Suite.liste end
     local capteur = CreateFrame("Button", nil, UIParent)
@@ -5111,8 +5151,7 @@ local function ListeCommune()
     end
     l.items = {}
     capteur:SetScript("OnClick", function() l:Hide() end)
-    l:SetScript("OnHide", function() capteur:Hide() end)
-    l:SetScript("OnShow", function() capteur:Show() end)
+    ManetteDeListe(l, capteur)
     table.insert(UISpecialFrames, "CoreSuiteListe")
     Suite.liste = l
     return l
@@ -5190,6 +5229,10 @@ local function ListeDeroulante(f, Options, lire, Choisir)
         l:ClearAllPoints()
         l:SetPoint("TOPLEFT", d, "BOTTOMLEFT", 0, -2)
         l:Show()
+        -- La croix part de l'option en place.
+        local rangActuel = 1
+        for i, o in ipairs(opts) do if ok and o[1] == actuel then rangActuel = i end end
+        l.Allumer(rangActuel)
     end
     d:SetScript("OnClick", Ouvrir)
     d:HookScript("OnHide", function() local l = Suite.liste if l and l.proprietaire == d then l:Hide() end end)
@@ -5252,8 +5295,7 @@ local function FenetreDeListe()
     end
     l.items = {}
     capteur:SetScript("OnClick", function() l:Hide() end)
-    l:SetScript("OnShow", function() capteur:Show() end)
-    l:SetScript("OnHide", function() capteur:Hide() end)
+    ManetteDeListe(l, capteur)
     table.insert(UISpecialFrames, "CoreSuiteListe2")
     Suite.liste2 = l
     return l
@@ -5322,6 +5364,10 @@ function Suite.ListeDeroulante(parent, options, lire, poser, apres, focus)
         l:ClearAllPoints()
         l:SetPoint("TOPLEFT", d, "BOTTOMLEFT", 0, -2)
         l:Show()
+        -- La croix part de l'option en place.
+        local rangActuel = 1
+        for i, o in ipairs(opts) do if ok and o[1] == actuel then rangActuel = i end end
+        l.Allumer(rangActuel)
     end
     f.bouton = d
     d:SetScript("OnClick", Ouvrir)

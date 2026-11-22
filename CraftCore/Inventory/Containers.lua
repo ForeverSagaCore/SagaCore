@@ -532,7 +532,8 @@ function inventaire.ReleverEquipement()
         if numero then
             local id = tonumber(NS.Appeler(j.objetEquipe, "player", numero))
             if id then
-                porte[emplacement.nom] = { id = id, vuLe = NS.Horodatage() }
+                local lien = j.lienObjetEquipe and NS.Appeler(j.lienObjetEquipe, "player", numero)
+                porte[emplacement.nom] = { id = id, lien = type(lien) == "string" and lien or nil, vuLe = NS.Horodatage() }
                 combien = combien + 1
             end
         end

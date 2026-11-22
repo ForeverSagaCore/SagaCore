@@ -4700,10 +4700,21 @@ local function PoserIndicesManette(win)
     local premierOnglet = win.onglets and win.ordreOnglets and win.onglets[win.ordreOnglets[1] or ""]
     premierOnglet = premierOnglet or win.ongletCaisses
     local dernierOnglet = win.ongletCaisses
-    -- StuffCore n'a pas d'onglet a droite : ni LT ni RT.
-    if ecran.EstStuff(ecran.page) then premierOnglet, dernierOnglet = nil, nil end
-    Marque(win, "lt", "PADLTRIGGER", premierOnglet, "BOTTOM", "TOP", 0, 12)
-    Marque(win, "rt", "PADRTRIGGER", dernierOnglet, "TOP", "BOTTOM", 0, -10)
+    -- StuffCore n'a pas d'onglet a droite : LT / RT seulement en
+    -- presentation 2, de part et d'autre des onglets d'origine.
+    if ecran.EstStuff(ecran.page) then
+        local o = NS.equipement and NS.equipement.onglets
+        if ecran.page == "equipement" and NS.equipement.Scenario() == 2 and o and o[1] and o[#o] then
+            Marque(win, "lt", "PADLTRIGGER", o[1], "RIGHT", "LEFT", -2, -2)
+            Marque(win, "rt", "PADRTRIGGER", o[#o], "LEFT", "RIGHT", 4, -2)
+        else
+            Marque(win, "lt", "PADLTRIGGER", nil)
+            Marque(win, "rt", "PADRTRIGGER", nil)
+        end
+    else
+        Marque(win, "lt", "PADLTRIGGER", premierOnglet, "BOTTOM", "TOP", 0, 12)
+        Marque(win, "rt", "PADRTRIGGER", dernierOnglet, "TOP", "BOTTOM", 0, -10)
+    end
     -- Croix gauche / droite : apres le dernier portrait de personnage.
     Marque(win, "dg", "PADDLEFT", win.dernierPortrait, "LEFT", "RIGHT", 10, 0)
     Marque(win, "dd", "PADDRIGHT", win.marquesManette.dg, "LEFT", "RIGHT", 2, 0)
@@ -5566,8 +5577,22 @@ end
 function ecran.MetierVoisin(pas)
     if not fenetre then ecran.Montrer() end
     local ordre = {}
-    -- StuffCore n'a pas d'onglet a droite.
-    if ecran.EstStuff(ecran.page) then return end
+    -- StuffCore n'a pas d'onglet a droite. En presentation 2, LT / RT passent
+    -- d'une origine a l'autre (onglets au-dessus des emplacements).
+    if ecran.EstStuff(ecran.page) then
+        if ecran.page == "equipement" and NS.equipement and NS.equipement.Scenario() == 2 then
+            local ordre = NS.sources.ORDRE
+            local rang = 1
+            for k, c in ipairs(ordre) do if c == NS.equipement.Categorie() then rang = k end end
+            local suivant = math.max(1, math.min(#ordre, rang + pas))
+            if suivant ~= rang then
+                NS.equipement.PoserCategorie(ordre[suivant])
+                NS.ecran.selectionObjets = {}
+                ecran.Montrer("equipement")
+            end
+        end
+        return
+    end
     for _, cle in ipairs(fenetre and fenetre.ordreOnglets or {}) do
         table.insert(ordre, { metier = cle })
     end
