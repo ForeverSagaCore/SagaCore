@@ -2936,13 +2936,17 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     end
 
     y = y + 4
-    local assure, atteignable = catalogue.Cibles(fiche, cleObjectif)
-    assure, atteignable = assure or rang, atteignable or rang
+    local assure, atteignable, probable = catalogue.Cibles(fiche, cleObjectif)
+    assure, atteignable, probable = assure or rang, atteignable or rang, probable or rang
     -- 1. Ce que les composants du compte (sacs, banque, autres personnages)
     -- donnent deja, a coup sur.
     if assure > rang then
         LigneAViser(1, string.format(L.GUIDE_ALREADY, assure), VERT, emp.sur,
             function() Basculer("sur", not emp.sur) end)
+    elseif probable > rang then
+        -- Pas de point sur, mais des points probables : le dire, comme le
+        -- resume de la ligne du metier.
+        LigneAViser(1, string.format(L.GUIDE_ALREADY_PROBABLE, probable), GRIS, false, nil)
     else
         LigneAViser(1, L.GUIDE_ALREADY_NONE, GRIS, false, nil)
     end
@@ -3314,14 +3318,19 @@ local function RendreProgression(contenu, seulLigne)
         ligne.nom:SetText(catalogue.LibelleAvecNiveau(m.nom or catalogue.NomDuMetier(m.ligne) or "", m.rang, m.rangMax))
         ligne.sacs:SetText("")
         ligne.banque:SetText("")
-        -- En resume : jusqu'ou les composants du compte menent, a coup sur.
-        local ok, plan = pcall(catalogue.Progression, m.ligne, m.rang, m.rangMax, nil)
+        -- En resume, les memes chiffres que le detail : le rang assure, sinon
+        -- le rang probable avec les composants du compte.
+        local surR, _, probR = catalogue.Cibles(fiche, m.ligne)
+        surR, probR = surR or m.rang, probR or m.rang
         if m.rangMax and m.rang >= m.rangMax then
             ligne.total:SetText(L.PROG_SUMMARY_CAP)
             ligne.total:SetTextColor(0.55, 0.55, 0.55)
-        elseif ok and plan and plan.atteint > m.rang then
-            ligne.total:SetText(string.format(L.PROG_SUMMARY, plan.atteint))
+        elseif surR > m.rang then
+            ligne.total:SetText(string.format(L.PROG_SUMMARY, surR))
             ligne.total:SetTextColor(unpack(C.sacs))
+        elseif probR > m.rang then
+            ligne.total:SetText(string.format(L.PROG_SUMMARY_PROBABLE, probR))
+            ligne.total:SetTextColor(0.55, 0.55, 0.55)
         else
             ligne.total:SetText(L.PROG_SUMMARY_NONE)
             ligne.total:SetTextColor(0.55, 0.55, 0.55)

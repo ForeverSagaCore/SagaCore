@@ -931,13 +931,15 @@ function recettes.Cibles(fiche, cle)
     local maintenant = (GetTime and GetTime()) or 0
     local k = tostring(fiche) .. ":" .. tostring(cle)
     local c = cibles[k]
-    if c and c.rang == rang and maintenant - c.quand < 2 then return c.sur, c.recettes end
+    if c and c.rang == rang and maintenant - c.quand < 2 then return c.sur, c.recettes, c.probable end
     local okS, planS = pcall(recettes.Progression, tonumber(cle), rang, rangMax, nil)
     local sur = okS and planS and rang + (planS.pointsSurs or 0) or rang
+    -- Avec les points probables (recettes jaunes, comptees en moyenne).
+    local probable = okS and planS and planS.atteint or rang
     local okR, planR = pcall(recettes.Progression, tonumber(cle), rang, rangMax, rangMax or (rang + 75))
     local rec = okR and planR and planR.atteint or rang
-    cibles[k] = { rang = rang, quand = maintenant, sur = sur, recettes = rec }
-    return sur, rec
+    cibles[k] = { rang = rang, quand = maintenant, sur = sur, recettes = rec, probable = probable }
+    return sur, rec, probable
 end
 
 -- Les rangs vises, tries : les rangs assure et atteignable seulement s'ils
