@@ -394,17 +394,15 @@ local function Poser(index, y, texte, options)
     elseif l.don then
         l.don:Hide()
     end
-    -- Colonne de droite (pourcentage d'avancement), le texte s'arrete avant.
     l.droite:SetText(options.droite or "")
-    l.droite:ClearAllPoints()
-    l.droite:SetPoint("TOPRIGHT", l, "TOPRIGHT", options.etoile and -18 or 0, 0)
-    if options.etoile then l.etoile:SetPoint("TOPRIGHT", l, "TOPRIGHT", 0, 1) end
     if options.droite then
         local cd = options.couleurDroite or { 0.8, 0.8, 0.8 }
         l.droite:SetTextColor(cd[1], cd[2], cd[3])
-        l.texte:SetPoint("TOPRIGHT", l.droite, "TOPLEFT", -6, 0)
-    elseif options.etoile then
-        l.texte:SetPoint("TOPRIGHT", l.etoile, "TOPLEFT", -4, 0)
+    end
+    if options.droite or options.etoile then
+        -- Place reservee a droite (pourcentage, etoile) ; le texte s'arrete
+        -- avant. Les positions verticales sont fixees apres la police.
+        l.texte:SetPoint("TOPRIGHT", l, "TOPRIGHT", -40, 0)
     elseif options.don then
         l.texte:SetPoint("TOPRIGHT", l.don, "TOPLEFT", -4, -1)
     elseif options.pion or options.margeDroite then
@@ -423,6 +421,28 @@ local function Poser(index, y, texte, options)
         l.texte:SetFont(NS.Police(fichier), taille, drapeaux)
         local f2, _, d2 = l.droite:GetFont()
         if f2 then l.droite:SetFont(NS.Police(f2), Reglages().taille, d2) end
+    end
+    -- Tout ce qui borde la premiere ligne (rond, marque, pourcentage,
+    -- etoile) est centre sur elle, quelle que soit la taille de police.
+    local _, tailleLigne = l.texte:GetFont()
+    local milieu = -math.floor((tonumber(tailleLigne) or 12) / 2 + 0.5)
+    if l.rond and l.rond:IsShown() then
+        l.rond:ClearAllPoints()
+        l.rond:SetPoint("CENTER", l, "TOPLEFT", 10, milieu)
+    end
+    if l.marque:IsShown() then
+        l.marque:ClearAllPoints()
+        l.marque:SetPoint("CENTER", l, "TOPLEFT", options.marqueTexture and 7 or 10, milieu)
+    end
+    l.droite:ClearAllPoints()
+    l.droite:SetPoint("RIGHT", l, "TOPRIGHT", options.etoile and -18 or 0, milieu)
+    if options.etoile then
+        l.etoile:ClearAllPoints()
+        l.etoile:SetPoint("RIGHT", l, "TOPRIGHT", 0, milieu)
+    end
+    if options.droite or options.etoile then
+        local large = (options.droite and ((l.droite:GetStringWidth() or 0) + 6) or 0) + (options.etoile and 18 or 0)
+        l.texte:SetPoint("TOPRIGHT", l, "TOPRIGHT", -math.ceil(large), 0)
     end
     -- Titres sur une seule ligne, tronques ; le reste peut passer a la ligne.
     l.texte:SetWordWrap(not options.uneLigne)
@@ -975,6 +995,28 @@ local function Chaine(moi, id)
     return liste
 end
 
+-- La quete qui suit une quete rendue dans sa suite, si elle n'est pas
+-- encore faite : par la suite connue de la base, ou, a defaut, par une
+-- quete du journal dont la suite contient celle-ci.
+local function SuiteRestante(moi, id)
+    local function Faite(c) return moi.faites and moi.faites[c] end
+    local chaine = Chaine(moi, id)
+    if chaine then
+        local passe = false
+        for _, c in ipairs(chaine) do
+            if c == id then passe = true
+            elseif passe and not Faite(c) then return c end
+        end
+    end
+    for c in pairs(moi.quetes or {}) do
+        if c ~= id then
+            local ch = Chaine(moi, c)
+            if ch then for _, x in ipairs(ch) do if x == id then return c end end end
+        end
+    end
+    return nil
+end
+
 local RendreEtapeBase
 local function RendreAvecChaine(moi, quetes, id, index, y, prefixe)
     if dejaRendues[id] then return index, y end
@@ -1492,11 +1534,21 @@ RendreVueParcours = function(moi, index, y)
                 -- (a prendre), fait (en vert, coche) ; le numero reste celui
                 -- du parcours.
                 local enCours, aRendre, aFaire, faites = {}, {}, {}, {}
+                local dansLeTrajet = {}
+                for _, id in ipairs(pc.etapes) do dansLeTrajet[id] = true end
                 for rang, id in ipairs(pc.etapes) do
                     local e = NS.parcours.EtatEtape(moi, id)
                     local q = moi.quetes[id]
+                    -- Une etape rendue dont la suite continue : la suivante
+                    -- prend sa place (prise, a rendre ou a prendre).
+                    local suite = e == "faite" and SuiteRestante(moi, id)
+                    if suite and dansLeTrajet[suite] then suite = nil end
                     if (e == "cours" or e == "rendre") and q then
                         table.insert(q.complete == true and aRendre or enCours, { rang = rang, id = id })
+                    elseif suite and moi.quetes[suite] then
+                        table.insert(moi.quetes[suite].complete == true and aRendre or enCours, { rang = rang, id = suite })
+                    elseif suite then
+                        table.insert(aFaire, { rang = rang, id = suite, suite = true })
                     elseif e == "faite" then
                         table.insert(faites, { rang = rang, id = id })
                     else
@@ -1530,11 +1582,15 @@ RendreVueParcours = function(moi, index, y)
                     Groupe(L.ROUTE_GROUP_TODO, #aFaire, { 1, 0.82, 0 })
                     for _, t in ipairs(aFaire) do
                         local idQ = t.id
+                        if t.suite then
+                            index, y = RendreAvecChaine(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
+                        else
                         index, y = RendreEtapeBase(moi, t.id, t.rang, t.e, index, y, { actif = true, aide = L.ROUTE_STEP_HELP,
                             auClic = function()
                                 if suivi.PasserEtape then suivi.PasserEtape(idP, idQ) end
                                 suivi.Rendre()
                             end })
+                        end
                     end
                 end
                 if #faites > 0 then
