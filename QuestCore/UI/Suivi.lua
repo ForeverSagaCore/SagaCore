@@ -2004,11 +2004,20 @@ function suivi.Rendre()
             local idV = pcVue.id
             table.insert(boutons, { ici and L.GUIDE_STOP or L.GUIDE_START,
                 function() if NS.guidage then NS.guidage.Basculer(not ici, idV) end end, L.GUIDE_HELP })
+            local S = NS.suite or _G.CoreSuite
+            if ici and S and S.PeutChangerDeGuide and S.PeutChangerDeGuide() then
+                table.insert(boutons, { L.GUIDE_SWITCH, function() S.ChangerDeGuide() end, L.GUIDE_SWITCH_HELP })
+            end
         elseif s.vue ~= "parcours" then
             -- Un seul bouton : Guider (ce qu'il guide est dit au survol), ou
             -- Arreter quand la fleche tourne.
             if actif then
                 table.insert(boutons, { L.GUIDE_STOP, function() if NS.guidage then NS.guidage.Basculer(false) end end, L.GUIDE_HELP })
+                -- Un add-on de trajet installe : on peut changer de guide en route.
+                local S = NS.suite or _G.CoreSuite
+                if S and S.PeutChangerDeGuide and S.PeutChangerDeGuide() then
+                    table.insert(boutons, { L.GUIDE_SWITCH, function() S.ChangerDeGuide() end, L.GUIDE_SWITCH_HELP })
+                end
             else
                 -- Meme ordre que suivi.CeQueGuider, sans calculer le trajet ici.
                 local aide

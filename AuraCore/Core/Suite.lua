@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 130
+local VERSION = 132
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2671,40 +2671,59 @@ function Suite.ChoisirGuide()
     local f = Suite.choixGuide
     if f and f:IsShown() then return end
     if not f then
-        local ok, c = pcall(CreateFrame, "Frame", "CoreSuiteChoixGuide", UIParent, "BackdropTemplate")
-        f = ok and c or CreateFrame("Frame", "CoreSuiteChoixGuide", UIParent)
-        if f.SetBackdrop then
-            f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-                edgeSize = 14, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
-            f:SetBackdropColor(0.09, 0.09, 0.09, 0.95)
-            f:SetBackdropBorderColor(0.75, 0.6, 0.35, 1)
-        end
-        f:SetFrameStrata("DIALOG")
-        f:SetClampedToScreen(true)
-        f:EnableMouse(true)
-        f.titre = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        f.titre:SetPoint("TOP", f, "TOP", 0, -12)
-        f.texte = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        f.texte:SetPoint("TOP", f.titre, "BOTTOM", 0, -6)
+        -- Une fenetre de la suite, a sa charte (comme MacroCore).
+        local charte = NS.charte
+        if not (charte and charte.Fenetre) then return end
+        f = charte.Fenetre("CoreSuiteQuiGuide", 260, 160, { portrait = false, strate = "DIALOG", sansPied = true })
+        f.texte = f.zone:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        f.texte:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, 0)
+        f.texte:SetPoint("RIGHT", f.zone, "RIGHT", 0, 0)
+        f.texte:SetJustifyH("LEFT")
+        f.texte:SetWordWrap(false)
         f.boutons = {}
+        -- Fermer sans choisir : pas de guidage.
+        if f.fermer then f.fermer:SetScript("OnClick", function() f:Hide() Suite.ArreterGuidage() end) end
+        -- Manette : la croix haut / bas passe d'un choix a l'autre (le choix
+        -- s'allume), A valide, B ferme sans guider.
+        function f.Allumer(i)
+            local vus = {}
+            for _, b in ipairs(f.boutons) do if b:IsShown() then table.insert(vus, b) end end
+            if #vus == 0 then return end
+            i = math.max(1, math.min(#vus, i or 1))
+            f.rang = i
+            for k, b in ipairs(vus) do if k == i then b:LockHighlight() else b:UnlockHighlight() end end
+            f.vus = vus
+        end
+        if f.EnableGamePadButton then
+            f:SetScript("OnGamePadButtonDown", function(_, bouton)
+                if bouton == "PADDUP" then f.Allumer((f.rang or 1) - 1)
+                elseif bouton == "PADDDOWN" then f.Allumer((f.rang or 1) + 1)
+                elseif bouton == "PAD1" then local b = f.vus and f.vus[f.rang or 1] if b then b:Click("LeftButton") end
+                elseif bouton == "PAD2" then f:Hide() Suite.ArreterGuidage()
+                end
+            end)
+            f:HookScript("OnShow", function(self) pcall(self.EnableGamePadButton, self, true) end)
+            f:HookScript("OnHide", function(self) pcall(self.EnableGamePadButton, self, false) end)
+        end
+        f:Hide()
         Suite.choixGuide = f
     end
     local choix = {}
     for _, m in ipairs(hub.Moyens()) do table.insert(choix, { cle = m.cle, nom = m.nom }) end
     table.insert(choix, { cle = "aucun", nom = "Forever SagaCore" })
-    f.titre:SetText(TX("Who guides you?"))
+    if f.titre then f.titre:SetText(TX("Who guides you?")) end
     f.texte:SetText(TX("You can change it later in FriendsCore."))
     for _, b in ipairs(f.boutons) do b:Hide() end
-    local largeur = 200
+    local largeur = 260 - 2 * ((NS.charte and NS.charte.MARGE) or 12) - 10
     for k, ch in ipairs(choix) do
         local b = f.boutons[k]
         if not b then
-            b = CreateFrame("Button", "CoreSuiteChoixGuide" .. k, f, "UIPanelButtonTemplate")
-            b:SetSize(largeur, 24)
+            b = CreateFrame("Button", "CoreSuiteQuiGuide" .. k, f.zone, "UIPanelButtonTemplate")
+            b:SetSize(largeur, 22)
             f.boutons[k] = b
         end
         b:ClearAllPoints()
-        b:SetPoint("TOP", f, "TOP", 0, -50 - (k - 1) * 30)
+        b:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, -22 - (k - 1) * 28)
         b:SetText(ch.nom)
         local cle = ch.cle
         b:SetScript("OnClick", function()
@@ -2714,11 +2733,27 @@ function Suite.ChoisirGuide()
         end)
         b:Show()
     end
-    f:SetSize(largeur + 40, 50 + #choix * 30 + 12)
+    -- Barre de titre, marge, texte, boutons, marge.
+    f:SetHeight(24 + 12 + 22 + #choix * 28 + 12 + 8)
     f:ClearAllPoints()
+    -- A cote de la boussole, sans masquer le milieu de l'ecran.
     local g = _G.CoreSuiteGuidage
-    if g and g:IsShown() then f:SetPoint("TOP", g, "BOTTOM", 0, -40) else f:SetPoint("CENTER", UIParent, "CENTER", 0, 120) end
+    if g and g:IsShown() then f:SetPoint("LEFT", g, "RIGHT", 24, 0) else f:SetPoint("TOP", UIParent, "TOP", 0, -140) end
     f:Show()
+    f.Allumer(1)
+end
+
+-- Changer de guide en cours de route (le guidage continue) : la question
+-- "Qui vous guide ?" revient tout de suite.
+function Suite.PeutChangerDeGuide()
+    local hub = _G.FriendsCoreAPI
+    return hub and hub.Moyens and #hub.Moyens() > 0 and Suite.guide.fournisseur ~= nil or false
+end
+function Suite.ChangerDeGuide()
+    local hub = _G.FriendsCoreAPI
+    if hub and hub.Oublier then pcall(hub.Oublier) end
+    Suite.guide.envoye = nil
+    pcall(Suite.ChoisirGuide)
 end
 
 function Suite.Guider(cle, fournisseur)
@@ -2727,6 +2762,12 @@ function Suite.Guider(cle, fournisseur)
         local ancien = g.fournisseur
         g.cle, g.fournisseur = nil, nil
         pcall(ancien.Fin)
+    end
+    -- Un nouveau guidage (pas la meme destination qui se met a jour) : la
+    -- question "Qui vous guide ?" sera reposee.
+    if g.fournisseur ~= fournisseur then
+        local hub = _G.FriendsCoreAPI
+        if hub and hub.Oublier then pcall(hub.Oublier) end
     end
     g.cle, g.fournisseur = cle, fournisseur
     g.envoye = nil
@@ -2757,6 +2798,7 @@ end
 function Suite.ArreterGuidage(cle)
     local g = Suite.guide
     if cle and g.cle ~= cle then return end
+    if Suite.choixGuide then Suite.choixGuide:Hide() end
     local f = g.fournisseur
     g.cle, g.fournisseur = nil, nil
     g.arrivee = nil

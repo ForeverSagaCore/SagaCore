@@ -27,6 +27,9 @@ local function R()
     FriendsCoreDB = type(FriendsCoreDB) == "table" and FriendsCoreDB or {}
     local d = FriendsCoreDB
     if d.trajet ~= "spf" and d.trajet ~= "tomtom" and d.trajet ~= "aucun" then d.trajet = "auto" end
+    -- Une fois : retour a "Me demander" (le choix d'un guidage ne devait pas
+    -- devenir un reglage).
+    if not d.choixParGuidage then d.choixParGuidage = true d.trajet = "auto" end
     if d.couperFleche == nil then d.couperFleche = true end
     return d
 end
@@ -124,8 +127,12 @@ local function Moyens()
 end
 -- Le moyen choisi : "spf", "tomtom" ou nil. Tant que le joueur n'a pas
 -- choisi (reglage "auto"), aucun : c'est a lui de dire qui le guide.
+-- Le choix fait pour le guidage en cours (reglage "Me demander") : oublie
+-- au guidage suivant.
+local choixDuGuidage
 local function Moyen()
     local choix = R().trajet
+    if choix == "auto" then choix = choixDuGuidage end
     if choix == "spf" and SPF() then return "spf" end
     if choix == "tomtom" and TomTomPret() then return "tomtom" end
     return nil
@@ -163,10 +170,14 @@ _G.FriendsCoreAPI = {
     Trajet = function(dest) return Envoyer(dest) end,
     -- Un add-on de trajet est installe mais le joueur n'a pas encore choisi
     -- qui le guide : la suite lui pose la question.
-    ADecider = function() return R().trajet == "auto" and #Moyens() > 0 end,
+    -- Reglage "Me demander", un add-on de trajet installe, et rien de choisi
+    -- pour ce guidage : la suite pose la question.
+    ADecider = function() return R().trajet == "auto" and choixDuGuidage == nil and #Moyens() > 0 end,
     Moyens = function() return Moyens() end,
-    -- "spf", "tomtom", ou "aucun" (la fleche de la suite).
-    Choisir = function(cle) R().trajet = (cle == "spf" or cle == "tomtom") and cle or "aucun" end,
+    -- Pour ce guidage seulement : "spf", "tomtom" ou "aucun" (la fleche).
+    Choisir = function(cle) choixDuGuidage = (cle == "spf" or cle == "tomtom") and cle or "aucun" end,
+    -- Nouveau guidage : on redemandera.
+    Oublier = function() choixDuGuidage = nil end,
 }
 
 -- ---------------------------------------------------------------------------
