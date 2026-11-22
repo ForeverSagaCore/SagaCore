@@ -3981,7 +3981,10 @@ local function CadreGuidage()
         end
         if externe and cible.rang and cible.total and cible.total > 1 then
             local fr = Suite.Langue() == "frFR"
-            self.etape:SetText(string.format(fr and "Étape %d sur %d" or "Step %d of %d", cible.rang, cible.total))
+            -- Devant : l'add-on de la suite qui tient ce compte (QuestCore...).
+            local qui = tostring(Suite.guide.cle or ""):gsub("Pointee$", "")
+            local compte = string.format(fr and "Étape %d sur %d" or "Step %d of %d", cible.rang, cible.total)
+            self.etape:SetText(qui ~= "" and ("|cffffd100" .. qui .. "|r : " .. compte) or compte)
             self.etape:Show()
         else
             self.etape:Hide()
