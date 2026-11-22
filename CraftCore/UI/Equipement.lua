@@ -378,6 +378,14 @@ local function RendreBandeau(bandeau, porte, choisis)
     -- Le niveau d'objet en premier, il se lit comme une statistique.
     table.insert(cles, 1, "__niveau")
 
+    -- Un chiffre au plus apres la virgule (les degats par seconde).
+    local function Chiffre(v)
+        v = tonumber(v) or 0
+        local arrondi = math.floor(math.abs(v) * 10 + 0.5) / 10
+        if v < 0 then arrondi = -arrondi end
+        if arrondi == math.floor(arrondi) then return string.format("%d", arrondi) end
+        return string.format("%.1f", arrondi)
+    end
     local index = 0
     for _, cle in ipairs(cles) do
         index = index + 1
@@ -394,7 +402,7 @@ local function RendreBandeau(bandeau, porte, choisis)
 
         local base = (cle == "__niveau") and (porte and porte.niveau or 0)
             or ((porte and porte.stats and porte.stats[cle]) or 0)
-        ligne.colonnes[1]:SetText(tostring(base))
+        ligne.colonnes[1]:SetText(Chiffre(base))
         ligne.colonnes[1]:SetTextColor(0.55, 0.55, 0.55)
 
         for rangChoisi = 1, 2 do
@@ -404,7 +412,7 @@ local function RendreBandeau(bandeau, porte, choisis)
                 local valeur = (cle == "__niveau") and (c.niveau or 0)
                     or ((c.stats and c.stats[cle]) or 0)
                 local ecart = valeur - base
-                colonneTexte:SetText(string.format("%d  %s%d", valeur, ecart > 0 and "+" or "", ecart))
+                colonneTexte:SetText(Chiffre(valeur) .. "  " .. (ecart > 0 and "+" or "") .. Chiffre(ecart))
                 if ecart > 0 then colonneTexte:SetTextColor(0.31, 0.82, 0.41)
                 elseif ecart < 0 then colonneTexte:SetTextColor(0.85, 0.40, 0.37)
                 else colonneTexte:SetTextColor(0.55, 0.55, 0.55) end
