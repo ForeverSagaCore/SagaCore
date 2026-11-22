@@ -159,6 +159,28 @@ function parcours.Supprimer(cle, id)
     if rang then table.remove(liste, rang) end
 end
 
+-- Un parcours dont toutes les etapes sont faites n'a plus rien a montrer :
+-- il disparait tout seul, rien a gerer a la main. Seulement quand
+-- l'historique des quetes rendues est connu (sinon rien ne parait fait).
+-- Rend les identifiants retires.
+function parcours.Nettoyer(cle, p)
+    local retires = {}
+    if not (p and type(p.faites) == "table" and next(p.faites)) then return retires end
+    local liste = parcours.Liste(cle)
+    for i = #liste, 1, -1 do
+        local pc = liste[i]
+        local total = type(pc.etapes) == "table" and #pc.etapes or 0
+        if total > 0 then
+            local faites = parcours.Avancement(p, pc)
+            if faites >= total then
+                table.insert(retires, pc.id)
+                table.remove(liste, i)
+            end
+        end
+    end
+    return retires
+end
+
 -- ---------------------------------------------------------------------------
 -- Ce que le personnage peut prendre
 -- ---------------------------------------------------------------------------
