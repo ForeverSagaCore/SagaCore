@@ -3005,6 +3005,88 @@ if not Suite.cadreDemarrage then
     Suite.cadreDemarrage = f
 end
 
+-- ---------------------------------------------------------------------------
+-- Nouvelle version de la suite : chaque copie dit discretement son numero
+-- (messages d'add-on, invisibles dans la discussion) au groupe, au raid et a
+-- la guilde. Une copie qui voit un numero plus recent previent son joueur,
+-- chez lui seulement, une fois par session. Jamais rien d'ecrit dans un canal.
+-- Le numero vient des fichiers publies (ligne X-SagaCore-Version ajoutee a la
+-- publication) : une copie sans numero ecoute sans rien annoncer.
+-- ---------------------------------------------------------------------------
+if not Suite.cadreVersion then
+    local PREFIXE = "SagaCoreVer"
+    local f = CreateFrame("Frame")
+    Suite.cadreVersion = f
+    local function Meta(nom, champ)
+        local A = _G.C_AddOns
+        local lire = (A and A.GetAddOnMetadata) or _G.GetAddOnMetadata
+        if not lire then return nil end
+        local ok, v = pcall(lire, nom, champ)
+        return ok and type(v) == "string" and v ~= "" and v or nil
+    end
+    local function MaVersion()
+        for _, nom in ipairs(Suite.ADDONS_SUITE or {}) do
+            local v = Meta(nom, "X-SagaCore-Version")
+            if v then return v end
+        end
+        return nil
+    end
+    -- Vrai si a est plus recent que b ("1.10.0" apres "1.9.2").
+    local function PlusRecente(a, b)
+        local ta, tb = {}, {}
+        for n in tostring(a):gmatch("%d+") do table.insert(ta, tonumber(n)) end
+        for n in tostring(b):gmatch("%d+") do table.insert(tb, tonumber(n)) end
+        for i = 1, math.max(#ta, #tb) do
+            local x, y = ta[i] or 0, tb[i] or 0
+            if x ~= y then return x > y end
+        end
+        return false
+    end
+    local prevenu = false
+    local derniers = {}
+    local function Envoyer(canal, cible)
+        local v = MaVersion()
+        local C = _G.C_ChatInfo
+        if not (v and C and C.SendAddonMessage) then return end
+        local cle = canal .. (cible or "")
+        local maintenant = (_G.GetTime and _G.GetTime()) or 0
+        if derniers[cle] and maintenant - derniers[cle] < 300 then return end
+        derniers[cle] = maintenant
+        pcall(C.SendAddonMessage, PREFIXE, v, canal, cible)
+    end
+    local function Annoncer()
+        if _G.IsInGuild and _G.IsInGuild() then Envoyer("GUILD") end
+        if _G.IsInRaid and _G.IsInRaid() then Envoyer("RAID")
+        elseif _G.IsInGroup and _G.IsInGroup() then Envoyer("PARTY") end
+    end
+    f:RegisterEvent("PLAYER_LOGIN")
+    f:RegisterEvent("GROUP_ROSTER_UPDATE")
+    f:RegisterEvent("CHAT_MSG_ADDON")
+    f:SetScript("OnEvent", function(_, ev, prefixe, message, canal, auteur)
+        if ev == "PLAYER_LOGIN" then
+            local C = _G.C_ChatInfo
+            if C and C.RegisterAddonMessagePrefix then pcall(C.RegisterAddonMessagePrefix, PREFIXE) end
+            if _G.C_Timer and _G.C_Timer.After then _G.C_Timer.After(20, Annoncer) end
+        elseif ev == "GROUP_ROSTER_UPDATE" then
+            Annoncer()
+        elseif ev == "CHAT_MSG_ADDON" and prefixe == PREFIXE and type(message) == "string" then
+            local mienne = MaVersion()
+            if not mienne then return end
+            if PlusRecente(message, mienne) then
+                if prevenu then return end
+                prevenu = true
+                local fr = Suite.Langue and Suite.Langue() == "frFR"
+                local texte = string.format(fr and "une nouvelle version (%s) est disponible sur CurseForge."
+                    or "a new version (%s) is available on CurseForge.", message)
+                if _G.DEFAULT_CHAT_FRAME then _G.DEFAULT_CHAT_FRAME:AddMessage("|cffffd100Forever SagaCore|r : " .. texte) end
+            elseif PlusRecente(mienne, message) and type(auteur) == "string" and auteur ~= "" then
+                -- Il a une version plus ancienne : on lui dit la notre, en prive.
+                Envoyer("WHISPER", auteur)
+            end
+        end
+    end)
+end
+
 
 -- ---------------------------------------------------------------------------
 -- Prendre la main sur une fenetre de suivi a la manette (macros « Piloter
