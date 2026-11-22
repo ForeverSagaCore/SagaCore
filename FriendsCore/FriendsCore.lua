@@ -138,9 +138,28 @@ local function Moyen()
     return nil
 end
 
+-- Les points poses dans TomTom par la suite, pour pouvoir les retirer.
+local posesTomTom = {}
+
+-- Efface ce que les add-ons de trajet guident encore : une seule fleche a
+-- l'ecran quand la suite guide elle-meme, ou quand le guidage s'arrete.
+local function Effacer()
+    if SPF() then pcall(SPF(), "way reset all") end
+    if TomTomPret() and type(_G.TomTom.RemoveWaypoint) == "function" then
+        for _, uid in ipairs(posesTomTom) do pcall(_G.TomTom.RemoveWaypoint, _G.TomTom, uid) end
+    end
+    posesTomTom = {}
+end
+
 local function Envoyer(dest)
     local moyen = Moyen()
     if not (moyen and type(dest) == "table" and dest.carte and dest.x and dest.y) then return false end
+    -- Une seule fleche a l'ecran : celle de l'add-on de trajet. Le guidage de
+    -- la suite s'arrete avant l'envoi, pour ne pas effacer ce qu'on envoie.
+    -- (Pas quand c'est la suite elle-meme qui passe l'etape : elle n'affiche
+    -- alors plus de fleche, seulement l'etape a suivre.)
+    local S = _G.CoreSuite
+    if not dest.depuisSuite and R().couperFleche and S and S.ArreterGuidage and S.GuidageActif and S.GuidageActif() then pcall(S.ArreterGuidage) end
     local titre = string.gsub(tostring(dest.titre or ""), "[\r\n]", " ")
     if moyen == "spf" then
         local info = _G.C_Map and _G.C_Map.GetMapInfo and select(2, pcall(_G.C_Map.GetMapInfo, dest.carte))
@@ -149,15 +168,16 @@ local function Envoyer(dest)
         local ok = pcall(SPF(), texte)
         if not ok then return false end
     else
-        local ok = pcall(_G.TomTom.AddWaypoint, _G.TomTom, dest.carte, dest.x, dest.y,
+        -- Un seul point de la suite a la fois dans TomTom.
+        if type(_G.TomTom.RemoveWaypoint) == "function" then
+            for _, uid in ipairs(posesTomTom) do pcall(_G.TomTom.RemoveWaypoint, _G.TomTom, uid) end
+        end
+        posesTomTom = {}
+        local ok, uid = pcall(_G.TomTom.AddWaypoint, _G.TomTom, dest.carte, dest.x, dest.y,
             { title = titre ~= "" and titre or nil, from = "Forever SagaCore", persistent = false })
         if not ok then return false end
+        if uid then table.insert(posesTomTom, uid) end
     end
-    -- Une seule fleche a l'ecran : celle de l'add-on de trajet.
-    local S = _G.CoreSuite
-    -- (Pas quand c'est la suite elle-meme qui passe l'etape : elle n'affiche
-    -- alors plus de fleche, seulement l'etape a suivre.)
-    if not dest.depuisSuite and R().couperFleche and S and S.ArreterGuidage and S.GuidageActif and S.GuidageActif() then pcall(S.ArreterGuidage) end
     return true
 end
 
@@ -168,6 +188,7 @@ _G.FriendsCoreAPI = {
         return (m == "spf" and "Shortest Path Forever") or (m == "tomtom" and "TomTom") or nil
     end,
     Trajet = function(dest) return Envoyer(dest) end,
+    Effacer = function() Effacer() end,
     -- Un add-on de trajet est installe mais le joueur n'a pas encore choisi
     -- qui le guide : la suite lui pose la question.
     -- Reglage "Me demander", un add-on de trajet installe, et rien de choisi

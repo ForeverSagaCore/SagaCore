@@ -3773,6 +3773,10 @@ local function Cible()
     local faites, restantes, enAttente = {}, {}, 0
     for _, id in ipairs(trajet.etapes) do
         local etatE = NS.parcours.EtatEtape(moi, id)
+        -- Tournee de rendu : une quete sortie du journal n'a plus a etre
+        -- rendue (rendue, meme si le jeu ne l'a pas encore notee, ou
+        -- abandonnee). Elle compte comme faite : la tournee passe a la suite.
+        if tournee and etatE ~= "faite" and not (moi.quetes and moi.quetes[id]) then etatE = "faite" end
         if etatE == "faite" then
             table.insert(faites, id)
         elseif etatE == "attente" and not tournee then
@@ -3857,7 +3861,9 @@ local function Cible()
         quoi = string.format(L.GUIDE_DO_PICKUP, cible.qui or "?")
     end
     cible.qui = titreV .. (quoi and quoi ~= "" and ("\n|cffb3b3b3" .. quoi .. "|r") or "")
-    cible.rang, cible.total, cible.titre = 1, #restantes + enAttente, titreV
+    -- Le compte suit tout le parcours : "Etape 2 sur 10" apres la premiere.
+    local total = #trajet.etapes
+    cible.rang, cible.total, cible.titre = math.max(1, total - #restantes - enAttente + 1), total, titreV
     cible.id, cible.idParcours = idV, trajet.id
     cible.continent, cible.jx, cible.jy = continent, jx, jy
     return cible

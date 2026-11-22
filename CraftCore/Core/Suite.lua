@@ -3989,6 +3989,12 @@ local function CadreGuidage()
         else
             self.etape:Hide()
         end
+        -- Plus d'add-on de trajet pour ce guidage : ce qu'on lui avait envoye
+        -- s'efface, la fleche de la suite reste seule.
+        if not externe and Suite.guide.envoye and hub and hub.Effacer then
+            Suite.guide.envoye = nil
+            pcall(hub.Effacer)
+        end
         if externe then
             self.fleche:Hide() self.arrivee:Hide()
             local cleE = tostring(cible.carte) .. ":" .. math.floor((cible.x or 0) * 1000) .. ":" .. math.floor((cible.y or 0) * 1000)
@@ -4165,6 +4171,9 @@ function Suite.ChoisirGuide()
         local cle = ch.cle
         b:SetScript("OnClick", function()
             hub.Choisir(cle)
+            -- La fleche de la suite choisie : l'add-on de trajet n'a plus rien
+            -- a guider (une seule fleche a l'ecran).
+            if cle == "aucun" and hub.Effacer then pcall(hub.Effacer) end
             Suite.guide.envoye = nil
             f:Hide()
         end)
@@ -4244,6 +4253,12 @@ function Suite.ArreterGuidage(cle)
     local f = g.fournisseur
     g.cle, g.fournisseur = nil, nil
     g.arrivee = nil
+    -- Le guidage s'arrete : l'add-on de trajet aussi, s'il suivait nos etapes.
+    if g.envoye then
+        g.envoye = nil
+        local hub = _G.FriendsCoreAPI
+        if hub and hub.Effacer then pcall(hub.Effacer) end
+    end
     if g.cadre then g.cadre:Hide() end
     if f and f.Fin then pcall(f.Fin) end
     local M = _G.SagaCoreMessages

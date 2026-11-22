@@ -84,6 +84,8 @@ evenements:SetScript("OnEvent", function(_, evenement, ...)
     elseif evenement == "QUEST_TURNED_IN" then
         local id = ...
         pcall(NS.journal.Rendue, tonumber(id))
+        -- Le guidage passe tout de suite a l'etape suivante.
+        if NS.suivi and NS.suivi.OublierCible then pcall(NS.suivi.OublierCible) end
         NS.disponibles.Invalider()
         ReleverBientot()
     elseif evenement == "ZONE_CHANGED_NEW_AREA" then

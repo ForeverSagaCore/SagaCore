@@ -65,7 +65,17 @@ function H.Rubriques()
         local x = Rubrique(nom ~= "" and nom or T("Champ de bataille", "Battleground"))
         local ms = Nombre(Appel("GetBattlefieldInstanceRunTime"))
         if ms and ms > 0 then Ligne(x, T("Durée", "Time"), Duree(ms / 1000)) end
-        for _, texte in ipairs(H.Objectifs()) do Ligne(x, texte) end
+        local textes = H.Objectifs()
+        if NS.champ then textes = NS.champ.Annoter(textes) end
+        for _, texte in ipairs(textes) do Ligne(x, texte) end
+        if NS.champ then
+            for _, l in ipairs(NS.champ.Lignes()) do Ligne(x, l.texte, nil, l.couleur) end
+            local moi = NS.champ.MesChiffres()
+            if moi then
+                Ligne(x, T("Vos chiffres", "Your numbers"), string.format("%d %s  ·  %d %s  ·  %d %s", moi.cm or 0, T("CG", "KB"),
+                    moi.vh or 0, T("VH", "HK"), moi.morts or 0, (moi.morts or 0) > 1 and T("morts", "deaths") or T("mort", "death")))
+            end
+        end
     end
 
     -- Files d'attente.
@@ -101,10 +111,48 @@ function H.Rubriques()
         Ligne(x, T("Aucun rang pour l'instant", "No rank yet"), nil, { 0.6, 0.6, 0.6 })
     end
 
+    -- Aujourd'hui : victoires, honneur estime (rendement decroissant compris),
+    -- honneur bonus, honneur par heure de la session.
+    local V = NS.victoires
+    if V then
+        local j = V.Jour()
+        local a = Rubrique(T("Aujourd'hui", "Today"))
+        local hk = Nombre((Appel("GetPVPSessionStats"))) or j.vh or 0
+        Ligne(a, T("Victoires honorables", "Honourable kills"), Lisible(hk))
+        Ligne(a, T("Honneur estimé", "Estimated honour"), Lisible((V.HonneurDuJour())))
+        if (j.bonus or 0) > 0 then Ligne(a, T("Dont honneur bonus", "Of which bonus honour"), Lisible(j.bonus)) end
+        local ph = V.HonneurParHeure()
+        if ph then Ligne(a, T("Honneur par heure", "Honour per hour"), Lisible(ph)) end
+
+        -- Objectif de la semaine (honneur vise, 15 victoires pour etre classe).
+        local objectif = V.Objectif() * 1000
+        local honneurS, hkS = V.Semaine()
+        local classer = hkS > 0 and hkS < 15
+        if objectif > 0 or classer then
+            local o = Rubrique(T("Objectif de la semaine", "Weekly goal"))
+            if objectif > 0 then
+                local fait = math.min(100, math.floor(honneurS * 100 / objectif))
+                Ligne(o, T("Honneur", "Honour") .. "  " .. Lisible(honneurS) .. " / " .. Lisible(objectif), fait .. " %",
+                    fait >= 100 and { 0.31, 0.82, 0.41 } or nil)
+                if honneurS < objectif then Ligne(o, T("Reste", "Left"), Lisible(objectif - honneurS)) end
+            end
+            if hkS < 15 and (classer or objectif > 0) then Ligne(o, T("Victoires pour être classé", "Kills to be ranked"), hkS .. " / 15", { 1, 0.82, 0 }) end
+        end
+
+        -- Cibles du jour : rendement decroissant de la prochaine victoire.
+        local cibles = V.Cibles(8)
+        if #cibles > 0 then
+            local c = Rubrique(T("Cibles du jour", "Today's targets"))
+            for _, e in ipairs(cibles) do
+                local prochaine = V.Rendement(e.n + 1)
+                Ligne(c, e.nom, e.n .. T("  ·  prochaine ", "  ·  next ") .. math.floor(prochaine * 100) .. " %",
+                    prochaine > 0 and nil or { 0.6, 0.6, 0.6 })
+            end
+        end
+    end
+
     -- Victoires honorables et honneur.
     local v = Rubrique(T("Victoires honorables", "Honourable kills"))
-    local hk = Nombre((Appel("GetPVPSessionStats")))
-    if hk then Ligne(v, T("Aujourd'hui", "Today"), Lisible(hk)) end
     local hkS, contribS = Appel("GetPVPThisWeekStats")
     if Nombre(hkS) then Ligne(v, T("Cette semaine", "This week"), Lisible(hkS) .. (Nombre(contribS) and ("  ·  " .. Lisible(contribS) .. " " .. T("honneur", "honour")) or "")) end
     local hkP, _, contribP = Appel("GetPVPLastWeekStats")
