@@ -1328,7 +1328,7 @@ UI.MODERNE = {
     accent = { 0.95, 0.78, 0.40, 1 },          -- or vif : la page ouverte, la coche
     texte = { 0.95, 0.93, 0.88 },
     texteDoux = { 0.68, 0.64, 0.56 },
-    rayonFenetre = 10, rayonBouton = 6, rayonOnglet = 7, rayonCase = 4,
+    rayonFenetre = 8, rayonBouton = 6, rayonOnglet = 6, rayonCase = 4, rayonCroix = 3,
     arrondi = MEDIA_M .. "moderne_arrondi",
     coin = MEDIA_M .. "moderne_coin",
     filet = MEDIA_M .. "moderne_bord",
@@ -1337,6 +1337,7 @@ UI.MODERNE = {
     croix = MEDIA_M .. "moderne_croix",
     coche = MEDIA_M .. "moderne_coche",
     fleche = MEDIA_M .. "moderne_fleche",
+    bouton = MEDIA_M .. "moderne_bouton",
 }
 -- Le fichier de la texture moderne demandee, si ce client l'a.
 function UI.Media(cle) return UI.MODERNE[cle] end
@@ -1504,9 +1505,10 @@ function UI.HabillerCroix(b)
     for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture" }) do
         if b[f] then pcall(b[f], b, "") end
     end
-    b:SetSize(20, 20)
-    local x = Picto(b, "croix", 16, UI.MODERNE.texteDoux)
-    Plat(b, UI.MODERNE.surface, UI.MODERNE.bord, 4)
+    b:SetSize(18, 18)
+    local x = Picto(b, "croix", 14, UI.MODERNE.texteDoux)
+    -- Son arrondi suit celui de la fenetre (meme centre de courbure).
+    Plat(b, UI.MODERNE.surface, UI.MODERNE.bord, UI.MODERNE.rayonCroix)
     if b.SetHighlightTexture then
         b:SetHighlightTexture("Interface\\Buttons\\WHITE8X8", "ADD")
         local h = b:GetHighlightTexture()
@@ -1545,29 +1547,65 @@ function UI.HabillerFenetre(cadre)
     local croix = cadre.fermer or cadre.CloseButton or cadre.closeButton or (cadre.TitleContainer and cadre.TitleContainer.CloseButton)
     if croix then
         UI.HabillerCroix(croix)
-        if Touchable(croix) then croix:ClearAllPoints() croix:SetPoint("TOPRIGHT", cadre, "TOPRIGHT", -4, -2) end
+        if Touchable(croix) then
+            local ecart = M.rayonFenetre - M.rayonCroix
+            croix:ClearAllPoints() croix:SetPoint("TOPRIGHT", cadre, "TOPRIGHT", -ecart, -ecart)
+        end
     end
 end
 
--- Un bouton : surface arrondie, filet, texte clair, voile au survol.
+-- Un bouton : le rouge des boutons du jeu, en plus dense et plus net. Une
+-- texture dessinee en trois parts (bouts arrondis, milieu etire), avec ses
+-- etats : normal, appuye, survol (voile clair), inactif (gris). Texte or du
+-- jeu, gris quand il ne sert pas (la police du bouton s'en charge).
+local RANGEES = { normal = 0, appuye = 1, survol = 2, inactif = 3 }
+local function TroisParts(b, couche, sousCouche)
+    local parts = {}
+    for i, u in ipairs({ { 0, 0.125 }, { 0.125, 0.875 }, { 0.875, 1 } }) do
+        local t = b:CreateTexture(nil, couche, nil, sousCouche)
+        t:SetTexture(UI.MODERNE.bouton)
+        t.u = u
+        parts[i] = t
+    end
+    parts[1]:SetPoint("TOPLEFT") parts[1]:SetPoint("BOTTOMLEFT")
+    parts[3]:SetPoint("TOPRIGHT") parts[3]:SetPoint("BOTTOMRIGHT")
+    parts[2]:SetPoint("TOPLEFT", parts[1], "TOPRIGHT") parts[2]:SetPoint("BOTTOMRIGHT", parts[3], "BOTTOMLEFT")
+    local function Largeur()
+        local bout = math.floor((b:GetHeight() or 22) * 0.5 + 0.5)
+        parts[1]:SetWidth(bout) parts[3]:SetWidth(bout)
+    end
+    Largeur()
+    b:HookScript("OnSizeChanged", Largeur)
+    function parts.Rangee(nom)
+        local r = RANGEES[nom] or 0
+        for i = 1, 3 do parts[i]:SetTexCoord(parts[i].u[1], parts[i].u[2], r / 4, (r + 1) / 4) end
+    end
+    function parts.Montrer(oui) for i = 1, 3 do parts[i]:SetShown(oui) end end
+    return parts
+end
 function UI.HabillerBouton(b)
     if not (Actif() and Touchable(b)) or fait[b] then return end
     fait[b] = true
     for _, cle in ipairs({ "Left", "Middle", "Right", "LeftDisabled", "MiddleDisabled", "RightDisabled" }) do Effacer(b[cle]) end
-    for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture" }) do
+    for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture", "SetHighlightTexture" }) do
         if b[f] then pcall(b[f], b, "") end
     end
-    local M = UI.MODERNE
-    Plat(b, M.surface, M.bord, M.rayonBouton)
-    Survol(b, 2)
-    local fs = b.GetFontString and b:GetFontString()
-    if fs then local c = M.texte fs:SetTextColor(c[1], c[2], c[3]) end
-    -- Grise quand il ne sert pas.
+    local e = Extra(b)
+    e.fond = TroisParts(b, "BACKGROUND", 1)
+    e.voile = TroisParts(b, "BORDER", 1)
+    e.voile.Rangee("survol")
+    for i = 1, 3 do e.voile[i]:SetBlendMode("ADD") e.voile[i]:SetAlpha(0.10) end
+    e.voile.Montrer(false)
+    local enfonce = false
     local function Etat(self)
         local actif = not self.IsEnabled or self:IsEnabled()
-        local p = plats[self]
-        if p then p.cadre:SetAlpha(actif and 1 or 0.5) end
+        e.fond.Rangee(not actif and "inactif" or (enfonce and "appuye" or "normal"))
+        if not actif then e.voile.Montrer(false) end
     end
+    b:HookScript("OnMouseDown", function(self) enfonce = true Etat(self) end)
+    b:HookScript("OnMouseUp", function(self) enfonce = false Etat(self) end)
+    b:HookScript("OnEnter", function(self) if not self.IsEnabled or self:IsEnabled() then e.voile.Montrer(true) end end)
+    b:HookScript("OnLeave", function(self) enfonce = false e.voile.Montrer(false) Etat(self) end)
     hooksecurefunc(b, "Enable", Etat) hooksecurefunc(b, "Disable", Etat)
     if b.SetEnabled then hooksecurefunc(b, "SetEnabled", Etat) end
     Etat(b)
