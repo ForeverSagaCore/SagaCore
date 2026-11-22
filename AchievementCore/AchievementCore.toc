@@ -1,0 +1,26 @@
+## Interface: 16001
+## Title: AchievementCore
+## Notes: Finish the game : every zone explored, every quest, dungeon, item, profession, race and class, reputation and PvP rank, with your progress in percent for each character, the Horde, the Alliance and both.
+## Notes-frFR: Finir le jeu : chaque zone explorée, chaque quête, donjon, objet, métier, race et classe, réputation et rang JcJ, avec votre avancement en pourcentage pour chaque personnage, la Horde, l'Alliance et les deux.
+## Author: ForeverSagaCore
+## Version: 0.1.0
+## IconTexture: Interface\Icons\INV_Misc_Ribbon_01
+## X-Category: Achievements
+## X-Website: https://github.com/ForeverSagaCore/SagaCore
+## OptionalDeps: QuestieDB, CraftCore, QuestCore, MapCore, LegacyCore, AuraCore, PvPCore
+## SavedVariables: AchievementCoreDB, CoreSuiteDB
+
+Core\Socle.lua
+Core\Langue.lua
+Core\Suite.lua
+UI\Charte.lua
+Data\Reveal.lua
+Data\Reference.lua
+Core\Travail.lua
+Core\Persos.lua
+Core\Base.lua
+Core\Releve.lua
+Core\Calcul.lua
+Core\Categories.lua
+UI\Fenetre.lua
+AchievementCore.lua
