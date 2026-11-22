@@ -319,7 +319,7 @@ function charte.Encrer(racine, parchemin)
     if racine.GetChildren then
         for _, enfant in ipairs({ racine:GetChildren() }) do
             local saisie = enfant.IsObjectType and enfant:IsObjectType("EditBox")
-            if not saisie then charte.Encrer(enfant, parchemin) end
+            if not saisie and not enfant.sansEncre then charte.Encrer(enfant, parchemin) end
         end
     end
 end

@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 128
+local VERSION = 200
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -1273,6 +1273,174 @@ function Suite.BasculerDev()
 end
 SLASH_SAGACOREDEV1 = "/sagadev"
 SlashCmdList["SAGACOREDEV"] = function() Suite.BasculerDev() end
+
+-- ---------------------------------------------------------------------------
+-- Habillage (version 2, en essai dans Forever SagaCore Dev) : deux apparences
+-- pour toute la suite, au choix dans le Reglage de l'interface.
+--   jeu      : les elements du jeu (cadres, boutons dores, onglets du grimoire) ;
+--   moderne  : a plat, sobre, pour aller avec les add-ons qui changent
+--              l'apparence du jeu.
+-- Les composants (fenetre, bouton, case, onglet) sont habilles ici, une seule
+-- fois pour tous les add-ons. Les fenetres de la suite sont parcourues quand
+-- elles s'affichent : un bouton cree n'importe ou prend l'habillage choisi.
+-- Changer d'apparence recharge l'interface.
+-- ---------------------------------------------------------------------------
+Suite.UI = Suite.UI or {}
+local UI = Suite.UI
+function Suite.Habillage()
+    local d = _G.CoreSuiteDB
+    return (type(d) == "table" and d.habillage == "moderne") and "moderne" or "jeu"
+end
+function Suite.PoserHabillage(v)
+    _G.CoreSuiteDB = type(_G.CoreSuiteDB) == "table" and _G.CoreSuiteDB or {}
+    if (v == "moderne" and "moderne" or "jeu") == Suite.Habillage() then return end
+    _G.CoreSuiteDB.habillage = (v == "moderne") and "moderne" or nil
+    if _G.C_UI and _G.C_UI.Reload then _G.C_UI.Reload() elseif _G.ReloadUI then _G.ReloadUI() end
+end
+function Suite.OptionsHabillage()
+    local fr = Suite.Langue() == "frFR"
+    return { { "jeu", fr and "Jeu (d'origine)" or "Game (original)" }, { "moderne", fr and "Moderne" or "Modern" } }
+end
+-- Les jetons de l'apparence moderne.
+UI.MODERNE = {
+    fond = { 0.067, 0.07, 0.078, 0.96 },
+    bord = { 0.24, 0.25, 0.28, 1 },
+    bouton = { 0.13, 0.135, 0.15, 1 },
+    survol = { 1, 1, 1, 0.07 },
+    accent = { 0.96, 0.78, 0.3, 1 },
+    texte = { 0.93, 0.93, 0.93 },
+}
+local function Moderne() return Suite.Habillage() == "moderne" end
+UI.EstModerne = Moderne
+local function Plat(f, fond, bord)
+    if not f.suitePlat then
+        local ok, b = pcall(CreateFrame, "Frame", nil, f, "BackdropTemplate")
+        b = ok and b or CreateFrame("Frame", nil, f)
+        b:SetAllPoints()
+        b:SetFrameLevel(math.max(0, (f:GetFrameLevel() or 1) - 1))
+        if b.SetBackdrop then
+            b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        end
+        f.suitePlat = b
+    end
+    local b = f.suitePlat
+    if b.SetBackdropColor then
+        b:SetBackdropColor(fond[1], fond[2], fond[3], fond[4] or 1)
+        b:SetBackdropBorderColor(bord[1], bord[2], bord[3], bord[4] or 1)
+    end
+    b:Show()
+    return b
+end
+UI.Plat = Plat
+local function Effacer(t)
+    if not t then return end
+    if t.SetAlpha then pcall(t.SetAlpha, t, 0) end
+    if t.Hide then pcall(t.Hide, t) end
+end
+-- Une fenetre de la suite : le cadre du jeu, ou un aplat sombre bord fin.
+function UI.HabillerFenetre(cadre)
+    if not (cadre and Moderne()) or cadre.suiteHabillee then return end
+    cadre.suiteHabillee = true
+    for _, cle in ipairs({ "NineSlice", "Bg", "TitleBg", "TopTileStreaks", "PortraitContainer", "portrait", "PortraitFrame" }) do
+        Effacer(cadre[cle])
+    end
+    local inset = cadre.Inset
+    if inset then Effacer(inset.NineSlice) Effacer(inset.Bg) end
+    Plat(cadre, UI.MODERNE.fond, UI.MODERNE.bord)
+    local titre = cadre.TitleText or (cadre.TitleContainer and cadre.TitleContainer.TitleText)
+    if titre and titre.SetTextColor then local c = UI.MODERNE.texte titre:SetTextColor(c[1], c[2], c[3]) end
+end
+-- Un bouton du jeu (UIPanelButtonTemplate) : aplat, bord fin, survol clair.
+function UI.HabillerBouton(b)
+    if not (b and Moderne()) or b.suiteHabille then return end
+    b.suiteHabille = true
+    for _, cle in ipairs({ "Left", "Middle", "Right", "LeftDisabled", "MiddleDisabled", "RightDisabled" }) do Effacer(b[cle]) end
+    for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture" }) do
+        if b[f] then pcall(b[f], b, "") end
+    end
+    local h = b.GetHighlightTexture and b:GetHighlightTexture()
+    if h then h:SetTexture("Interface\\Buttons\\WHITE8X8") local c = UI.MODERNE.survol h:SetVertexColor(c[1], c[2], c[3], c[4]) end
+    Plat(b, UI.MODERNE.bouton, UI.MODERNE.bord)
+    local fs = b.GetFontString and b:GetFontString()
+    if fs then local c = UI.MODERNE.texte fs:SetTextColor(c[1], c[2], c[3]) end
+end
+-- Une case a cocher : carre plat, coche a la couleur d'accent.
+function UI.HabillerCase(c)
+    if not (c and Moderne()) or c.suiteHabille then return end
+    c.suiteHabille = true
+    for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture" }) do if c[f] then pcall(c[f], c, "") end end
+    local coche = c.GetCheckedTexture and c:GetCheckedTexture()
+    if coche then local a = UI.MODERNE.accent coche:SetVertexColor(a[1], a[2], a[3]) end
+    local h = c.GetHighlightTexture and c:GetHighlightTexture()
+    if h then h:SetTexture("Interface\\Buttons\\WHITE8X8") local s = UI.MODERNE.survol h:SetVertexColor(s[1], s[2], s[3], s[4]) end
+    local fond = c.suiteCarre or CreateFrame("Frame", nil, c)
+    c.suiteCarre = fond
+    fond:ClearAllPoints()
+    fond:SetPoint("CENTER")
+    local w = math.max(10, math.floor((c:GetWidth() or 20) * 0.6))
+    fond:SetSize(w, w)
+    fond:SetFrameLevel(math.max(0, c:GetFrameLevel() - 1))
+    Plat(fond, UI.MODERNE.bouton, UI.MODERNE.bord)
+end
+-- Un onglet lateral (icone) : sans le dessin du grimoire, un carre plat.
+function UI.HabillerOnglet(o)
+    if not (o and Moderne()) or o.suiteHabille then return end
+    o.suiteHabille = true
+    local icone = o.icone or o.Icon
+    for _, r in ipairs({ o:GetRegions() }) do
+        if r ~= icone and r.GetObjectType and r:GetObjectType() == "Texture" and r ~= (o.GetHighlightTexture and o:GetHighlightTexture())
+            and r ~= (o.GetCheckedTexture and o:GetCheckedTexture()) then
+            Effacer(r)
+        end
+    end
+    if o.fond then Effacer(o.fond) end
+    Plat(o, UI.MODERNE.bouton, UI.MODERNE.bord)
+    if icone and icone.SetTexCoord then icone:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+end
+-- Tout ce qu'une fenetre contient : chaque element reconnu prend l'habillage.
+local function Reconnaitre(f)
+    local genre = f.GetObjectType and f:GetObjectType()
+    if genre == "Button" and f.Left and f.Right and f.Middle then UI.HabillerBouton(f) return end
+    if genre == "CheckButton" then
+        if (f.Icon or f.icone) and (f:GetWidth() or 0) >= 28 then UI.HabillerOnglet(f)
+        elseif f.GetCheckedTexture and f:GetCheckedTexture() and (f:GetWidth() or 0) <= 32 then UI.HabillerCase(f) end
+    end
+end
+function UI.HabillerArbre(racine, profondeur)
+    if not (racine and Moderne()) then return end
+    profondeur = profondeur or 0
+    if profondeur > 12 or not racine.GetChildren then return end
+    for _, enfant in ipairs({ racine:GetChildren() }) do
+        pcall(Reconnaitre, enfant)
+        UI.HabillerArbre(enfant, profondeur + 1)
+    end
+end
+-- Les fenetres de la suite ouvertes sont repassees deux fois par seconde (un
+-- element ajoute apres coup prend l'habillage aussi).
+do
+    local veille = CreateFrame("Frame")
+    local attente = 1
+    veille:SetScript("OnUpdate", function(_, ecoule)
+        if _G.CoreSuite ~= Suite then return end
+        attente = attente - (ecoule or 0)
+        if attente > 0 then return end
+        attente = 0.5
+        if not Moderne() then return end
+        local vues = {}
+        for _, m in pairs(Suite.membres or {}) do
+            if m.fenetre then local ok, c = pcall(m.fenetre) if ok and c and c:IsShown() then vues[c] = true end end
+        end
+        for _, n in ipairs(Suite.FENETRES_FONDU or {}) do local c = _G[n] if c and c:IsShown() then vues[c] = true end end
+        for _, w in ipairs(Suite.fenetresAPages or {}) do if w.cadre and w.cadre:IsShown() then vues[w.cadre] = true end end
+        for _, n in ipairs({ "CraftCoreSuivi", "QuestCoreSuivi", "CoreSuiteMacroCore", "CraftCoreAssistant" }) do
+            local c = _G[n] if c and c:IsShown() then vues[c] = true end
+        end
+        for c in pairs(vues) do
+            pcall(UI.HabillerFenetre, c)
+            pcall(UI.HabillerArbre, c)
+        end
+    end)
+end
 
 -- Point d'attache des onglets lateraux : au ras du bord de la fenetre, a la
 -- hauteur du trait qui separe l'en-tete du contenu. Les deux colonnes
@@ -6580,6 +6748,9 @@ local function FenetreInterface()
                   page.rCompo = O.Rangee()
                   page.lCompo = O.Liste(page.rCompo, function() return Suite.OptionsComposition() end,
                       function() return Suite.CompositionChoisie() end, function(v) Suite.AppliquerComposition(v) end)
+                  page.rHabillage = O.Rangee()
+                  page.lHabillage = O.Liste(page.rHabillage, function() return Suite.OptionsHabillage() end,
+                      function() return Suite.Habillage() end, function(v) Suite.PoserHabillage(v) end)
                   page.rSauver = O.Rangee()
                   page.bSauver = O.Bouton(page.rSauver, 200, function() Suite.SauverComposition() end)
                   page.bSauver:SetPoint("RIGHT", page.rSauver, "RIGHT", -10, 0)
@@ -6595,6 +6766,7 @@ local function FenetreInterface()
                   page.rSuivis.nom:SetText(TR("Fond des suivis", "Trackers background"))
                   page.rPanneau.nom:SetText(TR("Panneau du menu", "Menu panel"))
                   page.rCompo.nom:SetText(TR("Composition", "Setup"))
+                  page.rHabillage.nom:SetText(TR("Apparence (recharge l'interface)", "Look (reloads the interface)"))
                   page.rSauver.nom:SetText(TR("Fond et panneau actuels", "Current background and panel"))
                   page.bSauver:SetText(TR("Sauvegarder la configuration", "Save the setup"))
                   page.bSauver:SetEnabled(libre)
