@@ -496,39 +496,59 @@ end
 carte.CreerRepere = function(parent) return CreerRepere(parent) end
 carte.Habiller = function(b, genre, icone, attente) return Habiller(b, genre, icone, attente) end
 
+-- Report d'une carte sur une autre, verrouille. Une zone n'est reportee que
+-- si le jeu la connait, si elle est bien dans la carte affichee (en
+-- remontant ses parents), et si sa place est vraisemblable : dans le cadre
+-- de sa carte parente, et jamais plus de 15 % de la carte affichee (sauf un
+-- continent sur la carte du monde). Sinon, ses reperes ne s'y dessinent
+-- pas : plus d'anneaux ni de quetes au milieu de la mer (donjons, zones
+-- ajoutees par Forever).
 local rectangles = {}
-local function Rectangle(zone, carteAffichee)
+local Rectangle
+local function Brut(zone, carteAffichee)
+    local lecture = NS.Lecture("C_Map.GetMapRectOnMap")
+    if not lecture then return nil end
+    local ok, g, d, h, b = pcall(lecture, zone, carteAffichee)
+    if not (ok and tonumber(g) and tonumber(d) and tonumber(h) and tonumber(b) and d > g and b > h) then return nil end
+    if g == 0 and d == 1 and h == 0 and b == 1 then return nil end
+    return { g, d, h, b }
+end
+Rectangle = function(zone, carteAffichee)
     local cle = zone .. ">" .. carteAffichee
     local r = rectangles[cle]
-    if r == nil then
-        r = false
-        -- Une carte d'instance (donjon, raid) n'a pas de place reelle sur
-        -- la carte d'un continent : le jeu la donne alors etiree sur tout
-        -- le continent, et ses reperes s'y dessinaient en grands cercles.
-        local donjon = carte.EstInstance(zone)
-        local lecture = not donjon and NS.Lecture("C_Map.GetMapRectOnMap")
-        if lecture then
-            local ok, g, d, h, b = pcall(lecture, zone, carteAffichee)
-            -- Meme garde si le jeu rend la carte entiere : jamais pour une
-            -- vraie zone.
-            local entiere = ok and g == 0 and d == 1 and h == 0 and b == 1
-            if ok and not entiere and tonumber(g) and tonumber(d) and tonumber(h) and tonumber(b) and d > g and b > h then
-                r = { g, d, h, b }
-                -- Sur un continent, une zone n'en couvre jamais plus d'un
-                -- dixieme (les Tarides, la plus grande, a peine). Les zones
-                -- ajoutees par Forever (Mont Hyjal...) sont rendues par le jeu
-                -- sur la moitie du continent : leurs reperes y faisaient un
-                -- grand anneau. On ne les reporte pas.
-                -- Sans se fier au type de la carte affichee (Forever ne le
-                -- donne pas toujours) : seul un continent peut couvrir autant
-                -- de la carte affichee (sur la carte du monde).
-                local infoZ = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), zone)
-                local zoneContinent = type(infoZ) == "table" and infoZ.mapType == 2
-                if not zoneContinent and zone ~= carteAffichee and (d - g) * (b - h) > 0.15 then r = false end
-            end
+    if r ~= nil then return r or nil end
+    rectangles[cle] = false
+    r = false
+    local Info = NS.Lecture("C_Map.GetMapInfo")
+    local info = NS.Appeler(Info, zone)
+    if type(info) == "table" and not carte.EstInstance(zone) then
+        -- La carte affichee doit etre un de ses parents.
+        local parent, trouve = tonumber(info.parentMapID), false
+        local garde = 0
+        local cur = parent
+        while cur and cur > 0 and garde < 8 do
+            if cur == carteAffichee then trouve = true break end
+            local ic = NS.Appeler(Info, cur)
+            cur = type(ic) == "table" and tonumber(ic.parentMapID) or nil
+            garde = garde + 1
         end
-        rectangles[cle] = r
+        local brut = trouve and Brut(zone, carteAffichee)
+        if brut then
+            local aire = (brut[2] - brut[1]) * (brut[4] - brut[3])
+            local continent = info.mapType == 2
+            local ok = continent or aire <= 0.15
+            -- Dans le cadre de sa carte parente (si ce n'est pas la carte
+            -- affichee elle-meme).
+            if ok and parent ~= carteAffichee then
+                local pr = Rectangle(parent, carteAffichee)
+                local tol = 0.02
+                ok = pr ~= nil and brut[1] >= pr[1] - tol and brut[2] <= pr[2] + tol
+                    and brut[3] >= pr[3] - tol and brut[4] <= pr[4] + tol
+            end
+            if ok then r = brut end
+        end
     end
+    rectangles[cle] = r
     return r or nil
 end
 
