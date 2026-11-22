@@ -897,6 +897,14 @@ local function RendreStocks(contenu, tous)
         end
     end
 
+    -- Tous mes stocks : seulement ce qui sert aux metiers (composants et
+    -- produits), jamais l'equipement ni le reste des sacs.
+    local function DeCraft(cle)
+        local n = tonumber(cle)
+        for _, m in ipairs(metiersDuRangement) do if m.objets[n] then return true end end
+        return false
+    end
+
     -- Choix du personnage. Le sien par defaut, les autres sur demande, sans
     -- quitter la page.
     local choix = base.PersonnageAffiche()
@@ -1056,7 +1064,6 @@ local function RendreStocks(contenu, tous)
                 l.icone:Hide()
                 l.nom:SetFontObject("GameFontHighlightSmall")
                 NommerPersonnage(l.nom, fiche)
-                BandeDeClasse(l, CouleurDe(fiche))
                 Colonnes(l, sacs, banque, courrier, 0, sacs + banque + courrier)
                 l:Show()
                 y = y + HAUTEUR_LIGNE + 2
@@ -1100,13 +1107,23 @@ local function RendreStocks(contenu, tous)
         -- bande legere de cette couleur, et les titres des colonnes.
         local entete = NouvelleLigne(0, nil)
         entete.icone:Hide()
+        -- Le nom a la couleur de sa classe ; la date du releve dans l'infobulle.
+        entete.nom.agrandir = false
+        -- Meme police que les personnages de LegacyCore.
         entete.nom:SetFontObject("GameFontNormal")
-        NommerPersonnage(entete.nom, fiche, string.format(L.STOCKS_READ_AT, "", base.ReleveDe(fiche) or "?"))
-        BandeDeClasse(entete, CouleurDe(fiche))
-        entete:SetHeight(HAUTEUR_LIGNE + 4)
+        NommerPersonnage(entete.nom, fiche)
+        local releve = string.format(L.STOCKS_READ_AT, NS.inventaire.NomCourt(fiche.cle), base.ReleveDe(fiche) or "?")
+        entete:EnableMouse(true)
+        entete:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(releve, 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        entete:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        entete:SetHeight(HAUTEUR_LIGNE + 6)
         EnTetesDeColonnes(entete, true)
         entete:Show()
-        y = y + HAUTEUR_LIGNE + 10
+        y = y + HAUTEUR_LIGNE + 12
 
         -- Sur un seul personnage, on montre aussi ce qu'il n'a pas mais que
         -- ses autres personnages detiennent : c'est ce qui se rapatrie. Vue
@@ -1126,7 +1143,7 @@ local function RendreStocks(contenu, tous)
 
         local lignes = {}
         for cle in pairs(objetsVus) do
-            if ((not lies) or lies[tonumber(cle)]) and Garde(cle) then
+            if ((not lies) or lies[tonumber(cle)]) and (not tous or DeCraft(cle)) and Garde(cle) then
                 local sacs, banque, courrier = inventaire.SacsEtBanque(fiche, cle)
                 courrier = courrier or 0
                 local autres, detail = inventaire.DetailChezLesAutres(fiche, cle)
@@ -1154,18 +1171,12 @@ local function RendreStocks(contenu, tous)
                     for _, l in ipairs(siens) do table.insert(ranges, l) end
                 end
             end
-            local autresObjets = {}
-            for _, l in ipairs(lignes) do if not pris[l.objet] then table.insert(autresObjets, l) end end
-            if #autresObjets > 0 then
-                table.insert(ranges, { intertitre = L.STOCKS_OTHER_ITEMS })
-                for _, l in ipairs(autresObjets) do table.insert(ranges, l) end
-            end
             lignes = ranges
         end
 
         -- Un filtre qui ne laisse rien le dit, au lieu de laisser un blanc.
         if #lignes == 0 then
-            Message((#mots > 0 and L.STOCKS_SEARCH_NONE) or (lies and L.STOCKS_NONE_FOR_TRADE) or L.STOCKS_EMPTY, RETRAIT_PAR_NIVEAU)
+            Message((#mots > 0 and L.STOCKS_SEARCH_NONE) or (tous and L.STOCKS_NONE_CRAFT) or (lies and L.STOCKS_NONE_FOR_TRADE) or L.STOCKS_EMPTY, RETRAIT_PAR_NIVEAU)
         end
 
         local premierInter = true
