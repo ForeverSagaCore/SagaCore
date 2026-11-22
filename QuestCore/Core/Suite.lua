@@ -1328,7 +1328,9 @@ UI.MODERNE = {
     accent = { 0.95, 0.78, 0.40, 1 },          -- or vif : la page ouverte, la coche
     texte = { 0.95, 0.93, 0.88 },
     texteDoux = { 0.68, 0.64, 0.56 },
-    rayonFenetre = 8, rayonBouton = 6, rayonOnglet = 6, rayonCase = 4, rayonCroix = 3,
+    -- Tailles du cadre des infobulles du jeu (sa bordure, ses coins arrondis).
+    rayonFenetre = 16, rayonBouton = 12, rayonOnglet = 14, rayonCase = 10, rayonCroix = 10,
+    ecartOnglets = 6,
     arrondi = MEDIA_M .. "moderne_arrondi",
     coin = MEDIA_M .. "moderne_coin",
     filet = MEDIA_M .. "moderne_bord",
@@ -1384,71 +1386,39 @@ local function Visible(c)
     return ok and oui and true or false
 end
 local function Couleur(t, c) t:SetVertexColor(c[1], c[2], c[3], c[4] or 1) end
--- Un fond arrondi translucide et son contour dessine (un filet clair et une
--- ombre interieure, comme le cadre des infobulles) : quatre coins et quatre
--- cotes, teintes. Sous tout ce que le cadre affiche.
-local COINS = {
-    { "TOPLEFT", 0, 1, 0, 1 }, { "TOPRIGHT", 1, 0, 0, 1 },
-    { "BOTTOMLEFT", 0, 1, 1, 0 }, { "BOTTOMRIGHT", 1, 0, 1, 0 },
-}
-local function PoserArrondi(b, rayon, couleur)
-    if not b.SetBackdrop then return end
-    b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = UI.MODERNE.arrondi, edgeSize = rayon,
-        insets = { left = rayon, right = rayon, top = rayon, bottom = rayon } })
-    b:SetBackdropColor(couleur[1], couleur[2], couleur[3], couleur[4] or 1)
-    b:SetBackdropBorderColor(couleur[1], couleur[2], couleur[3], couleur[4] or 1)
-end
-local function Plat(f, fond, bord, rayon)
-    rayon = rayon or UI.MODERNE.rayonBouton
+-- Un fond sombre translucide dans le cadre des infobulles du jeu (sa
+-- bordure et ses coins arrondis, teints a la couleur voulue). Sous tout ce
+-- que le cadre affiche. `taille` : l'epaisseur de la bordure.
+local BORDURE_JEU = "Interface\\Tooltips\\UI-Tooltip-Border"
+local function Plat(f, fond, bord, taille)
+    taille = taille or UI.MODERNE.rayonBouton
     local p = plats[f]
     if not p then
         local ok, b = pcall(CreateFrame, "Frame", nil, f, "BackdropTemplate")
         if not ok or not b then b = CreateFrame("Frame", nil, f) end
         b:SetFrameLevel(math.max(0, (f:GetFrameLevel() or 1) - 1))
         b:SetAllPoints()
-        p = { cadre = b, traits = {} }
-        for i, c in ipairs(COINS) do
-            local t = b:CreateTexture(nil, "ARTWORK")
-            t:SetTexture(UI.MODERNE.coin)
-            t:SetTexCoord(c[2], c[3], c[4], c[5])
-            t:SetPoint(c[1])
-            p.traits[i] = t
-        end
-        -- Cotes : la bande du filet, tournee pour le haut et le bas.
-        local g = b:CreateTexture(nil, "ARTWORK") g:SetTexture(UI.MODERNE.filet)
-        g:SetTexCoord(0, 1, 0, 1)
-        local d = b:CreateTexture(nil, "ARTWORK") d:SetTexture(UI.MODERNE.filet)
-        d:SetTexCoord(1, 0, 0, 1)
-        local h = b:CreateTexture(nil, "ARTWORK") h:SetTexture(UI.MODERNE.filet)
-        h:SetTexCoord(0, 0, 1, 0, 0, 1, 1, 1)
-        local bas = b:CreateTexture(nil, "ARTWORK") bas:SetTexture(UI.MODERNE.filet)
-        bas:SetTexCoord(1, 0, 0, 0, 1, 1, 0, 1)
-        p.cotes = { g = g, d = d, h = h, b = bas }
-        for _, t in pairs(p.cotes) do table.insert(p.traits, t) end
+        p = { cadre = b }
         plats[f] = p
     end
     local b = p.cadre
-    for i = 1, 4 do p.traits[i]:SetSize(rayon, rayon) end
-    local c = p.cotes
-    c.g:ClearAllPoints() c.g:SetPoint("TOPLEFT", 0, -rayon) c.g:SetPoint("BOTTOMLEFT", 0, rayon) c.g:SetWidth(rayon)
-    c.d:ClearAllPoints() c.d:SetPoint("TOPRIGHT", 0, -rayon) c.d:SetPoint("BOTTOMRIGHT", 0, rayon) c.d:SetWidth(rayon)
-    c.h:ClearAllPoints() c.h:SetPoint("TOPLEFT", rayon, 0) c.h:SetPoint("TOPRIGHT", -rayon, 0) c.h:SetHeight(rayon)
-    c.b:ClearAllPoints() c.b:SetPoint("BOTTOMLEFT", rayon, 0) c.b:SetPoint("BOTTOMRIGHT", -rayon, 0) c.b:SetHeight(rayon)
-    PoserArrondi(b, rayon, fond)
-    bord = bord or fond
-    for _, t in ipairs(p.traits) do t:SetVertexColor(bord[1], bord[2], bord[3], bord[4] or 1) t:Show() end
+    if b.SetBackdrop then
+        local marge = math.floor(taille / 4 + 0.5)
+        b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = BORDURE_JEU, edgeSize = taille,
+            insets = { left = marge, right = marge, top = marge, bottom = marge } })
+        b:SetBackdropColor(fond[1], fond[2], fond[3], fond[4] or 1)
+        bord = bord or fond
+        b:SetBackdropBorderColor(bord[1], bord[2], bord[3], bord[4] or 1)
+    end
     b:Show()
     return p
 end
 UI.Plat = Plat
 function UI.RecolorerPlat(f, fond, bord)
     local p = plats[f]
-    if not p then return end
-    if p.cadre.SetBackdropColor then
-        p.cadre:SetBackdropColor(fond[1], fond[2], fond[3], fond[4] or 1)
-        p.cadre:SetBackdropBorderColor(fond[1], fond[2], fond[3], fond[4] or 1)
-    end
-    for _, t in ipairs(p.traits) do t:SetVertexColor(bord[1], bord[2], bord[3], bord[4] or 1) end
+    if not (p and p.cadre.SetBackdropColor) then return end
+    p.cadre:SetBackdropColor(fond[1], fond[2], fond[3], fond[4] or 1)
+    p.cadre:SetBackdropBorderColor(bord[1], bord[2], bord[3], bord[4] or 1)
 end
 local function Effacer(t)
     if not t then return end
@@ -1506,7 +1476,7 @@ function UI.HabillerCroix(b)
         if b[f] then pcall(b[f], b, "") end
     end
     b:SetSize(18, 18)
-    local x = Picto(b, "croix", 14, UI.MODERNE.texteDoux)
+    local x = Picto(b, "croix", 12, UI.MODERNE.texteDoux)
     -- Son arrondi suit celui de la fenetre (meme centre de courbure).
     Plat(b, UI.MODERNE.surface, UI.MODERNE.bord, UI.MODERNE.rayonCroix)
     if b.SetHighlightTexture then
@@ -1540,16 +1510,16 @@ function UI.HabillerFenetre(cadre)
         e.filet = cadre:CreateTexture(nil, "BORDER")
         e.filet:SetColorTexture(1, 1, 1, 1)
         e.filet:SetHeight(1)
-        e.filet:SetPoint("TOPLEFT", cadre, "TOPLEFT", 10, -24)
-        e.filet:SetPoint("TOPRIGHT", cadre, "TOPRIGHT", -10, -24)
+        -- D'un bord a l'autre (dans la bordure), sous la croix avec de l'air.
+        e.filet:SetPoint("TOPLEFT", cadre, "TOPLEFT", 4, -26)
+        e.filet:SetPoint("TOPRIGHT", cadre, "TOPRIGHT", -4, -26)
     end
     e.filet:SetVertexColor(M.contour[1], M.contour[2], M.contour[3], 0.35)
     local croix = cadre.fermer or cadre.CloseButton or cadre.closeButton or (cadre.TitleContainer and cadre.TitleContainer.CloseButton)
     if croix then
         UI.HabillerCroix(croix)
         if Touchable(croix) then
-            local ecart = M.rayonFenetre - M.rayonCroix
-            croix:ClearAllPoints() croix:SetPoint("TOPRIGHT", cadre, "TOPRIGHT", -ecart, -ecart)
+            croix:ClearAllPoints() croix:SetPoint("TOPRIGHT", cadre, "TOPRIGHT", -4, -4)
         end
     end
 end
@@ -1652,7 +1622,7 @@ local onglets = setmetatable({}, { __mode = "k" })
 local function MajOnglet(o)
     local M = UI.MODERNE
     local actif = (o.GetChecked and o:GetChecked()) or (o.cle ~= nil and o.cle == o.courante)
-    UI.RecolorerPlat(o, actif and M.surfaceSurvol or M.surface, actif and M.accent or M.bordFort)
+    UI.RecolorerPlat(o, actif and M.surfaceSurvol or M.fenetre, actif and M.accent or M.contour)
 end
 function UI.HabillerOnglet(o)
     if not (Actif() and Touchable(o)) or fait[o] then return end
@@ -1662,7 +1632,7 @@ function UI.HabillerOnglet(o)
     EffacerTextures(o, { [icone or 0] = true })
     if o.fond then Effacer(o.fond) end
     if o.SetCheckedTexture then pcall(o.SetCheckedTexture, o, "") end
-    Plat(o, M.surface, M.bordFort, M.rayonOnglet)
+    Plat(o, M.fenetre, M.contour, M.rayonOnglet)
     if icone then
         icone:ClearAllPoints()
         icone:SetPoint("TOPLEFT", 5, -5)
@@ -1880,12 +1850,14 @@ function Suite.AncreHaut(cadre, cote)
     if a then return a, cote == "gauche" and "BOTTOMLEFT" or "BOTTOMRIGHT" end
     local ref = cadre.fond or cadre.zone or cadre
     a = CreateFrame("Frame", nil, cadre)
+    -- Apparence moderne : les onglets se detachent un peu du bord.
+    local ecart = (Suite.UI and Suite.UI.EstModerne and Suite.UI.EstModerne()) and Suite.UI.MODERNE.ecartOnglets or 0
     if cote == "gauche" then
-        a:SetPoint("TOPLEFT", cadre, "TOPLEFT", 0, 0)
-        a:SetPoint("BOTTOMRIGHT", ref, "TOPLEFT", 0, 0)
+        a:SetPoint("TOPLEFT", cadre, "TOPLEFT", -ecart, 0)
+        a:SetPoint("BOTTOMRIGHT", ref, "TOPLEFT", -ecart, 0)
     else
-        a:SetPoint("TOPRIGHT", cadre, "TOPRIGHT", 0, 0)
-        a:SetPoint("BOTTOMLEFT", ref, "TOPRIGHT", 0, 0)
+        a:SetPoint("TOPRIGHT", cadre, "TOPRIGHT", ecart, 0)
+        a:SetPoint("BOTTOMLEFT", ref, "TOPRIGHT", ecart, 0)
     end
     cadre.suiteAncres[cote] = a
     return a, cote == "gauche" and "BOTTOMLEFT" or "BOTTOMRIGHT"
