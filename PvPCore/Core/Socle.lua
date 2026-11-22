@@ -4,7 +4,7 @@ local _, NS = ...
 -- attend de chaque add-on. PvPCore peut ainsi vivre seul, avec la meme
 -- fenetre et les memes reglages que la suite complete.
 
-NS.VERSION = "0.1.0"
+NS.VERSION = "0.2.0"
 NS.base = {}
 local base = NS.base
 
