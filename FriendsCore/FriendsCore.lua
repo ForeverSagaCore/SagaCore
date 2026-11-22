@@ -115,12 +115,19 @@ local function TomTomPret()
     return type(t) == "table" and type(t.AddWaypoint) == "function"
 end
 
--- Le moyen choisi : "spf", "tomtom" ou nil.
+-- Les add-ons de trajet installes : { { cle, nom } }.
+local function Moyens()
+    local t = {}
+    if SPF() then table.insert(t, { cle = "spf", nom = "Shortest Path Forever" }) end
+    if TomTomPret() then table.insert(t, { cle = "tomtom", nom = "TomTom" }) end
+    return t
+end
+-- Le moyen choisi : "spf", "tomtom" ou nil. Tant que le joueur n'a pas
+-- choisi (reglage "auto"), aucun : c'est a lui de dire qui le guide.
 local function Moyen()
     local choix = R().trajet
-    if choix == "aucun" then return nil end
-    if (choix == "auto" or choix == "spf") and SPF() then return "spf" end
-    if (choix == "auto" or choix == "tomtom") and TomTomPret() then return "tomtom" end
+    if choix == "spf" and SPF() then return "spf" end
+    if choix == "tomtom" and TomTomPret() then return "tomtom" end
     return nil
 end
 
@@ -141,7 +148,9 @@ local function Envoyer(dest)
     end
     -- Une seule fleche a l'ecran : celle de l'add-on de trajet.
     local S = _G.CoreSuite
-    if R().couperFleche and S and S.ArreterGuidage and S.GuidageActif and S.GuidageActif() then pcall(S.ArreterGuidage) end
+    -- (Pas quand c'est la suite elle-meme qui passe l'etape : elle n'affiche
+    -- alors plus de fleche, seulement l'etape a suivre.)
+    if not dest.depuisSuite and R().couperFleche and S and S.ArreterGuidage and S.GuidageActif and S.GuidageActif() then pcall(S.ArreterGuidage) end
     return true
 end
 
@@ -152,6 +161,12 @@ _G.FriendsCoreAPI = {
         return (m == "spf" and "Shortest Path Forever") or (m == "tomtom" and "TomTom") or nil
     end,
     Trajet = function(dest) return Envoyer(dest) end,
+    -- Un add-on de trajet est installe mais le joueur n'a pas encore choisi
+    -- qui le guide : la suite lui pose la question.
+    ADecider = function() return R().trajet == "auto" and #Moyens() > 0 end,
+    Moyens = function() return Moyens() end,
+    -- "spf", "tomtom", ou "aucun" (la fleche de la suite).
+    Choisir = function(cle) R().trajet = (cle == "spf" or cle == "tomtom") and cle or "aucun" end,
 }
 
 -- ---------------------------------------------------------------------------
@@ -252,8 +267,8 @@ function F.Construire()
                   page.intro = O.Detail(40)
                   page.rMoyen = O.Rangee()
                   O.Liste(page.rMoyen, function()
-                      return { { "auto", T("Automatique", "Automatic") }, { "spf", "Shortest Path Forever" },
-                          { "tomtom", "TomTom" }, { "aucun", T("Aucun", "None") } }
+                      return { { "auto", T("Me demander", "Ask me") }, { "spf", "Shortest Path Forever" },
+                          { "tomtom", "TomTom" }, { "aucun", T("Forever SagaCore (sa flèche)", "Forever SagaCore (its arrow)") } }
                   end, function() return R().trajet end, function(v) R().trajet = v end)
                   page.rActuel = O.Rangee()
                   page.actuel = page.rActuel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")

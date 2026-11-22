@@ -773,7 +773,6 @@ function suivi.TrajetNiveau()
     end
     if NS.carte then NS.carte.Invalider() end
     suivi.Rendre()
-    if NS.fenetre and NS.fenetre.OuvrirCarte then NS.fenetre.OuvrirCarte() end
 end
 
 -- Le seul bouton de guidage : il trace le trajet sur la carte et lance la
@@ -814,7 +813,6 @@ function suivi.Guider()
     if NS.pageCarte and NS.pageCarte.ModeTrajet then NS.pageCarte.ModeTrajet(true) end
     if NS.carte then NS.carte.Invalider() end
     suivi.Rendre()
-    if NS.fenetre and NS.fenetre.OuvrirCarte then NS.fenetre.OuvrirCarte() end
 end
 
 function suivi.PoserFavori(id, oui)
@@ -1674,6 +1672,43 @@ RendreVueParcours = function(moi, index, y)
                     index = index + 1
                     y = Poser(index, y, titre .. " (" .. n .. ")", { uneLigne = true, couleur = couleur,
                         police = "GameFontNormalSmall", petit = true }) + 2
+                end
+                -- Quetes d'un donjon : rangees selon le moment, pour qu'on sache
+                -- tout de suite quoi faire avant d'entrer, quoi faire dedans,
+                -- et quoi rendre au retour.
+                if pc.genre == "kit" and NS.donjons and NS.donjons.DeQuete then
+                    local avant, dedans, retour = {}, {}, {}
+                    local function Dedans(id) return NS.donjons.DeQuete(id) ~= nil end
+                    for _, t in ipairs(enCours) do table.insert(Dedans(t.id) and dedans or avant, t) end
+                    for _, t in ipairs(aFaire) do table.insert(avant, t) end
+                    for _, t in ipairs(aRendre) do table.insert(retour, t) end
+                    table.sort(avant, function(a2, b2) return a2.rang < b2.rang end)
+                    local function Etape(t)
+                        if dejaRendues[t.id] then return end
+                        if moi.quetes[t.id] or t.suite then
+                            index, y = RendreAvecChaine(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
+                        else
+                            local idQ = t.id
+                            index, y = RendreEtapeBase(moi, t.id, t.rang, t.e, index, y, { actif = true, aide = L.ROUTE_STEP_HELP,
+                                auClic = function()
+                                    if suivi.PasserEtape then suivi.PasserEtape(idP, idQ) end
+                                    suivi.Rendre()
+                                end })
+                        end
+                    end
+                    if #avant > 0 then
+                        Groupe(L.KIT_BEFORE, #avant, { 1, 0.82, 0 })
+                        for _, t in ipairs(avant) do Etape(t) end
+                    end
+                    if #dedans > 0 then
+                        Groupe(L.KIT_INSIDE, #dedans, { 0.4, 0.75, 1 })
+                        for _, t in ipairs(dedans) do Etape(t) end
+                    end
+                    if #retour > 0 then
+                        Groupe(L.KIT_AFTER, #retour, { 1, 0.6, 0.2 })
+                        for _, t in ipairs(retour) do Etape(t) end
+                    end
+                    enCours, aRendre, aFaire = {}, {}, {}
                 end
                 if #enCours > 0 then
                     Groupe(L.TRACK_SECTION_ACTIVE, #enCours, { 0.4, 0.75, 1 })
@@ -3944,18 +3979,9 @@ function guidage.Basculer(oui, idParcours)
         -- s'ouvre sur sa premiere etape, avec tout l'itineraire numerote.
         fournisseur.carte = idParcours and false or nil
         S.Guider("QuestCore", fournisseur)
-        if idParcours then pcall(guidage.MontrerItineraire, idParcours) end
-        -- Un add-on de trajet installe (choisi dans FriendsCore) recoit l'etape
-        -- tout seul : plus de bouton a part pour lui.
-        if suivi.Passerelle and suivi.Passerelle() and suivi.EnvoyerEtape then
-            local idE = idParcours
-            if not idE then
-                for _, pc in ipairs(NS.parcours and NS.parcours.Liste(NS.ClePersonnage()) or {}) do
-                    if pc.genre == "rendu" then idE = pc.id end
-                end
-            end
-            if idE then pcall(suivi.EnvoyerEtape, idE) end
-        end
+        -- Guider ne fait qu'une chose : la fleche de la suite a l'ecran. Ni
+        -- carte qui s'ouvre, ni autre add-on de trajet : la carte reste a sa
+        -- place (longue-vue, fenetre de QuestCore ou de MapCore).
         -- La carte ne montre plus que le trajet guide.
         if NS.carte then NS.carte.Invalider() end
         if NS.pageCarte and NS.pageCarte.EnFiligrane and NS.pageCarte.EnFiligrane() then pcall(NS.pageCarte.Rendre)
