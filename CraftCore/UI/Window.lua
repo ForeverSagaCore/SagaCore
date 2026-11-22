@@ -871,6 +871,21 @@ end
 -- Portrait d'un personnage (defini plus bas, avec la bande des personnages).
 local PoserVisage
 
+-- Couleur exacte de la classe d'un personnage (fiche), ou nil.
+local function CouleurDeClasseDe(fiche)
+    if type(fiche) ~= "table" then return nil end
+    local jeton = fiche.jetonClasse
+    if not jeton and type(fiche.classe) == "string" then
+        for _, noms in ipairs({ _G.LOCALIZED_CLASS_NAMES_MALE, _G.LOCALIZED_CLASS_NAMES_FEMALE }) do
+            for cle, nom in pairs(type(noms) == "table" and noms or {}) do
+                if nom == fiche.classe then jeton = cle break end
+            end
+            if jeton then break end
+        end
+    end
+    return jeton and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[jeton] or nil
+end
+
 -- Ligne d'un personnage, reprise de LegacyCore : son portrait dans un cadre,
 -- son nom a la couleur de sa classe, une ligne de detail dessous, et a
 -- droite son niveau.
@@ -3178,16 +3193,25 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     for _, e in ipairs(Trie(plan.utilises)) do
         local enSacs = NS.inventaire.DisponibleDansLesSacs(e.objet)
         if enSacs < e.n then
+            -- Une ligne par personnage qui en a : son nom a la couleur de sa
+            -- classe, et ce qu'il a, en sacs, en banque, au courrier.
             local ou, reste = {}, e.n - enSacs
-            if enSacs > 0 then table.insert(ou, { nom = L.COL_BAGS, n = enSacs }) end
-            local _, banque = NS.inventaire.SacsEtBanque(fiche, e.objet)
-            if banque > 0 then table.insert(ou, { nom = L.COL_BANK, n = banque }) reste = reste - banque end
+            local sacsM, banqueM, courrierM = NS.inventaire.SacsEtBanque(fiche, e.objet)
+            courrierM = courrierM or 0
+            if sacsM + banqueM + courrierM > 0 then
+                table.insert(ou, { fiche = fiche, n = sacsM + banqueM + courrierM,
+                    texte = NS.inventaire.TexteSacsBanque(sacsM, banqueM, courrierM) })
+            end
+            reste = reste - banqueM - courrierM
+            local parCle = {}
+            for _, f in ipairs(NS.base.TousLesPersonnages()) do parCle[f.cle] = f end
             local _, detail = NS.inventaire.DetailChezLesAutres(fiche, e.objet)
             for _, d in ipairs(detail) do
-                table.insert(ou, { nom = d.nom or NS.inventaire.NomCourt(d.cle), n = d.total })
+                table.insert(ou, { fiche = parCle[d.cle] or { cle = d.cle }, n = d.total,
+                    texte = NS.inventaire.TexteSacsBanque(d.sacs, d.banque, d.courrier) })
                 reste = reste - d.total
             end
-            if #ou > (enSacs > 0 and 1 or 0) then
+            if #detail > 0 or banqueM + courrierM > 0 then
                 table.insert(aRecuperer, { objet = e.objet, n = e.n - enSacs, ou = ou, complet = reste <= 0 })
             end
         end
@@ -3221,7 +3245,14 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                 if deplie then
                     retraitCourant = retraitCourant + RETRAIT_PAR_NIVEAU
                     for _, o in ipairs(e.ou) do
-                        index, y = LigneSimple(contenu, index, y, nil, o.nom, tostring(o.n))
+                        local lo
+                        index, y, lo = LigneSimple(contenu, index, y, nil, NS.inventaire.NomCourt(o.fiche.cle),
+                            o.n .. "  (" .. o.texte .. ")")
+                        local c = lo and CouleurDeClasseDe(o.fiche)
+                        if c then
+                            lo.nom:SetTextColor(c.r, c.g, c.b)
+                            lo.nom.couleurPropre = true
+                        end
                     end
                     retraitCourant = retraitCourant - RETRAIT_PAR_NIVEAU
                 end
@@ -4982,16 +5013,6 @@ function ecran.Montrer(cle)
 
     local ok, souci = pcall(function()
         ReglerPlaceDuBandeau(fenetre, ecran.page == "equipement")
-        -- Mon equipement est a part : sans le menu de gauche, sur toute la
-        -- largeur.
-        local aPart = (ecran.page == "equipement")
-        fenetre.menu:SetShown(not aPart)
-        fenetre.trait:ClearAllPoints()
-        local insetT = fenetre.fond or fenetre.Inset or fenetre
-        local xTrait = aPart and (MARGE - ECART) or (MARGE + LARGEUR_MENU + ECART)
-        fenetre.trait:SetPoint("TOPLEFT", insetT, "TOPLEFT", xTrait, -MARGE)
-        fenetre.trait:SetPoint("BOTTOMLEFT", insetT, "BOTTOMLEFT", xTrait, MARGE)
-        if aPart and fenetre.fondMenu then fenetre.fondMenu:Hide() end
         -- La page de l'equipement tient entierement a l'ecran : elle occupe la
         -- zone fixe, et la zone defilante se retire.
         local surEquipement = (ecran.page == "equipement")
@@ -5112,7 +5133,7 @@ function ecran.Montrer(cle)
         NS.Dire(L.PAGE_FAILED)
     end
 
-    if fenetre.fondMenu and not fenetre.fondMenu:IsShown() and ecran.page ~= "equipement" then
+    if fenetre.fondMenu and not fenetre.fondMenu:IsShown() then
         pcall(NS.charte.FondDuJournal, fenetre.fondMenu)
     end
 
