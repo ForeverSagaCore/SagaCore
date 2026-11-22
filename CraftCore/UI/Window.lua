@@ -1602,6 +1602,21 @@ local function RendreReglages(contenu)
             contenu.listeHabillage:Show()
             contenu.listeHabillage.Rendre()
         end
+        -- Apparence moderne : la couleur des bordures, au choix.
+        if not contenu.listeBordure and S.OptionsCouleurBordure then
+            contenu.libelleBordure = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            contenu.listeBordure = S.ListeDeroulante(contenu, function() return S.OptionsCouleurBordure() end,
+                function() return S.CouleurBordureChoisie() end, function(v) S.PoserCouleurBordure(v) end,
+                function() ecran.Montrer("reglages") end)
+        end
+        if contenu.listeBordure then
+            local moderne = S.UI and S.UI.EstModerne and S.UI.EstModerne()
+            local fr = S.Langue and S.Langue() == "frFR"
+            contenu.libelleBordure:SetText(fr and "Couleur des bordures" or "Border colour")
+            contenu.libelleBordure:SetShown(moderne)
+            contenu.listeBordure:SetShown(moderne)
+            if moderne then contenu.listeBordure.Rendre() end
+        end
         contenu.listeFond:Show()
         contenu.listeFondSuivis:Show()
         contenu.listeFond.Rendre()
@@ -1720,7 +1735,8 @@ local function RendreReglages(contenu)
         end
         for _, pr in ipairs({ { contenu.libelleFond, contenu.listeFond }, { contenu.libelleFondSuivis, contenu.listeFondSuivis },
             { contenu.libellePanneau, contenu.listePanneau }, { contenu.libelleCompo, contenu.listeCompo },
-            { contenu.libelleSauver, contenu.sauverCompo }, { contenu.libelleHabillage, contenu.listeHabillage } }) do
+            { contenu.libelleSauver, contenu.sauverCompo }, { contenu.libelleHabillage, contenu.listeHabillage },
+            { (contenu.listeBordure and contenu.listeBordure:IsShown()) and contenu.libelleBordure or nil, contenu.listeBordure } }) do
           if pr[1] then
             pr[1]:ClearAllPoints()
             pr[1]:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 7))
@@ -1735,7 +1751,7 @@ local function RendreReglages(contenu)
     -- Les didacticiels ne sont plus dans cette page (ils iront ailleurs).
     contenu.titreTutos:Hide()
     if contenu.titreTutos.filet then contenu.titreTutos.filet:Hide() end
-    local precedent = contenu.listeHabillage or contenu.sauverCompo or contenu.listeFondSuivis or contenu.libelleFondSuivis
+    local precedent = (contenu.listeBordure and contenu.listeBordure:IsShown() and contenu.listeBordure) or contenu.listeHabillage or contenu.sauverCompo or contenu.listeFondSuivis or contenu.libelleFondSuivis
     local hauteur = 600
     -- Hauteur reelle quand le jeu la connait : le bas du dernier bloc.
     local haut, bas = contenu:GetTop(), precedent and precedent.GetBottom and precedent:GetBottom()

@@ -1362,6 +1362,10 @@ local enPanne = false
 local function Panne(err)
     if enPanne then return end
     enPanne = true
+    -- Gardee dans les donnees de la suite, pour qu'on puisse la lire ensuite.
+    if type(_G.CoreSuiteDB) == "table" then
+        _G.CoreSuiteDB.habillagePanne = { quand = (date and date("%Y-%m-%d %H:%M:%S")) or "", erreur = tostring(err or ""):sub(1, 400) }
+    end
     print("|cffffd100SagaCore|r " .. (Suite.Langue() == "frFR"
         and "Apparence moderne arrêtée pour cette session (erreur)." or "Modern look stopped for this session (error).")
         .. " " .. tostring(err or ""):sub(1, 120))
@@ -1392,9 +1396,39 @@ local function Couleur(t, c) t:SetVertexColor(c[1], c[2], c[3], c[4] or 1) end
 -- que le cadre affiche. `taille` : l'epaisseur de la bordure.
 local BORDURE_JEU = "Interface\\Tooltips\\UI-Tooltip-Border"
 -- La couleur de bordure des infobulles du jeu, lue chez lui.
+-- La couleur des bordures, au choix de chacun (Parametres, Apparence) ;
+-- par defaut celle des infobulles du jeu, lue chez lui.
+local COULEURS_BORDURE = {
+    { "jeu", "Comme les infobulles", "Like tooltips" },
+    { "or", "Or", "Gold", { 1, 0.82, 0.3 } },
+    { "bronze", "Bronze", "Bronze", { 0.72, 0.52, 0.3 } },
+    { "argent", "Argent", "Silver", { 0.75, 0.78, 0.82 } },
+    { "bleu", "Bleu", "Blue", { 0.35, 0.6, 1 } },
+    { "rouge", "Rouge", "Red", { 0.9, 0.25, 0.2 } },
+    { "vert", "Vert", "Green", { 0.35, 0.85, 0.4 } },
+    { "classe", "Couleur de ma classe", "My class colour" },
+}
+function Suite.OptionsCouleurBordure()
+    local fr = Suite.Langue() == "frFR"
+    local o = {}
+    for _, c in ipairs(COULEURS_BORDURE) do table.insert(o, { c[1], fr and c[2] or c[3] }) end
+    return o
+end
+function Suite.CouleurBordureChoisie()
+    local v = type(CoreSuiteDB) == "table" and CoreSuiteDB.couleurBordure or nil
+    for _, c in ipairs(COULEURS_BORDURE) do if c[1] == v then return v end end
+    return "jeu"
+end
 local function CouleurBordureJeu()
-    local c = _G.TOOLTIP_DEFAULT_COLOR
-    if type(c) == "table" and c.r then return { c.r, c.g, c.b, 1 } end
+    local v = Suite.CouleurBordureChoisie()
+    if v == "classe" then
+        local classe = UnitClass and select(2, UnitClass("player"))
+        local cc = classe and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[classe]
+        if cc then return { cc.r, cc.g, cc.b, 1 } end
+    end
+    for _, c in ipairs(COULEURS_BORDURE) do if c[1] == v and c[4] then return { c[4][1], c[4][2], c[4][3], 1 } end end
+    local t = _G.TOOLTIP_DEFAULT_COLOR
+    if type(t) == "table" and t.r then return { t.r, t.g, t.b, 1 } end
     return { 1, 1, 1, 1 }
 end
 local function Plat(f, fond, bord, taille)
@@ -1414,7 +1448,8 @@ local function Plat(f, fond, bord, taille)
         b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = BORDURE_JEU, edgeSize = taille,
             insets = { left = marge, right = marge, top = marge, bottom = marge } })
         b:SetBackdropColor(fond[1], fond[2], fond[3], fond[4] or 1)
-        if bord == UI.MODERNE.contour then bord = CouleurBordureJeu() end
+        p.contour = bord == UI.MODERNE.contour
+        if p.contour then bord = CouleurBordureJeu() end
         bord = bord or fond
         b:SetBackdropBorderColor(bord[1], bord[2], bord[3], bord[4] or 1)
     end
@@ -1426,8 +1461,18 @@ function UI.RecolorerPlat(f, fond, bord)
     local p = plats[f]
     if not (p and p.cadre.SetBackdropColor) then return end
     p.cadre:SetBackdropColor(fond[1], fond[2], fond[3], fond[4] or 1)
-    if bord == UI.MODERNE.contour then bord = CouleurBordureJeu() end
+    p.contour = bord == UI.MODERNE.contour
+    if p.contour then bord = CouleurBordureJeu() end
     p.cadre:SetBackdropBorderColor(bord[1], bord[2], bord[3], bord[4] or 1)
+end
+-- Nouvelle couleur des bordures : repeinte tout de suite partout.
+function Suite.PoserCouleurBordure(v)
+    CoreSuiteDB = type(CoreSuiteDB) == "table" and CoreSuiteDB or {}
+    CoreSuiteDB.couleurBordure = (v ~= "jeu") and v or nil
+    local c = CouleurBordureJeu()
+    for _, p in pairs(plats) do
+        if p.contour and p.cadre.SetBackdropBorderColor then p.cadre:SetBackdropBorderColor(c[1], c[2], c[3], 1) end
+    end
 end
 local function Effacer(t)
     if not t then return end
