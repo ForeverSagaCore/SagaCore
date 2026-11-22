@@ -90,7 +90,8 @@ end
 
 -- Pages ou le metier choisi a droite agit sur le contenu : la son onglet est
 -- eclaire, ailleurs tous les onglets de metier sont estompes.
-local PAGES_PAR_METIER = { recettes = true, stocks = true, projets = true, progressions = true, commandes = true }
+local PAGES_PAR_METIER = { recettes = true, stocks = true, projets = true, progressions = true, commandes = true,
+    monter = true }
 
 -- Metiers du perimetre. Les identifiants de ligne sont ceux que le client a
 -- renvoyes lors du releve en jeu ; leur nom n'etant pas lisible par ce client,
@@ -118,19 +119,22 @@ local METIERS = {
     { cle = "minage", ligne = 186, libelle = "PROF_MINING",        icone = ICONES_METIERS[186] },
 }
 
--- Pages, dans l'ordre de navigation du cahier des charges.
+-- Pages, dans l'ordre du menu. Trois groupes separes par un filet :
+-- l'atelier ; ce qui suit le metier choisi a droite ; ce qui couvre tous
+-- les metiers ; puis les parametres. "filet" : un filet au-dessus.
 local PAGES = {
     { cle = "atelier",     libelle = "NAV_DASHBOARD",    icone = "Interface\\Icons\\INV_Misc_Gear_01" },
-    { cle = "projets",     libelle = "NAV_PROJECTS",     icone = "Interface\\Icons\\INV_Scroll_03" },
+    -- Le metier choisi a droite.
+    { cle = "projets",     libelle = "NAV_PROJECTS",     icone = "Interface\\Icons\\INV_Scroll_03", filet = true },
     { cle = "commandes",   libelle = "NAV_ORDERS",       icone = "Interface\\Icons\\INV_Letter_15" },
     { cle = "recettes",    libelle = "NAV_RECIPES",      icone = "Interface\\Icons\\INV_Misc_Book_09" },
-    -- Monter un metier : une seule page guidee, pour tous les metiers.
-    { cle = "progression", libelle = "NAV_LEVEL_UP",     icone = "Interface\\Icons\\INV_Misc_Book_11" },
-    -- La progression, l'equipement et les caisses ont leur onglet a droite,
-    -- sous les metiers. Les fabrications rapides et la liste de courses sont
-    -- dans Mes projets.
     { cle = "stocks",      libelle = "NAV_STOCKS",       icone = "Interface\\Icons\\INV_Misc_Bag_08" },
-    { cle = "reglages",    libelle = "NAV_SETTINGS",     icone = "Interface\\Icons\\Trade_Engineering" },
+    { cle = "monter",      libelle = "NAV_LEVEL_UP_THIS", icone = "Interface\\Icons\\INV_Misc_Book_11" },
+    -- Tous les metiers.
+    { cle = "stocksTous",  libelle = "NAV_STOCKS_ALL",   icone = "Interface\\Icons\\INV_Misc_Bag_10", filet = true },
+    { cle = "progression", libelle = "NAV_LEVEL_UP",     icone = "Interface\\Icons\\INV_Misc_Book_11" },
+    -- L'equipement et les caisses ont leur onglet a droite, sous les metiers.
+    { cle = "reglages",    libelle = "NAV_SETTINGS",     icone = "Interface\\Icons\\Trade_Engineering", filet = true },
 }
 
 -- ---------------------------------------------------------------------------
@@ -813,7 +817,7 @@ local function RendreAtelier(contenu)
     contenu:SetHeight(math.max(y, 1))
 end
 
-local function RendreStocks(contenu)
+local function RendreStocks(contenu, tous)
     local base = NS.base
     local inventaire = NS.inventaire
 
@@ -823,8 +827,21 @@ local function RendreStocks(contenu)
     -- Le metier choisi filtre les stocks : seuls ses composants et ses
     -- produits sont montres. Tant qu'aucune recette de ce metier n'a ete
     -- relevee, rien n'est filtre plutot que de tout cacher.
-    local lies = NS.recettes and NS.recettes.ObjetsDuMetier
+    local lies = (not tous) and NS.recettes and NS.recettes.ObjetsDuMetier
         and NS.recettes.ObjetsDuMetier(ecran.ongletCourantLigne) or nil
+    -- Tous les metiers : les objets ranges sous chaque metier, dans l'ordre
+    -- des onglets ; ce qui n'est a aucun metier, a la fin.
+    local metiersDuRangement = {}
+    if tous and NS.recettes and NS.recettes.ObjetsDuMetier then
+        for _, cleO in ipairs((fenetre and fenetre.ordreOnglets) or {}) do
+            local onglet = fenetre.onglets[cleO]
+            local objets = onglet and NS.recettes.ObjetsDuMetier(onglet.ligne)
+            if objets then
+                local nom = (NS.recettes.NomDuMetier and NS.recettes.NomDuMetier(onglet.ligne)) or onglet.libelleParDefaut or "?"
+                table.insert(metiersDuRangement, { nom = nom, icone = ICONES_METIERS[onglet.ligne], objets = objets })
+            end
+        end
+    end
 
     -- Choix du personnage. Le sien par defaut, les autres sur demande, sans
     -- quitter la page.
@@ -833,10 +850,11 @@ local function RendreStocks(contenu)
     local index = 0
     local y = 0
 
-    local tous = base.TousLesPersonnages()
+    local tousLesPersos = base.TousLesPersonnages()
     local titre
-    index, y, titre = EnTeteDePage(contenu, index, y, L.NAV_STOCKS)
-    if #tous > 1 and titre then
+    index, y, titre = EnTeteDePage(contenu, index, y, tous and L.NAV_STOCKS_ALL or L.NAV_STOCKS)
+    local pageStocks = ecran.page
+    if #tousLesPersos > 1 and titre then
         PoserBoutonDeLigne(titre, choix == "tous" and L.STOCKS_THIS_CHAR_SHORT or L.STOCKS_ALL_SHORT,
             function()
                 if choix == "tous" then
@@ -844,7 +862,7 @@ local function RendreStocks(contenu)
                 else
                     base.PoserPersonnageAffiche("tous")
                 end
-                ecran.Montrer("stocks")
+                ecran.Montrer(pageStocks)
             end, 130)
     end
     if titre and titre.plus and titre.plus:IsShown() then
@@ -854,12 +872,12 @@ local function RendreStocks(contenu)
     end
 
     local fiches = {}
-    for _, fiche in ipairs(tous) do
+    for _, fiche in ipairs(tousLesPersos) do
         if choix == "tous" or fiche.cle == choix then
             table.insert(fiches, fiche)
         end
     end
-    if #fiches == 0 then fiches = tous end
+    if #fiches == 0 then fiches = tousLesPersos end
 
     for _, fiche in ipairs(fiches) do
         -- En-tete du personnage.
@@ -892,7 +910,7 @@ local function RendreStocks(contenu)
         for cle in pairs(base.StocksDe(fiche)) do objetsVus[cle] = true end
         for cle in pairs(inventaire.ObjetsAuCourrier and inventaire.ObjetsAuCourrier(fiche) or {}) do objetsVus[cle] = true end
         if #fiches == 1 then
-            for _, autre in ipairs(tous) do
+            for _, autre in ipairs(tousLesPersos) do
                 if autre.cle ~= fiche.cle and ((not fiche.faction) or (not autre.faction) or autre.faction == fiche.faction) then
                     for cle in pairs(base.StocksDe(autre)) do objetsVus[cle] = true end
                     for cle in pairs(inventaire.ObjetsAuCourrier and inventaire.ObjetsAuCourrier(autre) or {}) do objetsVus[cle] = true end
@@ -917,6 +935,27 @@ local function RendreStocks(contenu)
             if a.autres ~= b.autres then return a.autres > b.autres end
             return a.objet < b.objet
         end)
+        -- Tous les metiers : un intertitre par metier, ses objets dessous.
+        if tous and #metiersDuRangement > 0 and #lignes > 0 then
+            local ranges, pris = {}, {}
+            for _, m in ipairs(metiersDuRangement) do
+                local siens = {}
+                for _, l in ipairs(lignes) do
+                    if not pris[l.objet] and m.objets[tonumber(l.objet)] then table.insert(siens, l) pris[l.objet] = true end
+                end
+                if #siens > 0 then
+                    table.insert(ranges, { intertitre = m.nom, icone = m.icone })
+                    for _, l in ipairs(siens) do table.insert(ranges, l) end
+                end
+            end
+            local autresObjets = {}
+            for _, l in ipairs(lignes) do if not pris[l.objet] then table.insert(autresObjets, l) end end
+            if #autresObjets > 0 then
+                table.insert(ranges, { intertitre = L.STOCKS_OTHER_ITEMS })
+                for _, l in ipairs(autresObjets) do table.insert(ranges, l) end
+            end
+            lignes = ranges
+        end
 
         -- Un filtre qui ne laisse rien le dit, au lieu de laisser un blanc.
         if #lignes == 0 then
@@ -938,6 +977,28 @@ local function RendreStocks(contenu)
         end
 
         for _, l in ipairs(lignes) do
+          if l.intertitre then
+            index = index + 1
+            local inter = LigneDeTableau(contenu, index)
+            inter:ClearAllPoints()
+            inter:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -(y + 4))
+            inter:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -(y + 4))
+            PoserLigne(inter, RETRAIT_PAR_NIVEAU, false, false, nil)
+            if l.icone then inter.icone:SetTexture(l.icone) inter.icone:Show() else inter.icone:Hide() end
+            inter.nom:SetFontObject("GameFontNormalSmall")
+            inter.nom:SetTextColor(1, 0.82, 0)
+            inter.nom:SetText(l.intertitre)
+            ColonneCourrier(inter, true)
+            inter.sacs:SetText("")
+            inter.banque:SetText("")
+            inter.courrier:SetText("")
+            inter.total:SetText("")
+            inter:EnableMouse(false)
+            inter:SetScript("OnEnter", nil)
+            inter:SetScript("OnLeave", nil)
+            inter:Show()
+            y = y + HAUTEUR_LIGNE + 4
+          else
             index = index + 1
             local ligne = LigneDeTableau(contenu, index)
             ligne:ClearAllPoints()
@@ -982,6 +1043,7 @@ local function RendreStocks(contenu)
             ligne:SetScript("OnLeave", function() GameTooltip:Hide() end)
             ligne:Show()
             y = y + HAUTEUR_LIGNE
+          end
         end
 
         if fiche.quantitesIncertaines then
@@ -2964,7 +3026,7 @@ local function MigrerProjetsDeProgression()
     end
 end
 
-local function RendreProgression(contenu)
+local function RendreProgression(contenu, seulLigne)
     CacherLignesAuDela(contenu, 1)
     CacherActions(contenu)
     CacherParagraphes(contenu)
@@ -2982,29 +3044,31 @@ local function RendreProgression(contenu)
     local metiers = {}
     for _, m in ipairs(catalogue.MetiersDuPersonnage and catalogue.MetiersDuPersonnage() or {}) do
         -- Seuls les metiers qui fabriquent : la cueillette ne se monte pas ici.
-        if m.rang and not RECOLTE[m.ligne] and #(catalogue.Pour(m.ligne) or {}) > 0 then table.insert(metiers, m) end
+        if m.rang and not RECOLTE[m.ligne] and #(catalogue.Pour(m.ligne) or {}) > 0
+            and (seulLigne == nil or m.ligne == seulLigne) then table.insert(metiers, m) end
     end
     if #metiers == 0 then
-        PoserMessage(contenu, L.PROG_NO_TRADE, 0)
+        PoserMessage(contenu, seulLigne and L.PROG_THIS_NONE or L.PROG_NO_TRADE, 0)
         contenu:SetHeight(60)
         return
     end
     -- Par defaut, tout est replie : on ouvre le metier qu'on veut.
 
-    index, y = TitreDeSection(contenu, index, y, L.PROG_ALL_TITLE)
+    -- Monter ce metier : le metier choisi a droite, deja ouvert.
+    index, y = TitreDeSection(contenu, index, y, seulLigne and L.NAV_LEVEL_UP_THIS or L.PROG_ALL_TITLE)
     for _, m in ipairs(metiers) do
         local sien = fiche.metiers[tostring(m.ligne)]
-        local ouvert = ecran.progOuvert == m.ligne
+        local ouvert = seulLigne ~= nil or ecran.progOuvert == m.ligne
         index = index + 1
         local ligne = LigneDeTableau(contenu, index)
         ligne:ClearAllPoints()
         ligne:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
         ligne:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
         local ligneMetier = m.ligne
-        PoserLigne(ligne, 0, true, ouvert, function()
+        PoserLigne(ligne, 0, seulLigne == nil, ouvert, seulLigne == nil and function()
             ecran.progOuvert = (ecran.progOuvert ~= ligneMetier) and ligneMetier or false
             ecran.Montrer(ecran.page)
-        end)
+        end or nil)
         local icone = ICONES_METIERS[m.ligne]
         if icone then ligne.icone:SetTexture(icone) ligne.icone:Show() else ligne.icone:Hide() end
         ligne.nom:SetFontObject("GameFontNormal")
@@ -3889,7 +3953,9 @@ SynchroniserOnglets = function(win)
                 -- Un metier ne filtre que certaines pages ; ailleurs (equipement,
                 -- caisses, approvisionnement...), choisir un metier ouvre ses
                 -- recettes au lieu de ne rien changer a l'ecran.
-                ecran.Montrer(PAGES_PAR_METIER[ecran.page] and ecran.page or "recettes")
+                -- Depuis une page de tous les metiers, sa version pour ce metier.
+                local versMetier = { stocksTous = "stocks", progression = "monter" }
+                ecran.Montrer(PAGES_PAR_METIER[ecran.page] and ecran.page or versMetier[ecran.page] or "recettes")
             end)
             onglet.cle = metier.cle
             onglet.ligne = metier.ligne
@@ -4244,7 +4310,15 @@ local function Construire()
         local bouton = CreerLigneDeMenu(menu, page.icone)
         bouton:SetPoint("LEFT", menu, "LEFT", 0, 0)
         bouton:SetPoint("RIGHT", menu, "RIGHT", 0, 0)
-        if precedent then
+        if precedent and page.filet then
+            -- Filet entre deux groupes, avec de l'air de part et d'autre.
+            local filet = menu:CreateTexture(nil, "ARTWORK")
+            filet:SetHeight(1)
+            filet:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+            filet:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 6, -6)
+            filet:SetPoint("TOPRIGHT", precedent, "BOTTOMRIGHT", -6, -6)
+            bouton:SetPoint("TOP", precedent, "BOTTOM", 0, -13)
+        elseif precedent then
             bouton:SetPoint("TOP", precedent, "BOTTOM", 0, -2)
         else
             bouton:SetPoint("TOP", menu, "TOP", 0, 0)
@@ -4580,6 +4654,16 @@ function ecran.Montrer(cle)
 
     local ok, souci = pcall(function()
         ReglerPlaceDuBandeau(fenetre, ecran.page == "equipement")
+        -- Mon equipement est a part : sans le menu de gauche, sur toute la
+        -- largeur.
+        local aPart = (ecran.page == "equipement")
+        fenetre.menu:SetShown(not aPart)
+        fenetre.trait:ClearAllPoints()
+        local insetT = fenetre.fond or fenetre.Inset or fenetre
+        local xTrait = aPart and (MARGE - ECART) or (MARGE + LARGEUR_MENU + ECART)
+        fenetre.trait:SetPoint("TOPLEFT", insetT, "TOPLEFT", xTrait, -MARGE)
+        fenetre.trait:SetPoint("BOTTOMLEFT", insetT, "BOTTOMLEFT", xTrait, MARGE)
+        if aPart and fenetre.fondMenu then fenetre.fondMenu:Hide() end
         -- La page de l'equipement tient entierement a l'ecran : elle occupe la
         -- zone fixe, et la zone defilante se retire.
         local surEquipement = (ecran.page == "equipement")
@@ -4653,13 +4737,16 @@ function ecran.Montrer(cle)
                 c.libelle:Hide()
             end
         end
-        if ecran.page == "stocks" then
+        if ecran.page == "stocks" or ecran.page == "stocksTous" then
             -- Assez large pour l'en-tete "Autres persos" sur une ligne.
             LargeurDesColonnes(fenetre.contenu, 80)
-            RendreStocks(fenetre.contenu)
+            RendreStocks(fenetre.contenu, ecran.page == "stocksTous")
         elseif ecran.page == "progression" then
             LargeurDesColonnes(fenetre.contenu, 0, 260)
             RendreProgression(fenetre.contenu)
+        elseif ecran.page == "monter" then
+            LargeurDesColonnes(fenetre.contenu, 0, 260)
+            RendreProgression(fenetre.contenu, ecran.ongletCourantLigne)
         elseif ecran.page == "recettes" then
             -- Etat court, le detail est au survol : le nom des recettes a la place.
             LargeurDesColonnes(fenetre.contenu, 0, 190)
@@ -4696,7 +4783,7 @@ function ecran.Montrer(cle)
         NS.Dire(L.PAGE_FAILED)
     end
 
-    if fenetre.fondMenu and not fenetre.fondMenu:IsShown() then
+    if fenetre.fondMenu and not fenetre.fondMenu:IsShown() and ecran.page ~= "equipement" then
         pcall(NS.charte.FondDuJournal, fenetre.fondMenu)
     end
 

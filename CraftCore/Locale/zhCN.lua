@@ -641,3 +641,9 @@ L.GUIDE_GATHER = "采集或获取"
 L.GUIDE_GATHER_GO = "引导采集"
 L.GUIDE_LEVEL = "提升专业"
 L.GUIDE_LEVEL_HELP = "绿色 : 必得点数。金色 : 靠运气的点数。"
+
+-- Menu en groupes
+L.NAV_LEVEL_UP_THIS = "提升此专业"
+L.NAV_STOCKS_ALL = "我的全部库存"
+L.STOCKS_OTHER_ITEMS = "其他物品"
+L.PROG_THIS_NONE = "此专业无法通过制作提升 : 这里没有可推荐的内容。"

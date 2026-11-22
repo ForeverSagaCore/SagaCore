@@ -641,3 +641,9 @@ L.GUIDE_GATHER = "sammeln oder beschaffen"
 L.GUIDE_GATHER_GO = "Sammeln führen"
 L.GUIDE_LEVEL = "Beruf steigern"
 L.GUIDE_LEVEL_HELP = "Grün : sicherer Punkt. Gold : Punkt mit Glück."
+
+-- Menu en groupes
+L.NAV_LEVEL_UP_THIS = "Diesen Beruf steigern"
+L.NAV_STOCKS_ALL = "Alle meine Vorräte"
+L.STOCKS_OTHER_ITEMS = "Andere Gegenstände"
+L.PROG_THIS_NONE = "Dieser Beruf wird nicht durch Herstellen gesteigert : hier gibt es nichts vorzuschlagen."

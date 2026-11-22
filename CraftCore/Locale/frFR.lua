@@ -733,3 +733,10 @@ L.GUIDE_GATHER = "récolter ou obtenir"
 L.GUIDE_GATHER_GO = "Guider la récolte"
 L.GUIDE_LEVEL = "monter le métier"
 L.GUIDE_LEVEL_HELP = "|cff4fd168En vert : un point sûr.|r |cffffd100En or : un point avec de la chance.|r"
+
+-- Menu en groupes
+L.NAV_LEVEL_UP_THIS = "Monter ce métier"
+L.NAV_STOCKS_ALL = "Tous mes stocks"
+L.STOCKS_OTHER_ITEMS = "Autres objets"
+L.PROG_THIS_NONE = "Ce métier ne se monte pas en fabriquant : rien à proposer ici."
+L.NAV_RECIPES = "Mes recettes"

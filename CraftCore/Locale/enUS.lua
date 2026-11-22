@@ -734,3 +734,10 @@ L.GUIDE_GATHER = "gather or obtain"
 L.GUIDE_GATHER_GO = "Guide the gathering"
 L.GUIDE_LEVEL = "level the profession"
 L.GUIDE_LEVEL_HELP = "|cff4fd168Green : a sure point.|r |cffffd100Gold : a point with luck.|r"
+
+-- Menu en groupes
+L.NAV_LEVEL_UP_THIS = "Level this profession"
+L.NAV_STOCKS_ALL = "All my stocks"
+L.STOCKS_OTHER_ITEMS = "Other items"
+L.PROG_THIS_NONE = "This profession is not levelled by crafting : nothing to suggest here."
+L.NAV_RECIPES = "My recipes"

@@ -641,3 +641,9 @@ L.GUIDE_GATHER = "raccogliere o ottenere"
 L.GUIDE_GATHER_GO = "Guida la raccolta"
 L.GUIDE_LEVEL = "salire di professione"
 L.GUIDE_LEVEL_HELP = "Verde : punto sicuro. Oro : punto con fortuna."
+
+-- Menu en groupes
+L.NAV_LEVEL_UP_THIS = "Migliorare questa professione"
+L.NAV_STOCKS_ALL = "Tutte le mie scorte"
+L.STOCKS_OTHER_ITEMS = "Altri oggetti"
+L.PROG_THIS_NONE = "Questa professione non si migliora creando : niente da proporre qui."
