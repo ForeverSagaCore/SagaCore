@@ -114,6 +114,8 @@ local ICONES_METIERS = {
     [393] = "Interface\\Icons\\INV_Misc_Pelt_Wolf_01",
 }
 
+NS.ICONES_METIERS = ICONES_METIERS
+
 local METIERS = {
     { cle = "forge",  ligne = 164, libelle = "PROF_BLACKSMITHING", icone = ICONES_METIERS[164] },
     { cle = "minage", ligne = 186, libelle = "PROF_MINING",        icone = ICONES_METIERS[186] },

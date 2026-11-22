@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 124
+local VERSION = 125
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4542,6 +4542,10 @@ function Suite.ActiverMacroCore(oui)
     -- Les pastilles ne se cliquent que fenetre active (hors combat : le jeu
     -- interdit de montrer ou cacher ces boutons pendant un combat).
     local combat = InCombatLockdown and InCombatLockdown()
+    -- A chaque ouverture, la liste est refaite : au premier chargement, des
+    -- add-ons de la suite s'inscrivent apres le premier remplissage (il
+    -- manquait alors des pastilles).
+    if oui and not combat and Suite.RemplirMacroCore then pcall(Suite.RemplirMacroCore) end
     if not combat then
         for _, b in ipairs(f.pastilles or {}) do b:SetShown(oui and b.e ~= nil) end
     end

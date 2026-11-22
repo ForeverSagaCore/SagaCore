@@ -728,3 +728,280 @@ function encheres.TexteDeValeur(v)
     end
     return string.format(L.AH_VALUE, table.concat(morceaux, ", "), encheres.DateDe(v.quand))
 end
+
+-- ---------------------------------------------------------------------------
+-- Rang maximum atteint : il faut aller voir le maitre du metier
+-- ---------------------------------------------------------------------------
+-- Un metier arrive au bout de son rang (75/75, 150/150...) alors qu'un rang
+-- superieur existe et que le niveau du personnage le permet : un avis
+-- s'affiche a l'endroit du bandeau des quetes de QuestCore (la ou le joueur
+-- l'a place), et reste jusqu'a ce qu'on clique "J'ai compris". Ensuite, s'il
+-- passe pres d'un maitre de ce metier (QuestieDB), l'avis revient pour le
+-- lui rappeler, une fois par passage.
+
+NS.avisRang = {}
+-- Lecture de QuestieDB (le nom Lire est repris plus haut pour autre chose).
+local function LireDB(entite, id, champ)
+    local e = _G[entite]
+    if type(e) ~= "table" or type(e.Get) ~= "function" or not id then return nil end
+    local ok, v = pcall(e.Get, id, champ)
+    if ok then return v end
+    return nil
+end
+local avisRang = NS.avisRang
+
+-- Rangs et niveau demande pour le rang suivant.
+local PALIERS = { [75] = 10, [150] = 20, [225] = 35, [300] = 50, [375] = 65 }
+local function Plafond()
+    local maxi = tonumber(NS.Appeler(NS.Lecture("GetMaxPlayerLevel"))) or 60
+    if maxi >= 80 then return 450 elseif maxi >= 70 then return 375 end
+    return 300
+end
+
+-- Racines des titres des maitres (sans accents), francais et anglais.
+local RACINES = {
+    [171] = { "alchim" }, [164] = { "forge", "blacksmith" }, [333] = { "enchant" },
+    [202] = { "ingenieur", "ingenierie", "engineer" }, [165] = { "cuir", "leather" },
+    [197] = { "coutur", "tailor" }, [185] = { "cuisin", "cook", "chef" },
+    [129] = { "secour", "first aid" }, [186] = { "mine", "mining" },
+    [182] = { "herbor", "herbalis" }, [393] = { "depec", "skinn" }, [356] = { "pech", "fish" },
+}
+local ACCENTS = { ["é"] = "e", ["è"] = "e", ["ê"] = "e", ["ë"] = "e", ["à"] = "a", ["â"] = "a",
+    ["î"] = "i", ["ï"] = "i", ["ô"] = "o", ["û"] = "u", ["ù"] = "u", ["ç"] = "c" }
+local function Simple(texte)
+    texte = string.lower(tostring(texte or ""))
+    for a, b in pairs(ACCENTS) do texte = string.gsub(texte, a, b) end
+    return texte
+end
+
+local function Memoire()
+    if type(CraftCoreDB) ~= "table" then return {} end
+    CraftCoreDB.avisRang = type(CraftCoreDB.avisRang) == "table" and CraftCoreDB.avisRang or {}
+    local cle = NS.ClePersonnage and NS.ClePersonnage() or "?"
+    CraftCoreDB.avisRang[cle] = type(CraftCoreDB.avisRang[cle]) == "table" and CraftCoreDB.avisRang[cle] or {}
+    return CraftCoreDB.avisRang[cle]
+end
+
+-- Les metiers du personnage connecte bloques au bout de leur rang.
+function avisRang.Bloques()
+    local fiche = NS.base.Personnage()
+    local liste = {}
+    if not fiche or type(fiche.metiers) ~= "table" then return liste end
+    local niveau = tonumber(NS.Appeler(NS.Lecture("UnitLevel"), "player")) or 1
+    local plafond = Plafond()
+    for cle, sien in pairs(fiche.metiers) do
+        local ligne = tonumber(cle)
+        local rang, rangMax = tonumber(sien.rang), tonumber(sien.rangMax)
+        if ligne and rang and rangMax and rang >= rangMax and rangMax < plafond
+            and PALIERS[rangMax] and niveau >= PALIERS[rangMax] then
+            table.insert(liste, { ligne = ligne, nom = sien.nom, rang = rang, rangMax = rangMax })
+        end
+    end
+    table.sort(liste, function(a, b) return a.ligne < b.ligne end)
+    return liste
+end
+
+-- La fenetre : l'habit du bandeau des quetes, a sa place.
+local cadreA
+local function Placer()
+    cadreA:ClearAllPoints()
+    local qb = _G.QuestCoreBandeau
+    if qb and qb:IsShown() then
+        cadreA:SetPoint("TOP", qb, "BOTTOM", 0, -4)
+        return
+    end
+    local d = _G.QuestCoreDB
+    local r = type(d) == "table" and type(d.reglages) == "table" and type(d.reglages.general) == "table"
+        and type(d.reglages.general.bandeau) == "table" and d.reglages.general.bandeau or {}
+    cadreA:SetPoint("TOP", UIParent, "TOP", tonumber(r.x) or 0, tonumber(r.y) or -30)
+end
+
+local function Construire()
+    if cadreA then return cadreA end
+    local ok, f = pcall(CreateFrame, "Frame", "CraftCoreAvisRang", UIParent, "BackdropTemplate")
+    cadreA = ok and f or CreateFrame("Frame", "CraftCoreAvisRang", UIParent)
+    if cadreA.SetBackdrop then
+        cadreA:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+        cadreA:SetBackdropColor(0.09, 0.09, 0.09, 0.9)
+        cadreA:SetBackdropBorderColor(0.75, 0.6, 0.35, 1)
+    end
+    cadreA:SetFrameStrata("HIGH")
+    cadreA:SetSize(380, 84)
+    cadreA:SetClampedToScreen(true)
+    cadreA:EnableMouse(true)
+    -- L'icone du metier dans le cercle dore du jeu.
+    local rond = CreateFrame("Frame", nil, cadreA)
+    rond:SetSize(32, 32)
+    rond:SetPoint("TOPLEFT", cadreA, "TOPLEFT", 10, -10)
+    rond.icone = rond:CreateTexture(nil, "ARTWORK")
+    rond.icone:SetSize(24, 24)
+    rond.icone:SetPoint("CENTER")
+    if rond.icone.SetMask then pcall(rond.icone.SetMask, rond.icone, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+    rond.anneau = rond:CreateTexture(nil, "OVERLAY")
+    rond.anneau:SetSize(54, 54)
+    rond.anneau:SetPoint("TOPLEFT", rond, "TOPLEFT", -1, 1)
+    rond.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    cadreA.rond = rond
+    cadreA.titre = cadreA:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    cadreA.titre:SetPoint("TOPLEFT", rond, "TOPRIGHT", 10, -2)
+    cadreA.titre:SetPoint("RIGHT", cadreA, "RIGHT", -10, 0)
+    cadreA.titre:SetJustifyH("LEFT")
+    cadreA.titre:SetWordWrap(false)
+    cadreA.texte = cadreA:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    cadreA.texte:SetPoint("TOPLEFT", cadreA.titre, "BOTTOMLEFT", 0, -4)
+    cadreA.texte:SetPoint("RIGHT", cadreA, "RIGHT", -10, 0)
+    cadreA.texte:SetJustifyH("LEFT")
+    cadreA.texte:SetWordWrap(false)
+    -- Le seul moyen de le fermer : l'acquitter.
+    local b = CreateFrame("Button", "CraftCoreAvisRangOK", cadreA, "UIPanelButtonTemplate")
+    b:SetSize(120, 22)
+    b:SetPoint("BOTTOMRIGHT", cadreA, "BOTTOMRIGHT", -10, 10)
+    cadreA.ok = b
+    cadreA:Hide()
+    return cadreA
+end
+
+local enCours           -- le metier montre
+local rappelLe = {}     -- dernier rappel, par metier (pres d'un maitre)
+
+local function Montrer(m, pres)
+    Construire()
+    enCours = m
+    local L = NS.L
+    local icones = NS.ICONES_METIERS or {}
+    cadreA.rond.icone:SetTexture(icones[m.ligne] or "Interface\\Icons\\INV_Misc_QuestionMark")
+    cadreA.titre:SetText(string.format(L.RANK_MAX_TITLE, m.nom or "?", m.rang, m.rangMax))
+    cadreA.texte:SetText(pres and string.format(L.RANK_MAX_NEAR, pres) or L.RANK_MAX_TEXT)
+    cadreA.ok:SetText(L.RANK_MAX_OK)
+    cadreA.ok:SetScript("OnClick", function()
+        Memoire()[tostring(m.ligne)] = m.rangMax
+        cadreA:Hide()
+        enCours = nil
+        avisRang.Verifier()
+    end)
+    Placer()
+    cadreA:Show()
+end
+
+-- Un avis pour le premier metier bloque pas encore acquitte a ce rang.
+function avisRang.Verifier()
+    if enCours and cadreA and cadreA:IsShown() then
+        -- Le metier montre a-t-il ete debloque entre-temps ?
+        local encore = false
+        for _, m in ipairs(avisRang.Bloques()) do if m.ligne == enCours.ligne then encore = true end end
+        if not encore then cadreA:Hide() enCours = nil else return end
+    end
+    local vus = Memoire()
+    for _, m in ipairs(avisRang.Bloques()) do
+        if vus[tostring(m.ligne)] ~= m.rangMax then Montrer(m) return end
+    end
+end
+
+-- Les maitres de chaque metier, d'apres QuestieDB (lus une fois, par lots).
+local maitres, lectureMaitres
+local function LireMaitres()
+    if maitres or lectureMaitres then return end
+    local base = _G.NpcDB
+    if type(base) ~= "table" or type(base.GetAllIds) ~= "function" then return end
+    local ok, ids = pcall(base.GetAllIds)
+    if not ok or type(ids) ~= "table" then return end
+    local liste = {}
+    for _, id in pairs(ids) do table.insert(liste, id) end
+    lectureMaitres = {}
+    local camp = MonCamp()
+    local rang, cadre = 1, CreateFrame("Frame")
+    local band = _G.bit and _G.bit.band
+    cadre:SetScript("OnUpdate", function(self)
+        local fin = math.min(#liste, rang + 400)
+        for i = rang, fin do
+            local id = liste[i]
+            local drapeaux = tonumber(LireDB("NpcDB", id, "npcFlags"))
+            if drapeaux and band and band(drapeaux, 16) ~= 0 then
+                local amical = LireDB("NpcDB", id, "friendlyToFaction")
+                if type(amical) ~= "string" or string.find(amical, camp, 1, true) then
+                    local titre = Simple(LireDB("NpcDB", id, "subName"))
+                    for ligne, racines in pairs(RACINES) do
+                        for _, r in ipairs(racines) do
+                            if titre ~= "" and string.find(titre, r, 1, true) then
+                                lectureMaitres[ligne] = lectureMaitres[ligne] or {}
+                                table.insert(lectureMaitres[ligne], id)
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        rang = fin + 1
+        if rang > #liste then
+            maitres = lectureMaitres
+            lectureMaitres = nil
+            self:SetScript("OnUpdate", nil)
+        end
+    end)
+end
+
+-- Le maitre le plus proche d'un metier, s'il est a moins de 60 metres.
+local function MaitreProche(ligne, jx, jy, jc)
+    for _, id in ipairs((maitres and maitres[ligne]) or {}) do
+        local spawns = LireDB("NpcDB", id, "spawns")
+        for zone, points in pairs(type(spawns) == "table" and spawns or {}) do
+            local carte = CarteDeZone(zone)
+            for _, p in ipairs(carte and type(points) == "table" and points or {}) do
+                if tonumber(p[1]) and tonumber(p[2]) and p[1] >= 0 then
+                    local x, y, c = Monde(carte, p[1] / 100, p[2] / 100)
+                    if x and c == jc and ((x - jx) ^ 2 + (y - jy) ^ 2) < 60 * 60 then
+                        return LireDB("NpcDB", id, "name") or "?"
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Toutes les 3 secondes, tant qu'un metier attend son maitre : est-on pres
+-- de l'un d'eux ? Un rappel par metier toutes les 10 minutes au plus.
+do
+    local veille = CreateFrame("Frame")
+    local attente = 5
+    veille:SetScript("OnUpdate", function(_, ecoule)
+        attente = attente - (ecoule or 0)
+        if attente > 0 then return end
+        attente = 3
+        if cadreA and cadreA:IsShown() then return end
+        if NS.Appeler(NS.Lecture("InCombatLockdown")) then return end
+        local ok, bloques = pcall(avisRang.Bloques)
+        if not ok or #bloques == 0 then return end
+        LireMaitres()
+        if not maitres then return end
+        local carteJ = NS.Appeler(NS.Lecture("C_Map.GetBestMapForUnit"), "player")
+        local pos = carteJ and NS.Appeler(NS.Lecture("C_Map.GetPlayerMapPosition"), carteJ, "player")
+        if type(pos) ~= "table" or not pos.GetXY then return end
+        local jx, jy, jc = Monde(carteJ, pos:GetXY())
+        if not jx then return end
+        local maintenant = NS.Appeler(_G.GetTime) or 0
+        for _, m in ipairs(bloques) do
+            if maintenant - (rappelLe[m.ligne] or -1e9) > 600 then
+                local okP, nom = pcall(MaitreProche, m.ligne, jx, jy, jc)
+                if okP and nom then
+                    rappelLe[m.ligne] = maintenant
+                    Montrer(m, nom)
+                    return
+                end
+            end
+        end
+    end)
+end
+
+-- Apres chaque releve des niveaux de metier (connexion, point gagne, rang
+-- appris) : l'avis apparait, ou disparait si le rang a ete monte.
+if NS.recettes and NS.recettes.ReleverNiveaux then
+    local brut = NS.recettes.ReleverNiveaux
+    NS.recettes.ReleverNiveaux = function(...)
+        local r = brut(...)
+        pcall(avisRang.Verifier)
+        return r
+    end
+end
