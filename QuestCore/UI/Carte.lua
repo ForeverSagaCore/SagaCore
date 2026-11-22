@@ -519,9 +519,12 @@ local function Rectangle(zone, carteAffichee)
                 -- ajoutees par Forever (Mont Hyjal...) sont rendues par le jeu
                 -- sur la moitie du continent : leurs reperes y faisaient un
                 -- grand anneau. On ne les reporte pas.
-                local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), carteAffichee)
-                local continent = type(info) == "table" and (info.mapType == 2 or info.mapType == 1)
-                if continent and zone ~= carteAffichee and (d - g) * (b - h) > 0.15 then r = false end
+                -- Sans se fier au type de la carte affichee (Forever ne le
+                -- donne pas toujours) : seul un continent peut couvrir autant
+                -- de la carte affichee (sur la carte du monde).
+                local infoZ = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), zone)
+                local zoneContinent = type(infoZ) == "table" and infoZ.mapType == 2
+                if not zoneContinent and zone ~= carteAffichee and (d - g) * (b - h) > 0.15 then r = false end
             end
         end
         rectangles[cle] = r
