@@ -149,6 +149,13 @@ local DICO = {
     frFR = {
         ["Show or hide everything"] = "Tout afficher ou tout masquer",
         ["Open"] = "Ouvrir",
+        ["Change guide"] = "Changer de guide",
+        ["Route add-ons"] = "Add-ons d'itinéraire",
+        ["Shortest Path Forever and TomTom draw a detailed route. Install them with CurseForge or WowUp, then restart the game : they become available here."] = "Shortest Path Forever et TomTom tracent un itinéraire détaillé. Installez-les avec CurseForge ou WowUp, puis relancez le jeu : ils deviennent disponibles ici.",
+        ["Greyed : add-on not installed (see the i)."] = "Grisé : add-on non installé (voir le i).",
+        ["Who guides you?"] = "Qui vous guide ?",
+        ["You can change it later in FriendsCore."] = "Vous pourrez changer dans FriendsCore.",
+        ["Follow the route of"] = "Suivez l'itinéraire de",
         ["Forever SagaCore Dev is not installed."] = "Forever SagaCore Dev n'est pas installé.",
         ["Back to the normal suite."] = "Retour à la suite normale.",
         ["Switching to Forever SagaCore Dev."] = "Passage à Forever SagaCore Dev.",
@@ -2713,6 +2720,14 @@ local function CadreGuidage()
     c.temps:SetTextColor(0.8, 0.8, 0.8)
     c.qui = c:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     c.qui:SetPoint("TOP", c.temps, "BOTTOM", 0, -1)
+    -- Sous la boussole, pour tous les guidages : changer de guide en route
+    -- (quand un add-on d'itineraire est installe).
+    c.changer = CreateFrame("Button", "CoreSuiteGuidageChanger", c, "UIPanelButtonTemplate")
+    c.changer:SetSize(130, 20)
+    c.changer:SetPoint("TOP", c.qui, "BOTTOM", 0, -6)
+    c.changer:SetText(TX("Change guide"))
+    c.changer:SetScript("OnClick", function() Suite.ChangerDeGuide() end)
+    c.changer:Hide()
     local attente = 0
     c:SetScript("OnUpdate", function(self, ecoule)
         attente = attente - (ecoule or 0)
@@ -2720,6 +2735,7 @@ local function CadreGuidage()
         attente = 0.05
         local f = Suite.guide.fournisseur
         if not f then self:Hide() return end
+        if self.changer then self.changer:SetShown(Suite.PeutChangerDeGuide and Suite.PeutChangerDeGuide() or false) end
         local ok, cible, raison, detail = pcall(f.Cible)
         if not ok then return end
         if not cible then
@@ -2736,8 +2752,26 @@ local function CadreGuidage()
         else
             self.qui:SetText(cible.qui or "")
         end
+        -- Un add-on de trajet installe (reconnu par FriendsCore) : c'est lui qui
+        -- donne le chemin. La suite lui passe chaque etape et n'affiche plus
+        -- de fleche, seulement "Suivez l'itineraire de ..." et l'etape. Sans
+        -- lui, la fleche de la suite. Jamais les deux.
+        local hub = _G.FriendsCoreAPI
+        -- Les deux sont la et rien n'est choisi : on demande, une fois.
+        if hub and hub.ADecider and hub.ADecider() then Suite.ChoisirGuide() end
+        local externe = hub and hub.Disponible and hub.NomTrajet and hub.Disponible() and hub.NomTrajet() or nil
+        if externe then
+            local cleE = tostring(cible.carte) .. ":" .. math.floor((cible.x or 0) * 1000) .. ":" .. math.floor((cible.y or 0) * 1000)
+            if Suite.guide.envoye ~= cleE and hub.Trajet then
+                Suite.guide.envoye = cleE
+                pcall(hub.Trajet, { carte = cible.carte, x = cible.x, y = cible.y, titre = cible.titre or cible.qui, depuisSuite = true })
+            end
+            self.fleche:Hide() self.temps:SetText("")
+            self.distance:SetText(TX("Follow the route of") .. " " .. externe)
+        end
         local ax, ay, ca = PositionJoueur()
         local bx, by, cb = PositionMonde(cible.carte, cible.x, cible.y)
+        if externe and not (ax and bx and (not (ca and cb) or ca == cb)) then return end
         if not (ax and bx) or (ca and cb and ca ~= cb) then
             self.fleche:Hide() self.arrivee:Hide() self.temps:SetText("")
             self.distance:SetText(TG.loin)
@@ -2745,7 +2779,8 @@ local function CadreGuidage()
         end
         local nord, ouest = bx - ax, by - ay
         local yards = math.sqrt(nord * nord + ouest * ouest)
-        self.distance:SetText(string.format("%d m", math.floor(yards * 0.9144 + 0.5)))
+        if externe and yards >= 12 then self.arrivee:Hide() return end
+        if not externe then self.distance:SetText(string.format("%d m", math.floor(yards * 0.9144 + 0.5))) end
         -- Duree estimee : a la vitesse actuelle (monture comprise), sinon a
         -- la vitesse de course a pied (7 yards par seconde).
         local vitesse = 0
@@ -2808,6 +2843,131 @@ local function CadreGuidage()
     return c
 end
 
+-- Qui guide ? Un add-on de trajet est installe (Shortest Path Forever...) et
+-- le joueur n'a pas encore choisi : une petite fenetre propose l'un ou la
+-- fleche de la suite. Le choix se change ensuite dans FriendsCore.
+function Suite.ChoisirGuide()
+    local hub = _G.FriendsCoreAPI
+    if not (hub and hub.Moyens and hub.Choisir) then return end
+    local f = Suite.choixGuide
+    if f and f:IsShown() then return end
+    if not f then
+        -- Une fenetre de la suite, a sa charte (comme MacroCore).
+        local charte = NS.charte
+        if not (charte and charte.Fenetre) then return end
+        f = charte.Fenetre("CoreSuiteQuiGuide", 260, 160, { portrait = false, strate = "DIALOG", sansPied = true })
+        f.texte = f.zone:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        f.texte:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, 0)
+        f.texte:SetPoint("RIGHT", f.zone, "RIGHT", 0, 0)
+        f.texte:SetJustifyH("LEFT")
+        f.texte:SetWordWrap(false)
+        f.boutons = {}
+        -- Le petit i : comment ajouter les add-ons d'itineraire qui manquent.
+        local info = CreateFrame("Button", nil, f)
+        info:SetSize(16, 16)
+        info:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -4)
+        info:SetFrameLevel(f:GetFrameLevel() + 20)
+        info:SetNormalTexture("Interface\\FriendsFrame\\InformationIcon")
+        info:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+        info:SetScript("OnEnter", function()
+            -- Toujours au meme endroit : contre le bord droit de la fenetre.
+            GameTooltip:SetOwner(f, "ANCHOR_NONE")
+            GameTooltip:ClearAllPoints()
+            GameTooltip:SetPoint("TOPLEFT", f, "TOPRIGHT", 4, 0)
+            GameTooltip:SetText(TX("Route add-ons"), 1, 0.82, 0)
+            GameTooltip:AddLine(TX("Shortest Path Forever and TomTom draw a detailed route. Install them with CurseForge or WowUp, then restart the game : they become available here."), 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        info:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        f.note = f.zone:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        f.note:SetJustifyH("LEFT")
+        f.note:SetWordWrap(false)
+        -- Fermer sans choisir : pas de guidage.
+        if f.fermer then f.fermer:SetScript("OnClick", function() f:Hide() Suite.ArreterGuidage() end) end
+        -- Manette : la croix haut / bas passe d'un choix a l'autre (le choix
+        -- s'allume), A valide, B ferme sans guider.
+        function f.Allumer(i)
+            local vus = {}
+            for _, b in ipairs(f.boutons) do if b:IsShown() and b:IsEnabled() then table.insert(vus, b) end end
+            if #vus == 0 then return end
+            i = math.max(1, math.min(#vus, i or 1))
+            f.rang = i
+            for k, b in ipairs(vus) do if k == i then b:LockHighlight() else b:UnlockHighlight() end end
+            f.vus = vus
+        end
+        if f.EnableGamePadButton then
+            f:SetScript("OnGamePadButtonDown", function(_, bouton)
+                if bouton == "PADDUP" then f.Allumer((f.rang or 1) - 1)
+                elseif bouton == "PADDDOWN" then f.Allumer((f.rang or 1) + 1)
+                elseif bouton == "PAD1" then local b = f.vus and f.vus[f.rang or 1] if b then b:Click("LeftButton") end
+                elseif bouton == "PAD2" then f:Hide() Suite.ArreterGuidage()
+                end
+            end)
+            f:HookScript("OnShow", function(self) pcall(self.EnableGamePadButton, self, true) end)
+            f:HookScript("OnHide", function(self) pcall(self.EnableGamePadButton, self, false) end)
+        end
+        f:Hide()
+        Suite.choixGuide = f
+    end
+    -- Tous les add-ons d'itineraire connus : ceux qui manquent, grises.
+    local choix, manque = {}, false
+    local tous = hub.Tous and hub.Tous() or hub.Moyens()
+    for _, m in ipairs(tous) do
+        table.insert(choix, { cle = m.cle, nom = m.nom, absent = m.installe == false })
+        if m.installe == false then manque = true end
+    end
+    table.insert(choix, { cle = "aucun", nom = "Forever SagaCore" })
+    if f.titre then f.titre:SetText(TX("Who guides you?")) end
+    f.texte:SetText(TX("You can change it later in FriendsCore."))
+    for _, b in ipairs(f.boutons) do b:Hide() end
+    local largeur = 260 - 2 * ((NS.charte and NS.charte.MARGE) or 12) - 10
+    for k, ch in ipairs(choix) do
+        local b = f.boutons[k]
+        if not b then
+            b = CreateFrame("Button", "CoreSuiteQuiGuide" .. k, f.zone, "UIPanelButtonTemplate")
+            b:SetSize(largeur, 22)
+            f.boutons[k] = b
+        end
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, -22 - (k - 1) * 28)
+        b:SetText(ch.nom)
+        b:SetEnabled(not ch.absent)
+        local cle = ch.cle
+        b:SetScript("OnClick", function()
+            hub.Choisir(cle)
+            Suite.guide.envoye = nil
+            f:Hide()
+        end)
+        b:Show()
+    end
+    -- Sous les boutons : ce que veut dire un choix grise.
+    f.note:ClearAllPoints()
+    f.note:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, -22 - #choix * 28 - 2)
+    f.note:SetPoint("RIGHT", f.zone, "RIGHT", 0, 0)
+    f.note:SetText(manque and TX("Greyed : add-on not installed (see the i).") or "")
+    f.note:SetShown(manque)
+    -- Barre de titre, marge, texte, boutons, note, marge.
+    f:SetHeight(24 + 12 + 22 + #choix * 28 + (manque and 16 or 0) + 12 + 8)
+    f:ClearAllPoints()
+    -- Toujours au meme endroit, au milieu de l'ecran : on ne peut pas la rater.
+    f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    f:Show()
+    f.Allumer(1)
+end
+
+-- Changer de guide en cours de route (le guidage continue) : la question
+-- "Qui vous guide ?" revient tout de suite.
+function Suite.PeutChangerDeGuide()
+    local hub = _G.FriendsCoreAPI
+    return hub and hub.Moyens and #hub.Moyens() > 0 and Suite.guide.fournisseur ~= nil or false
+end
+function Suite.ChangerDeGuide()
+    local hub = _G.FriendsCoreAPI
+    if hub and hub.Oublier then pcall(hub.Oublier) end
+    Suite.guide.envoye = nil
+    pcall(Suite.ChoisirGuide)
+end
+
 function Suite.Guider(cle, fournisseur)
     local g = Suite.guide
     if g.cle and g.cle ~= cle and g.fournisseur and g.fournisseur.Fin then
@@ -2815,7 +2975,14 @@ function Suite.Guider(cle, fournisseur)
         g.cle, g.fournisseur = nil, nil
         pcall(ancien.Fin)
     end
+    -- Un nouveau guidage (pas la meme destination qui se met a jour) : la
+    -- question "Qui vous guide ?" sera reposee.
+    if g.fournisseur ~= fournisseur then
+        local hub = _G.FriendsCoreAPI
+        if hub and hub.Oublier then pcall(hub.Oublier) end
+    end
     g.cle, g.fournisseur = cle, fournisseur
+    g.envoye = nil
     local cadreG = CadreGuidage()
     -- L'icone au centre : celle que donne le guidage, sinon celle de l'add-on.
     local ICONES_GUIDE = {
@@ -2826,9 +2993,9 @@ function Suite.Guider(cle, fournisseur)
         cadreG.icone:SetTexture((fournisseur and fournisseur.icone) or ICONES_GUIDE[cle] or "Interface\\Icons\\INV_Misc_Map_01")
     end
     cadreG:Show()
-    -- Partout ou l'on guide, la carte de MapCore s'ouvre sur la destination,
-    -- qui y clignote. Sauf si le guidage part deja d'une carte (carte = false).
-    if fournisseur and fournisseur.carte ~= false then
+    -- Guider ne fait qu'une chose : la fleche. La carte de MapCore ne s'ouvre
+    -- plus d'elle-meme (seulement si un guidage le demande expressement).
+    if fournisseur and fournisseur.ouvrirCarte == true then
         local api = _G.MapCoreAPI
         if api and api.Montrer and fournisseur.Cible then
             local ok, pt = pcall(fournisseur.Cible)
@@ -2843,6 +3010,7 @@ end
 function Suite.ArreterGuidage(cle)
     local g = Suite.guide
     if cle and g.cle ~= cle then return end
+    if Suite.choixGuide then Suite.choixGuide:Hide() end
     local f = g.fournisseur
     g.cle, g.fournisseur = nil, nil
     g.arrivee = nil

@@ -2255,7 +2255,9 @@ end
 function fen.VoirQuete(id, p, sansFleche)
     local lieu = NS.donjons.LieuDuDonneur(id)
     if not lieu then return end
-    if sansFleche and not (NS.guidage and NS.guidage.Actif()) then sansFleche = nil end
+    -- Voir sur la carte ne fait que montrer : jamais de guidage en plus (le
+    -- guidage, c'est le bouton Guider).
+    sansFleche = true
     if NS.pageCarte and NS.pageCarte.MontrerQuete then
         NS.pageCarte.MontrerQuete(id, lieu.carte, lieu.x, lieu.y, NS.ref.NomDeQuete(id, p), lieu.nom, sansFleche)
     end
