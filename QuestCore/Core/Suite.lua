@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 135
+local VERSION = 136
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2567,7 +2567,23 @@ local function CadreGuidage()
         attente = 0.05
         local f = Suite.guide.fournisseur
         if not f then self:Hide() return end
-        if self.changer then self.changer:SetShown(Suite.PeutChangerDeGuide and Suite.PeutChangerDeGuide() or false) end
+        if self.changer then
+            self.changer:SetShown(Suite.PeutChangerDeGuide and Suite.PeutChangerDeGuide() or false)
+            -- En marche, le bouton s'efface presque (10 %) : on sait qu'il est
+            -- la ; a l'arret, il revient et se clique.
+            local enMarche = false
+            if _G.GetUnitSpeed then
+                local okM, vM = pcall(_G.GetUnitSpeed, "player")
+                enMarche = okM and (vM or 0) > 0
+            end
+            local vise = enMarche and 0.1 or 1
+            local a = self.changer:GetAlpha() or 1
+            if a ~= vise then
+                a = (a < vise) and math.min(vise, a + 0.15) or math.max(vise, a - 0.15)
+                self.changer:SetAlpha(a)
+            end
+            self.changer:EnableMouse(not enMarche)
+        end
         local ok, cible, raison, detail = pcall(f.Cible)
         if not ok then return end
         if not cible then
