@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 139
+local VERSION = 140
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2664,6 +2664,21 @@ local function CadreGuidage()
             else
                 self.changer:SetPoint("TOP", self.qui, "BOTTOM", 0, -6)
             end
+        end
+        -- Avec un add-on d'itineraire, il ne montre que l'etape en cours : le
+        -- compte des etapes reste celui de la suite, sous Changer de guide.
+        if not self.etape then
+            self.etape = self:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            self.etape:SetPoint("TOP", self.changer or self, "BOTTOM", 0, -4)
+            self.etape:SetWordWrap(false)
+            self.etape:SetShadowOffset(1, -1)
+        end
+        if externe and cible.rang and cible.total and cible.total > 1 then
+            local fr = Suite.Langue() == "frFR"
+            self.etape:SetText(string.format(fr and "Étape %d sur %d" or "Step %d of %d", cible.rang, cible.total))
+            self.etape:Show()
+        else
+            self.etape:Hide()
         end
         if externe then
             self.fleche:Hide() self.arrivee:Hide()
