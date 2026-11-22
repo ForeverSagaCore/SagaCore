@@ -4688,7 +4688,7 @@ local function PoserIndicesManette(win)
     local premiere = win.boutons[PAGES[1].cle]
     local derniere = win.boutons[PAGES[#PAGES].cle]
     -- Mon equipement : son propre menu, LB / RB y ramenent aux pages.
-    if ecran.page == "equipement" and win.menuEquip then
+    if ecran.EstStuff(ecran.page) and win.menuEquip then
         premiere, derniere = nil, nil
         for _, b in ipairs(win.menuEquip) do
             if b:IsShown() then premiere = premiere or b derniere = b end
@@ -4808,6 +4808,12 @@ local function Construire()
         craftExterne = "Interface\\Icons\\INV_Misc_Coin_02", monde = "Interface\\Icons\\INV_Misc_Map_01",
         quetes = "Interface\\GossipFrame\\AvailableQuestIcon", donjons = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
     }
+    -- Presentation 2 (origines en onglets sur la page) : une seule ligne,
+    -- Mon equipement, pour y aller depuis les Parametres.
+    win.ligneMonEquip = LigneEquip("Interface\\Icons\\INV_Chest_Chain", function()
+        ecran.Montrer("equipement")
+    end)
+    win.ligneMonEquip:SetPoint("TOP", menu, "TOP", 0, 0)
     win.originesEquip = {}
     local premiereOrigine = true
     for _, cat in ipairs(NS.sources and NS.sources.ORDRE or {}) do
@@ -5112,15 +5118,27 @@ function ecran.Montrer(cle)
         for _, b in pairs(fenetre.boutons) do b:SetShown(not stuff) end
         for _, f in ipairs(fenetre.filetsMenu or {}) do f:SetShown(not stuff) end
         local scen = NS.equipement and NS.equipement.Scenario() or 1
-        local avecOrigines = stuff and ecran.page == "equipement" and scen ~= 2
+        -- Les origines (presentations 1 et 3) restent dans le menu sur toutes
+        -- les pages de StuffCore : c'est par elles qu'on va a l'equipement.
+        local avecOrigines = stuff and scen ~= 2
         local dernierE
+        local monEquip = fenetre.ligneMonEquip
+        if monEquip then
+            local texte = monEquip.text or monEquip.Text or (monEquip.GetFontString and monEquip:GetFontString())
+            if texte then texte:SetText(L.NAV_EQUIPMENT) end
+            local avec = stuff and scen == 2
+            monEquip:SetShown(avec)
+            MarquerLigneDeMenu(monEquip, ecran.page == "equipement")
+            if avec then dernierE = monEquip end
+        end
         for _, cat in ipairs(NS.sources and NS.sources.ORDRE or {}) do
             local b = fenetre.originesEquip and fenetre.originesEquip[cat]
             if b then
                 local texte = b.text or b.Text or (b.GetFontString and b:GetFontString())
                 if texte then texte:SetText(L["GEAR_CAT_" .. cat]) end
                 b:SetShown(avecOrigines)
-                local choisi = (scen == 3) and NS.equipement.FiltreActif(cat) or (scen == 1 and NS.equipement.Categorie() == cat)
+                local choisi = (scen == 3) and NS.equipement.FiltreActif(cat)
+                    or (scen == 1 and ecran.page == "equipement" and NS.equipement.Categorie() == cat)
                 MarquerLigneDeMenu(b, choisi)
                 if avecOrigines then dernierE = b end
             end
@@ -5499,6 +5517,23 @@ function ecran.PageVoisine(pas)
     if not fenetre then ecran.Montrer() return end
     -- StuffCore : ses trois pages.
     if ecran.EstStuff(ecran.page) then
+        -- Presentation 1 : les origines du menu, puis les Parametres.
+        if NS.equipement and NS.equipement.Scenario() == 1 and fenetre.originesEquip then
+            local liste = {}
+            for _, cat in ipairs(NS.sources and NS.sources.ORDRE or {}) do table.insert(liste, cat) end
+            table.insert(liste, "reglagesStuff")
+            local rang = #liste
+            if ecran.page == "equipement" then
+                for k, c in ipairs(liste) do if c == NS.equipement.Categorie() then rang = k end end
+            end
+            local suivant = math.max(1, math.min(#liste, rang + pas))
+            if suivant == rang then return end
+            if liste[suivant] == "reglagesStuff" then ecran.Montrer("reglagesStuff") return end
+            NS.equipement.PoserCategorie(liste[suivant])
+            NS.ecran.selectionObjets = {}
+            ecran.Montrer("equipement")
+            return
+        end
         local liste = { "equipement", "reglagesStuff" }
         local rang = 1
         for k, p in ipairs(liste) do if p == ecran.page then rang = k end end
