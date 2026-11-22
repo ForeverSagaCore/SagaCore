@@ -284,20 +284,35 @@ function actions.Silence()
         local avant = NS.Appeler(lire, "Sound_EnableSFX")
         if avant ~= "1" then return end
         sonCoupe = avant
+        -- Note sur le disque : si le jeu se ferme pendant ce court instant,
+        -- les bruitages sont remis a la connexion suivante.
+        if CraftCoreDB then CraftCoreDB.sonCoupe = avant end
         NS.Appeler(poser, "Sound_EnableSFX", "0")
     end
     local plusTard = NS.Lecture("C_Timer.After")
     local function Remettre()
         if sonCoupe then NS.Appeler(poser, "Sound_EnableSFX", sonCoupe) sonCoupe = nil end
+        if CraftCoreDB then CraftCoreDB.sonCoupe = nil end
     end
     if plusTard then NS.Appeler(plusTard, 0.6, Remettre) else Remettre() end
 end
 do
     local f = CreateFrame("Frame")
     pcall(f.RegisterEvent, f, "PLAYER_LOGOUT")
-    f:SetScript("OnEvent", function()
+    pcall(f.RegisterEvent, f, "PLAYER_LOGIN")
+    f:SetScript("OnEvent", function(_, evenement)
         local poser = NS.Lecture("C_CVar.SetCVar", "SetCVar")
-        if sonCoupe and poser then NS.Appeler(poser, "Sound_EnableSFX", sonCoupe) sonCoupe = nil end
+        if not poser then return end
+        if evenement == "PLAYER_LOGIN" then
+            -- Bruitages restes coupes par une fermeture au mauvais moment.
+            if CraftCoreDB and CraftCoreDB.sonCoupe then
+                NS.Appeler(poser, "Sound_EnableSFX", CraftCoreDB.sonCoupe)
+                CraftCoreDB.sonCoupe = nil
+            end
+            return
+        end
+        if sonCoupe then NS.Appeler(poser, "Sound_EnableSFX", sonCoupe) sonCoupe = nil end
+        if CraftCoreDB then CraftCoreDB.sonCoupe = nil end
     end)
 end
 
