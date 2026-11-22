@@ -170,7 +170,13 @@ local function EstHorde()
     return S and S.Theme and S.Theme() == "horde"
 end
 
+-- L'apparence moderne de la suite : son propre fond sombre, jamais le parchemin.
+local function Moderne()
+    local S = _G.CoreSuite
+    return S and S.UI and S.UI.EstModerne and S.UI.EstModerne() or false
+end
 function charte.Fond()
+    if Moderne() then return "noir" end
     if ParDefaut() then return "parchemin" end
     local g = NS.base and NS.base.ReglagesGeneraux and NS.base.ReglagesGeneraux() or {}
     local suite = _G.CoreSuiteDB
@@ -319,7 +325,7 @@ function charte.Encrer(racine, parchemin)
     if racine.GetChildren then
         for _, enfant in ipairs({ racine:GetChildren() }) do
             local saisie = enfant.IsObjectType and enfant:IsObjectType("EditBox")
-            if not saisie then charte.Encrer(enfant, parchemin) end
+            if not saisie and not enfant.sansEncre then charte.Encrer(enfant, parchemin) end
         end
     end
 end
@@ -552,9 +558,15 @@ function charte.Parchemin(cadre, haut, bas, porteur)
     table.insert(charte.parchemins, p)
     -- Fond sombre : roche grise, repetee en motif.
     p.roche = porteur:CreateTexture(nil, "BACKGROUND", nil, 5)
-    if not pcall(p.roche.SetTexture, p.roche, ROCHE, "REPEAT", "REPEAT") then pcall(p.roche.SetTexture, p.roche, ROCHE) end
+    -- En apparence moderne, le fond dessine pour la suite (repete lui aussi).
+    local motif = ROCHE
+    local S = _G.CoreSuite
+    if Moderne() and S.UI.Media then motif = S.UI.Media("fond") or ROCHE end
+    if not pcall(p.roche.SetTexture, p.roche, motif, "REPEAT", "REPEAT") then pcall(p.roche.SetTexture, p.roche, motif) end
+    if motif ~= ROCHE and not p.roche:GetTexture() then pcall(p.roche.SetTexture, p.roche, ROCHE, "REPEAT", "REPEAT") end
     if p.roche.SetHorizTile then p.roche:SetHorizTile(true) p.roche:SetVertTile(true) end
     p.roche:SetVertexColor(0.75, 0.75, 0.75, 1)
+    if motif ~= ROCHE then p.roche:SetVertexColor(1, 1, 1, 0.9) end
     p.roche:SetPoint(haut[1], haut[2], haut[3], haut[4], haut[5])
     p.roche:SetPoint(bas[1], bas[2], bas[3], bas[4], bas[5])
     p.roche:Hide()
@@ -711,7 +723,14 @@ function charte.TitreDeSection(fs, filet)
     else
         fs:SetFontObject("GameFontNormal")
         fs:SetTextColor(1, 0.82, 0)
-        if filet then filet:SetColorTexture(1, 0.82, 0, 0.25) end
+        if filet then
+            -- Apparence moderne : la couleur commune a tous les filets.
+            local c = Moderne() and _G.CoreSuite.UI.MODERNE.couleurFilet or { 1, 0.82, 0, 0.25 }
+            filet:SetColorTexture(c[1], c[2], c[3], c[4])
+            if filet.SetSnapToPixelGrid then filet:SetSnapToPixelGrid(false) filet:SetTexelSnappingBias(0) end
+            -- Repeint avec les autres quand le theme moderne change.
+            if Moderne() and _G.CoreSuite.UI.NoterFilet then _G.CoreSuite.UI.NoterFilet(filet) end
+        end
     end
     return parchemin
 end

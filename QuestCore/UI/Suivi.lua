@@ -2203,7 +2203,7 @@ function suivi.Rendre()
             BasDeListe(false)
             -- Le rond de la premiere quete deborde au-dessus de sa ligne : un
             -- peu d'air sous le filet, comme sous un titre de zone ailleurs.
-            local _, yFin = RendreVueFavoris(moi, 0, 6)
+            local _, yFin = RendreVueFavoris(moi, 0, 10)
             corps:SetHeight(math.max(yFin, 1))
             return
         end

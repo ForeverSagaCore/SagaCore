@@ -91,6 +91,9 @@ Suite.ORDRE = {
     -- Le JcJ (carte de champ de bataille, honneur) : discret tant qu'il n'est
     -- pas publie (montre seulement s'il est installe).
     { cle = "PvPCore", icone = "Interface\\Icons\\INV_BannerPVP_02", discret = true },
+    -- Les hauts faits (finir le jeu, avancement en pourcentage) : discret
+    -- tant qu'il n'est pas publie (montre seulement s'il est installe).
+    { cle = "AchievementCore", icone = "Interface\\Icons\\INV_Misc_Ribbon_01", discret = true },
 }
 -- Les add-ons annonces des leur chargement (avant les fenetres).
 Suite.presents = Suite.presents or {}
@@ -1255,7 +1258,7 @@ end
 -- copie d'essai (dossiers XDev), ou l'inverse, puis recharge l'interface.
 -- Jamais les deux suites actives a la fois.
 -- ---------------------------------------------------------------------------
-Suite.ADDONS_SUITE = { "CraftCore", "QuestCore", "MapCore", "LegacyCore", "StuffCore", "FriendsCore", "AuraCore", "PvPCore" }
+Suite.ADDONS_SUITE = { "CraftCore", "QuestCore", "MapCore", "LegacyCore", "StuffCore", "FriendsCore", "AuraCore", "PvPCore", "AchievementCore" }
 function Suite.BasculerDev()
     if not Suite.Prive() then return end
     local A = _G.C_AddOns or {}
@@ -4846,7 +4849,7 @@ end
 -- explication que le jeu n'execute pas (#), puis la commande.
 local COURTS = {
     pilotefab = "PFa", pilotequetes = "PQu", ouvrir = "Sui", craftcore = "CrC", questcore = "QuC",
-    mapcore = "MaC", legacycore = "LeC", stuffcore = "StC", tradecore = "TrC", pvpcore = "PvP", fabrications = "SFa", quetes = "SQu", suivis = "PSu",
+    mapcore = "MaC", legacycore = "LeC", stuffcore = "StC", tradecore = "TrC", pvpcore = "PvP", achievementcore = "AcC", fabrications = "SFa", quetes = "SQu", suivis = "PSu",
     stop = "Stp", rendus = "Ren", recolte = "Rec", metier = "Met", oui = "Oui", non = "Non",
     messages = "Msg", reglages = "Rgl", improve = "IC", raccourcis = "Pan",
 }
@@ -6759,7 +6762,8 @@ Suite.BrancherIconesSuivis = BrancherSuivis
 -- Quetes a gauche.
 -- ---------------------------------------------------------------------------
 
-local FENETRES_INFOBULLE = { CoreSuiteMacroCore = "droite", CraftCoreSuivi = "droite", QuestCoreSuivi = "gauche" }
+local FENETRES_INFOBULLE = { CoreSuiteMacroCore = "droite", CraftCoreSuivi = "droite", QuestCoreSuivi = "gauche",
+    AchievementCoreFenetre = "droite" }
 Suite.FENETRES_INFOBULLE = FENETRES_INFOBULLE
 
 function Suite.CoteInfobulle(nom)
@@ -8810,7 +8814,7 @@ end }
 -- ---------------------------------------------------------------------------
 
 Suite.FENETRES_FONDU = { "CraftCoreWindow", "QuestCoreFenetre", "MapCoreFenetre", "LegacyCoreFenetre",
-    "TradeCoreFenetre", "AuraCoreFenetre", "CoreSuiteReglages", "CoreSuiteMacros", "SagaCoreMessages" }
+    "TradeCoreFenetre", "AuraCoreFenetre", "AchievementCoreFenetre", "CoreSuiteReglages", "CoreSuiteMacros", "SagaCoreMessages" }
 local ALPHA_MARCHE = 0.1
 
 -- En vol : trajet de maitre de vol ou monture volante.
