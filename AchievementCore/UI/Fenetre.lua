@@ -498,22 +498,20 @@ local function RendreCategorie(page, cat)
             y = Poser(page, i, y, { icone = s.icone or cat.icone, texte = s.nom, fait = s.fait, total = s.total,
                 auClic = function() nav.sous, nav.element, nav.page = cle, nil, 1 F.Defiler() F.Rendre() end })
         end
-    elseif not element then
-        nt = nt + 1
-        y = Titre(page, nt, y, string.format(T("Pour %s", "For %s"), calcul.NomDePortee(portee)))
-        for _, e in ipairs(sous.elements) do
-            local cle = e.cle
-            i = i + 1
-            y = Poser(page, i, y, { icone = e.icone, coords = e.coords, texte = e.nom, couleur = e.couleur,
-                fait = e.fait, total = e.total,
-                auClic = function() nav.element, nav.page = cle, 1 F.Defiler() F.Rendre() end })
-        end
     else
-        local tous = element.Detail and element.Detail() or {}
+        -- Elements d'une sous-categorie, ou criteres d'un element : la meme
+        -- liste, filtree (tout, reste a faire, deja fait), par pages de 100.
         local liste = {}
-        for _, c in ipairs(tous) do
-            local f = CritereFait(c, portee)
-            if nav.filtre == "tout" or (nav.filtre == "fait" and f) or (nav.filtre == "reste" and not f) then table.insert(liste, c) end
+        if element then
+            for _, c in ipairs(element.Detail and element.Detail() or {}) do
+                local f = CritereFait(c, portee)
+                if nav.filtre == "tout" or (nav.filtre == "fait" and f) or (nav.filtre == "reste" and not f) then table.insert(liste, c) end
+            end
+        else
+            for _, e in ipairs(sous.elements) do
+                local f = e.fait >= e.total
+                if nav.filtre == "tout" or (nav.filtre == "fait" and f) or (nav.filtre == "reste" and not f) then table.insert(liste, e) end
+            end
         end
         Controles(page)
         y = y + 8
@@ -526,16 +524,23 @@ local function RendreCategorie(page, cat)
         if #liste == 0 then nn = nn + 1 y = Note(page, nn, y, T("Aucun élément à montrer.", "Nothing to show.")) end
         local debut = (nav.page - 1) * PAR_PAGE + 1
         for k = debut, math.min(#liste, debut + PAR_PAGE - 1) do
-            local c = liste[k]
-            local f = CritereFait(c, portee)
-            local icone, coords = c.icone, c.coords
-            if c.objet then icone = NS.IconeDObjet(c.objet) end
+            local x = liste[k]
             i = i + 1
-            local nom = c.nom
-            if c.niveau and c.niveau > 0 then nom = "[" .. c.niveau .. "] " .. nom end
-            y = Poser(page, i, y, { icone = icone or cat.icone, coords = coords, desature = not f, texte = nom,
-                couleur = f and VERT or GRIS, droite = DroiteDeCritere(c, portee), droitePropre = true,
-                survol = Infobulle(c), auClic = function() end })
+            if element then
+                local f = CritereFait(x, portee)
+                local icone = x.icone
+                if x.objet then icone = NS.IconeDObjet(x.objet) end
+                local nom = x.nom
+                if x.niveau and x.niveau > 0 then nom = "[" .. x.niveau .. "] " .. nom end
+                y = Poser(page, i, y, { icone = icone or cat.icone, coords = x.coords, desature = not f, texte = nom,
+                    couleur = f and VERT or GRIS, droite = DroiteDeCritere(x, portee), droitePropre = true,
+                    survol = Infobulle(x), auClic = function() end })
+            else
+                local cle = x.cle
+                y = Poser(page, i, y, { icone = x.icone, coords = x.coords, texte = x.nom, couleur = x.couleur,
+                    fait = x.fait, total = x.total,
+                    auClic = function() nav.element, nav.page = cle, 1 F.Defiler() F.Rendre() end })
+            end
         end
     end
     page.hauteur = page.yZone + y + 10

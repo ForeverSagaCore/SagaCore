@@ -404,7 +404,10 @@ local function ConstruireQuetes()
     NS.Changer("quetes", "donjons", "reputations")
 end
 
--- Index des PNJ boss (rang "boss" de la base) par zone : les raids.
+-- Index des PNJ boss (rang "boss" de la base) par zone, seulement dans les
+-- raids (la base n'a qu'une partie des boss de donjon) et seulement les PNJ
+-- hostiles qui ne donnent ni ne reprennent de quete (pas les dragons amis
+-- de la fin d'Ahn'Qiraj, ni Malfurion dans le temple).
 local function ConstruireBoss()
     local ids = TousLesIds("NpcDB")
     if not ids then etat.boss = false return end
@@ -414,7 +417,9 @@ local function ConstruireBoss()
         if tonumber(Lire("NpcDB", id, "rank")) == 3 then
             local zone = tonumber(Lire("NpcDB", id, "zoneID"))
             local d = zone and base.DonjonDeZone(zone)
-            if d then
+            local ami = Lire("NpcDB", id, "friendlyToFaction")
+            local parle = Lire("NpcDB", id, "questStarts") or Lire("NpcDB", id, "questEnds")
+            if d and d.raid and ami == nil and not (type(parle) == "table" and #parle > 0) then
                 parZone[d.zone] = parZone[d.zone] or {}
                 table.insert(parZone[d.zone], { id = id, nom = Lire("NpcDB", id, "name") or ("#" .. id) })
             end
@@ -445,8 +450,14 @@ local function ConstruireObjets()
         end
         if not ok and fabriques[id] then ok = true end
         if ok then
-            local famille = tonumber(Lire("ItemDB", id, "class")) or 15
-            local sous = tonumber(Lire("ItemDB", id, "subClass")) or 0
+            local famille = tonumber(Lire("ItemDB", id, "class"))
+            local sous = tonumber(Lire("ItemDB", id, "subClass"))
+            if not famille then
+                -- La famille selon le jeu, si la base ne la donne pas.
+                local _, _, _, _, _, f, sf = NS.Jeu("C_Item.GetItemInfoInstant", id)
+                famille, sous = tonumber(f), tonumber(sf)
+            end
+            famille, sous = famille or 15, sous or 0
             local cle = famille * 1000 + sous
             if not parSous[cle] then
                 parSous[cle] = { famille = famille, sous = sous, ids = {} }
