@@ -736,7 +736,7 @@ L.GUIDE_BUY = "buy from a vendor"
 L.GUIDE_BUY_LEFT = "%d missing from your bags"
 L.GUIDE_BUY_OK = "in your bags"
 L.GUIDE_GATHER = "gather or obtain"
-L.GUIDE_GATHER_GO = "Guide the gathering"
+L.GUIDE_GATHER_GO = "Guide"
 L.GUIDE_LEVEL = "level the profession"
 L.GUIDE_LEVEL_HELP = "|cff4fd168Green : a sure point.|r |cffffd100Gold : a point with luck.|r"
 

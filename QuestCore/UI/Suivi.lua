@@ -761,6 +761,47 @@ function suivi.TrajetNiveau()
     if NS.fenetre and NS.fenetre.OuvrirCarte then NS.fenetre.OuvrirCarte() end
 end
 
+-- Le seul bouton de guidage : il trace le trajet sur la carte et lance la
+-- fleche. Ce qu'il guide se decide tout seul, dans cet ordre : les quetes
+-- cochees ; sinon le trajet le plus court pour monter de niveau ; sinon le
+-- trajet deja trace ; sinon toutes les quetes a rendre.
+function suivi.CeQueGuider(moi)
+    moi = moi or NS.base.Perso(NS.ClePersonnage())
+    if not moi then return nil end
+    local choisies = {}
+    for id in pairs(Reglages().aRendreChoisies or {}) do
+        if moi.quetes and moi.quetes[id] and moi.quetes[id].complete ~= -1 then table.insert(choisies, id) end
+    end
+    if #choisies > 0 then return "choisies", choisies end
+    if NS.disponibles and NS.disponibles.QuetesPourNiveau then
+        local ok, ids = pcall(NS.disponibles.QuetesPourNiveau, moi)
+        if ok and ids and #ids > 0 then return "niveau", ids end
+    end
+    for _, pc in ipairs(NS.parcours and NS.parcours.Liste(moi.cle) or {}) do
+        if pc.genre == "rendu" then return "trace" end
+    end
+    local aRendre = {}
+    for id, q in pairs(moi.quetes or {}) do if q.complete == true then table.insert(aRendre, id) end end
+    if #aRendre > 0 then return "rendre", aRendre end
+    return nil
+end
+
+function suivi.Guider()
+    local moi = NS.base.Perso(NS.ClePersonnage())
+    local genre, ids = suivi.CeQueGuider(moi)
+    if not genre then return end
+    if genre == "niveau" then suivi.TrajetNiveau() return end
+    if ids and NS.disponibles and NS.disponibles.CreerTournee then
+        local ok, souci = pcall(NS.disponibles.CreerTournee, moi.cle, moi, ids)
+        if not ok then NS.base.NoterIncident("trajet de quetes", souci) return end
+    end
+    PrendreGuidage()
+    if NS.pageCarte and NS.pageCarte.ModeTrajet then NS.pageCarte.ModeTrajet(true) end
+    if NS.carte then NS.carte.Invalider() end
+    suivi.Rendre()
+    if NS.fenetre and NS.fenetre.OuvrirCarte then NS.fenetre.OuvrirCarte() end
+end
+
 function suivi.PoserFavori(id, oui)
     Favoris()[id] = oui and true or nil
     if NS.groupe and NS.groupe.EnvoyerFavoris then pcall(NS.groupe.EnvoyerFavoris) end
@@ -1825,9 +1866,7 @@ function suivi.Rendre()
         local boutons = {}
         -- Trajet niveau : dans la vue des quetes, pas dans celle d'un parcours
         -- (son propre trajet y a deja ses boutons).
-        if s.vue ~= "parcours" and nRendre > 0 and manque > 0 and xpRendre >= manque then
-            table.insert(boutons, { L.TRACK_LEVEL_BUTTON, function() suivi.TrajetNiveau() end, L.TRACK_LEVEL_ROUTE_HELP })
-        end
+
         local avecTrajet = false
         for _, pc in ipairs(NS.parcours and NS.parcours.Liste(NS.ClePersonnage()) or {}) do
             if pc.genre == "rendu" then avecTrajet = true end
@@ -1870,13 +1909,7 @@ function suivi.Rendre()
             local f, t = NS.parcours.Avancement(moi, pcVue)
             if t > 0 and f >= t then fini = pcVue end
         end
-        if s.vue == "parcours" and pcVue and not fini and suivi.Passerelle then
-            local envoyer = suivi.Passerelle()
-            if envoyer then
-                local idV = pcVue.id
-                table.insert(boutons, { L.ROUTE_DETAILED, function() pcall(suivi.EnvoyerEtape, idV) end, L.ROUTE_DETAILED_HELP })
-            end
-        end
+
         if fini then
             local idF, nomF = fini.id, fini.nom
             table.insert(boutons, { L.ROUTE_DELETE, function()
@@ -1894,9 +1927,22 @@ function suivi.Rendre()
             local idV = pcVue.id
             table.insert(boutons, { ici and L.GUIDE_STOP or L.GUIDE_START,
                 function() if NS.guidage then NS.guidage.Basculer(not ici, idV) end end, L.GUIDE_HELP })
-        elseif (avecTrajet or actif) and s.vue ~= "parcours" then
-            table.insert(boutons, { actif and L.GUIDE_STOP or L.GUIDE_START,
-                function() if NS.guidage then NS.guidage.Basculer(not actif) end end, L.GUIDE_HELP })
+        elseif s.vue ~= "parcours" then
+            -- Un seul bouton : Guider (ce qu'il guide est dit au survol), ou
+            -- Arreter quand la fleche tourne.
+            if actif then
+                table.insert(boutons, { L.GUIDE_STOP, function() if NS.guidage then NS.guidage.Basculer(false) end end, L.GUIDE_HELP })
+            else
+                -- Meme ordre que suivi.CeQueGuider, sans calculer le trajet ici.
+                local aide
+                if nSel > 0 then aide = string.format(L.GUIDE_WHAT_SEL, nSel)
+                elseif nRendre > 0 and manque > 0 and xpRendre >= manque then aide = L.GUIDE_WHAT_LEVEL
+                elseif avecTrajet then aide = L.GUIDE_WHAT_ROUTE
+                elseif nRendre > 0 then aide = string.format(L.GUIDE_WHAT_TURNIN, nRendre) end
+                if aide then
+                    table.insert(boutons, { L.GUIDE_START, function() suivi.Guider() end, aide .. "\n\n" .. L.GUIDE_HELP })
+                end
+            end
         end
         if #boutons > 0 then table.insert(rangs, { genre = "boutons", boutons = boutons }) end
 
@@ -2040,7 +2086,8 @@ function suivi.Rendre()
         for id in pairs(s.aRendreChoisies) do
             if quetes[id] and quetes[id].complete ~= -1 then nChoisies = nChoisies + 1 else s.aRendreChoisies[id] = nil end
         end
-        cadre.voirCarte:SetShown(#ids > 0 and (filtre or nChoisies > 0))
+        -- Plus de bouton Carte / Trajet ici : le bouton Guider du bilan fait tout.
+        cadre.voirCarte:SetShown(false)
         cadre.voirCarte:SetText(nChoisies > 0 and string.format(L.ROUTE_TURNIN_BUTTON, nChoisies) or L.TRACK_MAP_SHORT)
         cadre.voirCarte:SetWidth((cadre.voirCarte.GetTextWidth and cadre.voirCarte:GetTextWidth() or 80) + 24)
         -- Rangee du bas alignee sur toute la largeur : "Tout replier" et le
@@ -3840,6 +3887,17 @@ function guidage.Basculer(oui, idParcours)
         fournisseur.carte = idParcours and false or nil
         S.Guider("QuestCore", fournisseur)
         if idParcours then pcall(guidage.MontrerItineraire, idParcours) end
+        -- Un add-on de trajet installe (choisi dans HubCore) recoit l'etape
+        -- tout seul : plus de bouton a part pour lui.
+        if suivi.Passerelle and suivi.Passerelle() and suivi.EnvoyerEtape then
+            local idE = idParcours
+            if not idE then
+                for _, pc in ipairs(NS.parcours and NS.parcours.Liste(NS.ClePersonnage()) or {}) do
+                    if pc.genre == "rendu" then idE = pc.id end
+                end
+            end
+            if idE then pcall(suivi.EnvoyerEtape, idE) end
+        end
         -- La carte ne montre plus que le trajet guide.
         if NS.carte then NS.carte.Invalider() end
         if NS.pageCarte and NS.pageCarte.EnFiligrane and NS.pageCarte.EnFiligrane() then pcall(NS.pageCarte.Rendre)

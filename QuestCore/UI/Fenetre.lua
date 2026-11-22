@@ -302,10 +302,10 @@ local function RendreQuetes(contenu, p, index, y)
     local boutonsTitre = {
         { L.TURNIN_ALL, function() NS.base.PoserFiltreARendre(false) end, filtre },
         { string.format(L.TURNIN_TAB, nRendre), function() NS.base.PoserFiltreARendre(true) end, not filtre },
-        { L.TURNIN_SHOW_MAP, function()
-            etat.page = "carte"
-            NS.base.PoserFiltreARendre(true)
-        end, nRendre > 0 },
+        -- Le meme bouton Guider que le suivi (personnage connecte seulement).
+        (p.cle == NS.ClePersonnage()) and { L.GUIDE_START, function()
+            if NS.suivi and NS.suivi.Guider then NS.suivi.Guider() end
+        end, nRendre > 0 } or nil,
     }
     for id, q in pairs(p.quetes or {}) do
       if not filtre or q.complete == true then

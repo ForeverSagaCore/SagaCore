@@ -735,7 +735,7 @@ L.GUIDE_BUY = "acheter chez un marchand"
 L.GUIDE_BUY_LEFT = "il en manque %d dans vos sacs"
 L.GUIDE_BUY_OK = "dans vos sacs"
 L.GUIDE_GATHER = "récolter ou obtenir"
-L.GUIDE_GATHER_GO = "Guider la récolte"
+L.GUIDE_GATHER_GO = "Guider"
 L.GUIDE_LEVEL = "monter le métier"
 L.GUIDE_LEVEL_HELP = "|cff4fd168En vert : un point sûr.|r |cffffd100En or : un point avec de la chance.|r"
 
