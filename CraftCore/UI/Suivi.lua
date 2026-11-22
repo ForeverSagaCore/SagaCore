@@ -1,4 +1,10 @@
 local _, NS = ...
+-- Un filet de separation : en apparence moderne, la couleur commune du theme
+-- (repeinte quand il change) ; sinon la couleur donnee.
+local function PeindreFilet(t, r, g, b, a)
+    local S = _G.CoreSuite
+    if S and S.PeindreFilet then S.PeindreFilet(t, r, g, b, a) else t:SetColorTexture(r, g, b, a) end
+end
 
 -- ===========================================================================
 -- Suivi de recolte
@@ -554,7 +560,7 @@ local function Construire()
     filetHaut:SetHeight(1)
     filetHaut:SetPoint("TOPLEFT", cadre.zone, "TOPLEFT", 0, -HAUT_ONGLETS + 6)
     filetHaut:SetPoint("TOPRIGHT", cadre.zone, "TOPRIGHT", 0, -HAUT_ONGLETS + 6)
-    filetHaut:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+    PeindreFilet(filetHaut, 0.8, 0.65, 0.35, 0.35)
     cadre.filetHaut = filetHaut
 
     -- Tout ouvrir / tout fermer les objectifs de l'onglet.
@@ -824,7 +830,7 @@ local function DessinerObjectifs(y, objectifs, vue)
         f:SetPoint("TOPLEFT", zone, "TOPLEFT", 0, -yF)
         f:SetPoint("TOPRIGHT", zone, "TOPRIGHT", 0, -yF)
         if _G.PixelUtil and _G.PixelUtil.SetHeight then _G.PixelUtil.SetHeight(f, 1, 1) else f:SetHeight(1) end
-        f:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+        PeindreFilet(f, 0.8, 0.65, 0.35, 0.35)
         f:Show()
     end
     local function Ligne(pool)
@@ -1180,7 +1186,7 @@ local function DessinerObjectifs(y, objectifs, vue)
                         f:SetPoint("TOPLEFT", zone, "TOPLEFT", 24, -y)
                         f:SetPoint("TOPRIGHT", zone, "TOPRIGHT", -40, -y)
                         if _G.PixelUtil and _G.PixelUtil.SetHeight then _G.PixelUtil.SetHeight(f, 1, 1) else f:SetHeight(1) end
-                        f:SetColorTexture(0.8, 0.65, 0.35, 0.22)
+                        PeindreFilet(f, 0.8, 0.65, 0.35, 0.22)
                         f:Show()
                         y = y + 6
                     end

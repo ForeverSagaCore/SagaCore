@@ -1,4 +1,10 @@
 local _, NS = ...
+-- Un filet de separation : en apparence moderne, la couleur commune du theme
+-- (repeinte quand il change) ; sinon la couleur donnee.
+local function PeindreFilet(t, r, g, b, a)
+    local S = _G.CoreSuite
+    if S and S.PeindreFilet then S.PeindreFilet(t, r, g, b, a) else t:SetColorTexture(r, g, b, a) end
+end
 
 -- Ecran de CraftCore.
 --
@@ -710,7 +716,7 @@ local function StyleDeTitre(fs)
     else
         fs:SetFontObject("GameFontNormal")
         fs:SetTextColor(1, 0.82, 0)
-        fs.filet:SetColorTexture(1, 0.82, 0, 0.25)
+        PeindreFilet(fs.filet, 1, 0.82, 0, 0.25)
     end
     fs.filet:SetShown(fs:IsShown())
 end
@@ -1156,7 +1162,7 @@ local function RendreStocks(contenu, tous)
             somme.filet:ClearAllPoints()
             somme.filet:SetPoint("TOPLEFT", somme, "TOPLEFT", RETRAIT_PAR_NIVEAU, 2)
             somme.filet:SetPoint("TOPRIGHT", somme, "TOPRIGHT", -8, 2)
-            somme.filet:SetColorTexture(1, 0.82, 0, 0.25)
+            PeindreFilet(somme.filet, 1, 0.82, 0, 0.25)
             somme.filet:Show()
             somme:Show()
             y = y + HAUTEUR_LIGNE + 8
@@ -1266,7 +1272,7 @@ local function RendreStocks(contenu, tous)
             else
                 inter.nom:SetFontObject("GameFontNormal")
                 inter.nom:SetTextColor(1, 0.82, 0)
-                inter.filet:SetColorTexture(1, 0.82, 0, 0.25)
+                PeindreFilet(inter.filet, 1, 0.82, 0, 0.25)
             end
             inter.nom:SetText(l.intertitre)
             inter.filet:ClearAllPoints()
@@ -1602,6 +1608,22 @@ local function RendreReglages(contenu)
             contenu.listeHabillage:Show()
             contenu.listeHabillage.Rendre()
         end
+        -- Apparence moderne : son theme (pose tout de suite), puis la couleur
+        -- des bordures en reglage fin.
+        if not contenu.listeTheme and S.OptionsTheme then
+            contenu.libelleTheme = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            contenu.listeTheme = S.ListeDeroulante(contenu, function() return S.OptionsTheme() end,
+                function() return S.ThemeChoisi() end, function(v) S.PoserTheme(v) end,
+                function() ecran.Montrer("reglages") end)
+        end
+        if contenu.listeTheme then
+            local moderne = S.UI and S.UI.EstModerne and S.UI.EstModerne()
+            local fr = S.Langue and S.Langue() == "frFR"
+            contenu.libelleTheme:SetText(fr and "Thème" or "Theme")
+            contenu.libelleTheme:SetShown(moderne)
+            contenu.listeTheme:SetShown(moderne)
+            if moderne then contenu.listeTheme.Rendre() end
+        end
         -- Apparence moderne : la couleur des bordures, au choix.
         if not contenu.listeBordure and S.OptionsCouleurBordure then
             contenu.libelleBordure = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -1654,6 +1676,15 @@ local function RendreReglages(contenu)
         if contenu.sauverCompo then contenu.sauverCompo:SetEnabled(libre) end
         for _, l in ipairs({ contenu.libelleFond, contenu.libelleFondSuivis, contenu.libellePanneau, contenu.libelleCompo, contenu.libelleSauver }) do
             if l then l:SetAlpha(libre and 1 or 0.5) end
+        end
+        -- Apparence moderne : le fond de la fenetre et le panneau du menu
+        -- viennent du theme ; leurs choix sont grises (ils reviennent avec
+        -- l'apparence du jeu).
+        if S.UI and S.UI.EstModerne and S.UI.EstModerne() then
+            for _, pr in ipairs({ { contenu.listeFond, contenu.libelleFond }, { contenu.listePanneau, contenu.libellePanneau } }) do
+                if pr[1] and S.ActiverListe then S.ActiverListe(pr[1], false) end
+                if pr[2] then pr[2]:SetAlpha(0.5) end
+            end
         end
     else
     local fondActuel = NS.charte.Fond()
@@ -1736,6 +1767,7 @@ local function RendreReglages(contenu)
         for _, pr in ipairs({ { contenu.libelleFond, contenu.listeFond }, { contenu.libelleFondSuivis, contenu.listeFondSuivis },
             { contenu.libellePanneau, contenu.listePanneau }, { contenu.libelleCompo, contenu.listeCompo },
             { contenu.libelleSauver, contenu.sauverCompo }, { contenu.libelleHabillage, contenu.listeHabillage },
+            { (contenu.listeTheme and contenu.listeTheme:IsShown()) and contenu.libelleTheme or nil, contenu.listeTheme },
             { (contenu.listeBordure and contenu.listeBordure:IsShown()) and contenu.libelleBordure or nil, contenu.listeBordure } }) do
           if pr[1] then
             pr[1]:ClearAllPoints()
@@ -1751,7 +1783,8 @@ local function RendreReglages(contenu)
     -- Les didacticiels ne sont plus dans cette page (ils iront ailleurs).
     contenu.titreTutos:Hide()
     if contenu.titreTutos.filet then contenu.titreTutos.filet:Hide() end
-    local precedent = (contenu.listeBordure and contenu.listeBordure:IsShown() and contenu.listeBordure) or contenu.listeHabillage or contenu.sauverCompo or contenu.listeFondSuivis or contenu.libelleFondSuivis
+    local precedent = (contenu.listeBordure and contenu.listeBordure:IsShown() and contenu.listeBordure)
+        or (contenu.listeTheme and contenu.listeTheme:IsShown() and contenu.listeTheme) or contenu.listeHabillage or contenu.sauverCompo or contenu.listeFondSuivis or contenu.libelleFondSuivis
     local hauteur = 600
     -- Hauteur reelle quand le jeu la connait : le bas du dernier bloc.
     local haut, bas = contenu:GetTop(), precedent and precedent.GetBottom and precedent:GetBottom()
@@ -2331,7 +2364,7 @@ local function EnTeteDeBloc(ligne)
     else
         ligne.nom:SetFontObject("GameFontNormal")
         ligne.nom:SetTextColor(1, 0.82, 0)
-        ligne.filet:SetColorTexture(1, 0.82, 0, 0.25)
+        PeindreFilet(ligne.filet, 1, 0.82, 0, 0.25)
     end
     ligne.filet:Show()
     ligne:SetHeight(HAUTEUR_LIGNE + 6)
@@ -4807,7 +4840,7 @@ local function Construire()
             -- ont la meme epaisseur, ou qu'ils tombent.
             local filet = menu:CreateTexture(nil, "ARTWORK")
             table.insert(win.filetsMenu, filet)
-            filet:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+            PeindreFilet(filet, 0.8, 0.65, 0.35, 0.35)
             if filet.SetSnapToPixelGrid then filet:SetSnapToPixelGrid(false) filet:SetTexelSnappingBias(0) end
             local PU = _G.PixelUtil
             if PU and PU.SetHeight and PU.SetPoint then
@@ -4880,7 +4913,7 @@ local function Construire()
         ecran.Montrer("reglagesStuff")
     end)
     win.filetStuff = menu:CreateTexture(nil, "ARTWORK")
-    win.filetStuff:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+    PeindreFilet(win.filetStuff, 0.8, 0.65, 0.35, 0.35)
     if _G.PixelUtil and _G.PixelUtil.SetHeight then _G.PixelUtil.SetHeight(win.filetStuff, 1, 1) else win.filetStuff:SetHeight(1) end
     if win.filetStuff.SetSnapToPixelGrid then win.filetStuff:SetSnapToPixelGrid(false) win.filetStuff:SetTexelSnappingBias(0) end
     win.filetStuff:Hide()

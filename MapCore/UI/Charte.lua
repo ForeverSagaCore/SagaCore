@@ -728,6 +728,8 @@ function charte.TitreDeSection(fs, filet)
             local c = Moderne() and _G.CoreSuite.UI.MODERNE.couleurFilet or { 1, 0.82, 0, 0.25 }
             filet:SetColorTexture(c[1], c[2], c[3], c[4])
             if filet.SetSnapToPixelGrid then filet:SetSnapToPixelGrid(false) filet:SetTexelSnappingBias(0) end
+            -- Repeint avec les autres quand le theme moderne change.
+            if Moderne() and _G.CoreSuite.UI.NoterFilet then _G.CoreSuite.UI.NoterFilet(filet) end
         end
     end
     return parchemin

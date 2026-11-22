@@ -1,4 +1,10 @@
 local _, NS = ...
+-- Un filet de separation : en apparence moderne, la couleur commune du theme
+-- (repeinte quand il change) ; sinon la couleur donnee.
+local function PeindreFilet(t, r, g, b, a)
+    local S = _G.CoreSuite
+    if S and S.PeindreFilet then S.PeindreFilet(t, r, g, b, a) else t:SetColorTexture(r, g, b, a) end
+end
 
 -- Suivi des quetes : un panneau leger a la maniere du suivi d'objectifs du
 -- jeu, pour le personnage connecte. Deplacable par son titre, redimensionnable
@@ -98,7 +104,7 @@ local function Ligne(index)
     l.separateur:SetHeight(1)
     l.separateur:SetPoint("BOTTOMLEFT", l, "TOPLEFT", 0, 7)
     l.separateur:SetPoint("BOTTOMRIGHT", l, "TOPRIGHT", 0, 7)
-    l.separateur:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+    PeindreFilet(l.separateur, 0.8, 0.65, 0.35, 0.35)
     l.separateur:Hide()
     l.texte = l:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     l.texte:SetPoint("TOPLEFT", l, "TOPLEFT", 0, 0)
@@ -2719,7 +2725,7 @@ local function Construire()
     bilan.filet:SetHeight(1)
     bilan.filet:SetPoint("TOPLEFT", bilan, "TOPLEFT", 0, 0)
     bilan.filet:SetPoint("TOPRIGHT", bilan, "TOPRIGHT", 0, 0)
-    bilan.filet:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+    PeindreFilet(bilan.filet, 0.8, 0.65, 0.35, 0.35)
     bilan.rangs = {}
     -- Rangs a la maniere du suivi : un titre en dore (avec une valeur a
     -- droite, comme le pourcentage d'une zone), une ligne de detail en petit,
@@ -2909,7 +2915,7 @@ local function Construire()
     filetHaut:SetHeight(1)
     filetHaut:SetPoint("TOPLEFT", cadre.zone, "TOPLEFT", 0, -HAUT_ONGLETS + 6)
     filetHaut:SetPoint("TOPRIGHT", cadre.zone, "TOPRIGHT", 0, -HAUT_ONGLETS + 6)
-    filetHaut:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+    PeindreFilet(filetHaut, 0.8, 0.65, 0.35, 0.35)
     cadre.filetHaut = filetHaut
 
     -- Poignee du coin, celle des fenetres de discussion du jeu.

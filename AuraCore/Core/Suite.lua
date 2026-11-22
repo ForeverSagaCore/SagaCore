@@ -1299,6 +1299,10 @@ SlashCmdList["SAGACOREDEV"] = function() Suite.BasculerDev() end
 -- ---------------------------------------------------------------------------
 Suite.UI = Suite.UI or {}
 local UI = Suite.UI
+-- Tout l'habillage dans un bloc : ses variables locales n'en sortent pas (le
+-- fichier reste sous la limite de 200 variables locales, et aucun nom d'ici ne
+-- masque celui d'une autre partie du fichier).
+do
 function Suite.Habillage()
     local d = _G.CoreSuiteDB
     return (type(d) == "table" and d.habillage == "moderne") and "moderne" or "jeu"
@@ -1313,36 +1317,163 @@ function Suite.OptionsHabillage()
     local fr = Suite.Langue() == "frFR"
     return { { "jeu", fr and "Jeu (d'origine)" or "Game (original)" }, { "moderne", fr and "Moderne" or "Modern" } }
 end
--- Les jetons de l'apparence moderne : une seule palette, des coins arrondis,
--- des pictos dessines pour la suite (dossier Media de CraftCore).
+-- Les jetons de l'apparence moderne : la palette du theme choisi, les
+-- tailles du cadre des infobulles du jeu, des pictos dessines pour la suite
+-- (dossier Media de CraftCore).
 local MEDIA_M = "Interface\\AddOns\\CraftCore\\Media\\"
 UI.MODERNE = {
-    -- Fond sombre translucide et filet dore, comme les infobulles du jeu.
-    fenetre = { 0.035, 0.035, 0.045, 0.94 },
-    contour = { 1, 1, 1, 1 },                  -- bordure des infobulles du jeu, telle quelle
-    bord = { 0.50, 0.40, 0.24, 1 },            -- filet bronze des elements
-    bordFort = { 0.62, 0.50, 0.30, 1 },
-    surface = { 0.06, 0.06, 0.075, 0.92 },     -- boutons, onglets, cases
-    surfaceSurvol = { 0.10, 0.095, 0.10, 0.95 },
-    survol = { 1, 0.9, 0.7, 0.07 },
-    accent = { 0.95, 0.78, 0.40, 1 },          -- or vif : la page ouverte, la coche
-    texte = { 0.95, 0.93, 0.88 },
-    texteDoux = { 0.68, 0.64, 0.56 },
+    -- Bordure des infobulles du jeu : sa couleur est celle du theme ou celle
+    -- choisie (Couleur des bordures). Ce jeton n'est qu'un repere, jamais une
+    -- couleur posee telle quelle.
+    contour = { 1, 1, 1, 1 },
     -- Tailles du cadre des infobulles du jeu (sa bordure, ses coins arrondis).
     rayonFenetre = 16, rayonBouton = 12, rayonOnglet = 16, rayonCase = 12, rayonCroix = 12,
     ecartOnglets = 2,
-    couleurFilet = { 0.8, 0.65, 0.35, 0.35 },  -- tous les filets de separation
+    -- Pictos (fichiers). Les couleurs, le fond et le panneau viennent du theme.
     arrondi = MEDIA_M .. "moderne_arrondi",
-    fond = MEDIA_M .. "moderne_fond",
-    menu = MEDIA_M .. "moderne_menu",
     croix = MEDIA_M .. "moderne_croix",
     coche = MEDIA_M .. "moderne_coche",
     fleche = MEDIA_M .. "moderne_fleche",
     bouton = MEDIA_M .. "moderne_bouton",
 }
+-- Les themes de l'apparence moderne : la meme base (fond sombre presque
+-- opaque, bordure des infobulles du jeu, boutons en degrade lisse a texte or,
+-- filets d'un pixel), en quatre couleurs coherentes de bout en bout.
+-- Chaque couleur est une table de nombres { r, v, b, a } ; les fichiers sont
+-- a part (fichierFond, fichierMenu) pour ne jamais prendre un nom de texture
+-- pour une couleur.
+--   fenetre        fond des fenetres, des onglets, des listes ouvertes
+--   surface        fond des cases, des listes, de la croix
+--   surfaceSurvol  fond de l'onglet de la page ouverte
+--   survol         voile du survol (et de l'element choisi a la manette)
+--   accent         la page ouverte, la coche, le portrait regarde
+--   bordure        couleur des bordures du theme (absente : celle des infobulles)
+--   survolBord     bordure de l'element survole ou choisi a la manette
+--   bord, bordFort rail et curseur des barres de defilement
+--   couleurFilet   tous les filets de separation
+--   texte, texteDoux  titres des fenetres ; pictos au repos
+--   reflet, croixSurvol  le reflet en haut des boutons ; le voile de la croix
+--   rouges         degrade des boutons (bas, haut) par etat
+local THEMES = {
+    { cle = "nuit", fr = "Nuit", en = "Night",
+      fenetre = { 0.035, 0.035, 0.045, 0.94 }, surface = { 0.06, 0.06, 0.075, 0.92 }, surfaceSurvol = { 0.10, 0.095, 0.10, 0.95 },
+      survol = { 1, 0.9, 0.7, 0.10 }, accent = { 0.95, 0.78, 0.40, 1 }, survolBord = { 1, 0.9, 0.62, 1 },
+      bord = { 0.50, 0.40, 0.24, 1 }, bordFort = { 0.62, 0.50, 0.30, 1 }, couleurFilet = { 0.8, 0.65, 0.35, 0.35 },
+      texte = { 0.95, 0.93, 0.88, 1 }, texteDoux = { 0.68, 0.64, 0.56, 1 },
+      reflet = { 1, 0.85, 0.6, 0.12 }, croixSurvol = { 0.8, 0.25, 0.22, 0.35 },
+      rouges = { normal = { { 0.30, 0.05, 0.03 }, { 0.55, 0.11, 0.07 } }, survol = { { 0.38, 0.07, 0.04 }, { 0.68, 0.15, 0.09 } },
+                 appuye = { { 0.42, 0.08, 0.05 }, { 0.26, 0.04, 0.03 } }, inactif = { { 0.16, 0.16, 0.17 }, { 0.26, 0.26, 0.27 } } },
+      fichierFond = "moderne_fond", fichierMenu = "moderne_menu" },
+    -- Bronze des forges naines : fonds bruns, bordures et filets bronze,
+    -- boutons rouge braise.
+    { cle = "forge", fr = "Forge", en = "Forge",
+      fenetre = { 0.050, 0.036, 0.026, 0.94 }, surface = { 0.078, 0.056, 0.040, 0.92 }, surfaceSurvol = { 0.130, 0.090, 0.058, 0.95 },
+      survol = { 1, 0.80, 0.50, 0.10 }, accent = { 1, 0.86, 0.40, 1 }, bordure = { 0.76, 0.54, 0.32, 1 }, survolBord = { 1, 0.86, 0.56, 1 },
+      bord = { 0.52, 0.36, 0.20, 1 }, bordFort = { 0.72, 0.52, 0.30, 1 }, couleurFilet = { 0.86, 0.60, 0.30, 0.38 },
+      texte = { 0.97, 0.92, 0.84, 1 }, texteDoux = { 0.74, 0.63, 0.48, 1 },
+      reflet = { 1, 0.76, 0.45, 0.14 }, croixSurvol = { 0.85, 0.28, 0.14, 0.35 },
+      rouges = { normal = { { 0.32, 0.06, 0.02 }, { 0.60, 0.16, 0.05 } }, survol = { { 0.40, 0.09, 0.03 }, { 0.74, 0.22, 0.07 } },
+                 appuye = { { 0.44, 0.10, 0.04 }, { 0.26, 0.05, 0.02 } }, inactif = { { 0.17, 0.14, 0.12 }, { 0.27, 0.23, 0.20 } } },
+      fichierFond = "moderne_fond_forge", fichierMenu = "moderne_menu_forge" },
+    -- Argent du Norfendre : fonds bleu nuit, bordures argent bleute, filets
+    -- et coche bleu glace, boutons bleu roi.
+    { cle = "givre", fr = "Givre", en = "Frost",
+      fenetre = { 0.028, 0.038, 0.055, 0.94 }, surface = { 0.045, 0.060, 0.085, 0.92 }, surfaceSurvol = { 0.075, 0.100, 0.140, 0.95 },
+      survol = { 0.75, 0.88, 1, 0.10 }, accent = { 0.40, 0.78, 1, 1 }, bordure = { 0.62, 0.68, 0.78, 1 }, survolBord = { 0.88, 0.95, 1, 1 },
+      bord = { 0.36, 0.46, 0.60, 1 }, bordFort = { 0.52, 0.64, 0.80, 1 }, couleurFilet = { 0.65, 0.78, 0.95, 0.32 },
+      texte = { 0.92, 0.95, 1, 1 }, texteDoux = { 0.60, 0.68, 0.78, 1 },
+      reflet = { 0.75, 0.88, 1, 0.14 }, croixSurvol = { 0.8, 0.25, 0.22, 0.35 },
+      rouges = { normal = { { 0.04, 0.10, 0.26 }, { 0.10, 0.24, 0.50 } }, survol = { { 0.06, 0.14, 0.33 }, { 0.14, 0.32, 0.62 } },
+                 appuye = { { 0.08, 0.18, 0.40 }, { 0.03, 0.08, 0.20 } }, inactif = { { 0.14, 0.15, 0.17 }, { 0.24, 0.25, 0.28 } } },
+      fichierFond = "moderne_fond_givre", fichierMenu = "moderne_menu_givre" },
+    -- Reve d'emeraude : fonds vert sombre, bordures et filets vert tendre,
+    -- coche d'or, boutons vert profond.
+    { cle = "sylve", fr = "Sylve", en = "Grove",
+      fenetre = { 0.025, 0.042, 0.032, 0.94 }, surface = { 0.040, 0.066, 0.050, 0.92 }, surfaceSurvol = { 0.066, 0.104, 0.076, 0.95 },
+      survol = { 0.82, 1, 0.75, 0.10 }, accent = { 0.95, 0.80, 0.40, 1 }, bordure = { 0.56, 0.74, 0.42, 1 }, survolBord = { 0.80, 0.92, 0.62, 1 },
+      bord = { 0.32, 0.46, 0.26, 1 }, bordFort = { 0.46, 0.62, 0.34, 1 }, couleurFilet = { 0.60, 0.80, 0.45, 0.32 },
+      texte = { 0.93, 0.96, 0.88, 1 }, texteDoux = { 0.62, 0.70, 0.56, 1 },
+      reflet = { 0.85, 1, 0.70, 0.12 }, croixSurvol = { 0.8, 0.25, 0.22, 0.35 },
+      rouges = { normal = { { 0.04, 0.17, 0.07 }, { 0.10, 0.34, 0.14 } }, survol = { { 0.06, 0.22, 0.09 }, { 0.14, 0.44, 0.18 } },
+                 appuye = { { 0.08, 0.26, 0.10 }, { 0.03, 0.13, 0.05 } }, inactif = { { 0.14, 0.16, 0.14 }, { 0.24, 0.26, 0.24 } } },
+      fichierFond = "moderne_fond_sylve", fichierMenu = "moderne_menu_sylve" },
+}
+-- Les couleurs qu'un theme pose dans UI.MODERNE (rien d'autre n'y est ecrit).
+local COULEURS_THEME = { "fenetre", "surface", "surfaceSurvol", "survol", "accent", "survolBord", "bord", "bordFort",
+    "couleurFilet", "texte", "texteDoux", "reflet", "croixSurvol" }
+local ETATS_BOUTON = { "normal", "survol", "appuye", "inactif" }
+local function EstCouleur(c)
+    return type(c) == "table" and type(c[1]) == "number" and type(c[2]) == "number" and type(c[3]) == "number"
+        and (c[4] == nil or type(c[4]) == "number")
+end
+local function Theme(cle)
+    for _, t in ipairs(THEMES) do if t.cle == cle then return t end end
+    return THEMES[1]
+end
+function Suite.OptionsTheme()
+    local fr = Suite.Langue() == "frFR"
+    local o = {}
+    for _, t in ipairs(THEMES) do table.insert(o, { t.cle, fr and t.fr or t.en }) end
+    return o
+end
+function Suite.ThemeChoisi()
+    local v = type(_G.CoreSuiteDB) == "table" and _G.CoreSuiteDB.themeModerne or nil
+    return Theme(v).cle
+end
+-- Un fichier du dossier Media, s'il existe dans ce client (un fichier ajoute
+-- n'est vu qu'apres avoir relance le jeu) ; sinon celui du theme Nuit.
+local sonde
+local function FichierMedia(nom, repli)
+    local chemin = MEDIA_M .. nom
+    if nom == repli then return chemin end
+    local ok = pcall(function()
+        sonde = sonde or UIParent:CreateTexture(nil, "BACKGROUND")
+        sonde:Hide()
+        sonde:SetTexture(nil)
+        sonde:SetTexture(chemin)
+    end)
+    local existe = ok and sonde and sonde:GetTexture() and true or false
+    if sonde then pcall(sonde.SetTexture, sonde, nil) end
+    if existe then return chemin end
+    return MEDIA_M .. repli
+end
+-- Pose le theme dans UI.MODERNE : chaque couleur est verifiee (une table de
+-- nombres), sinon celle du theme Nuit la remplace.
+local ROUGES = {}
+local bordureTheme
+local function PoserJetons(cle)
+    local t, base = Theme(cle), THEMES[1]
+    local M = UI.MODERNE
+    for _, k in ipairs(COULEURS_THEME) do
+        local c = EstCouleur(t[k]) and t[k] or base[k]
+        M[k] = { c[1], c[2], c[3], c[4] or 1 }
+    end
+    for _, etat in ipairs(ETATS_BOUTON) do
+        local c = t.rouges and t.rouges[etat]
+        if not (type(c) == "table" and EstCouleur(c[1]) and EstCouleur(c[2])) then c = base.rouges[etat] end
+        ROUGES[etat] = { { c[1][1], c[1][2], c[1][3] }, { c[2][1], c[2][2], c[2][3] } }
+    end
+    bordureTheme = EstCouleur(t.bordure) and { t.bordure[1], t.bordure[2], t.bordure[3], 1 } or nil
+    M.fond = FichierMedia(t.fichierFond or base.fichierFond, base.fichierFond)
+    M.menu = FichierMedia(t.fichierMenu or base.fichierMenu, base.fichierMenu)
+end
+-- Le theme Nuit d'abord (les donnees ne sont pas encore lues), puis celui
+-- choisi des que les donnees de la suite sont la.
+PoserJetons("nuit")
+local themePose = false
+local function AssurerTheme()
+    if themePose or type(_G.CoreSuiteDB) ~= "table" then return end
+    themePose = true
+    local ok = pcall(PoserJetons, Suite.ThemeChoisi())
+    if not ok then pcall(PoserJetons, "nuit") end
+end
 -- Le fichier de la texture moderne demandee, si ce client l'a.
-function UI.Media(cle) return UI.MODERNE[cle] end
-local function Moderne() return Suite.Habillage() == "moderne" end
+function UI.Media(cle) AssurerTheme() return UI.MODERNE[cle] end
+local function Moderne()
+    if Suite.Habillage() ~= "moderne" then return false end
+    AssurerTheme()
+    return true
+end
 UI.EstModerne = Moderne
 -- Regles de surete, pour ne jamais gener le jeu ni un autre add-on :
 --   * aucun champ n'est ecrit sur les cadres : l'etat est garde ici, a part ;
@@ -1397,6 +1528,20 @@ local function Visible(c)
     return ok and oui and true or false
 end
 local function Couleur(t, c) t:SetVertexColor(c[1], c[2], c[3], c[4] or 1) end
+-- Ce qui porte une couleur du theme, pour le repeindre quand il change :
+-- texture -> nom du jeton (garde ici, jamais sur la texture).
+local teintes = setmetatable({}, { __mode = "k" })
+local filets = setmetatable({}, { __mode = "k" })
+local function TeinterJeton(t, cle)
+    teintes[t] = cle
+    Couleur(t, UI.MODERNE[cle])
+end
+-- Le nom du jeton d'une couleur du theme (nil si elle n'en est pas un).
+local function Role(c)
+    if c == nil then return nil end
+    for _, k in ipairs(COULEURS_THEME) do if UI.MODERNE[k] == c then return k end end
+    return nil
+end
 -- Un fond sombre translucide dans le cadre des infobulles du jeu (sa
 -- bordure et ses coins arrondis, teints a la couleur voulue). Sous tout ce
 -- que le cadre affiche. `taille` : l'epaisseur de la bordure.
@@ -1405,7 +1550,7 @@ local BORDURE_JEU = "Interface\\Tooltips\\UI-Tooltip-Border"
 -- La couleur des bordures, au choix de chacun (Parametres, Apparence) ;
 -- par defaut celle des infobulles du jeu, lue chez lui.
 local COULEURS_BORDURE = {
-    { "jeu", "Comme les infobulles", "Like tooltips" },
+    { "jeu", "Celle du thème", "Theme's own" },
     { "or", "Or", "Gold", { 1, 0.82, 0.3 } },
     { "bronze", "Bronze", "Bronze", { 0.72, 0.52, 0.3 } },
     { "argent", "Argent", "Silver", { 0.75, 0.78, 0.82 } },
@@ -1433,8 +1578,10 @@ local function CouleurBordureJeu()
         if cc then return { cc.r, cc.g, cc.b, 1 } end
     end
     for _, c in ipairs(COULEURS_BORDURE) do if c[1] == v and c[4] then return { c[4][1], c[4][2], c[4][3], 1 } end end
+    -- Celle du theme ; le theme Nuit garde celle des infobulles du jeu.
+    if bordureTheme then return { bordureTheme[1], bordureTheme[2], bordureTheme[3], 1 } end
     local t = _G.TOOLTIP_DEFAULT_COLOR
-    if type(t) == "table" and t.r then return { t.r, t.g, t.b, 1 } end
+    if type(t) == "table" and type(t.r) == "number" and type(t.g) == "number" and type(t.b) == "number" then return { t.r, t.g, t.b, 1 } end
     return { 1, 1, 1, 1 }
 end
 local function Plat(f, fond, bord, taille)
@@ -1455,10 +1602,12 @@ local function Plat(f, fond, bord, taille)
             insets = { left = marge, right = marge, top = marge, bottom = marge } })
         b:SetBackdropColor(fond[1], fond[2], fond[3], fond[4] or 1)
         p.contour = bord == UI.MODERNE.contour
+        p.roleFond, p.roleBord = Role(fond), (not p.contour) and Role(bord) or nil
         if p.contour then bord = CouleurBordureJeu() end
         bord = bord or fond
         b:SetBackdropBorderColor(bord[1], bord[2], bord[3], bord[4] or 1)
     end
+    p.marge = math.floor(taille / 4 + 0.5)
     b:Show()
     return p
 end
@@ -1468,16 +1617,36 @@ function UI.RecolorerPlat(f, fond, bord)
     if not (p and p.cadre.SetBackdropColor) then return end
     p.cadre:SetBackdropColor(fond[1], fond[2], fond[3], fond[4] or 1)
     p.contour = bord == UI.MODERNE.contour
+    p.roleFond, p.roleBord = Role(fond), (not p.contour) and Role(bord) or nil
     if p.contour then bord = CouleurBordureJeu() end
     p.cadre:SetBackdropBorderColor(bord[1], bord[2], bord[3], bord[4] or 1)
+end
+-- La bordure d'un element survole ou choisi a la manette : la couleur de
+-- survol du theme, puis la sienne au depart. Aucun halo : seule sa bordure
+-- s'eclaire, l'element ne bouge pas.
+local survoles = setmetatable({}, { __mode = "k" })
+local function RendreBordure(f)
+    local p = plats[f]
+    if not (p and p.cadre.SetBackdropBorderColor) then return end
+    local c
+    if survoles[f] then c = UI.MODERNE.survolBord
+    elseif p.contour then c = CouleurBordureJeu()
+    else c = p.roleBord and UI.MODERNE[p.roleBord] end
+    if c then p.cadre:SetBackdropBorderColor(c[1], c[2], c[3], c[4] or 1) end
+end
+-- `porteur` : le cadre dont la bordure s'eclaire (par defaut l'element).
+local function BordureAuSurvol(f, porteur)
+    porteur = porteur or f
+    f:HookScript("OnEnter", function() survoles[porteur] = true RendreBordure(porteur) end)
+    f:HookScript("OnLeave", function() survoles[porteur] = nil RendreBordure(porteur) end)
 end
 -- Nouvelle couleur des bordures : repeinte tout de suite partout.
 function Suite.PoserCouleurBordure(v)
     CoreSuiteDB = type(CoreSuiteDB) == "table" and CoreSuiteDB or {}
     CoreSuiteDB.couleurBordure = (v ~= "jeu") and v or nil
     local c = CouleurBordureJeu()
-    for _, p in pairs(plats) do
-        if p.contour and p.cadre.SetBackdropBorderColor then p.cadre:SetBackdropBorderColor(c[1], c[2], c[3], 1) end
+    for f, p in pairs(plats) do
+        if p.contour and not survoles[f] and p.cadre.SetBackdropBorderColor then p.cadre:SetBackdropBorderColor(c[1], c[2], c[3], 1) end
     end
 end
 local function Effacer(t)
@@ -1504,13 +1673,15 @@ local function Picto(f, cle, taille, couleur, couche)
         e[cle] = t
     end
     t:SetSize(taille, taille)
-    Couleur(t, couleur)
+    -- `couleur` : le nom d'un jeton du theme, ou une couleur.
+    if type(couleur) == "string" then TeinterJeton(t, couleur) else Couleur(t, couleur) end
     t:Show()
     return t
 end
--- Survol : un voile clair a l'interieur des coins arrondis.
+-- Survol : un voile clair a l'interieur de la bordure (la meme marge que le
+-- fond, pour ne jamais deborder sur les coins arrondis).
 local function Survol(b, marge)
-    marge = marge or 2
+    marge = (plats[b] and plats[b].marge) or marge or 2
     local h = b.GetHighlightTexture and b:GetHighlightTexture()
     if not h then
         if not b.SetHighlightTexture then return end
@@ -1524,12 +1695,29 @@ local function Survol(b, marge)
     h:ClearAllPoints()
     h:SetPoint("TOPLEFT", marge, -marge)
     h:SetPoint("BOTTOMRIGHT", -marge, marge)
-    Couleur(h, UI.MODERNE.survol)
+    TeinterJeton(h, "survol")
 end
 
 -- Un filet de separation : un pixel d'ecran exact, la couleur commune.
+-- Un filet pose ailleurs (titres de section) : repeint avec le theme.
+function UI.NoterFilet(t) if t then filets[t] = true end end
+-- Un filet de la suite : en apparence moderne, la couleur commune du theme
+-- (un filet doux, moins de 0.25 d'opacite, le reste en proportion) ; dans
+-- l'apparence du jeu, la couleur donnee.
+function Suite.PeindreFilet(t, r, g, b, a)
+    if not (t and t.SetColorTexture) then return end
+    if Moderne() then
+        local c = UI.MODERNE.couleurFilet
+        local doux = type(a) == "number" and a < 0.25
+        filets[t] = doux and "doux" or true
+        t:SetColorTexture(c[1], c[2], c[3], doux and c[4] * 0.63 or c[4])
+    else
+        t:SetColorTexture(r or 1, g or 1, b or 1, a or 1)
+    end
+end
 function UI.Filet(t, p1, r1, rp1, x1, y1, p2, r2, rp2, x2, y2)
     local c = UI.MODERNE.couleurFilet
+    filets[t] = true
     t:SetColorTexture(c[1], c[2], c[3], c[4])
     if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(false) t:SetTexelSnappingBias(0) end
     local PU = _G.PixelUtil
@@ -1552,13 +1740,19 @@ function UI.HabillerCroix(b)
         if b[f] then pcall(b[f], b, "") end
     end
     b:SetSize(16, 16)
-    local x = Picto(b, "croix", 10, UI.MODERNE.texteDoux)
+    local x = Picto(b, "croix", 10, "texteDoux")
     -- Son arrondi suit celui de la fenetre (meme centre de courbure).
-    Plat(b, UI.MODERNE.surface, UI.MODERNE.contour, UI.MODERNE.rayonCroix)
+    local p = Plat(b, UI.MODERNE.surface, UI.MODERNE.contour, UI.MODERNE.rayonCroix)
     if b.SetHighlightTexture then
         b:SetHighlightTexture("Interface\\Buttons\\WHITE8X8", "ADD")
         local h = b:GetHighlightTexture()
-        if h then h:SetTexture("Interface\\Buttons\\WHITE8X8") h:SetAllPoints() h:SetVertexColor(0.8, 0.25, 0.22, 0.35) end
+        if h then
+            -- Le voile rouge reste dans la bordure, comme tous les survols.
+            h:SetTexture("Interface\\Buttons\\WHITE8X8")
+            if h.SetBlendMode then h:SetBlendMode("BLEND") end
+            h:ClearAllPoints() h:SetPoint("TOPLEFT", p.marge, -p.marge) h:SetPoint("BOTTOMRIGHT", -p.marge, p.marge)
+            TeinterJeton(h, "croixSurvol")
+        end
     end
     b:HookScript("OnEnter", function() x:SetVertexColor(1, 1, 1) end)
     b:HookScript("OnLeave", function() Couleur(x, UI.MODERNE.texteDoux) end)
@@ -1579,7 +1773,10 @@ function UI.HabillerFenetre(cadre)
     local M = UI.MODERNE
     Plat(cadre, M.fenetre, M.contour, M.rayonFenetre)
     local titre = cadre.TitleText or (cadre.TitleContainer and cadre.TitleContainer.TitleText) or cadre.titre
-    if titre and titre.SetTextColor then local c = M.texte titre:SetTextColor(c[1], c[2], c[3]) end
+    if titre and titre.SetTextColor then
+        local c = M.texte titre:SetTextColor(c[1], c[2], c[3])
+        Extra(cadre).titre = titre
+    end
     -- Filet sous la barre de titre, en retrait des coins.
     local e = Extra(cadre)
     if not e.filet then
@@ -1603,12 +1800,7 @@ end
 -- grain), dans la meme bordure que la fenetre. Etats : normal, survol (plus
 -- clair), appuye (plus sombre), inactif (gris). Texte or du jeu, gris quand il
 -- ne sert pas (la police du bouton s'en charge).
-local ROUGES = {
-    normal = { { 0.30, 0.05, 0.03 }, { 0.55, 0.11, 0.07 } },   -- bas, haut
-    survol = { { 0.38, 0.07, 0.04 }, { 0.68, 0.15, 0.09 } },
-    appuye = { { 0.42, 0.08, 0.05 }, { 0.26, 0.04, 0.03 } },
-    inactif = { { 0.16, 0.16, 0.17 }, { 0.26, 0.26, 0.27 } },
-}
+-- (Les couleurs, bas puis haut, viennent du theme : ROUGES, plus haut.)
 local function Degrade(t, nom)
     local c = ROUGES[nom] or ROUGES.normal
     local bas, haut = c[1], c[2]
@@ -1634,7 +1826,8 @@ function UI.HabillerBouton(b)
         e.rouge:SetPoint("BOTTOMRIGHT", -3, 3)
         -- Un reflet fin en haut.
         e.reflet = p.cadre:CreateTexture(nil, "BACKGROUND", nil, 2)
-        e.reflet:SetColorTexture(1, 0.85, 0.6, 0.12)
+        local r = M.reflet
+        e.reflet:SetColorTexture(r[1], r[2], r[3], r[4] or 1)
         e.reflet:SetPoint("TOPLEFT", 3, -3)
         e.reflet:SetPoint("TOPRIGHT", -3, -3)
         e.reflet:SetHeight(1)
@@ -1645,6 +1838,8 @@ function UI.HabillerBouton(b)
         Degrade(e.rouge, not actif and "inactif" or (enfonce and "appuye") or (survole and "survol") or "normal")
         e.reflet:SetShown(actif and not enfonce)
     end
+    -- Garde pour repeindre le bouton quand le theme change.
+    e.etat = function() local r = UI.MODERNE.reflet e.reflet:SetColorTexture(r[1], r[2], r[3], r[4] or 1) Etat(b) end
     b:HookScript("OnMouseDown", function(self) enfonce = true Etat(self) end)
     b:HookScript("OnMouseUp", function(self) enfonce = false Etat(self) end)
     b:HookScript("OnEnter", function(self) survole = true Etat(self) end)
@@ -1664,11 +1859,12 @@ function UI.HabillerPortrait(b)
     if b.cadre and b.cadre.SetAlpha then b.cadre:SetAlpha(0) end
     Plat(b, M.fenetre, M.contour, M.rayonCase)
     local h = b.GetHighlightTexture and b:GetHighlightTexture()
-    if h then h:SetTexture("Interface\\Buttons\\WHITE8X8") h:ClearAllPoints() h:SetPoint("TOPLEFT", 4, -4) h:SetPoint("BOTTOMRIGHT", -4, 4) Couleur(h, M.survol) end
+    local mg = plats[b] and plats[b].marge or 3
+    if h then h:SetTexture("Interface\\Buttons\\WHITE8X8") h:ClearAllPoints() h:SetPoint("TOPLEFT", mg, -mg) h:SetPoint("BOTTOMRIGHT", -mg, mg) TeinterJeton(h, "survol") end
     local halo = b.halo
     if halo then
         halo:SetAlpha(0)
-        local function Maj() UI.RecolorerPlat(b, M.fenetre, halo:IsShown() and M.accent or M.contour) end
+        local function Maj() UI.RecolorerPlat(b, UI.MODERNE.fenetre, halo:IsShown() and UI.MODERNE.accent or UI.MODERNE.contour) end
         hooksecurefunc(halo, "Show", Maj) hooksecurefunc(halo, "Hide", Maj) hooksecurefunc(halo, "SetShown", Maj)
         Maj()
     end
@@ -1688,10 +1884,14 @@ function UI.HabillerCase(c)
             coche:SetPoint("CENTER")
             local w = math.floor((c:GetWidth() or 20) * 0.62)
             coche:SetSize(w, w)
-            Couleur(coche, M.accent)
+            TeinterJeton(coche, "accent")
         end
     end
-    if c.SetDisabledCheckedTexture then pcall(c.SetDisabledCheckedTexture, c, M.coche) end
+    if c.SetDisabledCheckedTexture and pcall(c.SetDisabledCheckedTexture, c, M.coche) then
+        -- Cochee mais inactive : la coche en teinte douce.
+        local cg = c.GetDisabledCheckedTexture and c:GetDisabledCheckedTexture()
+        if cg then cg:ClearAllPoints() cg:SetPoint("CENTER") local w = math.floor((c:GetWidth() or 20) * 0.62) cg:SetSize(w, w) TeinterJeton(cg, "texteDoux") end
+    end
     -- Le carre, plus petit que la zone cliquable.
     local e = Extra(c)
     if not e.carre then
@@ -1701,12 +1901,18 @@ function UI.HabillerCase(c)
     end
     local w = math.max(12, math.floor((c:GetWidth() or 20) * 0.72))
     e.carre:SetSize(w, w)
-    Plat(e.carre, M.surface, M.contour, M.rayonCase)
+    local p = Plat(e.carre, M.surface, M.contour, M.rayonCase)
     local h = c.GetHighlightTexture and c:GetHighlightTexture()
     if h then
-        h:SetTexture("Interface\\Buttons\\WHITE8X8") h:ClearAllPoints() h:SetPoint("CENTER") h:SetSize(w - 2, w - 2)
-        Couleur(h, M.survol)
+        -- Le voile dans la bordure du carre, comme tous les survols.
+        local v = math.max(2, w - 2 * p.marge)
+        h:SetTexture("Interface\\Buttons\\WHITE8X8") if h.SetTexCoord then h:SetTexCoord(0, 1, 0, 1) end
+        if h.SetBlendMode then h:SetBlendMode("BLEND") end
+        h:ClearAllPoints() h:SetPoint("CENTER") h:SetSize(v, v)
+        TeinterJeton(h, "survol")
     end
+    -- Survolee ou choisie a la manette : la bordure du carre s'eclaire.
+    BordureAuSurvol(c, e.carre)
 end
 
 -- Un onglet lateral : une tuile arrondie encadree, l'icone en retrait ;
@@ -1716,6 +1922,8 @@ local function MajOnglet(o)
     local M = UI.MODERNE
     local actif = (o.GetChecked and o:GetChecked()) or (o.cle ~= nil and o.cle == o.courante)
     UI.RecolorerPlat(o, actif and M.surfaceSurvol or M.fenetre, actif and M.accent or M.contour)
+    -- L'onglet ouvert garde sa bordure d'or, meme survole.
+    if not actif then RendreBordure(o) end
 end
 function UI.HabillerOnglet(o)
     if not (Actif() and Touchable(o)) or fait[o] then return end
@@ -1735,6 +1943,8 @@ function UI.HabillerOnglet(o)
     end
     Survol(o, 2)
     onglets[o] = true
+    o:HookScript("OnEnter", function(self) survoles[self] = true MajOnglet(self) end)
+    o:HookScript("OnLeave", function(self) survoles[self] = nil MajOnglet(self) end)
     hooksecurefunc(o, "SetChecked", MajOnglet)
     o:HookScript("OnClick", MajOnglet)
     MajOnglet(o)
@@ -1754,7 +1964,7 @@ function UI.HabillerDefilement(s)
         e.rail:SetPoint("TOP", 0, -18)
         e.rail:SetPoint("BOTTOM", 0, 18)
     end
-    Couleur(e.rail, M.bord)
+    TeinterJeton(e.rail, "bord")
     local pouce = s.GetThumbTexture and s:GetThumbTexture()
     if pouce then
         pouce:SetTexture("Interface\\Buttons\\WHITE8X8")
@@ -1762,7 +1972,7 @@ function UI.HabillerDefilement(s)
         pouce:SetWidth(6)
         pouce:SetAlpha(1)
         pouce:Show()
-        Couleur(pouce, M.bordFort)
+        TeinterJeton(pouce, "bordFort")
     end
     -- Les deux boutons : le plus haut monte, l'autre descend.
     local boutons = {}
@@ -1777,7 +1987,7 @@ function UI.HabillerDefilement(s)
             for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture", "SetHighlightTexture" }) do
                 if b[f] then pcall(b[f], b, "") end
             end
-            local t = Picto(b, "fleche", 14, M.texteDoux)
+            local t = Picto(b, "fleche", 14, "texteDoux")
             if i == 1 then t:SetTexCoord(0, 1, 1, 0) end
             b:HookScript("OnEnter", function() t:SetVertexColor(1, 1, 1) end)
             b:HookScript("OnLeave", function() Couleur(t, M.texteDoux) end)
@@ -1795,6 +2005,7 @@ function UI.HabillerListe(d)
     for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture" }) do if d[f] then pcall(d[f], d, "") end end
     Plat(d, M.surface, M.contour, M.rayonBouton)
     Survol(d, 2)
+    BordureAuSurvol(d)
     local e = Extra(d)
     if not e.chevron then
         e.chevron = d:CreateTexture(nil, "OVERLAY")
@@ -1802,7 +2013,7 @@ function UI.HabillerListe(d)
         e.chevron:SetSize(14, 14)
         e.chevron:SetPoint("RIGHT", -8, 0)
     end
-    Couleur(e.chevron, M.texteDoux)
+    TeinterJeton(e.chevron, "texteDoux")
 end
 
 -- La fenetre ouverte d'une liste deroulante.
@@ -1818,7 +2029,7 @@ function UI.HabillerChoixDeListe(l)
         if not fait[it] then
             fait[it] = true
             Survol(it, 1)
-            if it.coche then it.coche:SetTexture(M.coche) Couleur(it.coche, M.accent) end
+            if it.coche then it.coche:SetTexture(M.coche) TeinterJeton(it.coche, "accent") end
         end
     end
 end
@@ -1921,7 +2132,9 @@ do
     local t = 0
     chercheur:RegisterEvent("PLAYER_REGEN_ENABLED")
     chercheur:SetScript("OnEvent", function()
-        -- Fin du combat : on reprend ce qui attendait.
+        -- Fin du combat : on reprend ce qui attendait (un theme choisi en
+        -- combat se pose maintenant).
+        if Suite.themeEnAttente then Suite.themeEnAttente = nil pcall(Suite.PoserTheme, Suite.ThemeChoisi()) end
         if next(ouvertes) then attente = 0 veille:Show() end
     end)
     chercheur:SetScript("OnUpdate", function(self, ecoule)
@@ -1934,6 +2147,54 @@ do
         if not ok then Panne(err) end
     end)
 end
+
+-- Nouveau theme : pose tout de suite, sans recharger. Tout ce qui a ete
+-- habille est repeint (fonds, bordures, filets, boutons, coches, onglets,
+-- fond central, panneau du menu) ; un element en erreur est saute.
+function Suite.PoserTheme(v)
+    _G.CoreSuiteDB = type(_G.CoreSuiteDB) == "table" and _G.CoreSuiteDB or {}
+    local cle = Theme(v).cle
+    _G.CoreSuiteDB.themeModerne = (cle ~= "nuit") and cle or nil
+    themePose = true
+    if not pcall(PoserJetons, cle) then pcall(PoserJetons, "nuit") end
+    if not Moderne() then return end
+    if InCombatLockdown and InCombatLockdown() then Suite.themeEnAttente = true return end
+    local M = UI.MODERNE
+    local function Sur(f, ...) local ok, err = pcall(f, ...) if not ok then Signaler(err) end end
+    for f, p in pairs(plats) do
+        Sur(function()
+            if not p.cadre.SetBackdropColor then return end
+            local fond = p.roleFond and M[p.roleFond]
+            if fond then p.cadre:SetBackdropColor(fond[1], fond[2], fond[3], fond[4] or 1) end
+            RendreBordure(f)
+        end)
+    end
+    for t, cle2 in pairs(teintes) do Sur(function() if EstCouleur(M[cle2]) then Couleur(t, M[cle2]) end end) end
+    local cf = M.couleurFilet
+    for t, genre in pairs(filets) do Sur(function() t:SetColorTexture(cf[1], cf[2], cf[3], genre == "doux" and cf[4] * 0.63 or cf[4]) end) end
+    for f, e in pairs(extras) do
+        if e.etat then Sur(e.etat) end
+        if e.titre and e.titre.SetTextColor then Sur(function() e.titre:SetTextColor(M.texte[1], M.texte[2], M.texte[3]) end) end
+    end
+    for o in pairs(onglets) do Sur(MajOnglet, o) end
+    -- Le fond central de toutes les fenetres de la suite (le parchemin n'y
+    -- est pour rien : seul le fond sombre moderne change).
+    for _, p in ipairs(type(_G.SagaCoreParchemins) == "table" and _G.SagaCoreParchemins or {}) do
+        if type(p) == "table" and p.roche and p.roche.SetTexture then
+            Sur(function()
+                if not pcall(p.roche.SetTexture, p.roche, M.fond, "REPEAT", "REPEAT") then p.roche:SetTexture(M.fond) end
+            end)
+        end
+    end
+    -- Le panneau du menu de gauche, partout.
+    Sur(Suite.AppliquerTheme)
+    for _, t in ipairs(type(_G.SagaCoreMenus) == "table" and _G.SagaCoreMenus or {}) do
+        if type(t) == "table" and t.reappliquer then Sur(t.reappliquer) end
+    end
+    -- Les pages ouvertes se redessinent (titres de section et leurs filets).
+    Sur(Suite.RedessinerTout)
+end
+end -- fin du bloc de l'habillage
 
 -- Point d'attache des onglets lateraux : au ras du bord de la fenetre, a la
 -- hauteur du trait qui separe l'en-tete du contenu. Les deux colonnes
@@ -5292,7 +5553,7 @@ local function TitreM(f, i)
     t.filet:SetHeight(1)
     t.filet:SetPoint("BOTTOMLEFT", t, "BOTTOMLEFT", 0, 0)
     t.filet:SetPoint("BOTTOMRIGHT", t, "BOTTOMRIGHT", 0, 0)
-    t.filet:SetColorTexture(1, 0.82, 0, 0.25)
+    Suite.PeindreFilet(t.filet, 1, 0.82, 0, 0.25)
     t:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
     t:SetScript("OnClick", function(self)
         local r = Reglages()
@@ -5541,7 +5802,7 @@ local function MacroCore()
     filet:SetHeight(1)
     filet:SetPoint("TOPLEFT", cadre.zone, "TOPLEFT", 0, -HAUT_ONGLETS + 6)
     filet:SetPoint("TOPRIGHT", cadre.zone, "TOPRIGHT", 0, -HAUT_ONGLETS + 6)
-    filet:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+    Suite.PeindreFilet(filet, 0.8, 0.65, 0.35, 0.35)
     cadre.filet = filet
 
     -- Pilote : garde l'opacite d'activation ; B referme (rend la manette).
@@ -5628,7 +5889,7 @@ function Suite.RemplirMacroCore()
                 if not t then
                     t = f:CreateTexture(nil, "ARTWORK")
                     t:SetHeight(1)
-                    t:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+                    Suite.PeindreFilet(t, 0.8, 0.65, 0.35, 0.35)
                     f.filets[nf] = t
                 end
                 t:ClearAllPoints()
@@ -7492,6 +7753,13 @@ local function FenetreInterface()
                   page.rHabillage = O.Rangee()
                   page.lHabillage = O.Liste(page.rHabillage, function() return Suite.OptionsHabillage() end,
                       function() return Suite.Habillage() end, function(v) Suite.PoserHabillage(v) end)
+                  -- Apparence moderne : son theme et la couleur des bordures.
+                  page.rTheme = O.Rangee()
+                  page.lTheme = O.Liste(page.rTheme, function() return Suite.OptionsTheme() end,
+                      function() return Suite.ThemeChoisi() end, function(v) Suite.PoserTheme(v) end)
+                  page.rBordure = O.Rangee()
+                  page.lBordure = O.Liste(page.rBordure, function() return Suite.OptionsCouleurBordure() end,
+                      function() return Suite.CouleurBordureChoisie() end, function(v) Suite.PoserCouleurBordure(v) end)
                   page.rSauver = O.Rangee()
                   page.bSauver = O.Bouton(page.rSauver, 200, function() Suite.SauverComposition() end)
                   page.bSauver:SetPoint("RIGHT", page.rSauver, "RIGHT", -10, 0)
@@ -7508,11 +7776,22 @@ local function FenetreInterface()
                   page.rPanneau.nom:SetText(TR("Panneau du menu", "Menu panel"))
                   page.rCompo.nom:SetText(TR("Composition", "Setup"))
                   page.rHabillage.nom:SetText(TR("Apparence (recharge l'interface)", "Look (reloads the interface)"))
+                  page.rTheme.nom:SetText(TR("Thème", "Theme"))
+                  page.rBordure.nom:SetText(TR("Couleur des bordures", "Border colour"))
                   page.rSauver.nom:SetText(TR("Fond et panneau actuels", "Current background and panel"))
                   page.bSauver:SetText(TR("Sauvegarder la configuration", "Save the setup"))
                   page.bSauver:SetEnabled(libre)
                   for _, li in ipairs({ page.lFond, page.lSuivis, page.lPanneau, page.lCompo }) do Suite.ActiverListe(li, libre) end
                   for _, r in ipairs({ page.rFond, page.rSuivis, page.rPanneau, page.rCompo, page.rSauver }) do r.nom:SetAlpha(libre and 1 or 0.5) end
+                  -- Apparence moderne : fond et panneau viennent du theme (grises) ;
+                  -- apparence du jeu : le theme et les bordures ne servent pas (grises).
+                  local moderne = UI.EstModerne()
+                  if moderne then
+                      for _, li in ipairs({ page.lFond, page.lPanneau }) do Suite.ActiverListe(li, false) end
+                      for _, r in ipairs({ page.rFond, page.rPanneau }) do r.nom:SetAlpha(0.5) end
+                  end
+                  Suite.ActiverListe(page.lTheme, moderne) Suite.ActiverListe(page.lBordure, moderne)
+                  page.rTheme.nom:SetAlpha(moderne and 1 or 0.5) page.rBordure.nom:SetAlpha(moderne and 1 or 0.5)
               end },
         },
     })
@@ -7785,7 +8064,7 @@ function Suite.PageDOptions(f, elements, extra)
             local t = c:CreateFontString(nil, "ARTWORK", "GameFontNormal")
             t:SetPoint("TOPLEFT", 10, -y)
             local trait = c:CreateTexture(nil, "ARTWORK")
-            trait:SetColorTexture(1, 0.82, 0, 0.25)
+            Suite.PeindreFilet(trait, 1, 0.82, 0, 0.25)
             trait:SetHeight(1)
             trait:SetPoint("TOPLEFT", t, "BOTTOMLEFT", 0, -5)
             trait:SetPoint("RIGHT", c, "RIGHT", -10, 0)
