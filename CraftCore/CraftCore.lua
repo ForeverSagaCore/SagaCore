@@ -228,8 +228,20 @@ local function Demarrer()
     -- Suite Core : un seul bouton de minicarte pour CraftCore, QuestCore, MapCore.
     if NS.suite then
         pcall(NS.suite.Inscrire, "CraftCore", {
-            ouvrir = function() NS.ecran.Montrer() end,
-            fenetre = function() return NS.ecran.Fenetre() end,
+            -- La fenetre sert aussi StuffCore : vue de la suite, elle n'est
+            -- "CraftCore" que hors des pages de StuffCore.
+            ouvrir = function()
+                if NS.ecran.EstStuff and NS.ecran.EstStuff(NS.ecran.page) then
+                    NS.ecran.Montrer(NS.ecran.pageMenu or "atelier")
+                else
+                    NS.ecran.Montrer()
+                end
+            end,
+            fenetre = function()
+                local f = NS.ecran.Fenetre()
+                if f and NS.ecran.EstStuff and NS.ecran.EstStuff(NS.ecran.page) then return nil end
+                return f
+            end,
             boutonMinicarte = _G.CraftCoreMinimapButton,
         })
     end

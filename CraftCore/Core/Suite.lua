@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 118
+local VERSION = 119
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -78,6 +78,8 @@ Suite.ORDRE = {
     { cle = "QuestCore", icone = "Interface\\Icons\\INV_Misc_Book_08" },
     { cle = "MapCore", icone = "Interface\\Icons\\INV_Misc_Map_01" },
     { cle = "LegacyCore", icone = "Interface\\Icons\\Spell_Holy_SealOfWisdom" },
+    -- Mon equipement et les caisses : un add-on a part (servi par CraftCore).
+    { cle = "StuffCore", icone = "Interface\\Icons\\INV_Chest_Chain" },
     -- Discret : montre seulement s'il est installe (pas dans la premiere
     -- version publiee).
     { cle = "TradeCore", icone = "Interface\\Icons\\INV_Misc_Coin_02", discret = true },
@@ -1408,7 +1410,8 @@ function Suite.Entete(cadre, cleCourante)
     for _, info in ipairs(Suite.Liste()) do
         local cle = info.cle
         local b = OngletLateral(cadre, info, function()
-            if cle ~= cleCourante and Suite.Installe(cle) then Suite.Ouvrir(cle) end
+            -- L'add-on allume peut changer (une fenetre en sert deux).
+            if cle ~= rangee.courante and Suite.Installe(cle) then Suite.Ouvrir(cle) end
         end)
         b.courante = cleCourante
         b:ClearAllPoints()
@@ -1495,7 +1498,7 @@ function Suite.Entete(cadre, cleCourante)
     pcall(Suite.LogoDuMenu, cadre)
     cadre.suiteEntete = rangee
     cadre:HookScript("OnShow", function(self)
-        Suite.PrendrePlace(cleCourante, self)
+        Suite.PrendrePlace(rangee.courante or cleCourante, self)
         Suite.Actualiser()
     end)
     cadre:HookScript("OnHide", function() Suite.Actualiser() end)
@@ -1628,6 +1631,16 @@ local function Eclairer(rangee)
         if survol then pcall(survol, b) end
         if GameTooltip:IsShown() then GameTooltip:AddLine(T.manette, 1, 1, 1) GameTooltip:Show() end
     end
+end
+
+-- Une fenetre qui sert deux add-ons (CraftCore et StuffCore) : celui
+-- qu'elle montre devient l'onglet allume de sa colonne.
+function Suite.ChangerCourant(cadre, cle)
+    local rangee = cadre and cadre.suiteEntete
+    if not rangee or rangee.courante == cle then return end
+    rangee.courante = cle
+    rangee.sansCourant = nil
+    pcall(Suite.Actualiser)
 end
 
 -- Met l'onglet de l'add-on courant en retrait (oui) ou le rallume (non).

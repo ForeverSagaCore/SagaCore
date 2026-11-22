@@ -1,0 +1,11 @@
+## Interface: 16001
+## Title: StuffCore
+## Notes: Your equipment: what improves it, where it comes from (crafts, world drops, quests, dungeons), and your lockboxes. Part of Forever SagaCore.
+## Notes-frFR: Votre équipement : ce qui l'améliore, d'où ça vient (crafts, butins du monde, quêtes, donjons), et vos caisses. Fait partie de Forever SagaCore.
+## Author: Forever SagaCore
+## Version: 0.1.0
+## IconTexture: Interface\Icons\INV_Chest_Chain
+## RequiredDeps: CraftCore
+## OptionalDeps: QuestieDB
+
+StuffCore.lua

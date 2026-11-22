@@ -1346,6 +1346,92 @@ end
 
 -- Page des reglages. Case a cocher du jeu, libelle cliquable comme la case,
 -- patron repris du journal de donjon.
+-- Parametres de StuffCore : la presentation de Mon equipement et jusqu'a
+-- quel niveau les objets sont proposes.
+local function RendreReglagesStuff(contenu)
+    local index, y = 0, 0
+    local titre
+    index, y, titre = EnTeteDePage(contenu, index, y, L.NAV_SETTINGS)
+    CacherLignesAuDela(contenu, index + 1)
+    local yy = y - 18
+    do
+        -- Equipement : la presentation de Mon equipement (1, 2 ou 3, avec ce
+        -- qu'elle montre), et jusqu'a quel niveau les objets sont proposes.
+        local S2 = _G.CoreSuite
+        if S2 and S2.Curseur and S2.ListeDeroulante and NS.equipement then
+            local G = NS.base.ReglagesGeneraux()
+            if not contenu.titreEquipReg then
+                contenu.titreEquipReg = contenu:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                contenu.libellePresentation = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                contenu.listePresentation = S2.ListeDeroulante(contenu,
+                    { { 1, L.GEAR_PRES_1 }, { 2, L.GEAR_PRES_2 }, { 3, L.GEAR_PRES_3 } },
+                    function() return NS.equipement.Scenario() end,
+                    function(v) NS.equipement.PoserScenario(tonumber(v) or 1) end,
+                    function() ecran.Montrer("reglages") end)
+                contenu.textePresentation = contenu:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+                contenu.textePresentation:SetJustifyH("LEFT")
+                contenu.textePresentation:SetWordWrap(false)
+                contenu.libelleMarge = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                contenu.curseurMarge = S2.Curseur(contenu, 0, 60, 1,
+                    function() return tonumber(NS.base.ReglagesGeneraux().margeEquipement) or 10 end,
+                    function(v) NS.base.ReglagesGeneraux().margeEquipement = v ecran.Montrer("reglages") end,
+                    nil, nil, 5)
+                contenu.curseurMarge.surParchemin = function() return NS.charte.Fond and NS.charte.Fond() == "parchemin" end
+                contenu.caseTousNiveaux = CreateFrame("CheckButton", nil, contenu, "UICheckButtonTemplate")
+                contenu.caseTousNiveaux:SetSize(24, 24)
+                contenu.caseTousNiveaux.libelle = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                contenu.caseTousNiveaux:SetScript("OnClick", function(self)
+                    NS.base.ReglagesGeneraux().tousNiveauxEquipement = self:GetChecked() and true or nil
+                    ecran.Montrer("reglages")
+                end)
+            end
+            contenu.titreEquipReg:SetText(L.SETTING_GEAR)
+            contenu.titreEquipReg:ClearAllPoints()
+            contenu.titreEquipReg:SetPoint("TOPLEFT", contenu, "TOPLEFT", 2, -(yy + 18))
+            contenu.titreEquipReg:Show()
+            StyleDeTitre(contenu.titreEquipReg)
+            yy = yy + 18 + 40
+            contenu.libellePresentation:SetText(L.GEAR_PRES_LABEL)
+            contenu.libellePresentation:ClearAllPoints()
+            contenu.libellePresentation:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 7))
+            contenu.libellePresentation:Show()
+            contenu.listePresentation:ClearAllPoints()
+            contenu.listePresentation:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -yy)
+            contenu.listePresentation:Show()
+            contenu.listePresentation.Rendre()
+            yy = yy + 28
+            contenu.textePresentation:SetText(L["GEAR_PRES_" .. NS.equipement.Scenario() .. "_TIP"])
+            contenu.textePresentation:ClearAllPoints()
+            contenu.textePresentation:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -yy)
+            contenu.textePresentation:SetPoint("RIGHT", contenu, "RIGHT", -10, 0)
+            contenu.textePresentation:Show()
+            yy = yy + 24
+            local tous = G.tousNiveauxEquipement == true
+            contenu.libelleMarge:SetText(L.SETTING_GEAR_MARGIN)
+            contenu.libelleMarge:ClearAllPoints()
+            contenu.libelleMarge:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 7))
+            contenu.libelleMarge:Show()
+            contenu.libelleMarge:SetAlpha(tous and 0.4 or 1)
+            contenu.curseurMarge:ClearAllPoints()
+            contenu.curseurMarge:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -yy)
+            contenu.curseurMarge:SetShown(not tous)
+            if contenu.curseurMarge.Rendre then contenu.curseurMarge.Rendre() end
+            yy = yy + 32
+            contenu.caseTousNiveaux.libelle:SetText(L.SETTING_GEAR_ALL_LEVELS)
+            contenu.caseTousNiveaux.libelle:ClearAllPoints()
+            contenu.caseTousNiveaux.libelle:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 6))
+            contenu.caseTousNiveaux.libelle:Show()
+            contenu.caseTousNiveaux:ClearAllPoints()
+            contenu.caseTousNiveaux:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -yy)
+            contenu.caseTousNiveaux:SetChecked(tous)
+            contenu.caseTousNiveaux:Show()
+            contenu.dernierReglage = contenu.caseTousNiveaux
+            yy = yy + 32
+        end
+    end
+    contenu:SetHeight(math.max(yy + 20, 1))
+end
+
 local function RendreReglages(contenu)
     CacherLignesAuDela(contenu, 1)
 
@@ -1629,84 +1715,11 @@ local function RendreReglages(contenu)
             yy = yy + 32
           end
         end
-        -- Equipement : la presentation de Mon equipement (1, 2 ou 3, avec ce
-        -- qu'elle montre), et jusqu'a quel niveau les objets sont proposes.
-        local S2 = _G.CoreSuite
-        if S2 and S2.Curseur and S2.ListeDeroulante and NS.equipement then
-            local G = NS.base.ReglagesGeneraux()
-            if not contenu.titreEquipReg then
-                contenu.titreEquipReg = contenu:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                contenu.libellePresentation = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                contenu.listePresentation = S2.ListeDeroulante(contenu,
-                    { { 1, L.GEAR_PRES_1 }, { 2, L.GEAR_PRES_2 }, { 3, L.GEAR_PRES_3 } },
-                    function() return NS.equipement.Scenario() end,
-                    function(v) NS.equipement.PoserScenario(tonumber(v) or 1) end,
-                    function() ecran.Montrer("reglages") end)
-                contenu.textePresentation = contenu:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-                contenu.textePresentation:SetJustifyH("LEFT")
-                contenu.textePresentation:SetWordWrap(false)
-                contenu.libelleMarge = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                contenu.curseurMarge = S2.Curseur(contenu, 0, 60, 1,
-                    function() return tonumber(NS.base.ReglagesGeneraux().margeEquipement) or 10 end,
-                    function(v) NS.base.ReglagesGeneraux().margeEquipement = v ecran.Montrer("reglages") end,
-                    nil, nil, 5)
-                contenu.curseurMarge.surParchemin = function() return NS.charte.Fond and NS.charte.Fond() == "parchemin" end
-                contenu.caseTousNiveaux = CreateFrame("CheckButton", nil, contenu, "UICheckButtonTemplate")
-                contenu.caseTousNiveaux:SetSize(24, 24)
-                contenu.caseTousNiveaux.libelle = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                contenu.caseTousNiveaux:SetScript("OnClick", function(self)
-                    NS.base.ReglagesGeneraux().tousNiveauxEquipement = self:GetChecked() and true or nil
-                    ecran.Montrer("reglages")
-                end)
-            end
-            contenu.titreEquipReg:SetText(L.SETTING_GEAR)
-            contenu.titreEquipReg:ClearAllPoints()
-            contenu.titreEquipReg:SetPoint("TOPLEFT", contenu, "TOPLEFT", 2, -(yy + 18))
-            contenu.titreEquipReg:Show()
-            StyleDeTitre(contenu.titreEquipReg)
-            yy = yy + 18 + 40
-            contenu.libellePresentation:SetText(L.GEAR_PRES_LABEL)
-            contenu.libellePresentation:ClearAllPoints()
-            contenu.libellePresentation:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 7))
-            contenu.libellePresentation:Show()
-            contenu.listePresentation:ClearAllPoints()
-            contenu.listePresentation:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -yy)
-            contenu.listePresentation:Show()
-            contenu.listePresentation.Rendre()
-            yy = yy + 28
-            contenu.textePresentation:SetText(L["GEAR_PRES_" .. NS.equipement.Scenario() .. "_TIP"])
-            contenu.textePresentation:ClearAllPoints()
-            contenu.textePresentation:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -yy)
-            contenu.textePresentation:SetPoint("RIGHT", contenu, "RIGHT", -10, 0)
-            contenu.textePresentation:Show()
-            yy = yy + 24
-            local tous = G.tousNiveauxEquipement == true
-            contenu.libelleMarge:SetText(L.SETTING_GEAR_MARGIN)
-            contenu.libelleMarge:ClearAllPoints()
-            contenu.libelleMarge:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 7))
-            contenu.libelleMarge:Show()
-            contenu.libelleMarge:SetAlpha(tous and 0.4 or 1)
-            contenu.curseurMarge:ClearAllPoints()
-            contenu.curseurMarge:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -yy)
-            contenu.curseurMarge:SetShown(not tous)
-            if contenu.curseurMarge.Rendre then contenu.curseurMarge.Rendre() end
-            yy = yy + 32
-            contenu.caseTousNiveaux.libelle:SetText(L.SETTING_GEAR_ALL_LEVELS)
-            contenu.caseTousNiveaux.libelle:ClearAllPoints()
-            contenu.caseTousNiveaux.libelle:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 6))
-            contenu.caseTousNiveaux.libelle:Show()
-            contenu.caseTousNiveaux:ClearAllPoints()
-            contenu.caseTousNiveaux:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -yy)
-            contenu.caseTousNiveaux:SetChecked(tous)
-            contenu.caseTousNiveaux:Show()
-            contenu.dernierReglage = contenu.caseTousNiveaux
-            yy = yy + 32
-        end
     end
     -- Les didacticiels ne sont plus dans cette page (ils iront ailleurs).
     contenu.titreTutos:Hide()
     if contenu.titreTutos.filet then contenu.titreTutos.filet:Hide() end
-    local precedent = contenu.dernierReglage or contenu.sauverCompo or contenu.listeFondSuivis or contenu.libelleFondSuivis
+    local precedent = contenu.sauverCompo or contenu.listeFondSuivis or contenu.libelleFondSuivis
     local hauteur = 600
     -- Hauteur reelle quand le jeu la connait : le bas du dernier bloc.
     local haut, bas = contenu:GetTop(), precedent and precedent.GetBottom and precedent:GetBottom()
@@ -4416,12 +4429,13 @@ SynchroniserOnglets = function(win)
         win.ongletEquipement:ClearAllPoints()
         win.ongletEquipement:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -30)
     end
-    if not win.ongletEquipement and precedent then
+    -- Cree meme sans metier : il sert StuffCore.
+    if not win.ongletEquipement then
         local onglet = CreerOngletLateral(win, precedent,
             "Interface\\Icons\\INV_Chest_Chain", function()
                 ecran.Montrer("equipement")
             end)
-        if onglet.ClearAllPoints then
+        if onglet.ClearAllPoints and precedent then
             onglet:ClearAllPoints()
             onglet:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -30)
         end
@@ -4807,6 +4821,14 @@ local function Construire()
         precedentE = b
     end
 
+    win.reglagesStuff = LigneEquip("Interface\\Icons\\Trade_Engineering", function()
+        ecran.Montrer("reglagesStuff")
+    end)
+    win.filetStuff = menu:CreateTexture(nil, "ARTWORK")
+    win.filetStuff:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+    win.filetStuff:SetHeight(1)
+    win.filetStuff:Hide()
+
     -- Onglets de metier sur le bord droit.
     win.onglets = {}
     win.ordreOnglets = {}
@@ -5014,6 +5036,24 @@ local function ReglerPlaceDuBandeau(win, visible)
     end
 end
 
+-- Pages de StuffCore (un add-on a part, servi par cette fenetre).
+local PAGES_STUFF = { equipement = true, caisses = true, reglagesStuff = true }
+function ecran.EstStuff(page) return PAGES_STUFF[page or ""] == true end
+
+_G.CraftCoreAPI = _G.CraftCoreAPI or {}
+-- Ouvre StuffCore : sa derniere page, ou la premiere / la derniere en
+-- arrivant par LT / RT.
+_G.CraftCoreAPI.OuvrirStuff = function()
+    local entree = NS.suite and NS.suite.PrendreEntree and NS.suite.PrendreEntree()
+    local page = (entree == "debut" and "equipement") or (entree == "fin" and "caisses") or ecran.pageStuff or "equipement"
+    ecran.Montrer(page)
+end
+-- La fenetre, seulement quand elle montre StuffCore.
+_G.CraftCoreAPI.FenetreStuff = function()
+    if fenetre and fenetre:IsShown() and ecran.EstStuff(ecran.page) then return fenetre end
+    return nil
+end
+
 function ecran.Montrer(cle)
     if not fenetre then fenetre = Construire() end
     -- Anciennes pages, desormais dans Mes projets.
@@ -5045,34 +5085,61 @@ function ecran.Montrer(cle)
             ecran.page = PAGES_PAR_METIER[ecran.page] and ecran.page or "recettes"
         end
     elseif entree == "fin" then
-        ecran.page = "caisses"
+        local ordre = fenetre and fenetre.ordreOnglets or {}
+        local dernier = ordre[#ordre]
+        if dernier then
+            ecran.metier = dernier
+            ecran.page = PAGES_PAR_METIER[ecran.page] and ecran.page or "recettes"
+        else
+            ecran.page = "progression"
+        end
     end
+    if ecran.EstStuff(ecran.page) then ecran.pageStuff = ecran.page end
 
     for autre, bouton in pairs(fenetre.boutons) do
         MarquerLigneDeMenu(bouton, autre == ecran.page)
     end
-    -- Mon equipement est a part : son propre menu a gauche, et l'onglet de
-    -- CraftCore (colonne des add-ons) en retrait.
+    -- StuffCore (Mon equipement, Caisses, ses Parametres) : un add-on a part
+    -- dans la colonne de gauche. Meme fenetre, mais son titre, son onglet
+    -- allume a gauche, son menu et ses seuls onglets a droite.
     do
-        local surEquip = (ecran.page == "equipement")
-        for _, b in pairs(fenetre.boutons) do b:SetShown(not surEquip) end
-        for _, f in ipairs(fenetre.filetsMenu or {}) do f:SetShown(not surEquip) end
+        local stuff = ecran.EstStuff(ecran.page)
+        if fenetre.titre then fenetre.titre:SetText(stuff and "StuffCore" or L.WINDOW_TITLE) end
+        for _, b in pairs(fenetre.boutons) do b:SetShown(not stuff) end
+        for _, f in ipairs(fenetre.filetsMenu or {}) do f:SetShown(not stuff) end
         local scen = NS.equipement and NS.equipement.Scenario() or 1
-        for n, b in pairs(fenetre.scenariosEquip or {}) do
-            local texte = b.text or b.Text or (b.GetFontString and b:GetFontString())
-            if texte then texte:SetText(string.format(L.GEAR_SCENARIO, n)) end
-            b:SetShown(surEquip)
-            MarquerLigneDeMenu(b, n == scen)
+        local avecOrigines = stuff and ecran.page == "equipement" and scen ~= 2
+        local dernierE
+        for _, cat in ipairs(NS.sources and NS.sources.ORDRE or {}) do
+            local b = fenetre.originesEquip and fenetre.originesEquip[cat]
+            if b then
+                local texte = b.text or b.Text or (b.GetFontString and b:GetFontString())
+                if texte then texte:SetText(L["GEAR_CAT_" .. cat]) end
+                b:SetShown(avecOrigines)
+                local choisi = (scen == 3) and NS.equipement.FiltreActif(cat) or (scen == 1 and NS.equipement.Categorie() == cat)
+                MarquerLigneDeMenu(b, choisi)
+                if avecOrigines then dernierE = b end
+            end
         end
-        for cat, b in pairs(fenetre.originesEquip or {}) do
-            local texte = b.text or b.Text or (b.GetFontString and b:GetFontString())
-            if texte then texte:SetText(L["GEAR_CAT_" .. cat]) end
-            b:SetShown(surEquip and scen ~= 2)
-            local choisi = (scen == 3) and NS.equipement.FiltreActif(cat) or (scen == 1 and NS.equipement.Categorie() == cat)
-            MarquerLigneDeMenu(b, choisi)
+        -- Parametres de StuffCore : en bas du menu, sous un filet.
+        local reg = fenetre.reglagesStuff
+        if reg then
+            local texte = reg.text or reg.Text or (reg.GetFontString and reg:GetFontString())
+            if texte then texte:SetText(L.NAV_SETTINGS) end
+            reg:ClearAllPoints()
+            reg:SetPoint("LEFT", fenetre.menu, "LEFT", 0, 0)
+            reg:SetPoint("RIGHT", fenetre.menu, "RIGHT", 0, 0)
+            if dernierE then reg:SetPoint("TOP", dernierE, "BOTTOM", 0, -13)
+            else reg:SetPoint("TOP", fenetre.menu, "TOP", 0, 0) end
+            reg:SetShown(stuff)
+            MarquerLigneDeMenu(reg, ecran.page == "reglagesStuff")
+            fenetre.filetStuff:ClearAllPoints()
+            fenetre.filetStuff:SetPoint("BOTTOMLEFT", reg, "TOPLEFT", 6, 6)
+            fenetre.filetStuff:SetPoint("BOTTOMRIGHT", reg, "TOPRIGHT", -6, 6)
+            fenetre.filetStuff:SetShown(stuff and dernierE ~= nil)
         end
         local S = NS.suite or _G.CoreSuite
-        if S and S.CourantEnRetrait then S.CourantEnRetrait(fenetre, surEquip) end
+        if S and S.ChangerCourant then S.ChangerCourant(fenetre, stuff and "StuffCore" or "CraftCore") end
     end
 
     -- Libelles de la barre, relus a chaque fois : l'utilisateur peut assigner
@@ -5117,11 +5184,21 @@ function ecran.Montrer(cle)
     end
 
     local okOnglets, souciOnglets = pcall(SynchroniserOnglets, fenetre)
+    -- A droite : les metiers pour CraftCore, Mon equipement et Caisses pour
+    -- StuffCore, jamais les deux.
+    local modeStuff = ecran.EstStuff(ecran.page)
+    for _, onglet in pairs(fenetre.onglets or {}) do onglet:SetShown(not modeStuff) end
+    if fenetre.ongletEquipement and fenetre.ongletEquipement.ClearAllPoints and modeStuff and NS.suite and NS.suite.AncreHaut then
+        local ancre, point = NS.suite.AncreHaut(fenetre, "droite")
+        fenetre.ongletEquipement:ClearAllPoints()
+        fenetre.ongletEquipement:SetPoint("TOPLEFT", ancre, point, 0, NS.suite.HAUT_ONGLET or -7)
+    end
     for page, onglet in pairs({ equipement = fenetre.ongletEquipement,
         caisses = fenetre.ongletCaisses }) do
         local choisi = (ecran.page == page)
         if onglet.SetChecked then onglet:SetChecked(choisi) end
         MarquerSelection(onglet, choisi, onglet.Icon)
+        onglet:SetShown(modeStuff)
     end
     if not okOnglets then
         NS.base.NoterIncident("onglets de métier", souciOnglets)
@@ -5223,12 +5300,16 @@ function ecran.Montrer(cle)
                 if x then x:Hide() end
             end
             if fenetre.contenu.listeFondSuivis then fenetre.contenu.listeFondSuivis:Hide() end
+        end
+        if ecran.page ~= "reglagesStuff" then
             local cc = fenetre.contenu
             for _, x in ipairs({ cc.titreEquipReg, cc.titreEquipReg and cc.titreEquipReg.filet, cc.libelleMarge, cc.curseurMarge,
                 cc.libellePresentation, cc.listePresentation, cc.textePresentation, cc.caseTousNiveaux,
                 cc.caseTousNiveaux and cc.caseTousNiveaux.libelle }) do
                 if x then x:Hide() end
             end
+        end
+        if fenetre.contenu.caseGuide and ecran.page ~= "reglages" then
             for _, c in ipairs({ fenetre.contenu.caseInfobulles, fenetre.contenu.caseAssistant, fenetre.contenu.caseSuivi,
                 fenetre.contenu.casePermanent, fenetre.contenu.caseAncre }) do
                 c:Hide()
@@ -5266,6 +5347,8 @@ function ecran.Montrer(cle)
             RendreCaisses(fenetre.contenu)
         elseif ecran.page == "reglages" then
             RendreReglages(fenetre.contenu)
+        elseif ecran.page == "reglagesStuff" then
+            RendreReglagesStuff(fenetre.contenu)
         elseif ecran.page == "atelier" then
             LargeurDesColonnes(fenetre.contenu, 0, 220)
             RendreAtelier(fenetre.contenu)
@@ -5409,6 +5492,15 @@ end
 -- onglet de droite, on revient a la section du menu qu'on avait quittee.
 function ecran.PageVoisine(pas)
     if not fenetre then ecran.Montrer() return end
+    -- StuffCore : ses trois pages.
+    if ecran.EstStuff(ecran.page) then
+        local liste = { "equipement", "caisses", "reglagesStuff" }
+        local rang = 1
+        for k, p in ipairs(liste) do if p == ecran.page then rang = k end end
+        local suivant = math.max(1, math.min(#liste, rang + pas))
+        if suivant ~= rang then ecran.Montrer(liste[suivant]) end
+        return
+    end
     local index
     for rang, p in ipairs(PAGES) do
         if p.cle == ecran.page then index = rang break end
@@ -5427,12 +5519,15 @@ end
 function ecran.MetierVoisin(pas)
     if not fenetre then ecran.Montrer() end
     local ordre = {}
-    for _, cle in ipairs(fenetre and fenetre.ordreOnglets or {}) do
-        table.insert(ordre, { metier = cle })
+    if ecran.EstStuff(ecran.page) then
+        table.insert(ordre, { page = "equipement" })
+        table.insert(ordre, { page = "caisses" })
+    else
+        for _, cle in ipairs(fenetre and fenetre.ordreOnglets or {}) do
+            table.insert(ordre, { metier = cle })
+        end
+        table.insert(ordre, { page = "progression" })
     end
-    table.insert(ordre, { page = "progression" })
-    table.insert(ordre, { page = "equipement" })
-    table.insert(ordre, { page = "caisses" })
     local index
     for rang, entree in ipairs(ordre) do
         if (entree.page and entree.page == ecran.page)

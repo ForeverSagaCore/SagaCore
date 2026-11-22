@@ -535,7 +535,7 @@ function manette.Brancher(win)
         -- Vue tenue + LB / RB : add-on voisin (la suite s'en charge).
         local S = NS.suite
         if S and S.ManetteBas then
-            local okS, pris = pcall(S.ManetteBas, "CraftCore", bouton)
+            local okS, pris = pcall(S.ManetteBas, (NS.ecran.EstStuff and NS.ecran.EstStuff(NS.ecran.page)) and "StuffCore" or "CraftCore", bouton)
             if okS and pris then return false end
         end
         local okT, laisser = pcall(Traiter, self, bouton)
