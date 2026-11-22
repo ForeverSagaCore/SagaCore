@@ -333,6 +333,55 @@ local function LigneObjet(tt, o)
     tt:AddLine(string.format("  |T%s:16|t %s%s", tostring(icone), nom, (o.n or 1) > 1 and (" x" .. o.n) or ""), r, g, b)
 end
 
+-- Qui, dans le groupe, a aussi cette quete : le jeu le dit pour tous ; ou
+-- il en est, seulement pour ceux qui ont QuestCore (ils l'envoient).
+function ref.LigneGroupe(tt, id)
+    local L = NS.L
+    local n = (_G.GetNumGroupMembers and _G.GetNumGroupMembers()) or 0
+    if n == 0 then return end
+    local raid = _G.IsInRaid and _G.IsInRaid()
+    local CQ = _G.C_QuestLog
+    local function Secret(v) return _G.issecretvalue and _G.issecretvalue(v) end
+    local avance = {}
+    for _, m in ipairs(NS.groupe and NS.groupe.Membres and NS.groupe.Membres(id) or {}) do
+        local fait, total = 0, 0
+        for _, ob in ipairs(m.objs or {}) do
+            if (ob.r or 0) > 0 then fait = fait + math.min(ob.n or 0, ob.r) total = total + ob.r end
+        end
+        avance[m.nom] = (m.etat == 1) and 100 or (total > 0 and math.floor(fait * 100 / total) or nil)
+    end
+    local lignes = {}
+    for i = 1, n do
+        local unite = raid and ("raid" .. i) or ("party" .. i)
+        if UnitExists(unite) and not UnitIsUnit(unite, "player") then
+            local oui = false
+            if CQ and CQ.IsUnitOnQuest then
+                local ok, r = pcall(CQ.IsUnitOnQuest, unite, id)
+                oui = ok and not Secret(r) and r == true
+            end
+            if not oui and _G.GetQuestLogIndexByID and _G.IsUnitOnQuest then
+                local okI, index = pcall(_G.GetQuestLogIndexByID, id)
+                if okI and tonumber(index) and index > 0 then
+                    local ok, r = pcall(_G.IsUnitOnQuest, index, unite)
+                    oui = ok and not Secret(r) and (r == true or r == 1)
+                end
+            end
+            if oui then
+                local nom = UnitName(unite) or "?"
+                local _, classe = UnitClass(unite)
+                local c = classe and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[classe]
+                local teinte = c and string.format("|cff%02x%02x%02x", c.r * 255, c.g * 255, c.b * 255) or "|cffffffff"
+                local pct = avance[nom]
+                table.insert(lignes, teinte .. nom .. "|r" .. (pct and ("  |cffbbbbbb" .. pct .. " %|r") or ""))
+            end
+        end
+    end
+    if #lignes == 0 then return end
+    tt:AddLine(" ")
+    tt:AddLine(L.TRACK_GROUP_HAS, 1, 0.82, 0)
+    for _, l in ipairs(lignes) do tt:AddLine("  " .. l, 1, 1, 1) end
+end
+
 -- Quete qui se fait dans une instance : laquelle, et si elle s'y prend.
 function ref.LigneDonjon(tt, id)
     local d = NS.donjons and NS.donjons.DeQuete and NS.donjons.DeQuete(id)
@@ -362,6 +411,7 @@ function ref.InfobulleDeQuete(tt, q, id, p)
     local donneurs = ref.Donneurs(id)
     if #donneurs > 0 then tt:AddLine(string.format(L.GIVEN_BY, table.concat(donneurs, ", ")), 0.8, 0.8, 0.8, true) end
     ref.LigneDonjon(tt, id)
+    pcall(ref.LigneGroupe, tt, id)
     local r = q.recompenses
     -- Ce qu'il faut faire (texte du journal), puis le recit, en entier.
     if r and r.but then
