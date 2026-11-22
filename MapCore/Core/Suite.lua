@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 132
+local VERSION = 133
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2736,9 +2736,8 @@ function Suite.ChoisirGuide()
     -- Barre de titre, marge, texte, boutons, marge.
     f:SetHeight(24 + 12 + 22 + #choix * 28 + 12 + 8)
     f:ClearAllPoints()
-    -- A cote de la boussole, sans masquer le milieu de l'ecran.
-    local g = _G.CoreSuiteGuidage
-    if g and g:IsShown() then f:SetPoint("LEFT", g, "RIGHT", 24, 0) else f:SetPoint("TOP", UIParent, "TOP", 0, -140) end
+    -- Toujours au meme endroit, au milieu de l'ecran : on ne peut pas la rater.
+    f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     f:Show()
     f.Allumer(1)
 end
