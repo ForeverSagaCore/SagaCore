@@ -1427,6 +1427,13 @@ end
 do
     local veille = CreateFrame("Frame")
     local attente = 1
+    -- Visible sans risque : un nom global peut etre autre chose qu'un cadre,
+    -- et un autre add-on peut avoir remplace IsShown.
+    local function Visible(c)
+        if type(c) ~= "table" or type(c.IsShown) ~= "function" then return false end
+        local ok, oui = pcall(c.IsShown, c)
+        return ok and oui and true or false
+    end
     veille:SetScript("OnUpdate", function(_, ecoule)
         if _G.CoreSuite ~= Suite then return end
         attente = attente - (ecoule or 0)
@@ -1435,12 +1442,12 @@ do
         if not Moderne() then return end
         local vues = {}
         for _, m in pairs(Suite.membres or {}) do
-            if m.fenetre then local ok, c = pcall(m.fenetre) if ok and c and c:IsShown() then vues[c] = true end end
+            if m.fenetre then local ok, c = pcall(m.fenetre) if ok and Visible(c) then vues[c] = true end end
         end
-        for _, n in ipairs(Suite.FENETRES_FONDU or {}) do local c = _G[n] if c and c:IsShown() then vues[c] = true end end
-        for _, w in ipairs(Suite.fenetresAPages or {}) do if w.cadre and w.cadre:IsShown() then vues[w.cadre] = true end end
+        for _, n in ipairs(Suite.FENETRES_FONDU or {}) do local c = _G[n] if Visible(c) then vues[c] = true end end
+        for _, w in ipairs(Suite.fenetresAPages or {}) do if Visible(w.cadre) then vues[w.cadre] = true end end
         for _, n in ipairs({ "CraftCoreSuivi", "QuestCoreSuivi", "CoreSuiteMacroCore", "CraftCoreAssistant" }) do
-            local c = _G[n] if c and c:IsShown() then vues[c] = true end
+            local c = _G[n] if Visible(c) then vues[c] = true end
         end
         for c in pairs(vues) do
             pcall(UI.HabillerFenetre, c)
