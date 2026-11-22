@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 138
+local VERSION = 139
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -88,6 +88,9 @@ Suite.ORDRE = {
     -- Discret : montre seulement s'il est installe (pas dans la premiere
     -- version publiee).
     { cle = "TradeCore", icone = "Interface\\Icons\\INV_Misc_Coin_02", discret = true },
+    -- Le JcJ (carte de champ de bataille, honneur) : discret tant qu'il n'est
+    -- pas publie (montre seulement s'il est installe).
+    { cle = "PvPCore", icone = "Interface\\Icons\\INV_BannerPVP_02", discret = true },
 }
 -- Les add-ons annonces des leur chargement (avant les fenetres).
 Suite.presents = Suite.presents or {}
@@ -1247,7 +1250,7 @@ end
 -- copie d'essai (dossiers XDev), ou l'inverse, puis recharge l'interface.
 -- Jamais les deux suites actives a la fois.
 -- ---------------------------------------------------------------------------
-Suite.ADDONS_SUITE = { "CraftCore", "QuestCore", "MapCore", "LegacyCore", "StuffCore", "FriendsCore", "AuraCore" }
+Suite.ADDONS_SUITE = { "CraftCore", "QuestCore", "MapCore", "LegacyCore", "StuffCore", "FriendsCore", "AuraCore", "PvPCore" }
 function Suite.BasculerDev()
     if not Suite.Prive() then return end
     local A = _G.C_AddOns or {}
@@ -3477,7 +3480,7 @@ end
 -- explication que le jeu n'execute pas (#), puis la commande.
 local COURTS = {
     pilotefab = "PFa", pilotequetes = "PQu", ouvrir = "Sui", craftcore = "CrC", questcore = "QuC",
-    mapcore = "MaC", legacycore = "LeC", stuffcore = "StC", tradecore = "TrC", fabrications = "SFa", quetes = "SQu", suivis = "PSu",
+    mapcore = "MaC", legacycore = "LeC", stuffcore = "StC", tradecore = "TrC", pvpcore = "PvP", fabrications = "SFa", quetes = "SQu", suivis = "PSu",
     stop = "Stp", rendus = "Ren", recolte = "Rec", metier = "Met", oui = "Oui", non = "Non",
     messages = "Msg", reglages = "Rgl", improve = "IC", raccourcis = "Pan",
 }
