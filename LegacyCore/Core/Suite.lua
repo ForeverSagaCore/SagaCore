@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 122
+local VERSION = 123
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4370,17 +4370,6 @@ local ICONE_MACROCORE = Suite.ICONE_MACROCORE
 local ALPHA_EN_COURSE = 0.25
 local HAUT_ONGLETS = 38
 local fenMC
--- Opacite de MacroCore au repos : pleine quand elle est active ; en
--- sous-brillance quand elle est figee par une fenetre qu'elle a ouverte. En
--- marche, le fondu commun de la suite l'efface comme les autres fenetres.
-function Suite.AlphaReposMC() return (fenMC and fenMC.figee) and ALPHA_EN_COURSE or 1 end
-function Suite.AlphaMC(a)
-    local f = fenMC
-    if not f then return end
-    f:SetAlpha(a)
-    for _, b in ipairs(f.pastilles or {}) do pcall(b.SetAlpha, b, a) end
-    for _, sv in ipairs(f.suivis or {}) do pcall(sv.SetAlpha, sv, a) end
-end
 
 local function MacroCore()
     if fenMC then return fenMC end
@@ -4491,7 +4480,7 @@ local function MacroCore()
         s:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
         s.nomSuivi, s.api, s.nom, s.desc = v[1], v[2], v[3], v[6]
         s.infobulleDe = "CoreSuiteMacroCore"
-        s:SetAlpha(Suite.AlphaReposMC())
+        s:SetAlpha(ALPHA_EN_COURSE)
         s:SetScript("OnClick", function(self)
             local a = _G[self.api]
             if a and a.BasculerSuivi then pcall(a.BasculerSuivi) end
@@ -4505,7 +4494,7 @@ local function MacroCore()
             GameTooltip:Show()
         end)
         s:SetScript("OnLeave", function(self)
-            self:SetAlpha(cadre:GetAlpha())
+            self:SetAlpha(ALPHA_EN_COURSE)
             GameTooltip:Hide()
         end)
         s:Hide()
@@ -4547,7 +4536,7 @@ function Suite.ActiverMacroCore(oui)
     if not f then return end
     if f.figee then return end
     f.active = oui and true or nil
-    Suite.AlphaMC(oui and Suite.AlphaReposMC() or 0)
+    f:SetAlpha(oui and ALPHA_EN_COURSE or 0)
     f:EnableMouse(oui and true or false)
     if f.fermer then f.fermer:SetShown(oui and true or false) end
     -- Les pastilles ne se cliquent que fenetre active (hors combat : le jeu
@@ -4645,7 +4634,7 @@ function Suite.RemplirMacroCore()
                     b = CreateFrame("Button", nil, UIParent, "SecureActionButtonTemplate")
                     b:SetFrameStrata(f:GetFrameStrata())
                     b:SetFrameLevel(f:GetFrameLevel() + 10)
-                    b:SetAlpha(f:GetAlpha())
+                    b:SetAlpha(ALPHA_EN_COURSE)
                     b.infobulleDe = "CoreSuiteMacroCore"
                     b:RegisterForClicks("AnyUp", "AnyDown")
                     b:SetSize(PASTILLE, PASTILLE)
@@ -4679,7 +4668,7 @@ function Suite.RemplirMacroCore()
                         GameTooltip:Show()
                     end)
                     b:SetScript("OnLeave", function(self)
-                        self:SetAlpha(f:GetAlpha())
+                        self:SetAlpha(ALPHA_EN_COURSE)
                         GameTooltip:Hide()
                     end)
                     -- Clic souris : meme regle que la manette (la macro du
@@ -4749,7 +4738,6 @@ local veille
 -- (ni souris, ni manette, ni macro).
 local function Figer(f, oui)
     f.figee = oui and true or nil
-    if f.active then Suite.AlphaMC(Suite.AlphaReposMC()) end
     local combat = InCombatLockdown and InCombatLockdown()
     f:EnableMouse((not oui) and f.active and true or false)
     if f.fermer then f.fermer:EnableMouse(not oui) end
@@ -7066,18 +7054,6 @@ do
             if math.abs(actuel - cible) >= 0.01 then
                 if actuel < cible then actuel = math.min(cible, actuel + pas) else actuel = math.max(cible, actuel - pas) end
                 f:SetAlpha(actuel)
-                enCours = true
-            end
-        end
-        -- MacroCore active : meme fondu, pastilles comprises ; au repos, son
-        -- opacite propre (pleine, ou sous-brillance si figee).
-        local mc = _G.CoreSuiteMacroCore
-        if mc and mc.active and Suite.AlphaMC then
-            local cibleMC = (cible < 1) and ALPHA_MARCHE or Suite.AlphaReposMC()
-            local actuel = mc:GetAlpha() or 1
-            if math.abs(actuel - cibleMC) >= 0.01 then
-                if actuel < cibleMC then actuel = math.min(cibleMC, actuel + pas) else actuel = math.max(cibleMC, actuel - pas) end
-                Suite.AlphaMC(actuel)
                 enCours = true
             end
         end
