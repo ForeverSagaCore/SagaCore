@@ -230,8 +230,11 @@ local function RondDuJeu(ligne, etat, x, y)
     ligne.rond.fond:SetSize(24, 24)
     ligne.rond.symbole:SetAtlas(symbole)
     ligne.rond.symbole:SetSize(24, 24)
-    ligne.rond.symbole:SetDesaturated(etat == "fait")
-    if etat == "fait" then ligne.rond.symbole:SetVertexColor(0.3, 1, 0.3) else ligne.rond.symbole:SetVertexColor(1, 1, 1) end
+    ligne.rond.symbole:SetDesaturated(etat == "fait" or etat == "suite")
+    if etat == "fait" then ligne.rond.symbole:SetVertexColor(0.3, 1, 0.3)
+    elseif etat == "suite" then ligne.rond.symbole:SetVertexColor(0.55, 0.55, 0.55)
+    else ligne.rond.symbole:SetVertexColor(1, 1, 1) end
+    ligne.rond.fond:SetDesaturated(etat == "suite")
     ligne.rond:Show()
     return ligne.rond
 end
@@ -243,6 +246,12 @@ local function IconeDeQuete(texture, etat)
     texture:SetDesaturated(false)
     if etat == "fait" then
         texture:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+        texture:SetSize(16, 16)
+        return
+    end
+    if etat == "suite" then
+        texture:SetTexture("Interface\\GossipFrame\\AvailableQuestIcon")
+        texture:SetDesaturated(true)
         texture:SetSize(16, 16)
         return
     end
@@ -928,6 +937,92 @@ end
 -- ---------------------------------------------------------------------------
 
 -- Une quete d'un membre : titre, pourcentage, objectifs avec ses comptes.
+-- ---------------------------------------------------------------------------
+-- Suites de quetes : une quete d'une suite se montre avec toute sa suite.
+-- Avant elle, celles deja faites (en vert, rond vert) ; elle, en entier ;
+-- apres, celles qui restent, en gris. Un trait vertical relie leurs ronds.
+-- Valable pour toutes les suites connues de la base (donjon ou non).
+-- ---------------------------------------------------------------------------
+
+local dejaRendues = {}
+local traitsPoses = 0
+local function Trait(x, haut, bas)
+    local corps = cadre.corps
+    corps.traits = corps.traits or {}
+    traitsPoses = traitsPoses + 1
+    local t = corps.traits[traitsPoses]
+    if not t then
+        t = corps:CreateTexture(nil, "ARTWORK")
+        t:SetColorTexture(1, 0.82, 0, 0.45)
+        corps.traits[traitsPoses] = t
+    end
+    t:ClearAllPoints()
+    t:SetPoint("TOPLEFT", corps, "TOPLEFT", x, -haut)
+    t:SetSize(2, math.max(1, bas - haut))
+    t:Show()
+end
+
+local function Chaine(moi, id)
+    if not (NS.parcours and NS.parcours.Suite) then return nil end
+    local ok, liste = pcall(NS.parcours.Suite, moi, id)
+    if not ok or type(liste) ~= "table" or #liste < 2 then return nil end
+    return liste
+end
+
+local function RendreAvecChaine(moi, quetes, id, index, y, prefixe)
+    if dejaRendues[id] then return index, y end
+    local chaine = Chaine(moi, id)
+    if not chaine then
+        dejaRendues[id] = true
+        return RendreQuete(moi, quetes, id, index, y, prefixe)
+    end
+    local hauts = {}
+    local apres = 0
+    for _, c in ipairs(chaine) do
+        dejaRendues[c] = true
+        if quetes[c] then
+            table.insert(hauts, y)
+            index, y = RendreQuete(moi, quetes, c, index, y)
+        else
+            local fait = moi.faites and moi.faites[c]
+            if not fait then apres = apres + 1 end
+            if fait or apres <= 6 then
+                local niveau = tonumber(NS.ref.Lire("QuestDB", c, "questLevel")) or 0
+                local idC = c
+                table.insert(hauts, y)
+                index = index + 1
+                y = Poser(index, y, string.format("[%d] %s", niveau, NS.ref.NomDeQuete(c, moi)), {
+                    uneLigne = true, titre = true, marque = fait and "fait" or "suite",
+                    couleur = fait and { 0.25, 0.9, 0.25 } or { 0.55, 0.55, 0.55 },
+                    police = Police("ObjectiveTrackerHeaderFont", "GameFontNormal"),
+                    survol = function(tt) NS.ref.InfobulleDeLaBase(tt, idC, moi) end }) + 4
+            end
+        end
+    end
+    -- Les traits, d'un rond au suivant (ronds a 1 point du bord, 18 de large).
+    for k = 1, #hauts - 1 do Trait(10, hauts[k] + 20, hauts[k + 1] + 3) end
+    return index, y + 4
+end
+
+-- Une quete rendue d'une suite : sa suivante, retenue tant qu'elle n'est ni
+-- prise ni faite, garde la suite visible entre les deux.
+local function ChainesEnAttente()
+    local g = NS.base.ReglagesGeneraux()
+    g.chaines = type(g.chaines) == "table" and g.chaines or {}
+    local cle = NS.ClePersonnage()
+    if not cle then return {} end
+    g.chaines[cle] = type(g.chaines[cle]) == "table" and g.chaines[cle] or {}
+    return g.chaines[cle]
+end
+do
+    local f = CreateFrame("Frame")
+    pcall(f.RegisterEvent, f, "QUEST_TURNED_IN")
+    f:SetScript("OnEvent", function(_, _, idQ)
+        local suivante = tonumber(NS.ref.Lire("QuestDB", tonumber(idQ) or 0, "nextQuestInChain"))
+        if suivante and suivante > 0 then ChainesEnAttente()[suivante] = true end
+    end)
+end
+
 local function RendreQueteMembre(moi, e, id, index, y)
     local titres = e.titres or {}
     local function Niveau(i)
@@ -1018,7 +1113,7 @@ local function RendreVueFavoris(moi, index, y)
     local vus = {}
     for _, id in ipairs(mes) do
         vus[id] = true
-        index, y = RendreQuete(moi, quetes, id, index, y)
+        index, y = RendreAvecChaine(moi, quetes, id, index, y)
     end
     local autres = false
     for _, nom in ipairs(NS.groupe and NS.groupe.Noms() or {}) do
@@ -1504,6 +1599,9 @@ function suivi.Rendre()
 
         local corps = cadre.corps
         for _, l in ipairs(corps.lignes or {}) do l:Hide() end
+        for _, t in ipairs(corps.traits or {}) do t:Hide() end
+        traitsPoses = 0
+        dejaRendues = {}
         cadre.defilement:SetShown(not s.replie)
         cadre.poignee:SetShown(not s.replie)
         if cadre.poigneeHaut then cadre.poigneeHaut:SetShown(cadre.poignee:IsShown()) end
@@ -1853,6 +1951,24 @@ function suivi.Rendre()
 
         BasDeListe(#ids > 0)
         local index, y = 0, 0
+        -- Suites en attente : la quete d'avant rendue, la suivante pas encore
+        -- prise ; la suite reste visible, en tete.
+        if not filtre and moi then
+            local attente = ChainesEnAttente()
+            local premiere = true
+            for idS in pairs(attente) do
+                if (moi.faites and moi.faites[idS]) or quetes[idS] then
+                    attente[idS] = nil
+                elseif not dejaRendues[idS] then
+                    if premiere then
+                        premiere = false
+                        index = index + 1
+                        y = Poser(index, y, L.TRACK_CHAINS, { police = "GameFontNormal", couleur = { 1, 0.82, 0 }, uneLigne = true, apres = 2 })
+                    end
+                    index, y = RendreAvecChaine(moi, quetes, idS, index, y)
+                end
+            end
+        end
         if #ids == 0 then
             index = index + 1
             y = Poser(index, y, filtre and L.TURNIN_NONE or L.TRACK_NONE, { couleur = { 0.6, 0.6, 0.6 } })
@@ -1967,7 +2083,7 @@ function suivi.Rendre()
                 end
                 if not fermee then
                     for _, id in ipairs(rubrique.ids) do
-                        index, y = RendreQuete(moi, quetes, id, index, y)
+                        index, y = RendreAvecChaine(moi, quetes, id, index, y)
                     end
                 end
                 y = y + 4
