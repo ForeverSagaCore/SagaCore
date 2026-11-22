@@ -29,6 +29,51 @@ local function TableDeLaBase()
     return type(brut) == "table" and brut or nil
 end
 
+-- Niveaux conseilles des donjons : ceux du Journal des donjons de Forever
+-- (ForeverDungeonJournal), la reference du serveur. Lus en direct dans le
+-- journal quand il est installe (il reste ainsi a jour), sinon cette copie,
+-- par zone de la base QuestieDB. Les ailes (Monastere, Hache-tripes,
+-- Stratholme, Rochenoire) sont reunies : du plus bas au plus haut.
+local NIVEAUX_REFERENCE = {
+    [2437] = { 13, 18 }, [718] = { 15, 24 }, [1581] = { 17, 26 }, [209] = { 20, 30 },
+    [719] = { 24, 32 }, [717] = { 24, 32 }, [721] = { 29, 38 }, [491] = { 29, 38 },
+    [796] = { 30, 46 }, [722] = { 37, 46 }, [1337] = { 41, 51 }, [1176] = { 44, 54 },
+    [2100] = { 46, 55 }, [1477] = { 50, 60 }, [1584] = { 52, 60 }, [1583] = { 55, 60 },
+    [7307] = { 59, 60 }, [2557] = { 54, 60 }, [2057] = { 58, 60 }, [6066] = { 58, 60 },
+    [2017] = { 58, 60 }, [10001] = { 58, 60 },
+    [10022] = { 54, 60 }, [10023] = { 54, 60 }, [10024] = { 54, 60 }, [10025] = { 54, 60 },
+    [10026] = { 54, 60 }, [10027] = { 54, 60 },
+    -- Donjons propres a Forever.
+    [16919] = { 13, 20 }, [16611] = { 15, 22 }, [16732] = { 26, 33 }, [16544] = { 28, 35 },
+}
+-- Meme donjon, autre nom selon la source.
+local ALIAS = { ["sunken temple"] = "temple of atal'hakkar", ["upper blackrock spire"] = "blackrock spire",
+    ["lower blackrock spire"] = "blackrock spire" }
+local function Cle(nom)
+    nom = string.lower(tostring(nom or ""))
+    nom = string.gsub(nom, "^the ", "")
+    nom = string.match(nom, "^([^:]+)") or nom          -- "scarlet monastery: library" -> l'ensemble
+    nom = string.gsub(nom, "%s+$", "")
+    return ALIAS[nom] or nom
+end
+-- Les niveaux du journal en direct : { [cle] = { mini, maxi } }, ou nil.
+local function NiveauxDuJournal()
+    local fdj = _G.FDJ or _G.ForeverDungeonJournal_NS
+    local db = type(fdj) == "table" and fdj.DB
+    if type(db) ~= "table" then return nil end
+    local t = {}
+    for nom, d in pairs(db) do
+        local mini, maxi = string.match(type(d) == "table" and tostring(d.level or "") or "", "(%d+)%s*%-%s*(%d+)")
+        mini, maxi = tonumber(mini), tonumber(maxi)
+        if mini and maxi then
+            local c = Cle(nom)
+            local e = t[c]
+            if e then e[1] = math.min(e[1], mini) e[2] = math.max(e[2], maxi) else t[c] = { mini, maxi } end
+        end
+    end
+    return t
+end
+
 -- Index (une fois) : chaque donjon et toutes ses quetes, avec ses niveaux.
 local index
 local queteVersDonjon = {}
@@ -67,15 +112,22 @@ local function Index()
             if niveau and niveau > 0 then table.insert(d.niveaux, niveau) end
         end
     end
-    -- Niveaux du donjon : du 15e au 85e centile de ses quetes.
+    -- Niveaux du donjon : ceux du Journal des donjons (en direct, sinon sa
+    -- copie) ; a defaut seulement, ceux de ses quetes (15e au 85e centile).
+    local journal = NiveauxDuJournal()
     local gardes = {}
     for _, d in ipairs(liste) do
         if #d.ids > 0 then
-            table.sort(d.niveaux)
-            local n = #d.niveaux
-            if n > 0 then
-                d.mini = d.niveaux[math.max(1, math.floor(n * 0.15 + 0.5))]
-                d.maxi = d.niveaux[math.max(1, math.floor(n * 0.85 + 0.5))]
+            local ref = (journal and journal[Cle(d.nomBase)]) or NIVEAUX_REFERENCE[d.zone]
+            if ref then
+                d.mini, d.maxi = ref[1], ref[2]
+            else
+                table.sort(d.niveaux)
+                local n = #d.niveaux
+                if n > 0 then
+                    d.mini = d.niveaux[math.max(1, math.floor(n * 0.15 + 0.5))]
+                    d.maxi = d.niveaux[math.max(1, math.floor(n * 0.85 + 0.5))]
+                end
             end
             d.niveaux = nil
             table.insert(gardes, d)
