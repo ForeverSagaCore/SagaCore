@@ -426,17 +426,14 @@ function M.Envoyer()
     end
     dernier = maintenant
     local envoyer = (_G.C_ChatInfo and _G.C_ChatInfo.SendChatMessage) or _G.SendChatMessage
-    -- Tout part a la suite, un message toutes les 0,4 seconde : le groupe
-    -- d'abord, puis chaque donneur en chuchotement (le jeu coupe ce qui part
-    -- trop vite).
-    local file = {}
-    for _, texte in ipairs(messages) do table.insert(file, { texte, canal }) end
+    -- Tout part tout de suite, pendant le clic : le jeu n'autorise un add-on a
+    -- ecrire dans la discussion que sur une action du joueur (en champ de
+    -- bataille et en instance surtout) ; un message differe (minuterie) y est
+    -- refuse, avec le message d'echec d'interface. Le groupe d'abord, puis
+    -- chaque donneur en chuchotement.
+    for _, texte in ipairs(messages) do pcall(envoyer, texte, canal) end
     for _, c in ipairs(M.Chuchotements(analyse)) do
-        for _, texte in ipairs(c.messages) do table.insert(file, { texte, "WHISPER", c.cible }) end
-    end
-    for i, m in ipairs(file) do
-        local function Partir() pcall(envoyer, m[1], m[2], nil, m[3]) end
-        if i == 1 or not (_G.C_Timer and _G.C_Timer.After) then Partir() else _G.C_Timer.After((i - 1) * 0.4, Partir) end
+        for _, texte in ipairs(c.messages) do pcall(envoyer, texte, "WHISPER", nil, c.cible) end
     end
 end
 
