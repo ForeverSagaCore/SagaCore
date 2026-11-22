@@ -1143,7 +1143,11 @@ local function PoserReperes(idCarte)
         for _, pt in ipairs(ok and points or {}) do
             local x, y
             local garder = not (Suite and Suite.PointVisible) or Suite.PointVisible(pt)
-            if Suite and Suite.GuidageActif and Suite.GuidageActif("QuestCore") then garder = pt.numero ~= nil end
+            local guide = Suite and Suite.GuidageActif and Suite.GuidageActif("QuestCore")
+            if guide then garder = pt.numero ~= nil end
+            -- Zone par zone : le detail d'une zone ne s'additionne pas a celui
+            -- des autres (sauf les etapes du trajet guide).
+            if garder and not guide and api.ParZone and not api.ParZone(pt, idCarte) then garder = false end
             if garder then x, y = api.Reporter(pt, idCarte) end
             if x then
                 vue.enService = vue.enService + 1
@@ -1444,7 +1448,7 @@ function page.Destinations(idCarte)
         local ok, points = pcall(api.Points)
         local vues = {}
         for _, pt in ipairs(ok and points or {}) do
-            if not (S and S.PointVisible) or S.PointVisible(pt) then
+            if (not (S and S.PointVisible) or S.PointVisible(pt)) and (not api.ParZone or api.ParZone(pt, idCarte)) then
                 local x, y = api.Reporter(pt, idCarte)
                 local cle = tostring(pt.quete) .. ":" .. tostring(pt.genre)
                 if x and not vues[cle] then

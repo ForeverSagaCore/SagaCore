@@ -565,6 +565,39 @@ end
 
 carte.Reporter = function(pt, idCarte) return Reporter(pt, idCarte) end
 
+-- Le detail (quetes, creatures, objets) ne se voit que zone par zone. Sur
+-- la carte d'une zone : ce qui est dans cette zone. Sur un continent ou le
+-- monde : seulement ce qui est dans la zone du personnage. Rien ne
+-- s'additionne d'une zone a l'autre.
+local zonesDe = {}
+local function ZoneDe(idCarte)
+    if not idCarte then return nil end
+    if zonesDe[idCarte] ~= nil then return zonesDe[idCarte] or nil end
+    local Info = NS.Lecture("C_Map.GetMapInfo")
+    local cur, garde, zone = idCarte, 0, nil
+    while cur and garde < 8 do
+        local i = NS.Appeler(Info, cur)
+        if type(i) ~= "table" then break end
+        if i.mapType == 3 then zone = cur break end
+        if i.mapType and i.mapType <= 2 then break end
+        cur = tonumber(i.parentMapID)
+        garde = garde + 1
+    end
+    zonesDe[idCarte] = zone or false
+    return zone
+end
+carte.ZoneDe = ZoneDe
+
+function carte.ParZone(pt, idCarte)
+    if not pt or not pt.carte then return false end
+    if pt.carte == idCarte then return true end
+    local affichee = ZoneDe(idCarte)
+    if affichee == idCarte then return ZoneDe(pt.carte) == affichee end
+    -- Continent ou monde : la zone du personnage seule.
+    local ici = ZoneDe(NS.Appeler(NS.Lecture("C_Map.GetBestMapForUnit"), "player"))
+    return ici ~= nil and ZoneDe(pt.carte) == ici
+end
+
 -- Les reperes ne vont plus sur la carte du monde du jeu : tout passe par la
 -- page Carte. Ces deux fonctions restent pour ceux qui les appellent.
 function carte.Rendre() end
@@ -600,6 +633,7 @@ _G.QuestCoreAPI = {
     end,
     Points = function() return carte.TousLesPoints() end,
     Reporter = function(pt, idCarte) return carte.Reporter(pt, idCarte) end,
+    ParZone = function(pt, idCarte) return carte.ParZone(pt, idCarte) end,
     CreerRepere = function(parent) return carte.CreerRepere(parent) end,
     Habiller = function(b, genre, icone, attente) return carte.Habiller(b, genre, icone, attente) end,
     NiveauDeCarte = function(idCarte) return carte.NiveauDeCarte(idCarte) end,
