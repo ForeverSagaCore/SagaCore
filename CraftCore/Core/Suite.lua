@@ -1331,10 +1331,8 @@ UI.MODERNE = {
     -- Tailles du cadre des infobulles du jeu (sa bordure, ses coins arrondis).
     rayonFenetre = 16, rayonBouton = 12, rayonOnglet = 16, rayonCase = 12, rayonCroix = 12,
     ecartOnglets = 2,
-    filet = { 0.8, 0.65, 0.35, 0.35 },         -- tous les filets de separation
+    couleurFilet = { 0.8, 0.65, 0.35, 0.35 },  -- tous les filets de separation
     arrondi = MEDIA_M .. "moderne_arrondi",
-    coin = MEDIA_M .. "moderne_coin",
-    filet = MEDIA_M .. "moderne_bord",
     fond = MEDIA_M .. "moderne_fond",
     menu = MEDIA_M .. "moderne_menu",
     croix = MEDIA_M .. "moderne_croix",
@@ -1369,6 +1367,14 @@ local function Panne(err)
     print("|cffffd100SagaCore|r " .. (Suite.Langue() == "frFR"
         and "Apparence moderne arrêtée pour cette session (erreur)." or "Modern look stopped for this session (error).")
         .. " " .. tostring(err or ""):sub(1, 120))
+end
+local signale = false
+local function Signaler(err)
+    if signale then return end
+    signale = true
+    if type(_G.CoreSuiteDB) == "table" then
+        _G.CoreSuiteDB.habillagePanne = { quand = (date and date("%Y-%m-%d %H:%M:%S")) or "", erreur = tostring(err or ""):sub(1, 400) }
+    end
 end
 local function Actif()
     return not enPanne and Moderne() and not (InCombatLockdown and InCombatLockdown())
@@ -1523,7 +1529,7 @@ end
 
 -- Un filet de separation : un pixel d'ecran exact, la couleur commune.
 function UI.Filet(t, p1, r1, rp1, x1, y1, p2, r2, rp2, x2, y2)
-    local c = UI.MODERNE.filet
+    local c = UI.MODERNE.couleurFilet
     t:SetColorTexture(c[1], c[2], c[3], c[4])
     if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(false) t:SetTexelSnappingBias(0) end
     local PU = _G.PixelUtil
@@ -1842,7 +1848,10 @@ function UI.HabillerArbre(racine, profondeur)
     for _, enfant in ipairs({ racine:GetChildren() }) do
         -- Un cadre protege de lui-meme et tout ce qu'il contient restent tels quels.
         if Touchable(enfant) then
-            Reconnaitre(enfant)
+            -- Un element en erreur est saute (et signale une fois) : tous les
+            -- autres s'habillent quand meme, jamais un melange des deux styles.
+            local ok, err = pcall(Reconnaitre, enfant)
+            if not ok then Signaler(err) end
             UI.HabillerArbre(enfant, profondeur + 1)
         end
     end
@@ -1861,7 +1870,7 @@ local function Habiller(c)
         UI.HabillerArbre(c)
         for o in pairs(onglets) do if Visible(o) then MajOnglet(o) end end
     end)
-    if not ok then Panne(err) veille:Hide() end
+    if not ok then Signaler(err) end
 end
 local attente = 0
 veille:SetScript("OnUpdate", function(self, ecoule)

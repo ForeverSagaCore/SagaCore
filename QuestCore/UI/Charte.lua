@@ -725,7 +725,7 @@ function charte.TitreDeSection(fs, filet)
         fs:SetTextColor(1, 0.82, 0)
         if filet then
             -- Apparence moderne : la couleur commune a tous les filets.
-            local c = Moderne() and _G.CoreSuite.UI.MODERNE.filet or { 1, 0.82, 0, 0.25 }
+            local c = Moderne() and _G.CoreSuite.UI.MODERNE.couleurFilet or { 1, 0.82, 0, 0.25 }
             filet:SetColorTexture(c[1], c[2], c[3], c[4])
             if filet.SetSnapToPixelGrid then filet:SetSnapToPixelGrid(false) filet:SetTexelSnappingBias(0) end
         end
