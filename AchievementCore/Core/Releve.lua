@@ -57,12 +57,18 @@ local function NommerMorceau(carte, art, cle, info)
     local lire = NS.Lecture("C_MapExplorationInfo.GetExploredAreaIDsAtPosition")
     if not (creer and lire) then return end
     local l, h = NS.base.TailleCarte(carte)
-    local x = ((tonumber(info.offsetX) or 0) + (tonumber(info.textureWidth) or 0) / 2) / l
-    local y = ((tonumber(info.offsetY) or 0) + (tonumber(info.textureHeight) or 0) / 2) / h
-    local okV, pos = pcall(creer, x, y)
-    if not okV then return end
-    local ok, ids = pcall(lire, carte, pos)
-    if ok and type(ids) == "table" and tonumber(NS.Sur(ids[1])) then d.lieux[art][cle] = tonumber(ids[1]) end
+    local ox, oy = tonumber(info.offsetX) or 0, tonumber(info.offsetY) or 0
+    local tl, th = tonumber(info.textureWidth) or 0, tonumber(info.textureHeight) or 0
+    -- Le centre d'abord, puis quatre points autour (un morceau n'est pas
+    -- un rectangle plein : son centre peut tomber a cote).
+    for _, p in ipairs({ { 0.5, 0.5 }, { 0.3, 0.3 }, { 0.7, 0.3 }, { 0.3, 0.7 }, { 0.7, 0.7 } }) do
+        local okV, pos = pcall(creer, (ox + tl * p[1]) / l, (oy + th * p[2]) / h)
+        if okV then
+            local ok, ids = pcall(lire, carte, pos)
+            local zone = ok and type(ids) == "table" and tonumber(NS.Sur(ids[1]))
+            if zone then d.lieux[art][cle] = zone return end
+        end
+    end
 end
 
 function releve.ExplorerCarte(carte)
