@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 136
+local VERSION = 137
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2481,6 +2481,41 @@ local function PositionJoueur()
     return PositionMonde(carte, x, y)
 end
 
+-- La fleche de l'add-on d'itineraire choisi, s'il en montre une : Shortest
+-- Path Forever (cadre sans nom, reconnu a ses elements), TomTom (nomme).
+-- Cherchee une fois, puis gardee.
+local flecheExterne, dernierEssaiFleche = nil, 0
+local function FlecheExterne()
+    if flecheExterne then return flecheExterne end
+    local maintenant = GetTime and GetTime() or 0
+    if maintenant - dernierEssaiFleche < 5 then return nil end
+    dernierEssaiFleche = maintenant
+    if _G.TomTomCrazyArrow then flecheExterne = _G.TomTomCrazyArrow return flecheExterne end
+    if not _G.EnumerateFrames then return nil end
+    local ok, trouve = pcall(function()
+        local f = _G.EnumerateFrames()
+        while f do
+            if f.Icon and f.Distance and f.Progress and f.Lines and f.ArrivalTitle and f:GetParent() == UIParent then return f end
+            f = _G.EnumerateFrames(f)
+        end
+    end)
+    if ok and trouve then flecheExterne = trouve end
+    return flecheExterne
+end
+-- Le bas visible de cette fleche (ses lignes de texte comprises).
+local function BasDeFleche(f)
+    local bas, plusBas = f, f:GetBottom() or 0
+    for _, cle in ipairs({ "Icon", "Distance", "Progress", "Lines", "ArrivalTitle", "ArrivalLines" }) do
+        local e = f[cle]
+        if e and e.IsShown and e:IsShown() and e.GetBottom then
+            local b = e:GetBottom()
+            local texte = not e.GetText or (e:GetText() or "") ~= ""
+            if b and texte and b < plusBas then bas, plusBas = e, b end
+        end
+    end
+    return bas
+end
+
 local function CadreGuidage()
     local g = Suite.guide
     if g.cadre then return g.cadre end
@@ -2608,7 +2643,27 @@ local function CadreGuidage()
         -- Les deux sont la et rien n'est choisi : on demande, une fois.
         if hub and hub.ADecider and hub.ADecider() then Suite.ChoisirGuide() end
         local externe = hub and hub.Disponible and hub.NomTrajet and hub.Disponible() and hub.NomTrajet() or nil
+        -- Avec un add-on d'itineraire, sa fleche a lui dit tout (direction,
+        -- distance, etape) : la boussole de la suite s'efface entierement,
+        -- seul "Changer de guide" reste, juste sous sa fleche.
+        self.modeExterne = externe and true or false
+        for _, e in ipairs({ self.boussole, self.fondBoussole, self.icone, self.distance, self.temps, self.qui }) do
+            e:SetShown(not externe)
+        end
+        self:EnableMouse(not externe)
+        if self.changer then
+            local fl = externe and FlecheExterne()
+            self.changer:ClearAllPoints()
+            if fl and fl:IsShown() then
+                self.changer:SetPoint("TOP", BasDeFleche(fl), "BOTTOM", 0, -8)
+            elseif externe then
+                self.changer:SetPoint("TOP", self, "CENTER", 0, 0)
+            else
+                self.changer:SetPoint("TOP", self.qui, "BOTTOM", 0, -6)
+            end
+        end
         if externe then
+            self.fleche:Hide() self.arrivee:Hide()
             local cleE = tostring(cible.carte) .. ":" .. math.floor((cible.x or 0) * 1000) .. ":" .. math.floor((cible.y or 0) * 1000)
             if Suite.guide.envoye ~= cleE and hub.Trajet then
                 Suite.guide.envoye = cleE
@@ -2645,7 +2700,7 @@ local function CadreGuidage()
         end
         if yards < 12 then
             self.fleche:Hide()
-            self.arrivee:Show()
+            self.arrivee:SetShown(not externe)
             self.temps:SetText("")
             self.boussole:SetVertexColor(0.4, 1, 0.4)
             if f.Arrivee then pcall(f.Arrivee, cible) end
