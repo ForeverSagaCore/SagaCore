@@ -1317,17 +1317,21 @@ end
 -- des pictos dessines pour la suite (dossier Media de CraftCore).
 local MEDIA_M = "Interface\\AddOns\\CraftCore\\Media\\"
 UI.MODERNE = {
-    fenetre = { 0.055, 0.06, 0.07, 0.97 },     -- cadre des fenetres
-    bord = { 0.20, 0.215, 0.245, 1 },          -- filets et contours
-    bordFort = { 0.30, 0.32, 0.36, 1 },
-    surface = { 0.125, 0.135, 0.155, 1 },      -- boutons, onglets, cases
-    surfaceSurvol = { 0.17, 0.18, 0.205, 1 },
-    survol = { 1, 1, 1, 0.06 },
-    accent = { 0.91, 0.71, 0.29, 1 },          -- or doux de la suite
-    texte = { 0.93, 0.93, 0.93 },
-    texteDoux = { 0.62, 0.64, 0.68 },
-    rayonFenetre = 8, rayonBouton = 5, rayonOnglet = 6, rayonCase = 4,
+    -- Fond sombre translucide et filet dore, comme les infobulles du jeu.
+    fenetre = { 0.035, 0.035, 0.045, 0.88 },
+    contour = { 0.78, 0.63, 0.36, 1 },         -- filet dore des fenetres
+    bord = { 0.50, 0.40, 0.24, 1 },            -- filet bronze des elements
+    bordFort = { 0.62, 0.50, 0.30, 1 },
+    surface = { 0.06, 0.06, 0.075, 0.92 },     -- boutons, onglets, cases
+    surfaceSurvol = { 0.10, 0.095, 0.10, 0.95 },
+    survol = { 1, 0.9, 0.7, 0.07 },
+    accent = { 0.95, 0.78, 0.40, 1 },          -- or vif : la page ouverte, la coche
+    texte = { 0.95, 0.93, 0.88 },
+    texteDoux = { 0.68, 0.64, 0.56 },
+    rayonFenetre = 10, rayonBouton = 6, rayonOnglet = 7, rayonCase = 4,
     arrondi = MEDIA_M .. "moderne_arrondi",
+    coin = MEDIA_M .. "moderne_coin",
+    filet = MEDIA_M .. "moderne_bord",
     fond = MEDIA_M .. "moderne_fond",
     menu = MEDIA_M .. "moderne_menu",
     croix = MEDIA_M .. "moderne_croix",
@@ -1379,15 +1383,13 @@ local function Visible(c)
     return ok and oui and true or false
 end
 local function Couleur(t, c) t:SetVertexColor(c[1], c[2], c[3], c[4] or 1) end
--- Un fond arrondi avec un filet : deux plaques arrondies l'une sur l'autre,
--- la plus grande a la couleur du filet, l'autre (1 pixel plus petite) a la
--- couleur du fond. Sous tout ce que le cadre affiche.
-local function Plaque(parent, niveau)
-    local ok, b = pcall(CreateFrame, "Frame", nil, parent, "BackdropTemplate")
-    if not ok or not b then b = CreateFrame("Frame", nil, parent) end
-    b:SetFrameLevel(math.max(0, niveau))
-    return b
-end
+-- Un fond arrondi translucide et son contour dessine (un filet clair et une
+-- ombre interieure, comme le cadre des infobulles) : quatre coins et quatre
+-- cotes, teintes. Sous tout ce que le cadre affiche.
+local COINS = {
+    { "TOPLEFT", 0, 1, 0, 1 }, { "TOPRIGHT", 1, 0, 0, 1 },
+    { "BOTTOMLEFT", 0, 1, 1, 0 }, { "BOTTOMRIGHT", 1, 0, 1, 0 },
+}
 local function PoserArrondi(b, rayon, couleur)
     if not b.SetBackdrop then return end
     b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = UI.MODERNE.arrondi, edgeSize = rayon,
@@ -1399,24 +1401,53 @@ local function Plat(f, fond, bord, rayon)
     rayon = rayon or UI.MODERNE.rayonBouton
     local p = plats[f]
     if not p then
-        local niveau = (f:GetFrameLevel() or 1) - 1
-        p = { ext = Plaque(f, niveau), int = Plaque(f, niveau) }
-        p.ext:SetAllPoints()
-        p.int:SetPoint("TOPLEFT", 1, -1)
-        p.int:SetPoint("BOTTOMRIGHT", -1, 1)
+        local ok, b = pcall(CreateFrame, "Frame", nil, f, "BackdropTemplate")
+        if not ok or not b then b = CreateFrame("Frame", nil, f) end
+        b:SetFrameLevel(math.max(0, (f:GetFrameLevel() or 1) - 1))
+        b:SetAllPoints()
+        p = { cadre = b, traits = {} }
+        for i, c in ipairs(COINS) do
+            local t = b:CreateTexture(nil, "ARTWORK")
+            t:SetTexture(UI.MODERNE.coin)
+            t:SetTexCoord(c[2], c[3], c[4], c[5])
+            t:SetPoint(c[1])
+            p.traits[i] = t
+        end
+        -- Cotes : la bande du filet, tournee pour le haut et le bas.
+        local g = b:CreateTexture(nil, "ARTWORK") g:SetTexture(UI.MODERNE.filet)
+        g:SetTexCoord(0, 1, 0, 1)
+        local d = b:CreateTexture(nil, "ARTWORK") d:SetTexture(UI.MODERNE.filet)
+        d:SetTexCoord(1, 0, 0, 1)
+        local h = b:CreateTexture(nil, "ARTWORK") h:SetTexture(UI.MODERNE.filet)
+        h:SetTexCoord(0, 0, 1, 0, 0, 1, 1, 1)
+        local bas = b:CreateTexture(nil, "ARTWORK") bas:SetTexture(UI.MODERNE.filet)
+        bas:SetTexCoord(1, 0, 0, 0, 1, 1, 0, 1)
+        p.cotes = { g = g, d = d, h = h, b = bas }
+        for _, t in pairs(p.cotes) do table.insert(p.traits, t) end
         plats[f] = p
     end
-    PoserArrondi(p.ext, rayon, bord or fond)
-    PoserArrondi(p.int, math.max(2, rayon - 1), fond)
-    p.ext:Show() p.int:Show()
+    local b = p.cadre
+    for i = 1, 4 do p.traits[i]:SetSize(rayon, rayon) end
+    local c = p.cotes
+    c.g:ClearAllPoints() c.g:SetPoint("TOPLEFT", 0, -rayon) c.g:SetPoint("BOTTOMLEFT", 0, rayon) c.g:SetWidth(rayon)
+    c.d:ClearAllPoints() c.d:SetPoint("TOPRIGHT", 0, -rayon) c.d:SetPoint("BOTTOMRIGHT", 0, rayon) c.d:SetWidth(rayon)
+    c.h:ClearAllPoints() c.h:SetPoint("TOPLEFT", rayon, 0) c.h:SetPoint("TOPRIGHT", -rayon, 0) c.h:SetHeight(rayon)
+    c.b:ClearAllPoints() c.b:SetPoint("BOTTOMLEFT", rayon, 0) c.b:SetPoint("BOTTOMRIGHT", -rayon, 0) c.b:SetHeight(rayon)
+    PoserArrondi(b, rayon, fond)
+    bord = bord or fond
+    for _, t in ipairs(p.traits) do t:SetVertexColor(bord[1], bord[2], bord[3], bord[4] or 1) t:Show() end
+    b:Show()
     return p
 end
 UI.Plat = Plat
 function UI.RecolorerPlat(f, fond, bord)
     local p = plats[f]
-    if not (p and p.ext.SetBackdropColor) then return end
-    p.ext:SetBackdropColor(bord[1], bord[2], bord[3], bord[4] or 1) p.ext:SetBackdropBorderColor(bord[1], bord[2], bord[3], bord[4] or 1)
-    p.int:SetBackdropColor(fond[1], fond[2], fond[3], fond[4] or 1) p.int:SetBackdropBorderColor(fond[1], fond[2], fond[3], fond[4] or 1)
+    if not p then return end
+    if p.cadre.SetBackdropColor then
+        p.cadre:SetBackdropColor(fond[1], fond[2], fond[3], fond[4] or 1)
+        p.cadre:SetBackdropBorderColor(fond[1], fond[2], fond[3], fond[4] or 1)
+    end
+    for _, t in ipairs(p.traits) do t:SetVertexColor(bord[1], bord[2], bord[3], bord[4] or 1) end
 end
 local function Effacer(t)
     if not t then return end
@@ -1475,7 +1506,7 @@ function UI.HabillerCroix(b)
     end
     b:SetSize(20, 20)
     local x = Picto(b, "croix", 16, UI.MODERNE.texteDoux)
-    Plat(b, UI.MODERNE.fenetre, UI.MODERNE.fenetre, 4)
+    Plat(b, UI.MODERNE.surface, UI.MODERNE.bord, 4)
     if b.SetHighlightTexture then
         b:SetHighlightTexture("Interface\\Buttons\\WHITE8X8", "ADD")
         local h = b:GetHighlightTexture()
@@ -1498,7 +1529,7 @@ function UI.HabillerFenetre(cadre)
     local inset = cadre.Inset
     if inset then Effacer(inset.NineSlice) Effacer(inset.Bg) end
     local M = UI.MODERNE
-    Plat(cadre, M.fenetre, M.bord, M.rayonFenetre)
+    Plat(cadre, M.fenetre, M.contour, M.rayonFenetre)
     local titre = cadre.TitleText or (cadre.TitleContainer and cadre.TitleContainer.TitleText) or cadre.titre
     if titre and titre.SetTextColor then local c = M.texte titre:SetTextColor(c[1], c[2], c[3]) end
     -- Filet sous la barre de titre, en retrait des coins.
@@ -1510,7 +1541,7 @@ function UI.HabillerFenetre(cadre)
         e.filet:SetPoint("TOPLEFT", cadre, "TOPLEFT", 10, -24)
         e.filet:SetPoint("TOPRIGHT", cadre, "TOPRIGHT", -10, -24)
     end
-    Couleur(e.filet, M.bord)
+    e.filet:SetVertexColor(M.contour[1], M.contour[2], M.contour[3], 0.35)
     local croix = cadre.fermer or cadre.CloseButton or cadre.closeButton or (cadre.TitleContainer and cadre.TitleContainer.CloseButton)
     if croix then
         UI.HabillerCroix(croix)
@@ -1535,7 +1566,7 @@ function UI.HabillerBouton(b)
     local function Etat(self)
         local actif = not self.IsEnabled or self:IsEnabled()
         local p = plats[self]
-        if p then p.ext:SetAlpha(actif and 1 or 0.5) p.int:SetAlpha(actif and 1 or 0.5) end
+        if p then p.cadre:SetAlpha(actif and 1 or 0.5) end
     end
     hooksecurefunc(b, "Enable", Etat) hooksecurefunc(b, "Disable", Etat)
     if b.SetEnabled then hooksecurefunc(b, "SetEnabled", Etat) end
@@ -1680,7 +1711,7 @@ function UI.HabillerChoixDeListe(l)
     if not fait[l] then
         fait[l] = true
         if l.SetBackdropColor then l:SetBackdropColor(0, 0, 0, 0) l:SetBackdropBorderColor(0, 0, 0, 0) end
-        Plat(l, M.fenetre, M.bordFort, M.rayonBouton)
+        Plat(l, M.fenetre, M.contour, M.rayonBouton)
     end
     for _, it in ipairs(l.items or {}) do
         if not fait[it] then

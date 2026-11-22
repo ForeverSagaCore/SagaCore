@@ -566,7 +566,7 @@ function charte.Parchemin(cadre, haut, bas, porteur)
     if motif ~= ROCHE and not p.roche:GetTexture() then pcall(p.roche.SetTexture, p.roche, ROCHE, "REPEAT", "REPEAT") end
     if p.roche.SetHorizTile then p.roche:SetHorizTile(true) p.roche:SetVertTile(true) end
     p.roche:SetVertexColor(0.75, 0.75, 0.75, 1)
-    if motif ~= ROCHE then p.roche:SetVertexColor(1, 1, 1, 1) end
+    if motif ~= ROCHE then p.roche:SetVertexColor(1, 1, 1, 0.9) end
     p.roche:SetPoint(haut[1], haut[2], haut[3], haut[4], haut[5])
     p.roche:SetPoint(bas[1], bas[2], bas[3], bas[4], bas[5])
     p.roche:Hide()
