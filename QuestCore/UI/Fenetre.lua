@@ -1503,9 +1503,10 @@ function fen.Rendre()
             for _, p in ipairs(persos) do if p.cle == moi then moiVisible = true end end
             etat.cle = moiVisible and moi or (persos[1] and persos[1].cle)
         end
-        -- L'equipement a son add-on (StuffCore), la carte le sien (MapCore) :
-        -- plus d'onglets a droite ici.
-        if etat.page == "equipement" or etat.page == "carte" then etat.page = etat.pageMenu or "quetes" end
+        -- L'equipement a son add-on (StuffCore) : plus d'onglet ici. La carte
+        -- des trajets reste, ouverte par les boutons Trajet et Carte du suivi
+        -- (sans onglet a droite).
+        if etat.page == "equipement" then etat.page = etat.pageMenu or "quetes" end
         RendreListe()
         MarquerMenu()
         local surReglages = etat.page == "reglages"
