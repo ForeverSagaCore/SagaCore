@@ -345,6 +345,7 @@ function marchands.Guider(objet)
     if not (S and S.Guider) then return false end
     if NS.Trace then NS.Trace("guidage marchand : " .. tostring(objet)) end
     local point = { carte = cible.carte, x = cible.x, y = cible.y, titre = L.VENDOR_GUIDE_TITLE,
+        guidage = string.format(L.VENDOR_GUIDE_WHAT, NS.inventaire.NomDObjet(objet)),
         qui = tostring(cible.nom or "?") .. "\n|cffb3b3b3" .. string.format(L.VENDOR_GUIDE_WHAT, NS.inventaire.NomDObjet(objet)) .. "|r" }
     S.Guider("CraftCore", {
         icone = "Interface\\Minimap\\Tracking\\Reagents",

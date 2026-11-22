@@ -572,7 +572,13 @@ function equipement.Rendre(contenu, bandeau)
         -- et le libelle en entier.
         o:SetWidth(largeurOnglet)
         local fs = o.GetFontString and o:GetFontString()
-        if fs then fs:SetWidth(largeurOnglet - 16) fs:SetWordWrap(false) end
+        if fs then
+            fs:SetWidth(largeurOnglet - 16) fs:SetWordWrap(false)
+            -- Le libelle au milieu de la partie visible de l'onglet : plus bas
+            -- quand il est replie, un peu plus haut quand il est ouvert.
+            fs:ClearAllPoints()
+            fs:SetPoint("CENTER", o, "BOTTOM", 0, actif and 15 or 11)
+        end
         -- Apparence moderne : le cadre du theme, l'onglet ouvert en accent,
         -- le libelle centre (rien ne change dans l'apparence du jeu).
         local S = _G.CoreSuite
@@ -771,8 +777,16 @@ function equipement.Rendre(contenu, bandeau)
     -- avec son titre ; dans chaque origine, le plus gros gain d'abord.
     local rangCat = {}
     for k, cat in ipairs(NS.sources.ORDRE) do rangCat[cat] = k end
+    -- Dans chaque origine : les recettes connues, puis a apprendre, puis a
+    -- looter (craft interne) ; et dans chacune, par niveau requis, du plus
+    -- haut au plus bas (sans niveau connu a la fin), puis le plus gros gain.
+    local RANG_GROUPE = { connue = 1, apprendre = 2, looter = 3 }
     table.sort(retenus, function(a, b)
         if a.cat ~= b.cat then return rangCat[a.cat] < rangCat[b.cat] end
+        local ga, gb = RANG_GROUPE[a.c.groupe or ""] or 0, RANG_GROUPE[b.c.groupe or ""] or 0
+        if ga ~= gb then return ga < gb end
+        local na, nb = a.c.niveau or -1, b.c.niveau or -1
+        if na ~= nb then return na > nb end
         if a.total ~= b.total then return a.total > b.total end
         return a.c.id < b.c.id
     end)
@@ -821,13 +835,13 @@ function equipement.Rendre(contenu, bandeau)
         return table.concat(morceaux, ", ")
     end
 
-    local catPrecedente
-    for _, r in ipairs(retenus) do
-        local c = r.c
-        if scenario == 3 and r.cat ~= catPrecedente then
-            catPrecedente = r.cat
+    local catPrecedente, groupePrecedent
+    -- Un titre dans la liste : l'origine (presentation 3), ou le groupe de
+    -- recettes du craft interne, en plus petit.
+    local function Titre(texte, petit)
             index = index + 1
             local titreCat = CreerLigneCandidat(liste, index)
+            titreCat.nom.couleurPropre = nil
             titreCat:ClearAllPoints()
             titreCat:SetPoint("TOPLEFT", liste, "TOPLEFT", 0, -(y + (index > 1 and 6 or 0)))
             titreCat:SetPoint("TOPRIGHT", liste, "TOPRIGHT", 0, -(y + (index > 1 and 6 or 0)))
@@ -839,9 +853,9 @@ function equipement.Rendre(contenu, bandeau)
             titreCat.nom:ClearAllPoints()
             titreCat.nom:SetPoint("TOPLEFT", titreCat, "TOPLEFT", 2, -4)
             titreCat.nom:SetPoint("RIGHT", titreCat, "RIGHT", -4, 0)
-            titreCat.nom:SetFontObject("GameFontNormal")
-            titreCat.nom:SetTextColor(1, 0.82, 0)
-            titreCat.nom:SetText(L["GEAR_CAT_" .. r.cat])
+            titreCat.nom:SetFontObject(petit and "GameFontNormalSmall" or "GameFontNormal")
+            titreCat.nom:SetTextColor(1, 0.82, 0, 1)
+            titreCat.nom:SetText(texte)
             titreCat.etat:SetText("")
             titreCat:SetScript("OnEnter", nil)
             titreCat:SetScript("OnLeave", nil)
@@ -850,6 +864,17 @@ function equipement.Rendre(contenu, bandeau)
             titreCat:SetHeight(22)
             titreCat:Show()
             y = y + 22 + (index > 1 and 6 or 0)
+    end
+    for _, r in ipairs(retenus) do
+        local c = r.c
+        if scenario == 3 and r.cat ~= catPrecedente then
+            catPrecedente = r.cat
+            groupePrecedent = nil
+            Titre(L["GEAR_CAT_" .. r.cat])
+        end
+        if r.cat == "craftInterne" and c.groupe and c.groupe ~= groupePrecedent then
+            groupePrecedent = c.groupe
+            Titre(L["GEAR_GROUP_" .. c.groupe] or c.groupe, true)
         end
         index = index + 1
         local ligne = CreerLigneCandidat(liste, index)
@@ -859,12 +884,20 @@ function equipement.Rendre(contenu, bandeau)
         local info = NS.objets.Info(c.id)
         if info and info.icone then ligne.icone:SetTexture(info.icone) ligne.icone:Show() else ligne.icone:Hide() end
         ligne.nom:SetFontObject("GameFontHighlightSmall")
+        -- Le niveau requis, toujours quand il est connu : en rouge s'il est
+        -- au-dessus du sien.
         local niveauTexte = ""
-        if c.niveau and c.niveau > (tonumber(fiche and fiche.niveau) or 0) then
-            niveauTexte = "  |cffff4040" .. string.format(L.LEVEL_SHORT or "niv. %d", c.niveau) .. "|r"
+        if c.niveau then
+            local trop = c.niveau > (tonumber(fiche and fiche.niveau) or 0)
+            niveauTexte = "  " .. (trop and "|cffff4040" or "|cff9d9d9d") .. string.format(L.LEVEL_SHORT or "niv. %d", c.niveau) .. "|r"
         end
         ligne.nom:SetText(((info and info.nom) or ("objet " .. tostring(c.id))) .. niveauTexte)
-        ligne.nom:SetTextColor(NS.objets.CouleurDuNom(c.id))
+        -- La couleur de qualite telle quelle, opaque : une ligne reprise d'un
+        -- message en retrait ne garde jamais sa transparence.
+        ligne.nom.couleurPropre = true
+        ligne.nom.encre, ligne.nom.couleurOrigine, ligne.nom.texteEncre = nil, nil, nil
+        local qr, qg, qb = NS.objets.CouleurDuNom(c.id)
+        ligne.nom:SetTextColor(qr, qg, qb, 1)
         local prov = c.provenance or ""
         ligne.etat:SetText(prov)
         ligne.etat:SetTextColor(0.62, 0.62, 0.62)
@@ -935,6 +968,7 @@ function equipement.Rendre(contenu, bandeau)
         vide:SetPoint("TOPRIGHT", liste, "TOPRIGHT", 0, -y)
         vide.fond:Hide()
         vide.icone:Hide()
+        vide.nom.couleurPropre = nil
         vide.nom:SetFontObject("GameFontDisableSmall")
         vide.nom:SetText(L.GEAR_NO_UPGRADE)
         if vide.gains then vide.gains:Hide() end

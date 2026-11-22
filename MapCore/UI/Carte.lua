@@ -1506,7 +1506,7 @@ end
 function page.GuiderVers(dst)
     local S = NS.suite or _G.CoreSuite
     if not (S and S.Guider and dst) then return end
-    local point = { carte = dst.carte, x = dst.x, y = dst.y, titre = NS.L.GO_TITLE, qui = dst.nom }
+    local point = { carte = dst.carte, x = dst.x, y = dst.y, titre = NS.L.GO_TITLE, qui = dst.nom, guidage = dst.nom }
     page.cibleGuidee = dst
     S.Guider("MapCore", {
         carte = false,

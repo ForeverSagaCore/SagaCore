@@ -2201,7 +2201,9 @@ function suivi.Rendre()
         if s.vue == "favoris" and not s.replie then
             cadre:SetHeight(math.min(math.max(s.hauteur or HAUTEUR, HAUTEUR_MINI), HauteurMaxi()))
             BasDeListe(false)
-            local _, yFin = RendreVueFavoris(moi, 0, 0)
+            -- Le rond de la premiere quete deborde au-dessus de sa ligne : un
+            -- peu d'air sous le filet, comme sous un titre de zone ailleurs.
+            local _, yFin = RendreVueFavoris(moi, 0, 6)
             corps:SetHeight(math.max(yFin, 1))
             return
         end
@@ -3770,14 +3772,20 @@ local function Cible()
     local pos = NS.Appeler(NS.Lecture("C_Map.GetPlayerMapPosition"), continent, "player")
     if type(pos) ~= "table" or not pos.GetXY then return nil, "loin", OuAller(moi, trajet) end
     local jx, jy = pos:GetXY()
-    local faites, restantes, enAttente = {}, {}, 0
+    local faites, restantes, enAttente, horsTournee, hors = {}, {}, 0, 0, {}
     for _, id in ipairs(trajet.etapes) do
         local etatE = NS.parcours.EtatEtape(moi, id)
         -- Tournee de rendu : une quete sortie du journal n'a plus a etre
         -- rendue (rendue, meme si le jeu ne l'a pas encore notee, ou
         -- abandonnee). Elle compte comme faite : la tournee passe a la suite.
         if tournee and etatE ~= "faite" and not (moi.quetes and moi.quetes[id]) then etatE = "faite" end
-        if etatE == "faite" then
+        -- Tournee pour rendre (sans niveau vise) : une quete pas encore
+        -- terminee n'a rien a faire dans la tournee, elle n'est ni visee ni
+        -- comptee.
+        if tournee and not trajet.niveauVise and etatE == "cours" then
+            horsTournee = horsTournee + 1
+            table.insert(hors, id)
+        elseif etatE == "faite" then
             table.insert(faites, id)
         elseif etatE == "attente" and not tournee then
             enAttente = enAttente + 1
@@ -3838,6 +3846,7 @@ local function Cible()
         local etapes = {}
         for _, id in ipairs(faites) do table.insert(etapes, id) end
         for _, r in ipairs(ordre) do table.insert(etapes, r.id) end
+        for _, id in ipairs(hors) do table.insert(etapes, id) end
         trajet.etapes = etapes
         RafraichirTrajet()
     end
@@ -3862,9 +3871,12 @@ local function Cible()
     end
     cible.qui = titreV .. (quoi and quoi ~= "" and ("\n|cffb3b3b3" .. quoi .. "|r") or "")
     -- Le compte suit tout le parcours : "Etape 2 sur 10" apres la premiere.
-    local total = #trajet.etapes
+    local total = #trajet.etapes - horsTournee
     cible.rang, cible.total, cible.titre = math.max(1, total - #restantes - enAttente + 1), total, titreV
     cible.id, cible.idParcours = idV, trajet.id
+    -- Ce que guide QuestCore (le nom du parcours), sous la fleche d'un add-on
+    -- d'itineraire : "QuestCore : Vers le niveau 25".
+    cible.guidage = trajet.nom
     cible.continent, cible.jx, cible.jy = continent, jx, jy
     return cible
 end
@@ -3908,8 +3920,13 @@ AdapterTrajet = function()
     end
     local cible = Cible()
     local nouvelles = {}
+    -- Une tournee de rendu (sans niveau vise) ne sert qu'a rendre : une quete
+    -- prise en route n'y entre pas, seulement une quete terminee en route.
+    local rendreSeulement = not pc.niveauVise
     for id, q in pairs(moi.quetes or {}) do
-        if not pc.vus[id] and q.complete ~= -1 then
+        if rendreSeulement and q.complete ~= true then
+            -- Pas encore terminee : elle pourra entrer une fois terminee.
+        elseif not pc.vus[id] and q.complete ~= -1 then
             pc.vus[id] = true
             local proche = true
             if cible and cible.continent then
