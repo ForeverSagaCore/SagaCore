@@ -20,8 +20,55 @@ local MAX_ETAPES = 40
 -- Parcours qui n'ont plus lieu d'etre, retires d'eux-memes (personnage
 -- connecte seulement) : un parcours vers un niveau deja atteint, une tournee
 -- de rendu dont toutes les quetes sont rendues.
+-- Kit de donjon : il se complete tout seul. Une quete du donjon qui devient
+-- prenable (son prerequis fait, comme Boissons fortes apres les cornes de
+-- raptors) ou qu'on prend s'y ajoute, a la suite. Au plus toutes les 5 s.
+local derniereCompletion = 0
+local function CompleterKits(p, liste)
+    local maintenant = (GetTime and GetTime()) or 0
+    if maintenant - derniereCompletion < 5 then return end
+    derniereCompletion = maintenant
+    if not (NS.donjons and NS.donjons.Liste and NS.donjons.DeQuete) then return end
+    local donjons
+    for _, pc in ipairs(liste) do
+        if pc.genre == "kit" and type(pc.etapes) == "table" then
+            -- Son donjon : celui de la plupart de ses etapes.
+            local zone = pc.donjon
+            if not zone then
+                local compte, meilleur = {}, 0
+                for _, id in ipairs(pc.etapes) do
+                    local d = NS.donjons.DeQuete(id)
+                    if d then
+                        compte[d.zone] = (compte[d.zone] or 0) + 1
+                        if compte[d.zone] > meilleur then meilleur, zone = compte[d.zone], d.zone end
+                    end
+                end
+                pc.donjon = zone
+            end
+            if zone then
+                donjons = donjons or NS.donjons.Liste(p)
+                for _, d in ipairs(donjons) do
+                    if d.zone == zone then
+                        local deja = {}
+                        for _, id in ipairs(pc.etapes) do deja[id] = true end
+                        for _, id in ipairs(d.restantes or {}) do
+                            local e = parcours.EtatEtape(p, id)
+                            if not deja[id] and (e == "cours" or e == "rendre" or e == "prendre") then
+                                table.insert(pc.etapes, id)
+                                deja[id] = true
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
 local function Nettoyer(cle, liste)
     if cle ~= NS.ClePersonnage() then return end
+    local pP = NS.base.Perso(cle)
+    if pP then pcall(CompleterKits, pP, liste) end
     local niveau = tonumber(NS.Appeler(UnitLevel, "player")) or 0
     local p = NS.base.Perso(cle)
     for i = #liste, 1, -1 do
@@ -207,7 +254,7 @@ end
 
 -- Kit de donjon : les quetes a prendre avant d'y aller, dans l'ordre donne.
 -- Un kit du meme nom deja la est remplace.
-function parcours.CreerKit(cle, ids, nom)
+function parcours.CreerKit(cle, ids, nom, zone)
     if type(ids) ~= "table" or #ids == 0 then return nil end
     local liste = parcours.Liste(cle)
     for i = #liste, 1, -1 do
@@ -215,7 +262,7 @@ function parcours.CreerKit(cle, ids, nom)
     end
     local etapes = {}
     for _, id in ipairs(ids) do table.insert(etapes, id) end
-    local pc = { id = NouvelId(liste), genre = "kit", carte = true, etapes = etapes, nom = nom }
+    local pc = { id = NouvelId(liste), genre = "kit", carte = true, etapes = etapes, nom = nom, donjon = zone }
     table.insert(liste, pc)
     return pc
 end

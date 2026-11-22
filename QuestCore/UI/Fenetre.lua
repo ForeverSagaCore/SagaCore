@@ -1135,9 +1135,9 @@ RendreDonjonOuvert = function(contenu, p, d, index, y)
         end })
     end
     if #aPrendre > 0 then
-        local ids, cleP, nomD = aPrendre, p.cle, d.nom
+        local ids, cleP, nomD, zoneD = aPrendre, p.cle, d.nom, d.zone
         table.insert(boutons, { string.format(L.DUNGEON_KIT_ROUTE, #ids), function()
-            local pc = NS.parcours.CreerKit and NS.parcours.CreerKit(cleP, ids, string.format(L.DUNGEON_KIT_NAME, nomD))
+            local pc = NS.parcours.CreerKit and NS.parcours.CreerKit(cleP, ids, string.format(L.DUNGEON_KIT_NAME, nomD), zoneD)
             if pc then
                 etat.page = "parcours"
                 etat.ouvertes["pc" .. pc.id] = true
