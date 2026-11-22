@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 123
+local VERSION = 124
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -4757,6 +4757,7 @@ local function Debloquer()
     if not f then return end
     f.bloquants = nil
     f.blocPilote = nil
+    f.avantLancement = nil
     if veille then veille:Hide() end
     Figer(f, false)
     -- Ouverte, elle reprend la manette.
@@ -4789,6 +4790,9 @@ function Suite.ApresLancementMacroCore(famille)
             return
         end
         f.bloquants = nouvelles
+        -- Ce qui etait ouvert avant le lancement : tout ce qui s'ouvre ensuite
+        -- (un autre add-on par L3 / R3, par exemple) la garde figee.
+        f.avantLancement = avant
         Figer(f, true)
         if not veille then
             veille = CreateFrame("Frame")
@@ -4804,6 +4808,14 @@ function Suite.ApresLancementMacroCore(famille)
                     encore = pp and pp:IsShown() and pp.nom == fm.blocPilote or false
                 else
                     for _, c in ipairs((fm and fm.bloquants) or {}) do if c:IsShown() then encore = true end end
+                    -- Passee d'un add-on a l'autre : la nouvelle fenetre compte
+                    -- aussi, MacroCore ne reprend pas la manette.
+                    if not encore and fm then
+                        local avantL = fm.avantLancement or {}
+                        for c, cle in pairs(FenetresVisibles()) do
+                            if c ~= fm and avantL[c] ~= cle then encore = true break end
+                        end
+                    end
                 end
                 if not encore then Debloquer() end
             end)
