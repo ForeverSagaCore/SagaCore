@@ -723,7 +723,12 @@ function charte.TitreDeSection(fs, filet)
     else
         fs:SetFontObject("GameFontNormal")
         fs:SetTextColor(1, 0.82, 0)
-        if filet then filet:SetColorTexture(1, 0.82, 0, 0.25) end
+        if filet then
+            -- Apparence moderne : la couleur commune a tous les filets.
+            local c = Moderne() and _G.CoreSuite.UI.MODERNE.filet or { 1, 0.82, 0, 0.25 }
+            filet:SetColorTexture(c[1], c[2], c[3], c[4])
+            if filet.SetSnapToPixelGrid then filet:SetSnapToPixelGrid(false) filet:SetTexelSnappingBias(0) end
+        end
     end
     return parchemin
 end

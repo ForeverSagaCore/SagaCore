@@ -4865,7 +4865,8 @@ local function Construire()
     end)
     win.filetStuff = menu:CreateTexture(nil, "ARTWORK")
     win.filetStuff:SetColorTexture(0.8, 0.65, 0.35, 0.35)
-    win.filetStuff:SetHeight(1)
+    if _G.PixelUtil and _G.PixelUtil.SetHeight then _G.PixelUtil.SetHeight(win.filetStuff, 1, 1) else win.filetStuff:SetHeight(1) end
+    if win.filetStuff.SetSnapToPixelGrid then win.filetStuff:SetSnapToPixelGrid(false) win.filetStuff:SetTexelSnappingBias(0) end
     win.filetStuff:Hide()
 
     -- Onglets de metier sur le bord droit.

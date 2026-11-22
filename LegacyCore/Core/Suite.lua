@@ -1318,8 +1318,8 @@ end
 local MEDIA_M = "Interface\\AddOns\\CraftCore\\Media\\"
 UI.MODERNE = {
     -- Fond sombre translucide et filet dore, comme les infobulles du jeu.
-    fenetre = { 0.035, 0.035, 0.045, 0.88 },
-    contour = { 0.78, 0.63, 0.36, 1 },         -- filet dore des fenetres
+    fenetre = { 0.035, 0.035, 0.045, 0.94 },
+    contour = { 1, 1, 1, 1 },                  -- bordure des infobulles du jeu, telle quelle
     bord = { 0.50, 0.40, 0.24, 1 },            -- filet bronze des elements
     bordFort = { 0.62, 0.50, 0.30, 1 },
     surface = { 0.06, 0.06, 0.075, 0.92 },     -- boutons, onglets, cases
@@ -1329,8 +1329,9 @@ UI.MODERNE = {
     texte = { 0.95, 0.93, 0.88 },
     texteDoux = { 0.68, 0.64, 0.56 },
     -- Tailles du cadre des infobulles du jeu (sa bordure, ses coins arrondis).
-    rayonFenetre = 16, rayonBouton = 12, rayonOnglet = 14, rayonCase = 10, rayonCroix = 10,
-    ecartOnglets = 6,
+    rayonFenetre = 16, rayonBouton = 12, rayonOnglet = 16, rayonCase = 12, rayonCroix = 12,
+    ecartOnglets = 2,
+    filet = { 0.8, 0.65, 0.35, 0.35 },         -- tous les filets de separation
     arrondi = MEDIA_M .. "moderne_arrondi",
     coin = MEDIA_M .. "moderne_coin",
     filet = MEDIA_M .. "moderne_bord",
@@ -1390,6 +1391,12 @@ local function Couleur(t, c) t:SetVertexColor(c[1], c[2], c[3], c[4] or 1) end
 -- bordure et ses coins arrondis, teints a la couleur voulue). Sous tout ce
 -- que le cadre affiche. `taille` : l'epaisseur de la bordure.
 local BORDURE_JEU = "Interface\\Tooltips\\UI-Tooltip-Border"
+-- La couleur de bordure des infobulles du jeu, lue chez lui.
+local function CouleurBordureJeu()
+    local c = _G.TOOLTIP_DEFAULT_COLOR
+    if type(c) == "table" and c.r then return { c.r, c.g, c.b, 1 } end
+    return { 1, 1, 1, 1 }
+end
 local function Plat(f, fond, bord, taille)
     taille = taille or UI.MODERNE.rayonBouton
     local p = plats[f]
@@ -1407,6 +1414,7 @@ local function Plat(f, fond, bord, taille)
         b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = BORDURE_JEU, edgeSize = taille,
             insets = { left = marge, right = marge, top = marge, bottom = marge } })
         b:SetBackdropColor(fond[1], fond[2], fond[3], fond[4] or 1)
+        if bord == UI.MODERNE.contour then bord = CouleurBordureJeu() end
         bord = bord or fond
         b:SetBackdropBorderColor(bord[1], bord[2], bord[3], bord[4] or 1)
     end
@@ -1418,6 +1426,7 @@ function UI.RecolorerPlat(f, fond, bord)
     local p = plats[f]
     if not (p and p.cadre.SetBackdropColor) then return end
     p.cadre:SetBackdropColor(fond[1], fond[2], fond[3], fond[4] or 1)
+    if bord == UI.MODERNE.contour then bord = CouleurBordureJeu() end
     p.cadre:SetBackdropBorderColor(bord[1], bord[2], bord[3], bord[4] or 1)
 end
 local function Effacer(t)
@@ -1467,6 +1476,22 @@ local function Survol(b, marge)
     Couleur(h, UI.MODERNE.survol)
 end
 
+-- Un filet de separation : un pixel d'ecran exact, la couleur commune.
+function UI.Filet(t, p1, r1, rp1, x1, y1, p2, r2, rp2, x2, y2)
+    local c = UI.MODERNE.filet
+    t:SetColorTexture(c[1], c[2], c[3], c[4])
+    if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(false) t:SetTexelSnappingBias(0) end
+    local PU = _G.PixelUtil
+    t:ClearAllPoints()
+    if PU and PU.SetHeight and PU.SetPoint then
+        PU.SetHeight(t, 1, 1)
+        PU.SetPoint(t, p1, r1, rp1, x1, y1)
+        PU.SetPoint(t, p2, r2, rp2, x2, y2)
+    else
+        t:SetHeight(1) t:SetPoint(p1, r1, rp1, x1, y1) t:SetPoint(p2, r2, rp2, x2, y2)
+    end
+end
+
 -- La croix de fermeture : un picto fin, rouge doux au survol.
 function UI.HabillerCroix(b)
     if not (Actif() and Touchable(b)) or fait[b] then return end
@@ -1475,10 +1500,10 @@ function UI.HabillerCroix(b)
     for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture" }) do
         if b[f] then pcall(b[f], b, "") end
     end
-    b:SetSize(18, 18)
-    local x = Picto(b, "croix", 12, UI.MODERNE.texteDoux)
+    b:SetSize(16, 16)
+    local x = Picto(b, "croix", 10, UI.MODERNE.texteDoux)
     -- Son arrondi suit celui de la fenetre (meme centre de courbure).
-    Plat(b, UI.MODERNE.surface, UI.MODERNE.bord, UI.MODERNE.rayonCroix)
+    Plat(b, UI.MODERNE.surface, UI.MODERNE.contour, UI.MODERNE.rayonCroix)
     if b.SetHighlightTexture then
         b:SetHighlightTexture("Interface\\Buttons\\WHITE8X8", "ADD")
         local h = b:GetHighlightTexture()
@@ -1509,49 +1534,37 @@ function UI.HabillerFenetre(cadre)
     if not e.filet then
         e.filet = cadre:CreateTexture(nil, "BORDER")
         e.filet:SetColorTexture(1, 1, 1, 1)
-        e.filet:SetHeight(1)
         -- D'un bord a l'autre (dans la bordure), sous la croix avec de l'air.
-        e.filet:SetPoint("TOPLEFT", cadre, "TOPLEFT", 4, -26)
-        e.filet:SetPoint("TOPRIGHT", cadre, "TOPRIGHT", -4, -26)
+        -- Un pixel d'ecran exact, comme tous les filets.
+        UI.Filet(e.filet, "TOPLEFT", cadre, "TOPLEFT", 4, -28, "TOPRIGHT", cadre, "TOPRIGHT", -4, -28)
     end
-    e.filet:SetVertexColor(M.contour[1], M.contour[2], M.contour[3], 0.35)
     local croix = cadre.fermer or cadre.CloseButton or cadre.closeButton or (cadre.TitleContainer and cadre.TitleContainer.CloseButton)
     if croix then
         UI.HabillerCroix(croix)
         if Touchable(croix) then
-            croix:ClearAllPoints() croix:SetPoint("TOPRIGHT", cadre, "TOPRIGHT", -4, -4)
+            -- Centree dans la barre de titre : meme air en haut, a droite et en bas.
+            croix:ClearAllPoints() croix:SetPoint("TOPRIGHT", cadre, "TOPRIGHT", -7, -7)
         end
     end
 end
 
--- Un bouton : le rouge des boutons du jeu, en plus dense et plus net. Une
--- texture dessinee en trois parts (bouts arrondis, milieu etire), avec ses
--- etats : normal, appuye, survol (voile clair), inactif (gris). Texte or du
--- jeu, gris quand il ne sert pas (la police du bouton s'en charge).
-local RANGEES = { normal = 0, appuye = 1, survol = 2, inactif = 3 }
-local function TroisParts(b, couche, sousCouche)
-    local parts = {}
-    for i, u in ipairs({ { 0, 0.125 }, { 0.125, 0.875 }, { 0.875, 1 } }) do
-        local t = b:CreateTexture(nil, couche, nil, sousCouche)
-        t:SetTexture(UI.MODERNE.bouton)
-        t.u = u
-        parts[i] = t
+-- Un bouton : le rouge des boutons du jeu, net et lisse (un degrade, sans
+-- grain), dans la meme bordure que la fenetre. Etats : normal, survol (plus
+-- clair), appuye (plus sombre), inactif (gris). Texte or du jeu, gris quand il
+-- ne sert pas (la police du bouton s'en charge).
+local ROUGES = {
+    normal = { { 0.30, 0.05, 0.03 }, { 0.55, 0.11, 0.07 } },   -- bas, haut
+    survol = { { 0.38, 0.07, 0.04 }, { 0.68, 0.15, 0.09 } },
+    appuye = { { 0.42, 0.08, 0.05 }, { 0.26, 0.04, 0.03 } },
+    inactif = { { 0.16, 0.16, 0.17 }, { 0.26, 0.26, 0.27 } },
+}
+local function Degrade(t, nom)
+    local c = ROUGES[nom] or ROUGES.normal
+    local bas, haut = c[1], c[2]
+    if _G.CreateColor and pcall(t.SetGradient, t, "VERTICAL", _G.CreateColor(bas[1], bas[2], bas[3], 1), _G.CreateColor(haut[1], haut[2], haut[3], 1)) then return end
+    if not pcall(t.SetGradientAlpha, t, "VERTICAL", bas[1], bas[2], bas[3], 1, haut[1], haut[2], haut[3], 1) then
+        t:SetVertexColor(haut[1], haut[2], haut[3], 1)
     end
-    parts[1]:SetPoint("TOPLEFT") parts[1]:SetPoint("BOTTOMLEFT")
-    parts[3]:SetPoint("TOPRIGHT") parts[3]:SetPoint("BOTTOMRIGHT")
-    parts[2]:SetPoint("TOPLEFT", parts[1], "TOPRIGHT") parts[2]:SetPoint("BOTTOMRIGHT", parts[3], "BOTTOMLEFT")
-    local function Largeur()
-        local bout = math.floor((b:GetHeight() or 22) * 0.5 + 0.5)
-        parts[1]:SetWidth(bout) parts[3]:SetWidth(bout)
-    end
-    Largeur()
-    b:HookScript("OnSizeChanged", Largeur)
-    function parts.Rangee(nom)
-        local r = RANGEES[nom] or 0
-        for i = 1, 3 do parts[i]:SetTexCoord(parts[i].u[1], parts[i].u[2], r / 4, (r + 1) / 4) end
-    end
-    function parts.Montrer(oui) for i = 1, 3 do parts[i]:SetShown(oui) end end
-    return parts
 end
 function UI.HabillerBouton(b)
     if not (Actif() and Touchable(b)) or fait[b] then return end
@@ -1560,25 +1573,54 @@ function UI.HabillerBouton(b)
     for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture", "SetHighlightTexture" }) do
         if b[f] then pcall(b[f], b, "") end
     end
+    local M = UI.MODERNE
+    local p = Plat(b, { 0, 0, 0, 0 }, M.contour, M.rayonBouton)
     local e = Extra(b)
-    e.fond = TroisParts(b, "BACKGROUND", 1)
-    e.voile = TroisParts(b, "BORDER", 1)
-    e.voile.Rangee("survol")
-    for i = 1, 3 do e.voile[i]:SetBlendMode("ADD") e.voile[i]:SetAlpha(0.10) end
-    e.voile.Montrer(false)
-    local enfonce = false
+    if not e.rouge then
+        e.rouge = p.cadre:CreateTexture(nil, "BACKGROUND", nil, 1)
+        e.rouge:SetTexture("Interface\\Buttons\\WHITE8X8")
+        e.rouge:SetPoint("TOPLEFT", 3, -3)
+        e.rouge:SetPoint("BOTTOMRIGHT", -3, 3)
+        -- Un reflet fin en haut.
+        e.reflet = p.cadre:CreateTexture(nil, "BACKGROUND", nil, 2)
+        e.reflet:SetColorTexture(1, 0.85, 0.6, 0.12)
+        e.reflet:SetPoint("TOPLEFT", 3, -3)
+        e.reflet:SetPoint("TOPRIGHT", -3, -3)
+        e.reflet:SetHeight(1)
+    end
+    local enfonce, survole = false, false
     local function Etat(self)
         local actif = not self.IsEnabled or self:IsEnabled()
-        e.fond.Rangee(not actif and "inactif" or (enfonce and "appuye" or "normal"))
-        if not actif then e.voile.Montrer(false) end
+        Degrade(e.rouge, not actif and "inactif" or (enfonce and "appuye") or (survole and "survol") or "normal")
+        e.reflet:SetShown(actif and not enfonce)
     end
     b:HookScript("OnMouseDown", function(self) enfonce = true Etat(self) end)
     b:HookScript("OnMouseUp", function(self) enfonce = false Etat(self) end)
-    b:HookScript("OnEnter", function(self) if not self.IsEnabled or self:IsEnabled() then e.voile.Montrer(true) end end)
-    b:HookScript("OnLeave", function(self) enfonce = false e.voile.Montrer(false) Etat(self) end)
+    b:HookScript("OnEnter", function(self) survole = true Etat(self) end)
+    b:HookScript("OnLeave", function(self) survole = false enfonce = false Etat(self) end)
     hooksecurefunc(b, "Enable", Etat) hooksecurefunc(b, "Disable", Etat)
     if b.SetEnabled then hooksecurefunc(b, "SetEnabled", Etat) end
     Etat(b)
+end
+
+-- Un portrait de personnage (bande en haut des fenetres) : la meme bordure,
+-- et celui qu'on regarde prend un filet d'or vif a la place du halo du jeu
+-- (qui debordait).
+function UI.HabillerPortrait(b)
+    if not (Actif() and Touchable(b)) or fait[b] then return end
+    fait[b] = true
+    local M = UI.MODERNE
+    if b.cadre and b.cadre.SetAlpha then b.cadre:SetAlpha(0) end
+    Plat(b, M.fenetre, M.contour, M.rayonCase)
+    local h = b.GetHighlightTexture and b:GetHighlightTexture()
+    if h then h:SetTexture("Interface\\Buttons\\WHITE8X8") h:ClearAllPoints() h:SetPoint("TOPLEFT", 4, -4) h:SetPoint("BOTTOMRIGHT", -4, 4) Couleur(h, M.survol) end
+    local halo = b.halo
+    if halo then
+        halo:SetAlpha(0)
+        local function Maj() UI.RecolorerPlat(b, M.fenetre, halo:IsShown() and M.accent or M.contour) end
+        hooksecurefunc(halo, "Show", Maj) hooksecurefunc(halo, "Hide", Maj) hooksecurefunc(halo, "SetShown", Maj)
+        Maj()
+    end
 end
 
 -- Une case a cocher : petit carre arrondi, coche dessinee a l'or de la suite.
@@ -1608,7 +1650,7 @@ function UI.HabillerCase(c)
     end
     local w = math.max(12, math.floor((c:GetWidth() or 20) * 0.72))
     e.carre:SetSize(w, w)
-    Plat(e.carre, M.surface, M.bordFort, M.rayonCase)
+    Plat(e.carre, M.surface, M.contour, M.rayonCase)
     local h = c.GetHighlightTexture and c:GetHighlightTexture()
     if h then
         h:SetTexture("Interface\\Buttons\\WHITE8X8") h:ClearAllPoints() h:SetPoint("CENTER") h:SetSize(w - 2, w - 2)
@@ -1700,7 +1742,7 @@ function UI.HabillerListe(d)
     EffacerTextures(d)
     for _, cle in ipairs({ "Background", "Arrow", "Left", "Middle", "Right" }) do Effacer(d[cle]) end
     for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture" }) do if d[f] then pcall(d[f], d, "") end end
-    Plat(d, M.surface, M.bord, M.rayonBouton)
+    Plat(d, M.surface, M.contour, M.rayonBouton)
     Survol(d, 2)
     local e = Extra(d)
     if not e.chevron then
@@ -1719,7 +1761,7 @@ function UI.HabillerChoixDeListe(l)
     if not fait[l] then
         fait[l] = true
         if l.SetBackdropColor then l:SetBackdropColor(0, 0, 0, 0) l:SetBackdropBorderColor(0, 0, 0, 0) end
-        Plat(l, M.fenetre, M.contour, M.rayonBouton)
+        Plat(l, M.fenetre, M.contour, M.rayonFenetre)
     end
     for _, it in ipairs(l.items or {}) do
         if not fait[it] then
@@ -1737,6 +1779,7 @@ local function Reconnaitre(f)
     if genre == "Slider" and f.GetThumbTexture then UI.HabillerDefilement(f) return end
     if genre == "Button" then
         if f.Left and f.Right and f.Middle then UI.HabillerBouton(f) return end
+        if f.visage and f.halo then UI.HabillerPortrait(f) return end
         local n = f.GetNormalTexture and f:GetNormalTexture()
         local fichier = n and n.GetTexture and n:GetTexture()
         if type(fichier) == "string" and fichier:lower():find("closebutton") then UI.HabillerCroix(f) end
