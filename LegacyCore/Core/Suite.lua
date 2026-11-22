@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 127
+local VERSION = 128
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -149,6 +149,9 @@ local DICO = {
     frFR = {
         ["Show or hide everything"] = "Tout afficher ou tout masquer",
         ["Open"] = "Ouvrir",
+        ["Forever SagaCore Dev is not installed."] = "Forever SagaCore Dev n'est pas installé.",
+        ["Back to the normal suite."] = "Retour à la suite normale.",
+        ["Switching to Forever SagaCore Dev."] = "Passage à Forever SagaCore Dev.",
         ["Click: show everything"] = "Clic : tout afficher",
         ["Click: hide everything"] = "Clic : tout masquer",
         ["Faction theme"] = "Thème de faction",
@@ -1231,6 +1234,45 @@ do
         pcall(Suite.PoserAccesJeu)
     end)
 end
+
+-- ---------------------------------------------------------------------------
+-- Forever SagaCore Dev (mode prive) : /sagadev passe de la suite normale a sa
+-- copie d'essai (dossiers XDev), ou l'inverse, puis recharge l'interface.
+-- Jamais les deux suites actives a la fois.
+-- ---------------------------------------------------------------------------
+Suite.ADDONS_SUITE = { "CraftCore", "QuestCore", "MapCore", "LegacyCore", "StuffCore", "FriendsCore", "AuraCore" }
+function Suite.BasculerDev()
+    if not Suite.Prive() then return end
+    local A = _G.C_AddOns or {}
+    local charge = A.IsAddOnLoaded or _G.IsAddOnLoaded
+    local activer = A.EnableAddOn or _G.EnableAddOn
+    local couper = A.DisableAddOn or _G.DisableAddOn
+    local info = A.GetAddOnInfo or _G.GetAddOnInfo
+    if not (charge and activer and couper and info) then return end
+    local enDev = false
+    for _, n in ipairs(Suite.ADDONS_SUITE) do
+        local ok, oui = pcall(charge, n .. "Dev")
+        if ok and oui then enDev = true end
+    end
+    local function Existe(n) local ok, nom = pcall(info, n) return ok and nom ~= nil end
+    local present = 0
+    for _, n in ipairs(Suite.ADDONS_SUITE) do
+        local vers, depuis = enDev and n or (n .. "Dev"), enDev and (n .. "Dev") or n
+        if Existe(vers) then
+            present = present + 1
+            pcall(couper, depuis)
+            pcall(activer, vers)
+        end
+    end
+    if present == 0 then
+        print("|cffffd100SagaCore|r " .. TX("Forever SagaCore Dev is not installed."))
+        return
+    end
+    print("|cffffd100SagaCore|r " .. (enDev and TX("Back to the normal suite.") or TX("Switching to Forever SagaCore Dev.")))
+    if _G.C_UI and _G.C_UI.Reload then _G.C_UI.Reload() elseif _G.ReloadUI then _G.ReloadUI() end
+end
+SLASH_SAGACOREDEV1 = "/sagadev"
+SlashCmdList["SAGACOREDEV"] = function() Suite.BasculerDev() end
 
 -- Point d'attache des onglets lateraux : au ras du bord de la fenetre, a la
 -- hauteur du trait qui separe l'en-tete du contenu. Les deux colonnes
