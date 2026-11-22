@@ -428,7 +428,7 @@ local function Poser(index, y, texte, options)
     local milieu = -math.floor((tonumber(tailleLigne) or 12) / 2 + 0.5)
     if l.rond and l.rond:IsShown() then
         l.rond:ClearAllPoints()
-        l.rond:SetPoint("CENTER", l, "TOPLEFT", 10, milieu)
+        l.rond:SetPoint("CENTER", l, "TOPLEFT", 10, milieu - 1)
     end
     if l.marque:IsShown() then
         l.marque:ClearAllPoints()
@@ -438,7 +438,7 @@ local function Poser(index, y, texte, options)
     l.droite:SetPoint("RIGHT", l, "TOPRIGHT", options.etoile and -18 or 0, milieu)
     if options.etoile then
         l.etoile:ClearAllPoints()
-        l.etoile:SetPoint("RIGHT", l, "TOPRIGHT", 0, milieu)
+        l.etoile:SetPoint("RIGHT", l, "TOPRIGHT", 0, milieu - 1)
     end
     if options.droite or options.etoile then
         local large = (options.droite and ((l.droite:GetStringWidth() or 0) + 6) or 0) + (options.etoile and 18 or 0)
@@ -1028,20 +1028,41 @@ local function RendreAvecChaine(moi, quetes, id, index, y, prefixe)
     -- Les quetes deja rendues ne s'affichent plus : la premiere qui reste
     -- prend leur place, deroulee (dans le journal, ou a prendre) ; les
     -- suivantes, en gris, sans detail, reliees par un trait vertical.
+    -- Une quete du journal placee apres des quetes pas encore faites : la
+    -- base relie mal la suite ; elle se montre a part, a sa place.
+    local aPart, vuTete, trou = {}, false, false
+    for _, c in ipairs(chaine) do
+        local fait = moi.faites and moi.faites[c]
+        if quetes[c] then
+            if trou then aPart[c] = true else vuTete = true end
+        elseif not fait then
+            if vuTete then trou = true else vuTete = true end
+        end
+    end
+    if aPart[id] then
+        dejaRendues[id] = true
+        return RendreQuete(moi, quetes, id, index, y, prefixe)
+    end
     local hauts = {}   -- la ligne de titre de chaque quete de la suite
     local tete, apres = false, 0
     for _, c in ipairs(chaine) do
-        dejaRendues[c] = true
         local fait = moi.faites and moi.faites[c]
-        if quetes[c] then
+        if c ~= id and dejaRendues[c] then
+            -- deja montree avec une autre suite
+        elseif aPart[c] then
+            -- montree a part, a sa place
+        elseif quetes[c] then
+            dejaRendues[c] = true
             table.insert(hauts, index + 1)
             index, y = RendreQuete(moi, quetes, c, index, y, c == id and prefixe or nil)
             tete = true
         elseif not fait and not tete then
+            dejaRendues[c] = true
             table.insert(hauts, index + 1)
             index, y = RendreEtapeBase(moi, c, nil, NS.parcours.EtatEtape(moi, c), index, y)
             tete = true
         elseif not fait then
+            dejaRendues[c] = true
             apres = apres + 1
             if apres <= 6 then
                 local niveau = tonumber(NS.ref.Lire("QuestDB", c, "questLevel")) or 0
@@ -1057,6 +1078,13 @@ local function RendreAvecChaine(moi, quetes, id, index, y, prefixe)
     end
     -- Les traits, d'un rond au suivant (ronds a 1 point du bord, 18 de large).
     for k = 1, #hauts - 1 do Trait(Ligne(hauts[k]), Ligne(hauts[k + 1])) end
+    -- Celles montrees a part : juste apres, sans trait.
+    for _, c in ipairs(chaine) do
+        if aPart[c] and not dejaRendues[c] then
+            dejaRendues[c] = true
+            index, y = RendreQuete(moi, quetes, c, index, y + 4, nil)
+        end
+    end
     return index, y + 4
 end
 
