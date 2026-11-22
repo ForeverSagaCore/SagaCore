@@ -2914,6 +2914,10 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         l.nom.agrandir = false
         l.nom:SetFontObject(POLICE)
         if couleur then l.nom:SetTextColor(couleur[1], couleur[2], couleur[3]) end
+        -- Le texte va jusqu'a la case, jamais coupe par la colonne de droite.
+        l.nom:ClearAllPoints()
+        l.nom:SetPoint("LEFT", l.icone, "RIGHT", 6, 0)
+        l.nom:SetPoint("RIGHT", l, "RIGHT", -40, 0)
         local case = contenu.casesVise[k]
         if not case then
             case = CreateFrame("CheckButton", nil, contenu, "UICheckButtonTemplate")
@@ -3006,8 +3010,19 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     -- Les rangs vises, sur une ligne, au-dessus des etapes.
     local noms = {}
     for _, v in ipairs(vises) do table.insert(noms, string.format(L.GUIDE_TARGET_ONE, v)) end
-    y = Paragraphe(contenu, y + 6, string.format(L.GUIDE_TARGETS, table.concat(noms, ", ")), POLICE, VERT, aligne)
     local segments = catalogue.PlansVises(fiche, cleObjectif, rang, rangMax, vises)
+    -- Vert seulement si tout se fait en points surs (recettes oranges).
+    -- Sinon, dit clairement jusqu'ou c'est sur, et comment le reste est prevu.
+    local auHasard, rangSur = false, rang
+    for k, seg in ipairs(segments) do
+        if seg.plan.probable then auHasard = true end
+        if k == 1 or not auHasard then rangSur = math.max(rangSur, seg.plan.rangSur or seg.de) end
+    end
+    y = Paragraphe(contenu, y + 6, string.format(L.GUIDE_TARGETS, table.concat(noms, ", ")), POLICE, auHasard and OR or VERT, aligne)
+    if auHasard then
+        local texteSur = (rangSur > rang) and string.format(L.GUIDE_SURE_UNTIL, rangSur) or L.GUIDE_SURE_NONE
+        y = Paragraphe(contenu, y, texteSur .. " " .. L.GUIDE_LUCK_PLANNED, "GameFontDisableSmall", nil, aligne)
+    end
     local objectif = segments[#segments] and segments[#segments].vise or choix
     local plan = { utilises = {}, achats = {}, manques = {}, intermediaires = {}, etapes = {}, estime = false }
     for _, seg in ipairs(segments) do
@@ -3164,13 +3179,16 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                 table.insert(morceaux, d.nom .. " " .. math.min(d.total, reste))
                 reste = reste - d.total
             end
-            if #morceaux > 0 then table.insert(aRecuperer, { objet = e.objet, n = e.n - enSacs, ou = table.concat(morceaux, ", ") .. ARecupererParRang(e.objet, enSacs) }) end
+            -- Le compte complet, pour qu'il n'y ait pas de doute : ce qu'il
+            -- faut en tout, ce qui est deja dans les sacs, d'ou vient le reste.
+            local compte = string.format(L.GUIDE_FETCH_COUNT, e.n, enSacs)
+            if #morceaux > 0 then table.insert(aRecuperer, { objet = e.objet, n = e.n - enSacs, compte = compte, ou = table.concat(morceaux, ", ") .. ARecupererParRang(e.objet, enSacs) }) end
         end
     end
     if next(plan.utilises or {}) then
         if Etape(L.GUIDE_FETCH, #aRecuperer == 0) then
             for _, e in ipairs(aRecuperer) do
-                index, y = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), e.ou)
+                index, y = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet) .. "  |cff9d9d9d(" .. e.compte .. ")|r", e.ou)
             end
             y = Paragraphe(contenu, y + 2, L.GUIDE_FETCH_HELP, "GameFontDisableSmall")
         end
@@ -3215,7 +3233,10 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
             for _, etape in ipairs(seg.plan.etapes or {}) do
                 local objet = etape.recette.objetProduit
                 local rangs = string.format(L.PROG_RANKS, etape.de, etape.a)
-                if etape.probable then rangs = rangs .. "  " .. L.PROG_PROBABLE_TAG end
+                if etape.probable then
+                    rangs = rangs .. "  " .. (etape.moyenne and etape.moyenne < etape.fois
+                        and string.format(L.PROG_PROBABLE_PLANNED, etape.moyenne) or L.PROG_PROBABLE_TAG)
+                end
                 local l
                 index, y, l = LigneSimple(contenu, index, y, objet and Icone(objet),
                     (etape.recette.nom or "?") .. "  |cffffffffx" .. etape.fois .. "|r", rangs)

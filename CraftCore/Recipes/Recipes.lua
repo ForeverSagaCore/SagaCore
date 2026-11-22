@@ -1144,15 +1144,47 @@ function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, deja
         local avant = rang
         progres = progres + gain
         if rangMax then progres = math.min(progres, rangMax) end
-        if derniere and derniere.recette == meilleur then
+        -- Variance du nombre de fabrications (loi geometrique, par point) :
+        -- elle sert a prevoir assez de fabrications pour etre quasi sur.
+        local variance = (meilleureChance < 1) and ((1 - meilleureChance) / meilleureChance) or 0
+        -- Une etape par recette et par couleur : la partie sure (orange) et la
+        -- partie au hasard (jaune) ne se melangent pas.
+        if derniere and derniere.recette == meilleur and derniere.probable == (meilleureChance < 1) then
             derniere.fois = derniere.fois + 1
             derniere.a = math.floor(progres)
-            derniere.probable = derniere.probable or meilleureChance < 1
+            derniere.variance = (derniere.variance or 0) + variance
         else
-            derniere = { recette = meilleur, fois = 1, de = avant, a = math.floor(progres), probable = meilleureChance < 1 }
+            derniere = { recette = meilleur, fois = 1, de = avant, a = math.floor(progres), probable = meilleureChance < 1,
+                variance = variance }
             table.insert(resultat.etapes, derniere)
         end
         if not (meilleur.jauneMin and meilleur.jauneMax) then resultat.estime = true end
+    end
+    -- Rang vise : une etape jaune (point au hasard) prevoit assez de
+    -- fabrications pour atteindre son rang 19 fois sur 20, pas seulement en
+    -- moyenne. Les composants de ces fabrications en plus sont comptes.
+    -- Le rang sur : celui ou s'arretent les recettes oranges.
+    resultat.rangSur = rangDepart
+    local encoreSur = true
+    for _, etape in ipairs(resultat.etapes) do
+        if etape.probable then encoreSur = false end
+        if encoreSur then resultat.rangSur = etape.a end
+        if objectif and etape.probable then
+            local prevues = math.ceil(etape.fois + 1.645 * math.sqrt(etape.variance or 0))
+            local enPlus = prevues - etape.fois
+            etape.moyenne = etape.fois
+            if enPlus > 0 then
+                etape.fois = prevues
+                for _, comp in ipairs(etape.recette.composants) do
+                    if recettes.EstVenduPartout(comp.objet) then
+                        resultat.achats[comp.objet] = (resultat.achats[comp.objet] or 0) + comp.quantite * enPlus
+                    else
+                        Prendre(comp.objet, comp.quantite * enPlus)
+                    end
+                end
+            end
+            resultat.probable = true
+        end
     end
     local rang = math.floor(progres)
     if rang >= plafond and not resultat.arret then
