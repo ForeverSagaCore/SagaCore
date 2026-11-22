@@ -969,6 +969,7 @@ local function Chaine(moi, id)
     return liste
 end
 
+local RendreEtapeBase
 local function RendreAvecChaine(moi, quetes, id, index, y, prefixe)
     if dejaRendues[id] then return index, y end
     local chaine = Chaine(moi, id)
@@ -976,24 +977,31 @@ local function RendreAvecChaine(moi, quetes, id, index, y, prefixe)
         dejaRendues[id] = true
         return RendreQuete(moi, quetes, id, index, y, prefixe)
     end
+    -- Les quetes deja rendues ne s'affichent plus : la premiere qui reste
+    -- prend leur place, deroulee (dans le journal, ou a prendre) ; les
+    -- suivantes, en gris, sans detail, reliees par un trait vertical.
     local hauts = {}
-    local apres = 0
+    local tete, apres = false, 0
     for _, c in ipairs(chaine) do
         dejaRendues[c] = true
+        local fait = moi.faites and moi.faites[c]
         if quetes[c] then
             table.insert(hauts, y)
-            index, y = RendreQuete(moi, quetes, c, index, y)
-        else
-            local fait = moi.faites and moi.faites[c]
-            if not fait then apres = apres + 1 end
-            if fait or apres <= 6 then
+            index, y = RendreQuete(moi, quetes, c, index, y, c == id and prefixe or nil)
+            tete = true
+        elseif not fait and not tete then
+            table.insert(hauts, y)
+            index, y = RendreEtapeBase(moi, c, nil, NS.parcours.EtatEtape(moi, c), index, y)
+            tete = true
+        elseif not fait then
+            apres = apres + 1
+            if apres <= 6 then
                 local niveau = tonumber(NS.ref.Lire("QuestDB", c, "questLevel")) or 0
                 local idC = c
                 table.insert(hauts, y)
                 index = index + 1
                 y = Poser(index, y, string.format("[%d] %s", niveau, NS.ref.NomDeQuete(c, moi)), {
-                    uneLigne = true, titre = true, marque = fait and "fait" or "suite",
-                    couleur = fait and { 0.25, 0.9, 0.25 } or { 0.55, 0.55, 0.55 },
+                    uneLigne = true, titre = true, marque = "suite", couleur = { 0.55, 0.55, 0.55 },
                     police = Police("ObjectiveTrackerHeaderFont", "GameFontNormal"),
                     survol = function(tt) NS.ref.InfobulleDeLaBase(tt, idC, moi) end }) + 4
             end
@@ -1315,7 +1323,7 @@ end
 -- niveau a la couleur du jeu, titre, recompense connue (XP de la base ;
 -- l'argent n'y est pas), objectifs de la base, puis chez qui la prendre (un
 -- clic : sur la carte). Le survol donne tout ce que la base en sait.
-local function RendreEtapeBase(moi, id, rang, e, index, y, pion)
+RendreEtapeBase = function(moi, id, rang, e, index, y, pion)
     local s = Reglages()
     local niveau = tonumber(NS.ref.Lire("QuestDB", id, "questLevel")) or 0
     local r, g, b = NS.ref.CouleurDeNiveau(niveau, moi.niveau)
@@ -1333,7 +1341,7 @@ local function RendreEtapeBase(moi, id, rang, e, index, y, pion)
     end
     index = index + 1
     local donjonE = NS.donjons and NS.donjons.DeQuete and NS.donjons.DeQuete(id) and (NS.ref.IconeDonjon() .. " ") or ""
-    y = Poser(index, y, rang .. ". " .. donjonE .. string.format("|cff%02x%02x%02x[%d]|r %s", math.floor(r * 255),
+    y = Poser(index, y, (rang and (rang .. ". ") or "") .. donjonE .. string.format("|cff%02x%02x%02x[%d]|r %s", math.floor(r * 255),
         math.floor(g * 255), math.floor(b * 255), niveau, NS.ref.NomDeQuete(id, moi)), { uneLigne = true,
         police = Police("ObjectiveTrackerHeaderFont", "GameFontNormal"), titre = true,
         couleur = attente and { 0.6, 0.6, 0.6 } or { 1, 0.82, 0 },
@@ -1499,15 +1507,19 @@ RendreVueParcours = function(moi, index, y)
                 if #enCours > 0 then
                     Groupe(L.TRACK_SECTION_ACTIVE, #enCours, { 0.4, 0.75, 1 })
                     for _, t in ipairs(enCours) do
-                        index, y = RendreQuete(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
+                        index, y = RendreAvecChaine(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
                     end
                 end
                 if #aRendre > 0 then
                     Groupe(L.TRACK_SECTION_DONE, #aRendre, { 1, 0.6, 0.2 })
                     for _, t in ipairs(aRendre) do
-                        index, y = RendreQuete(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
+                        index, y = RendreAvecChaine(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
                     end
                 end
+                -- Deja montrees dans une suite plus haut : pas deux fois.
+                local resteAFaire = {}
+                for _, t in ipairs(aFaire) do if not dejaRendues[t.id] then table.insert(resteAFaire, t) end end
+                aFaire = resteAFaire
                 if #aFaire > 0 then
                     Groupe(L.ROUTE_GROUP_TODO, #aFaire, { 1, 0.82, 0 })
                     for _, t in ipairs(aFaire) do
