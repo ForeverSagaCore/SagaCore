@@ -175,10 +175,18 @@ local function ObjectifsDeProgression(liste)
                     end
                 end
             end
+            -- Ce qui s'achete chez un marchand (fioles, fils...) compte aussi :
+            -- il faut l'avoir, meme sans le recolter.
+            local manques = {}
+            for objet, n in pairs(plan.manques or {}) do manques[objet] = n end
+            for objet, n in pairs(plan.achats or {}) do
+                requis[objet] = (requis[objet] or 0) + n
+                manques[objet] = (manques[objet] or 0) + math.max(0, n - (NS.inventaire.TotalPossede(objet) or 0))
+            end
             local total, manque = 0, 0
             for objet, n in pairs(requis) do
                 total = total + n
-                manque = manque + math.min(n, plan.manques[objet] or 0)
+                manque = manque + math.min(n, manques[objet] or 0)
             end
             local pct
             if sien.rang >= vise then pct = 1
@@ -186,12 +194,12 @@ local function ObjectifsDeProgression(liste)
             else pct = 0 end
             table.insert(liste, { cle = "prog" .. cle .. ":" .. vise, ligne = ligne, vise = vise, nom = string.format(L.GOAL_PROG, nom, vise), genre = "progression",
                 detail = string.format(L.GOAL_PROG_DETAIL, sien.rang, vise), pct = pct, atteint = sien.rang >= vise,
-                matieres = Matieres(requis, plan.manques), achats = plan.achats,
+                matieres = Matieres(requis, manques), achats = plan.achats,
                 -- Les recettes du plan, dans l'ordre : le bouton Creer les lance.
                 lignes = (function()
                     local t = {}
                     for _, etape in ipairs(plan.etapes or {}) do
-                        if etape.recette and etape.recette.id then
+                        if etape.recette and etape.recette.id and not etape.apprendre then
                             table.insert(t, { recette = etape.recette.id, quantite = etape.fois or 1 })
                         end
                     end

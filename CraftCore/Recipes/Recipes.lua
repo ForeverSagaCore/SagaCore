@@ -852,7 +852,34 @@ local function EcartDuMetier(ligneMetier)
 end
 
 -- Rang ou la recette cesse d'etre orange, estime ; nil si rien n'est connu.
+-- Rangs de couleur connus d'une recette (table du jeu d'origine) : orange
+-- (rang requis pour l'apprendre), jaune, vert, gris. nil si inconnus.
+local niveauxLus = {}
+function recettes.Niveaux(recette)
+    if type(recette) ~= "table" then return nil end
+    local cle = tonumber(recette.objetProduit) or tonumber(recette.id)
+    if not cle then return nil end
+    local n = niveauxLus[cle]
+    if n == nil then
+        local brut = NS.donnees and NS.donnees.NIVEAUX and NS.donnees.NIVEAUX[cle]
+        local o, j, v, g
+        if type(brut) == "string" then o, j, v, g = string.match(brut, "^(%d+)/(%d+)/(%d+)/(%d+)$") end
+        n = o and { orange = tonumber(o), jaune = tonumber(j), vert = tonumber(v), gris = tonumber(g) } or false
+        niveauxLus[cle] = n
+    end
+    return n or nil
+end
+
+-- Rang requis pour apprendre une recette (son rang orange), si connu.
+function recettes.RangRequis(recette)
+    local n = recettes.Niveaux(recette)
+    return n and n.orange or nil
+end
+
 function recettes.FinDuOrange(recette)
+    -- Connue de la table du jeu : le debut du jaune, exact.
+    local niv = recettes.Niveaux(recette)
+    if niv and niv.jaune > niv.orange then return niv.jaune end
     local estime
     if recette.gris then estime = recette.gris - EcartDuMetier(recette.metier or recettes.MetierDe(recette)) end
     if recette.jauneMin then estime = math.max(estime or recette.jauneMin, recette.jauneMin) end
@@ -863,6 +890,13 @@ end
 -- Chance de gagner un point a un rang : 1 en orange ; en jaune et en vert,
 -- elle baisse jusqu'a 0 au gris, comme dans le jeu.
 function recettes.ChanceDePoint(recette, rang)
+    local niv = recettes.Niveaux(recette)
+    if niv and niv.gris > niv.jaune then
+        -- Couleurs connues : orange sur, puis la chance baisse jusqu'au gris.
+        if rang < niv.jaune then return 1 end
+        if rang >= niv.gris then return 0 end
+        return (niv.gris - rang) / (niv.gris - niv.jaune)
+    end
     local fin = recettes.FinDuOrange(recette)
     if not fin then return 0 end
     -- Orange seulement d'apres une estimation (le jeu n'a jamais montre ou
@@ -889,7 +923,11 @@ local function Emplacements(fiche, cle)
     local v = type(fiche) == "table" and type(fiche.objectifsProgression) == "table"
         and fiche.objectifsProgression[tostring(cle)]
     if type(v) == "table" and (v.sur ~= nil or v.recettes ~= nil or v.choix ~= nil) then
-        return { sur = v.sur == true, recettes = v.recettes == true, choix = tonumber(v.choix) }
+        -- Un seul a la fois (d'anciens reglages en cumulaient) : le rang
+        -- choisi, sinon les recettes, sinon l'assure.
+        local choix = tonumber(v.choix)
+        local recettesV = (not choix) and v.recettes == true
+        return { sur = (not choix) and (not recettesV) and v.sur == true, recettes = recettesV, choix = choix }
     end
     -- Rien de regle, ou un ancien format (rangs empiles) : on repart propre.
     return { sur = true }
@@ -899,6 +937,8 @@ recettes.Emplacements = Emplacements
 function recettes.PoserEmplacement(fiche, cle, nom, valeur)
     if type(fiche) ~= "table" then return end
     local e = Emplacements(fiche, cle)
+    -- Un seul rang vise a la fois par metier : en choisir un retire les autres.
+    if valeur then e.sur, e.recettes, e.choix = false, false, nil end
     if nom == "choix" then e.choix = tonumber(valeur) else e[nom] = valeur and true or false end
     fiche.objectifsProgression = type(fiche.objectifsProgression) == "table" and fiche.objectifsProgression or {}
     -- Garde aussi les cases decochees : sinon le rang assure revient d'office.
@@ -979,9 +1019,11 @@ end
 -- Rend { { vise, de, plan }, ... }, du plus bas au plus haut.
 function recettes.PlansVises(fiche, cle, rang, rangMax, liste)
     local res, pris, de = {}, {}, rang
+    -- Le rang choisi aux fleches : le vrai guide, recettes a apprendre comprises.
+    local e = Emplacements(fiche, cle)
     for _, vise in ipairs(liste or recettes.RangsVises(fiche, cle)) do
         if de and vise > de then
-            local ok, plan = pcall(recettes.Progression, tonumber(cle), de, rangMax, vise, pris)
+            local ok, plan = pcall(recettes.Progression, tonumber(cle), de, rangMax, vise, pris, e.choix ~= nil and vise == e.choix)
             if ok and plan then
                 table.insert(res, { vise = vise, de = de, plan = plan })
                 for objet, n in pairs(plan.utilises or {}) do pris[objet] = (pris[objet] or 0) + n end
@@ -1008,16 +1050,29 @@ function recettes.BesoinsDesObjectifs(fiche)
     return besoins
 end
 
-function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, dejaPris)
+-- `apprendre` : le parcours peut passer par des recettes pas encore apprises
+-- (chez le formateur, un vendeur, une quete), des que le rang requis est
+-- atteint en chemin. Jamais celles qui ne tombent que sur des monstres.
+local APPRENABLES = { RECIPES_HOW_TRAINER = true, RECIPES_HOW_VENDOR = true, RECIPES_HOW_QUEST = true }
+function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, dejaPris, apprendre)
     local resultat = { depart = rangDepart, atteint = rangDepart, etapes = {}, achats = {}, manques = {},
-        estime = false, arret = nil }
+        estime = false, arret = nil, aApprendre = {} }
     if not ligneDeMetier or not rangDepart then resultat.arret = "inconnu" return resultat end
 
-    local candidates = {}
+    local candidates, apprise, requis = {}, {}, {}
     for _, recette in ipairs((recettes.Pour(ligneDeMetier))) do
-        if recettes.EstApprise(recette.id) and type(recette.composants) == "table" and #recette.composants > 0
-            and recettes.FinDuOrange(recette) then
-            table.insert(candidates, recette)
+        if type(recette.composants) == "table" and #recette.composants > 0 and recettes.FinDuOrange(recette) then
+            if recettes.EstApprise(recette.id) then
+                apprise[recette.id] = true
+                table.insert(candidates, recette)
+            elseif apprendre then
+                local rangR = recettes.RangRequis(recette)
+                local nature = rangR and recettes.CommentApprendre and recettes.CommentApprendre(recette)
+                if rangR and APPRENABLES[nature or ""] then
+                    requis[recette.id] = rangR
+                    table.insert(candidates, recette)
+                end
+            end
         end
     end
 
@@ -1105,6 +1160,8 @@ function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, deja
         local meilleur, meilleurScore, meilleureChance
         for _, recette in ipairs(candidates) do
             local chance = recettes.ChanceDePoint(recette, rang)
+            -- Pas encore apprise : seulement une fois le rang requis atteint.
+            if not apprise[recette.id] and (requis[recette.id] or 9999) > rang then chance = 0 end
             if chance >= CHANCE_MINIMUM then
                 local recolte, manque = 0, 0
                 for _, comp in ipairs(recette.composants) do
@@ -1117,7 +1174,10 @@ function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, deja
                     -- Les oranges d'abord, toujours : un point sur vaut mieux
                     -- qu'un point espere, meme s'il coute plus de composants.
                     -- Puis ce qu'on a deja, puis le moins de recolte par point.
-                    local score = (chance < 1 and 1e12 or 0) + (manque * 100000 + recolte * 1000 + 1) / chance + (1 - chance)
+                    -- Une recette a apprendre passe apres celles qu'on connait,
+                    -- mais avant une recette jaune : un point sur d'abord.
+                    local score = (chance < 1 and 1e12 or 0) + (apprise[recette.id] and 0 or 1e9)
+                        + (manque * 100000 + recolte * 1000 + 1) / chance + (1 - chance)
                     if not meilleurScore or score < meilleurScore then
                         meilleur, meilleurScore, meilleureChance = recette, score, chance
                     end
@@ -1127,6 +1187,14 @@ function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, deja
         if not meilleur then
             resultat.arret = (#candidates == 0) and "aucuneRecette" or "plusRien"
             break
+        end
+        -- Premiere fois qu'on s'en sert sans l'avoir : une etape "apprendre".
+        if not apprise[meilleur.id] then
+            apprise[meilleur.id] = true
+            local etapeA = { apprendre = true, recette = meilleur, fois = 0, de = rang, a = rang, rangRequis = requis[meilleur.id] }
+            table.insert(resultat.etapes, etapeA)
+            table.insert(resultat.aApprendre, etapeA)
+            derniere = nil
         end
         for _, comp in ipairs(meilleur.composants) do
             if recettes.EstVenduPartout(comp.objet) then
@@ -1168,7 +1236,7 @@ function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, deja
     local encoreSur = true
     for _, etape in ipairs(resultat.etapes) do
         if etape.probable then encoreSur = false end
-        if encoreSur then resultat.rangSur = etape.a end
+        if encoreSur and not etape.apprendre then resultat.rangSur = etape.a end
         if objectif and etape.probable then
             local prevues = math.ceil(etape.fois + 1.645 * math.sqrt(etape.variance or 0))
             local enPlus = prevues - etape.fois

@@ -3171,29 +3171,60 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         end
         return (#morceaux > 0) and ("  |cff9d9d9d(" .. table.concat(morceaux, ", ") .. ")|r") or ""
     end
+    -- A recuperer : une ligne par objet, "x32 Terrestrine", et a droite s'il
+    -- est disponible. Un clic deroule ou sont les quantites (sacs, banque,
+    -- autres personnages), une ligne chacun.
     local aRecuperer = {}
     for _, e in ipairs(Trie(plan.utilises)) do
         local enSacs = NS.inventaire.DisponibleDansLesSacs(e.objet)
         if enSacs < e.n then
-            local morceaux, reste = {}, e.n - enSacs
+            local ou, reste = {}, e.n - enSacs
+            if enSacs > 0 then table.insert(ou, { nom = L.COL_BAGS, n = enSacs }) end
             local _, banque = NS.inventaire.SacsEtBanque(fiche, e.objet)
-            if banque > 0 then table.insert(morceaux, string.format(L.GUIDE_IN_BANK, math.min(banque, reste))) reste = reste - banque end
+            if banque > 0 then table.insert(ou, { nom = L.COL_BANK, n = banque }) reste = reste - banque end
             local _, detail = NS.inventaire.DetailChezLesAutres(fiche, e.objet)
             for _, d in ipairs(detail) do
-                if reste <= 0 then break end
-                table.insert(morceaux, d.nom .. " " .. math.min(d.total, reste))
+                table.insert(ou, { nom = d.nom or NS.inventaire.NomCourt(d.cle), n = d.total })
                 reste = reste - d.total
             end
-            -- Le compte complet, pour qu'il n'y ait pas de doute : ce qu'il
-            -- faut en tout, ce qui est deja dans les sacs, d'ou vient le reste.
-            local compte = string.format(L.GUIDE_FETCH_COUNT, e.n, enSacs)
-            if #morceaux > 0 then table.insert(aRecuperer, { objet = e.objet, n = e.n - enSacs, compte = compte, ou = table.concat(morceaux, ", ") .. ARecupererParRang(e.objet, enSacs) }) end
+            if #ou > (enSacs > 0 and 1 or 0) then
+                table.insert(aRecuperer, { objet = e.objet, n = e.n - enSacs, ou = ou, complet = reste <= 0 })
+            end
         end
     end
     if next(plan.utilises or {}) then
         if Etape(L.GUIDE_FETCH, #aRecuperer == 0) then
+            ecran.deplieRecup = ecran.deplieRecup or {}
             for _, e in ipairs(aRecuperer) do
-                index, y = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet) .. "  |cff9d9d9d(" .. e.compte .. ")|r", e.ou)
+                local cleD = tostring(e.objet)
+                local deplie = ecran.deplieRecup[cleD] == true
+                index = index + 1
+                local l = LigneDeTableau(contenu, index)
+                l:ClearAllPoints()
+                l:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
+                l:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
+                PoserLigne(l, RETRAIT_PAR_NIVEAU + retraitCourant, true, deplie, function()
+                    ecran.deplieRecup[cleD] = (not deplie) or nil
+                    ecran.Montrer(ecran.page)
+                end)
+                local ic = Icone(e.objet)
+                if ic then l.icone:SetTexture(ic) l.icone:Show() else l.icone:Hide() end
+                l.nom:SetFontObject("GameFontHighlightSmall")
+                l.nom:SetText("x" .. e.n .. "  " .. Nom(e.objet))
+                l.sacs:SetText("") l.banque:SetText("")
+                l.total:SetFontObject("GameFontHighlightSmall")
+                l.total:SetJustifyH(contenu.largeurEtat and "LEFT" or "RIGHT")
+                l.total:SetText(e.complet and L.GUIDE_AVAILABLE or L.GUIDE_AVAILABLE_PART)
+                if e.complet then l.total:SetTextColor(0.31, 0.82, 0.41) else l.total:SetTextColor(1, 0.82, 0) end
+                l:Show()
+                y = y + HAUTEUR_LIGNE
+                if deplie then
+                    retraitCourant = retraitCourant + RETRAIT_PAR_NIVEAU
+                    for _, o in ipairs(e.ou) do
+                        index, y = LigneSimple(contenu, index, y, nil, o.nom, tostring(o.n))
+                    end
+                    retraitCourant = retraitCourant - RETRAIT_PAR_NIVEAU
+                end
             end
             y = Paragraphe(contenu, y + 2, L.GUIDE_FETCH_HELP, "GameFontDisableSmall")
         end
@@ -3236,6 +3267,27 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                 y = Paragraphe(contenu, y + 4, string.format(L.GUIDE_SEGMENT, seg.de, seg.vise), "GameFontNormalSmall", nil, aligne)
             end
             for _, etape in ipairs(seg.plan.etapes or {}) do
+              if etape.apprendre then
+                -- Apprendre la recette, a son tour dans le parcours : ou, et a
+                -- quel rang. Au survol, toutes les sources connues.
+                local nature, lignesSrc = catalogue.CommentApprendre(etape.recette)
+                local l
+                index, y, l = LigneSimple(contenu, index, y, "Interface\\Icons\\INV_Misc_Book_09",
+                    string.format(L.GUIDE_LEARN, etape.recette.nom or "?"),
+                    string.format(L.GUIDE_LEARN_AT, etape.rangRequis or etape.de) .. "  " .. (L[nature or ""] or ""))
+                if l then
+                    l.total:SetTextColor(0.31, 0.82, 0.41)
+                    l:EnableMouse(true)
+                    local titreA = etape.recette.nom
+                    l:SetScript("OnEnter", function(self)
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetText(titreA or "", 1, 0.82, 0)
+                        for _, t in ipairs(lignesSrc or {}) do GameTooltip:AddLine(t, 1, 1, 1, true) end
+                        GameTooltip:Show()
+                    end)
+                    l:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                end
+              else
                 local objet = etape.recette.objetProduit
                 local rangs = string.format(L.PROG_RANKS, etape.de, etape.a)
                 if etape.probable then
@@ -3258,6 +3310,7 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                         l:SetScript("OnLeave", function() GameTooltip:Hide() end)
                     end
                 end
+              end
             end
             end
             y = Paragraphe(contenu, y + 2, L.GUIDE_LEVEL_HELP, "GameFontDisableSmall")
