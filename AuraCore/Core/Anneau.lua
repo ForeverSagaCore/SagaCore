@@ -829,22 +829,7 @@ local function DessinerAnneau(r)
     if nNuis > 0 then d.derniersNuisibles = { combat = enCombat, n = nNuis, aPart = r.nuisiblesAPart } end
     d[enCombat and "combat" or "horsCombat"] = { api = #api, erreur = erreur, source = source, montres = #liste,
         natifs = #boutons, natifsAmeliorations = nAm, cadreHorsCombat = (not enCombat) and #DepuisLeCadreDuJeu() or nil }
-    -- Releve detaille en combat (temporaire) : combien d'images, de numeros
-    -- et de noms lisibles ; le pire moment (le plus d'icones) est garde.
-    if enCombat then
-        local x = d.combat
-        x.icones, x.ids, x.noms, x.reservees, x.nuisibles = 0, 0, 0, #reservees, 0
-        for _, e in ipairs(liste) do if e.nuisible then x.nuisibles = x.nuisibles + 1 end end
-        x.images = {}
-        for _, e in ipairs(liste) do
-            if e.icone ~= nil and not Secret(e.icone) then x.icones = x.icones + 1 table.insert(x.images, tostring(e.icone)) end
-            if e.id ~= nil and not Secret(e.id) then x.ids = x.ids + 1 end
-            if e.nom ~= nil and not Secret(e.nom) then x.noms = x.noms + 1 end
-        end
-        x.reserveesImages = {}
-        for _, e in ipairs(reservees) do table.insert(x.reserveesImages, tostring(e.icone) .. (e.actif and "+" or "-")) end
-        if not d.pire or (x.montres or 0) > (d.pire.montres or 0) then d.pire = x end
-    end
+    d.pire = nil
     -- Petits sorts des autres non choisis : ni dans la file, ni ailleurs.
     for _, p in ipairs(D.SUIVIS) do
         if not D.Choisi(p) then
