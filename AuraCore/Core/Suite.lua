@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 137
+local VERSION = 138
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -6821,6 +6821,9 @@ local function FenetreInterface()
                   page.rDefaut = O.Rangee()
                   page.cDefaut = O.Case(page.rDefaut, function(oui) Suite.PoserParDefaut(oui and true or false) end)
                   page.cDefaut:SetPoint("RIGHT", page.rDefaut, "RIGHT", -8, 0)
+                  page.rFonduM = O.Rangee()
+                  page.cFonduM = O.Case(page.rFonduM, function(oui) Suite.PoserFonduEnMarche(oui and true or false) end)
+                  page.cFonduM:SetPoint("RIGHT", page.rFonduM, "RIGHT", -8, 0)
                   page.rFond = O.Rangee()
                   page.lFond = O.Liste(page.rFond, function() return C() and C().OptionsDeFond() or {} end,
                       function() return C() and C().FondComplet() end, function(v) if C() then C().PoserFondComplet(v) end end)
@@ -6842,6 +6845,8 @@ local function FenetreInterface()
                   page.t1:SetText(TR("Paramétrage de l'interface", "Interface setup"))
                   page.intro:SetText(TR("Le fond des fenêtres, celui des suivis et le panneau du menu, pour toute la suite. Décochez le paramétrage par défaut pour choisir les vôtres.",
                       "Window and tracker backgrounds and the menu panel, for the whole suite. Untick the default setup to choose your own."))
+                  page.rFonduM.nom:SetText(TR("Effacer les fenêtres quand je me déplace (jamais en vol)", "Fade windows while I move (never in flight)"))
+                  page.cFonduM:SetChecked(Suite.FonduEnMarche())
                   page.rDefaut.nom:SetText(TR("Paramétrage par défaut", "Default setup"))
                   page.cDefaut:SetChecked(not libre)
                   page.rFond.nom:SetText(TR("Fond de la fenêtre", "Window background"))
@@ -7407,13 +7412,30 @@ end }
 -- ---------------------------------------------------------------------------
 -- Fenetres en sous-brillance quand le personnage se deplace : toutes les
 -- fenetres de la suite ouvertes s'effacent presque entierement des qu'il
--- marche, et reviennent des qu'il s'arrete. Toujours, sans reglage. Les
--- suivis gardent leur propre regle.
+-- marche, et reviennent des qu'il s'arrete. Jamais en vol (trajet d'un maitre
+-- de vol, monture volante) : c'est justement le moment de s'en servir.
+-- Desactivable dans les reglages de l'interface. Les suivis gardent leur
+-- propre regle (sauf en vol, la meme exception).
 -- ---------------------------------------------------------------------------
 
 Suite.FENETRES_FONDU = { "CraftCoreWindow", "QuestCoreFenetre", "MapCoreFenetre", "LegacyCoreFenetre",
     "TradeCoreFenetre", "AuraCoreFenetre", "CoreSuiteReglages", "CoreSuiteMacros", "SagaCoreMessages" }
 local ALPHA_MARCHE = 0.1
+
+-- En vol : trajet de maitre de vol ou monture volante.
+function Suite.EnVol()
+    if _G.UnitOnTaxi then local ok, oui = pcall(_G.UnitOnTaxi, "player") if ok and oui then return true end end
+    if _G.IsFlying then local ok, oui = pcall(_G.IsFlying) if ok and oui then return true end end
+    return false
+end
+-- Le reglage : vrai par defaut.
+function Suite.FonduEnMarche()
+    return not (type(CoreSuiteDB) == "table" and CoreSuiteDB.fonduMarche == false)
+end
+function Suite.PoserFonduEnMarche(oui)
+    CoreSuiteDB = type(CoreSuiteDB) == "table" and CoreSuiteDB or {}
+    if oui then CoreSuiteDB.fonduMarche = nil else CoreSuiteDB.fonduMarche = false end
+end
 
 local function FenetresAFondre()
     local liste, vues = {}, {}
@@ -7438,7 +7460,8 @@ do
         -- Toutes les 0,1 s : la vitesse ; a chaque image : le fondu lui-meme.
         local ok, vitesse = pcall(GetUnitSpeed, "player")
         if not ok or (_G.issecretvalue and _G.issecretvalue(vitesse)) then vitesse = 0 end
-        local cible = ((tonumber(vitesse) or 0) > 0) and ALPHA_MARCHE or 1
+        local bouge = (tonumber(vitesse) or 0) > 0 and Suite.FonduEnMarche() and not Suite.EnVol()
+        local cible = bouge and ALPHA_MARCHE or 1
         if attente > 0 and veille.cible == cible and not veille.enCours then return end
         attente = 0.1
         veille.cible = cible

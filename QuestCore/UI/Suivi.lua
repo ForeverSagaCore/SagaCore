@@ -2977,7 +2977,9 @@ local function Cible(survole)
     local vitesse = NS.Appeler(GetUnitSpeed, "player") or 0
     -- En combat, le jeu peut rendre une valeur secrete : on ne s'en sert pas.
     if _G.issecretvalue and _G.issecretvalue(vitesse) then vitesse = 0 end
-    if vitesse > 0 then return s.alphaMouvement end
+    -- En vol (maitre de vol, monture volante) : le suivi reste lisible.
+    local enVol = (NS.Appeler(UnitOnTaxi, "player")) or (_G.IsFlying and NS.Appeler(_G.IsFlying))
+    if vitesse > 0 and not enVol then return s.alphaMouvement end
     if s.modeRepos == "survol" then return s.alphaMouvement end
     return s.alphaRepos
 end
