@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 134
+local VERSION = 135
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -149,6 +149,7 @@ local DICO = {
     frFR = {
         ["Show or hide everything"] = "Tout afficher ou tout masquer",
         ["Open"] = "Ouvrir",
+        ["Change guide"] = "Changer de guide",
         ["Route add-ons"] = "Add-ons d'itinéraire",
         ["Shortest Path Forever and TomTom draw a detailed route. Install them with CurseForge or WowUp, then restart the game : they become available here."] = "Shortest Path Forever et TomTom tracent un itinéraire détaillé. Installez-les avec CurseForge ou WowUp, puis relancez le jeu : ils deviennent disponibles ici.",
         ["Greyed : add-on not installed (see the i)."] = "Grisé : add-on non installé (voir le i).",
@@ -2551,6 +2552,14 @@ local function CadreGuidage()
     c.temps:SetTextColor(0.8, 0.8, 0.8)
     c.qui = c:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     c.qui:SetPoint("TOP", c.temps, "BOTTOM", 0, -1)
+    -- Sous la boussole, pour tous les guidages : changer de guide en route
+    -- (quand un add-on d'itineraire est installe).
+    c.changer = CreateFrame("Button", "CoreSuiteGuidageChanger", c, "UIPanelButtonTemplate")
+    c.changer:SetSize(130, 20)
+    c.changer:SetPoint("TOP", c.qui, "BOTTOM", 0, -6)
+    c.changer:SetText(TX("Change guide"))
+    c.changer:SetScript("OnClick", function() Suite.ChangerDeGuide() end)
+    c.changer:Hide()
     local attente = 0
     c:SetScript("OnUpdate", function(self, ecoule)
         attente = attente - (ecoule or 0)
@@ -2558,6 +2567,7 @@ local function CadreGuidage()
         attente = 0.05
         local f = Suite.guide.fournisseur
         if not f then self:Hide() return end
+        if self.changer then self.changer:SetShown(Suite.PeutChangerDeGuide and Suite.PeutChangerDeGuide() or false) end
         local ok, cible, raison, detail = pcall(f.Cible)
         if not ok then return end
         if not cible then
