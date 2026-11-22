@@ -1587,6 +1587,21 @@ local function RendreReglages(contenu)
             contenu.sauverCompo:SetHeight(24)
             contenu.sauverCompo:SetScript("OnClick", function() S.SauverComposition() ecran.Montrer("reglages") end)
         end
+        -- Apparence de toute la suite (jeu d'origine ou moderne), hors du
+        -- parametrage par defaut : elle se choisit toujours.
+        if not contenu.listeHabillage and S.OptionsHabillage then
+            contenu.libelleHabillage = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            contenu.listeHabillage = S.ListeDeroulante(contenu, function() return S.OptionsHabillage() end,
+                function() return S.Habillage() end, function(v) S.PoserHabillage(v) end,
+                function() ecran.Montrer("reglages") end)
+        end
+        if contenu.listeHabillage then
+            local fr = S.Langue and S.Langue() == "frFR"
+            contenu.libelleHabillage:SetText(fr and "Apparence (recharge l'interface)" or "Look (reloads the interface)")
+            contenu.libelleHabillage:Show()
+            contenu.listeHabillage:Show()
+            contenu.listeHabillage.Rendre()
+        end
         contenu.listeFond:Show()
         contenu.listeFondSuivis:Show()
         contenu.listeFond.Rendre()
@@ -1705,7 +1720,7 @@ local function RendreReglages(contenu)
         end
         for _, pr in ipairs({ { contenu.libelleFond, contenu.listeFond }, { contenu.libelleFondSuivis, contenu.listeFondSuivis },
             { contenu.libellePanneau, contenu.listePanneau }, { contenu.libelleCompo, contenu.listeCompo },
-            { contenu.libelleSauver, contenu.sauverCompo } }) do
+            { contenu.libelleSauver, contenu.sauverCompo }, { contenu.libelleHabillage, contenu.listeHabillage } }) do
           if pr[1] then
             pr[1]:ClearAllPoints()
             pr[1]:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 7))
@@ -1720,7 +1735,7 @@ local function RendreReglages(contenu)
     -- Les didacticiels ne sont plus dans cette page (ils iront ailleurs).
     contenu.titreTutos:Hide()
     if contenu.titreTutos.filet then contenu.titreTutos.filet:Hide() end
-    local precedent = contenu.sauverCompo or contenu.listeFondSuivis or contenu.libelleFondSuivis
+    local precedent = contenu.listeHabillage or contenu.sauverCompo or contenu.listeFondSuivis or contenu.libelleFondSuivis
     local hauteur = 600
     -- Hauteur reelle quand le jeu la connait : le bas du dernier bloc.
     local haut, bas = contenu:GetTop(), precedent and precedent.GetBottom and precedent:GetBottom()
