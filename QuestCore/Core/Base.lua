@@ -392,13 +392,14 @@ function ref.LigneDonjon(tt, id)
 end
 
 -- Icone des quetes de donjon : celle de l'entree de donjon sur la carte.
+-- Taille 0 : a la hauteur du texte, pour ne pas decaler la ligne.
 local iconeDonjon
 function ref.IconeDonjon()
     if iconeDonjon then return iconeDonjon end
     local ct = _G.C_Texture
     local ok, info = false, nil
     if ct and ct.GetAtlasInfo then ok, info = pcall(ct.GetAtlasInfo, "Dungeon") end
-    iconeDonjon = (ok and info) and "|A:Dungeon:16:16|a" or "|TInterface\\Icons\\INV_Misc_Key_14:14:14|t"
+    iconeDonjon = (ok and info) and "|A:Dungeon:0:0|a" or "|TInterface\\Icons\\INV_Misc_Key_14:0|t"
     return iconeDonjon
 end
 
