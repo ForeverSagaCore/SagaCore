@@ -4703,14 +4703,9 @@ local function PoserIndicesManette(win)
     -- StuffCore n'a pas d'onglet a droite : LT / RT seulement en
     -- presentation 2, de part et d'autre des onglets d'origine.
     if ecran.EstStuff(ecran.page) then
-        local o = NS.equipement and NS.equipement.onglets
-        if ecran.page == "equipement" and NS.equipement.Scenario() == 2 and o and o[1] and o[#o] then
-            Marque(win, "lt", "PADLTRIGGER", o[1], "RIGHT", "LEFT", -2, -2)
-            Marque(win, "rt", "PADRTRIGGER", o[#o], "LEFT", "RIGHT", 4, -2)
-        else
-            Marque(win, "lt", "PADLTRIGGER", nil)
-            Marque(win, "rt", "PADRTRIGGER", nil)
-        end
+        -- LT / RT des onglets d'origine : dans la barre du bas, pas a cote.
+        Marque(win, "lt", "PADLTRIGGER", nil)
+        Marque(win, "rt", "PADRTRIGGER", nil)
     else
         Marque(win, "lt", "PADLTRIGGER", premierOnglet, "BOTTOM", "TOP", 0, 12)
         Marque(win, "rt", "PADRTRIGGER", dernierOnglet, "TOP", "BOTTOM", 0, -10)
@@ -4723,6 +4718,9 @@ local function PoserIndicesManette(win)
     if NS.manette.EnZone and NS.manette.EnZone() then
         actions = { { { "PADDUP", "PADDDOWN", "PADDLEFT", "PADDRIGHT" }, L.PAD_MOVE }, { "PAD1", L.PAD_SELECT } }
         if ecran.page == "recettes" then table.insert(actions, { "PAD3", L.PAD_ADD }) end
+        if ecran.page == "equipement" and NS.equipement and NS.equipement.Scenario() == 2 then
+            table.insert(actions, { { "PADLTRIGGER", "PADRTRIGGER" }, L.PAD_ORIGINS })
+        end
         table.insert(actions, { { "PADBACK", "PAD2" }, L.PAD_ZONE_OUT })
     else
         actions = { { { "PADDUP", "PADDDOWN" }, L.PAD_SCROLL }, { "PADBACK", L.PAD_ZONE_IN } }

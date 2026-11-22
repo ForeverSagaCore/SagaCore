@@ -556,7 +556,7 @@ function equipement.Rendre(contenu, bandeau)
         o:SetText(L["GEAR_CAT_" .. cat])
         o:ClearAllPoints()
         if precedentOnglet then o:SetPoint("LEFT", precedentOnglet, "RIGHT", 2, 0)
-        else o:SetPoint("TOPLEFT", vue, "TOPLEFT", 28, 0) end -- la place de LT
+        else o:SetPoint("TOPLEFT", vue, "TOPLEFT", 4, 0) end
         precedentOnglet = o
         local actif = equipement.Categorie() == cat
         if actif then

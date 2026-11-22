@@ -186,8 +186,8 @@ end
 local function ElementsDeLaPage(win)
     local liste = {}
     if NS.ecran.page == "equipement" then
-        -- Son menu de gauche (scenarios, origines) fait partie de la page.
-        Parcourir(win.menu, liste, 1)
+        -- Le menu de gauche n'en fait pas partie : il se parcourt par LB / RB,
+        -- comme partout.
         Parcourir(win.zoneFixe, liste, 1)
         Parcourir(win.bandeau, liste, 1)
     else
@@ -487,6 +487,13 @@ Traiter = function(win, bouton)
         if bouton == "PADDRIGHT" then DeplacerVers(win, 1, 0) return false end
         if bouton == "PAD1" then Cliquer("LeftButton") return false end
         if bouton == "PAD3" then Cliquer("RightButton") return false end
+        -- Mon equipement en presentation 2 : LT / RT changent d'onglet
+        -- d'origine sans quitter la page.
+        if (bouton == "PADLTRIGGER" or bouton == "PADRTRIGGER") and NS.ecran.page == "equipement"
+            and NS.equipement and NS.equipement.Scenario() == 2 then
+            NS.ecran.MetierVoisin(bouton == "PADLTRIGGER" and -1 or 1)
+            return false
+        end
         -- Toute autre navigation fait sortir de la zone (Repartir).
     end
 
@@ -513,8 +520,10 @@ Traiter = function(win, bouton)
     end
     if bouton == "PADLSHOULDER" then Repartir() ecran.PageVoisine(-1) return false end
     if bouton == "PADRSHOULDER" then Repartir() ecran.PageVoisine(1) return false end
-    if bouton == "PADLTRIGGER" then Repartir() ecran.MetierVoisin(-1) return false end
-    if bouton == "PADRTRIGGER" then Repartir() ecran.MetierVoisin(1) return false end
+    -- StuffCore n'a pas d'onglet a droite : LT / RT n'y font rien hors de la page.
+    local stuff = ecran.EstStuff and ecran.EstStuff(ecran.page)
+    if bouton == "PADLTRIGGER" then if not stuff then Repartir() ecran.MetierVoisin(-1) end return false end
+    if bouton == "PADRTRIGGER" then if not stuff then Repartir() ecran.MetierVoisin(1) end return false end
     if bouton == "PADDLEFT" then Repartir() ecran.PersonnageVoisin(-1) return false end
     if bouton == "PADDRIGHT" then Repartir() ecran.PersonnageVoisin(1) return false end
     -- Hors de la zone centrale, la croix haut / bas fait defiler la page.
