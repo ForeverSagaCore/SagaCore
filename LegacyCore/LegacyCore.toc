@@ -3,7 +3,7 @@
 ## Notes: Your Legacy at a glance: trees of each character, challenges reached, community advice. Read only.
 ## Notes-frFR: Votre héritage d'un coup d'œil : les arbres de chaque personnage, les défis atteints, les conseils de la communauté. Lecture seule.
 ## Author: LegacyCore
-## Version: 0.7.3
+## Version: 0.8.0
 ## IconTexture: Interface\Icons\Spell_Holy_SealOfWisdom
 ## OptionalDeps: QuestCore, CraftCore, MapCore
 ## SavedVariables: LegacyCoreDB, CoreSuiteDB

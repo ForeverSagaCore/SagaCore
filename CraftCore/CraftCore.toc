@@ -3,7 +3,7 @@
 ## Notes: Crafting manager for every profession: stocks across your characters, recipes, projects and what you are missing.
 ## Notes-frFR: Gestionnaire d'artisanat pour tous les métiers : stocks de tous vos personnages, recettes, projets et manques.
 ## Author: CraftCore
-## Version: 0.35.3
+## Version: 0.36.0
 ## IconTexture: Interface\Icons\INV_Misc_Gear_01
 ## SavedVariables: CraftCoreDB, CoreSuiteDB
 ## AddonCompartmentFunc: CraftCore_OnAddonCompartmentClick

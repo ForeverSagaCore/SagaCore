@@ -1,6 +1,6 @@
 # Forever SagaCore
 
-**La suite complète pour World of Warcraft : Forever** : quatre add-ons qui suivent toute l'aventure de vos personnages et fonctionnent ensemble, en un seul téléchargement.
+**La suite complète pour World of Warcraft : Forever** : des add-ons qui suivent toute l'aventure de vos personnages et fonctionnent ensemble, en un seul téléchargement.
 
 | Add-on | Ce qu'il fait |
 |---|---|
@@ -8,9 +8,11 @@
 | **CraftCore** | Métiers, recettes, projets, progression, commandes entre vos personnages, prix et bénéfices. |
 | **MapCore** | Cartes, services (maîtres, réparation, boîtes aux lettres...), vos repères, où sont vos personnages. |
 | **LegacyCore** | Arbres d'héritage, défis du compte, chronologie et temps par niveau. |
+| **StuffCore** | Votre équipement : ce qui l'améliore et d'où ça vient (crafts, butins du monde, quêtes, donjons). Demande CraftCore. |
+| **FriendsCore** | Une petite aide : les add-ons d'autres auteurs qui complètent la suite, et les passerelles qui leur confient une tâche (itinéraires détaillés). |
 | **AuraCore** *(bêta)* | Un anneau discret autour du personnage : améliorations, procs, nourriture, flacon, potion, buffs de groupe, et les effets nuisibles sur leur propre cercle. Aussi publié seul. |
 
-Chaque add-on s'installe aussi seul. Installés ensemble, ils partagent la même barre d'onglets, le même personnage choisi et la même flèche de guidage. Tout se joue aussi à la manette, en 7 langues.
+Chaque add-on s'installe aussi seul (StuffCore demande CraftCore). Installés ensemble, ils partagent la même barre d'onglets, le même personnage choisi et la même flèche de guidage. Tout se joue aussi à la manette, en 7 langues.
 
 Ouvrir la suite là où on l'avait laissée : `/sagacore`.
 
@@ -37,7 +39,7 @@ Si vous aviez déjà installé un des add-ons seul, retirez-le de WowUp avant : 
 ### À la main
 
 1. Téléchargez `ForeverSagaCore-X.Y.Z-forever.zip` depuis la [dernière version](https://github.com/ForeverSagaCore/SagaCore/releases/latest).
-2. Décompressez-le dans `World of Warcraft/_forever_/Interface/AddOns/` : vous obtenez les dossiers `CraftCore`, `QuestCore`, `MapCore`, `LegacyCore` et `AuraCore`.
+2. Décompressez-le dans `World of Warcraft/_forever_/Interface/AddOns/` : vous obtenez les dossiers `CraftCore`, `QuestCore`, `MapCore`, `LegacyCore`, `StuffCore`, `FriendsCore` et `AuraCore`.
 
 ## Signaler un problème
 

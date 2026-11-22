@@ -3458,11 +3458,11 @@ end
 -- ferait le joueur avec sa commande /way.
 -- ---------------------------------------------------------------------------
 
--- La commande de l'add-on de trajet, ou nil s'il n'est pas la. HubCore,
+-- La commande de l'add-on de trajet, ou nil s'il n'est pas la. FriendsCore,
 -- s'il est installe, choisit l'add-on (reglages) ; sinon, Shortest Path
 -- Forever directement.
 function suivi.Passerelle()
-    local hub = _G.HubCoreAPI
+    local hub = _G.FriendsCoreAPI
     if hub and hub.Disponible then return hub.Disponible() and hub or nil end
     local h = _G.hash_SlashCmdList
     local f = type(h) == "table" and h["/PATH"] or nil
@@ -3887,7 +3887,7 @@ function guidage.Basculer(oui, idParcours)
         fournisseur.carte = idParcours and false or nil
         S.Guider("QuestCore", fournisseur)
         if idParcours then pcall(guidage.MontrerItineraire, idParcours) end
-        -- Un add-on de trajet installe (choisi dans HubCore) recoit l'etape
+        -- Un add-on de trajet installe (choisi dans FriendsCore) recoit l'etape
         -- tout seul : plus de bouton a part pour lui.
         if suivi.Passerelle and suivi.Passerelle() and suivi.EnvoyerEtape then
             local idE = idParcours

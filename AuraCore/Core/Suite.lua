@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 125
+local VERSION = 126
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -83,6 +83,8 @@ Suite.ORDRE = {
     { cle = "LegacyCore", icone = "Interface\\Icons\\Spell_Holy_SealOfWisdom" },
     -- Mon equipement et les caisses : un add-on a part (servi par CraftCore).
     { cle = "StuffCore", icone = "Interface\\Icons\\INV_Chest_Chain" },
+    -- Une petite aide : les add-ons amis (itineraires detailles...).
+    { cle = "FriendsCore", icone = "Interface\\Icons\\Spell_Nature_FarSight", discret = true },
     -- Discret : montre seulement s'il est installe (pas dans la premiere
     -- version publiee).
     { cle = "TradeCore", icone = "Interface\\Icons\\INV_Misc_Coin_02", discret = true },

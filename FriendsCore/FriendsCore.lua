@@ -1,15 +1,15 @@
 local _, NS = ...
 
--- HubCore : le carrefour de la suite.
+-- FriendsCore : une petite aide de la suite, les add-ons amis.
 --
 -- D'autres auteurs font tres bien certaines choses (le chemin detaille
 -- jusqu'a un point, le journal des donjons...). Plutot que de les refaire,
 -- la suite les reconnait quand le joueur les a installes et leur confie la
--- tache : c'est leur interface qui s'affiche, sous leur nom. HubCore ne
+-- tache : c'est leur interface qui s'affiche, sous leur nom. FriendsCore ne
 -- reprend rien de leur code ni de leurs donnees ; il leur passe une
 -- demande, comme le joueur le ferait avec leur commande.
 --
--- Pour les autres add-ons de la suite : _G.HubCoreAPI.
+-- Pour les autres add-ons de la suite : _G.FriendsCoreAPI.
 --   Disponible() : vrai si un add-on de trajet est la (selon les reglages)
 --   NomTrajet()  : son nom
 --   Trajet({ carte, x, y, titre }) : lui demande le chemin jusqu'au point
@@ -24,8 +24,8 @@ local function T(fr, en)
 end
 
 local function R()
-    HubCoreDB = type(HubCoreDB) == "table" and HubCoreDB or {}
-    local d = HubCoreDB
+    FriendsCoreDB = type(FriendsCoreDB) == "table" and FriendsCoreDB or {}
+    local d = FriendsCoreDB
     if d.trajet ~= "spf" and d.trajet ~= "tomtom" and d.trajet ~= "aucun" then d.trajet = "auto" end
     if d.couperFleche == nil then d.couperFleche = true end
     return d
@@ -145,7 +145,7 @@ local function Envoyer(dest)
     return true
 end
 
-_G.HubCoreAPI = {
+_G.FriendsCoreAPI = {
     Disponible = function() return Moyen() ~= nil end,
     NomTrajet = function()
         local m = Moyen()
@@ -171,8 +171,8 @@ function F.Construire()
     local S = _G.CoreSuite
     if F.w or not (S and S.FenetreAPages) then return F.w end
     F.w = S.FenetreAPages({
-        nom = "HubCoreFenetre", cle = "HubCore", icone = "Interface\\Icons\\Spell_Nature_FarSight",
-        titre = function() return "HubCore" end,
+        nom = "FriendsCoreFenetre", cle = "FriendsCore", icone = "Interface\\Icons\\Spell_Nature_FarSight",
+        titre = function() return "FriendsCore" end,
         pages = {
             { cle = "addons", icone = "Interface\\Icons\\Spell_Nature_FarSight",
               libelle = function() return T("Add-ons recommandés", "Recommended add-ons") end,
@@ -196,7 +196,7 @@ function F.Construire()
                       b.copier = O.Bouton(b.rLien, 80, function()
                           champ:SetFocus()
                           champ:HighlightText()
-                          print("|cffffd100HubCore|r " .. T("Adresse sélectionnée : Cmd+C (ou Ctrl+C) pour la copier.",
+                          print("|cffffd100FriendsCore|r " .. T("Adresse sélectionnée : Cmd+C (ou Ctrl+C) pour la copier.",
                               "Address selected: Cmd+C (or Ctrl+C) to copy it."))
                       end)
                       b.copier:ClearAllPoints()
@@ -269,7 +269,7 @@ function F.Construire()
                       "The quest tracker knows what to do and in which order. For the way itself, it hands over to a route add-on: the \"Detailed route\" button sends it the next step."))
                   page.rMoyen.nom:SetText(T("Add-on de trajet", "Route add-on"))
                   page.rActuel.nom:SetText(T("Utilisé maintenant", "Used now"))
-                  local nom = _G.HubCoreAPI.NomTrajet()
+                  local nom = _G.FriendsCoreAPI.NomTrajet()
                   page.actuel:SetText(nom or T("Aucun : le bouton est caché", "None: the button is hidden"))
                   page.rCouper.nom:SetText(T("Couper la flèche de la suite", "Turn off the suite's arrow"))
                   page.cCouper:SetChecked(R().couperFleche)
@@ -283,18 +283,18 @@ end
 
 function F.Ouvrir()
     local S = _G.CoreSuite
-    if F.Construire() and S and S.Ouvrir then S.Ouvrir("HubCore") return true end
+    if F.Construire() and S and S.Ouvrir then S.Ouvrir("FriendsCore") return true end
     return false
 end
 
 -- Une icone dans la suite (minicarte, en-tetes des fenetres), comme les
--- autres modules : montree des que HubCore est installe.
+-- autres modules : montree des que FriendsCore est installe.
 local function Rejoindre()
     local S = _G.CoreSuite
     if not (S and type(S.ORDRE) == "table") then return end
-    for _, info in ipairs(S.ORDRE) do if info.cle == "HubCore" then return end end
-    table.insert(S.ORDRE, { cle = "HubCore", icone = "Interface\\Icons\\Spell_Nature_FarSight", discret = true })
-    if S.Annoncer then S.Annoncer("HubCore") end
+    for _, info in ipairs(S.ORDRE) do if info.cle == "FriendsCore" then return end end
+    table.insert(S.ORDRE, { cle = "FriendsCore", icone = "Interface\\Icons\\Spell_Nature_FarSight", discret = true })
+    if S.Annoncer then S.Annoncer("FriendsCore") end
 end
 
 pcall(Rejoindre)
@@ -315,7 +315,7 @@ SLASH_HUBCORE1 = "/hub"
 SLASH_HUBCORE2 = "/hubcore"
 SlashCmdList.HUBCORE = function()
     if not F.Ouvrir() then
-        print("|cffffd100HubCore|r " .. T("a besoin d'un module de la suite (CraftCore, QuestCore, MapCore ou LegacyCore).",
+        print("|cffffd100FriendsCore|r " .. T("a besoin d'un module de la suite (CraftCore, QuestCore, MapCore ou LegacyCore).",
             "needs one module of the suite (CraftCore, QuestCore, MapCore or LegacyCore)."))
     end
 end
