@@ -12,7 +12,8 @@ NS.carte = {}
 local C = NS.carte
 local T = NS.T
 
-local DEFAUTS = { taille = 300, alphaMarche = 0.35, alphaArret = 0.9, verrouillee = false, partout = false, affichee = true }
+local DEFAUTS = { taille = 300, alphaMarche = 0.35, alphaArret = 0.9, verrouillee = false, partout = false, affichee = true,
+    objectifs = true, porteurs = true, minuteurs = true }
 function C.Reglages()
     PvPCoreDB = type(PvPCoreDB) == "table" and PvPCoreDB or {}
     PvPCoreDB.carte = type(PvPCoreDB.carte) == "table" and PvPCoreDB.carte or {}
@@ -71,9 +72,10 @@ local function Construire()
     f.tuiles, f.points, f.poi = {}, {}, {}
     f.nom = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     f.nom:SetPoint("TOP", f, "TOP", 0, -8)
-    -- Les objectifs du champ de bataille, en direct, sous la carte.
+    -- Sous la carte, en direct : objectifs (et fin estimee des ressources),
+    -- debut de la partie, porteurs de drapeau, minuteurs de capture.
     f.objectifs = {}
-    for i = 1, 6 do
+    for i = 1, 12 do
         local t = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         t:SetPoint("TOP", i == 1 and f or f.objectifs[i - 1], "BOTTOM", 0, i == 1 and -4 or -2)
         t:SetShadowOffset(1, -1)
@@ -282,14 +284,33 @@ function C.Demarrer()
         if attentePoi <= 0 then
             attentePoi = 2
             PointsDInteret(f, carte)
+            if NS.champ then NS.champ.PointsDInteret(carte) end
         end
-        -- Objectifs : quatre fois par seconde, comme les positions.
-        local textes = NS.honneur.Objectifs()
+        -- Sous la carte : quatre fois par seconde, comme les positions.
+        local lignes = C.LignesSousCarte()
         for i, t in ipairs(f.objectifs) do
-            t:SetText(textes[i] or "")
-            t:SetShown(textes[i] ~= nil)
+            local l = lignes[i]
+            t:SetText(l and l.texte or "")
+            local c = l and l.couleur or { 1, 1, 1 }
+            t:SetTextColor(c[1], c[2], c[3])
+            t:SetShown(l ~= nil)
         end
     end)
+end
+
+-- Les lignes sous la carte, selon les reglages.
+function C.LignesSousCarte()
+    local r = R()
+    local lignes = {}
+    if r.objectifs then
+        local textes = NS.honneur.Objectifs()
+        if NS.champ then textes = NS.champ.Annoter(textes) end
+        for _, texte in ipairs(textes) do table.insert(lignes, { texte = texte }) end
+    end
+    if NS.champ then
+        for _, l in ipairs(NS.champ.Lignes({ porteurs = r.porteurs, minuteurs = r.minuteurs })) do table.insert(lignes, l) end
+    end
+    return lignes
 end
 
 -- Remet la carte au centre (reglages).

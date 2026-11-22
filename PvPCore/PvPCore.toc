@@ -1,9 +1,9 @@
 ## Interface: 16001
 ## Title: PvPCore
-## Notes: PvP made simple : a battleground map you place anywhere with its own transparency, your honour, rank, queues, battleground objectives and PvP quests.
-## Notes-frFR: Le JcJ simplement : une carte de champ de bataille à placer où vous voulez avec sa propre transparence, votre honneur, votre rang, les files d'attente, les objectifs du champ de bataille et les quêtes JcJ.
+## Notes: PvP made simple : a battleground map you place anywhere, flag carriers and capture timers, today's honour with diminishing returns, weekly goal, match history, queues and PvP quests.
+## Notes-frFR: Le JcJ simplement : une carte de champ de bataille à placer où vous voulez, porteurs de drapeau et minuteurs de capture, honneur du jour avec rendement décroissant, objectif de la semaine, historique des parties, files d'attente et quêtes JcJ.
 ## Author: ForeverSagaCore
-## Version: 0.1.0
+## Version: 0.2.0
 ## IconTexture: Interface\Icons\INV_BannerPVP_02
 ## X-Category: PvP
 ## X-Website: https://github.com/ForeverSagaCore/SagaCore
@@ -15,6 +15,9 @@ Core\Langue.lua
 Core\Suite.lua
 UI\Charte.lua
 Core\Honneur.lua
+Core\Victoires.lua
+Core\Champ.lua
+Core\Parties.lua
 UI\Carte.lua
 UI\Fenetre.lua
 PvPCore.lua
