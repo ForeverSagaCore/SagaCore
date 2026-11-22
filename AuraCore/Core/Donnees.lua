@@ -92,6 +92,66 @@ D.SOI = {
 -- Consommables : flacons et elixirs courants, nourriture.
 D.FLACONS = { 17626, 17627, 17628, 17629, 17538, 11405, 11334, 11328, 3160, 3593, 11348, 11396, 17535, 11390, 11406, 17537, 17539 }
 D.NOURRITURE = { 19705, 24799, 18191, 18192, 18193, 18194, 18222, 22730, 25661 }
+
+-- Tous les elixirs et flacons, pas seulement ceux de la liste : chaque objet
+-- de vos sacs dont le nom dit Elixir ou Flacon donne le nom de son effet
+-- (GetItemSpell). Appris une fois, garde pour toujours (AuraCoreDB), meme
+-- quand le dernier a ete bu.
+-- (string.lower ne touche pas aux lettres accentuees : "Élixir" a sa propre entree.)
+local MOTS_CONSO = { "élixir", "Élixir", "elixir", "flacon", "flask" }
+local function ConsoApprises()
+    AuraCoreDB = type(AuraCoreDB) == "table" and AuraCoreDB or {}
+    AuraCoreDB.elixirs = type(AuraCoreDB.elixirs) == "table" and AuraCoreDB.elixirs or {}
+    return AuraCoreDB.elixirs
+end
+D.ConsoApprises = ConsoApprises
+local function EstElixir(nomObjet)
+    local brut = nomObjet or ""
+    local bas = string.lower(brut)
+    for _, m in ipairs(MOTS_CONSO) do
+        if string.find(bas, m, 1, true) or string.find(brut, m, 1, true) then return true end
+    end
+    return false
+end
+function D.ApprendreDesSacs()
+    local C = _G.C_Container
+    local nbCases = (C and C.GetContainerNumSlots) or _G.GetContainerNumSlots
+    local idDe = (C and C.GetContainerItemID) or _G.GetContainerItemID
+    local sortDe = (_G.C_Item and _G.C_Item.GetItemSpell) or _G.GetItemSpell
+    local infoDe = (_G.C_Item and _G.C_Item.GetItemInfo) or _G.GetItemInfo
+    if not (nbCases and idDe and sortDe and infoDe) then return 0 end
+    local apprises, nouvelles = ConsoApprises(), 0
+    for sac = 0, 4 do
+        local okN, n = pcall(nbCases, sac)
+        for case = 1, (okN and tonumber(n)) or 0 do
+            local okI, id = pcall(idDe, sac, case)
+            if okI and id then
+                local okNom, nomObjet = pcall(infoDe, id)
+                if okNom and nomObjet and EstElixir(nomObjet) then
+                    local okS, effet = pcall(sortDe, id)
+                    if okS and type(effet) == "string" and effet ~= "" and not apprises[effet] then
+                        apprises[effet] = id
+                        nouvelles = nouvelles + 1
+                    end
+                end
+            end
+        end
+    end
+    return nouvelles
+end
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:RegisterEvent("BAG_UPDATE_DELAYED")
+    local attente = false
+    f:SetScript("OnEvent", function()
+        -- Regroupe les mises a jour des sacs (elles arrivent par rafales).
+        if attente then return end
+        attente = true
+        local function Faire() attente = false pcall(D.ApprendreDesSacs) end
+        if _G.C_Timer and _G.C_Timer.After then _G.C_Timer.After(1, Faire) else Faire() end
+    end)
+end
 -- Potions de soins et de mana, de la meilleure a la plus petite.
 D.POTIONS = { 13446, 3928, 1710, 929, 858, 118, 13444, 13443, 6149, 3827, 3385, 2455 }
 

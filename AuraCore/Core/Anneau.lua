@@ -559,6 +559,12 @@ local function Relever()
         titre = T("Nourriture", "Food"), nom = nom, index = nom and indexDes[nom], conso = true })
     Noter(nom)
     b, id, nom = Premier(D.FLACONS, buffs)
+    -- Sinon, un elixir ou un flacon appris dans les sacs.
+    if not nom and D.ConsoApprises then
+        for effet in pairs(D.ConsoApprises()) do
+            if buffs[effet] then b, nom = buffs[effet], effet break end
+        end
+    end
     table.insert(reservees, { icone = (type(b) ~= "boolean" and b) or "Interface\\Icons\\INV_Potion_97", actif = nom ~= nil,
         titre = T("Flacon ou élixir", "Flask or elixir"), nom = nom, index = nom and indexDes[nom], conso = true })
     Noter(nom)
