@@ -151,6 +151,8 @@ local function CreerLigneCandidat(parent, index)
     ligne.fond:SetAllPoints()
     ligne.fond:SetColorTexture(0.35, 0.28, 0.12, 0.5)
     ligne.fond:Hide()
+    -- Fond de selection (l'apparence moderne en fait un trait d'accent).
+    ligne.fondSelection = true
 
     ligne.icone = ligne:CreateTexture(nil, "ARTWORK")
     ligne.icone:SetSize(18, 18)
@@ -571,6 +573,10 @@ function equipement.Rendre(contenu, bandeau)
         o:SetWidth(largeurOnglet)
         local fs = o.GetFontString and o:GetFontString()
         if fs then fs:SetWidth(largeurOnglet - 16) fs:SetWordWrap(false) end
+        -- Apparence moderne : le cadre du theme, l'onglet ouvert en accent,
+        -- le libelle centre (rien ne change dans l'apparence du jeu).
+        local S = _G.CoreSuite
+        if S and S.UI and S.UI.MajOngletHaut then pcall(S.UI.MajOngletHaut, o, actif) end
         o:SetScript("OnClick", function()
             equipement.PoserCategorie(cat)
             NS.ecran.selectionObjets = {}
@@ -608,7 +614,10 @@ function equipement.Rendre(contenu, bandeau)
         bouton.marque:SetShown(combien > 0)
 
         if emplacement.nom == vue.choisi then
-            bouton.ou:SetTextColor(1, 0.82, 0)
+            -- L'emplacement choisi : la couleur de selection (accent du theme
+            -- en apparence moderne, or du jeu sinon), jamais un bandeau.
+            local S = _G.CoreSuite
+            if S and S.CouleurSelection then bouton.ou:SetTextColor(S.CouleurSelection()) else bouton.ou:SetTextColor(1, 0.82, 0) end
         else
             bouton.ou:SetTextColor(0.82, 0.69, 0.4)
         end
@@ -679,7 +688,11 @@ function equipement.Rendre(contenu, bandeau)
         end
         local actif = filtresPerso[sous] == true
         bouton:SetText(nomsMatieres[sous])
-        bouton:SetWidth(math.max(54, (bouton.GetTextWidth and bouton:GetTextWidth() or 40) + 16))
+        -- Apparence moderne : la hauteur et la marge des autres boutons.
+        local S = _G.CoreSuite
+        local moderne = S and S.UI and S.UI.EstModerne and S.UI.EstModerne()
+        bouton:SetHeight(moderne and 22 or 18)
+        bouton:SetWidth(math.max(54, (bouton.GetTextWidth and bouton:GetTextWidth() or 40) + (moderne and 28 or 16)))
         -- Preference pleine ; matiere depassee en retrait, meme active.
         if portables[sous] == "prefere" then
             bouton:SetAlpha(actif and 1 or 0.6)
@@ -692,7 +705,7 @@ function equipement.Rendre(contenu, bandeau)
         end)
         bouton:ClearAllPoints()
         if precedentFiltre then
-            bouton:SetPoint("LEFT", precedentFiltre, "RIGHT", 3, 0)
+            bouton:SetPoint("LEFT", precedentFiltre, "RIGHT", moderne and 8 or 3, 0)
         else
             bouton:SetPoint("TOPLEFT", choix.sousTitre, "BOTTOMLEFT", 0, -6)
         end

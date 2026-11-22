@@ -1335,6 +1335,9 @@ UI.MODERNE = {
     coche = MEDIA_M .. "moderne_coche",
     fleche = MEDIA_M .. "moderne_fleche",
     bouton = MEDIA_M .. "moderne_bouton",
+    moins = MEDIA_M .. "moderne_moins",
+    plus = MEDIA_M .. "moderne_plus",
+    roue = MEDIA_M .. "moderne_roue",
 }
 -- Les themes de l'apparence moderne : la meme base (fond sombre presque
 -- opaque, bordure des infobulles du jeu, boutons en degrade lisse a texte or,
@@ -1695,6 +1698,8 @@ local function Survol(b, marge)
     h:ClearAllPoints()
     h:SetPoint("TOPLEFT", marge, -marge)
     h:SetPoint("BOTTOMRIGHT", -marge, marge)
+    -- Effacee avec les autres textures du cadre : rendue visible.
+    h:SetAlpha(1) h:Show()
     TeinterJeton(h, "survol")
 end
 
@@ -1796,6 +1801,294 @@ function UI.HabillerFenetre(cadre)
     end
 end
 
+-- Le fichier d'une texture, en minuscules, quand le jeu le dit (sinon nil).
+local function FichierDe(t)
+    if not t then return nil end
+    local f = t.GetTextureFilePath and t:GetTextureFilePath()
+    if type(f) ~= "string" then f = t.GetTexture and t:GetTexture() end
+    return type(f) == "string" and f:lower() or nil
+end
+-- Barre de titre : la croix, puis les boutons poses a sa gauche (replier,
+-- ouvrir l'add-on...) et la roue des reglages a gauche. Tous au meme cadre
+-- (16 x 16, bordure du theme), centres sur la ligne de la croix, 4 points
+-- entre deux. Les pictos du jeu (plus, moins, roue) sont redessines comme
+-- la croix ; une icone reste une icone, dans le cadre.
+local TITRE_TAILLE, TITRE_ECART, TITRE_MARGE = 16, 4, 7
+local function PictoDuBouton(b, fichier)
+    local f = type(fichier) == "string" and fichier:lower() or FichierDe(b.GetNormalTexture and b:GetNormalTexture())
+    if not f then return nil end
+    if f:find("plusbutton") then return "plus" end
+    if f:find("minusbutton") then return "moins" end
+    if f:find("optionsbutton") then return "roue" end
+    return nil
+end
+local function HabillerBoutonDeTitre(b, defaut)
+    if fait[b] then return end
+    fait[b] = true
+    local M = UI.MODERNE
+    b:SetSize(TITRE_TAILLE, TITRE_TAILLE)
+    Plat(b, M.surface, M.contour, M.rayonCroix)
+    Survol(b)
+    BordureAuSurvol(b)
+    local e = Extra(b)
+    local function Maj(self, fichier)
+        if not Actif() then return end
+        local nom = PictoDuBouton(self, fichier) or defaut
+        local n = self.GetNormalTexture and self:GetNormalTexture()
+        local pousse = self.GetPushedTexture and self:GetPushedTexture()
+        if nom then
+            if not e.picto then
+                e.picto = self:CreateTexture(nil, "ARTWORK", nil, 7)
+                e.picto:SetPoint("CENTER")
+                e.picto:SetSize(10, 10)
+                TeinterJeton(e.picto, "texteDoux")
+            end
+            e.picto:SetTexture(UI.MODERNE[nom])
+            e.picto:Show()
+            if n then n:SetAlpha(0) end
+            if pousse then pousse:SetAlpha(0) end
+        else
+            -- Une icone : dans le cadre, rognee comme les onglets.
+            if e.picto then e.picto:Hide() end
+            if n then
+                n:ClearAllPoints() n:SetPoint("TOPLEFT", 3, -3) n:SetPoint("BOTTOMRIGHT", -3, 3)
+                if n.SetTexCoord then n:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+                n:SetAlpha(1)
+            end
+            if pousse then pousse:SetAlpha(0) end
+        end
+    end
+    Maj(b)
+    -- Le jeu change le picto (replier / deplier) : on suit.
+    if b.SetNormalTexture then hooksecurefunc(b, "SetNormalTexture", Maj) end
+    b:HookScript("OnEnter", function() if e.picto then e.picto:SetVertexColor(1, 1, 1) end end)
+    b:HookScript("OnLeave", function() if e.picto then Couleur(e.picto, UI.MODERNE.texteDoux) end end)
+end
+-- Pose un point seulement s'il a change (la veille repasse souvent).
+local function Ancrer(f, point, rel, relPoint, x, y)
+    if f.GetNumPoints and f:GetNumPoints() == 1 then
+        local p, r, rp, px, py = f:GetPoint(1)
+        if p == point and r == rel and rp == relPoint and px == x and py == y then return end
+    end
+    f:ClearAllPoints()
+    f:SetPoint(point, rel, relPoint, x, y)
+end
+function UI.RangerBarreDeTitre(cadre)
+    if not (Actif() and Touchable(cadre)) then return end
+    local croix = cadre.fermer or cadre.CloseButton or cadre.closeButton or (cadre.TitleContainer and cadre.TitleContainer.CloseButton)
+    if croix and Touchable(croix) and fait[croix] then
+        Ancrer(croix, "TOPRIGHT", cadre, "TOPRIGHT", -TITRE_MARGE, -TITRE_MARGE)
+        -- Les boutons en chaine a gauche de la croix.
+        local enfants = { cadre:GetChildren() }
+        local prec, vus = croix, { [croix] = true }
+        for _ = 1, 6 do
+            local suivant
+            for _, b in ipairs(enfants) do
+                if not vus[b] and Touchable(b) and b.GetObjectType and b:GetObjectType() == "Button"
+                    and b.GetNumPoints and b:GetNumPoints() == 1 and (b:GetWidth() or 99) <= 26 then
+                    local p, rel, rp = b:GetPoint(1)
+                    if rel == prec and p == "RIGHT" and rp == "LEFT" then suivant = b break end
+                end
+            end
+            if not suivant then break end
+            vus[suivant] = true
+            HabillerBoutonDeTitre(suivant, suivant == cadre.replier and "moins" or nil)
+            Ancrer(suivant, "RIGHT", prec, "LEFT", -TITRE_ECART, 0)
+            prec = suivant
+        end
+    end
+    -- La roue des reglages, a gauche, en miroir de la croix.
+    local roue = cadre.boutonReglages
+    if roue and Touchable(roue) then
+        HabillerBoutonDeTitre(roue, "roue")
+        Ancrer(roue, "TOPLEFT", cadre, "TOPLEFT", TITRE_MARGE, -TITRE_MARGE)
+    end
+    -- Le titre, centre sur la meme ligne que la croix.
+    local titre = Extra(cadre).titre
+    if titre and titre.SetPoint then
+        Ancrer(titre, "CENTER", cadre, "TOP", 0, -(TITRE_MARGE + TITRE_TAILLE / 2))
+        if titre.SetWordWrap then titre:SetWordWrap(false) end
+    end
+end
+
+-- La bande sous le titre (portraits, filtres) : entre le filet du titre et
+-- le haut du fond, jamais par-dessus le filet. Une fois, des que le jeu
+-- connait la place du fond.
+function UI.PlacerEntete(cadre)
+    if not (Actif() and Touchable(cadre)) then return end
+    local e = Extra(cadre)
+    local ent, fond = cadre.entete, cadre.fond
+    if e.entetePlacee or not (ent and fond and ent.GetPoint and fond.GetTop) then return end
+    local ct, ft = cadre:GetTop(), fond:GetTop()
+    if not (ct and ft) then return end
+    e.entetePlacee = true
+    if ct - ft < 29 + 24 then return end
+    -- Plus de portrait du jeu en moderne : la bande part du bord du menu
+    -- (fond + marge), alignee sur le contenu.
+    ent:ClearAllPoints()
+    ent:SetPoint("TOPLEFT", cadre, "TOPLEFT", 16, -30)
+    ent:SetPoint("BOTTOMRIGHT", fond, "TOPRIGHT", -12, 0)
+end
+
+-- Menu, centre, haut et pied d'une fenetre a menu : le panneau du menu et le
+-- fond central se touchent, un filet vertical d'un pixel entre les deux ;
+-- la bande sous le titre (portraits) et le pied (boutons) prennent la
+-- texture du panneau, chacune separee du centre par un filet. Pose une
+-- fois, des que le jeu connait la place des elements.
+local bandes = setmetatable({}, { __mode = "k" })
+function UI.HabillerCompartiments(cadre)
+    if not (Actif() and Touchable(cadre)) then return end
+    local e = Extra(cadre)
+    if e.compartiments then return end
+    local fond, fm, p = cadre.fond, cadre.fondMenu, cadre.parchemin
+    local roche = type(p) == "table" and p.roche
+    if not (fond and fm and roche and fond.GetTop and fm.GetNumPoints) then return end
+    -- Le repere du menu : le trait (invisible) ou s'accroche le panneau.
+    local trait = cadre.trait
+    if not trait then
+        for i = 1, fm:GetNumPoints() do
+            local pt, rel = fm:GetPoint(i)
+            if pt == "BOTTOMRIGHT" then trait = rel end
+        end
+    end
+    if not (trait and trait.GetTop) then return end
+    local ct, cb = cadre:GetTop(), cadre:GetBottom()
+    local ft, fb = fond:GetTop(), fond:GetBottom()
+    local tt, tb = trait:GetTop(), trait:GetBottom()
+    if not (ct and cb and ft and fb and tt and tb) or ct <= cb then return end
+    e.compartiments = true
+    local M = UI.MODERNE
+    local PU = _G.PixelUtil
+    local function Net(t) if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(false) t:SetTexelSnappingBias(0) end end
+    -- Le filet vertical, de haut en bas du fond.
+    local sep = fond:CreateTexture(nil, "BORDER")
+    local c = M.couleurFilet
+    sep:SetColorTexture(c[1], c[2], c[3], c[4])
+    filets[sep] = true
+    Net(sep)
+    sep:SetPoint("TOPLEFT", trait, "TOPLEFT", 0, ft - tt)
+    sep:SetPoint("BOTTOMLEFT", trait, "BOTTOMLEFT", 0, fb - tb)
+    if PU and PU.SetWidth then PU.SetWidth(sep, 1, 1) else sep:SetWidth(1) end
+    e.separation = sep
+    -- Le panneau du menu jusqu'au filet, le fond central depuis le filet :
+    -- plus aucun vide entre les deux.
+    fm:ClearAllPoints()
+    fm:SetPoint("TOPLEFT", cadre, "TOPLEFT", 4, ft - ct)
+    fm:SetPoint("BOTTOMRIGHT", sep, "BOTTOMLEFT", 0, 0)
+    roche:ClearAllPoints()
+    roche:SetPoint("TOPLEFT", sep, "TOPRIGHT", 0, 0)
+    roche:SetPoint("BOTTOMRIGHT", cadre, "BOTTOMRIGHT", -4, fb - cb)
+    -- Bande du haut (sous le filet du titre) et pied, a la texture du panneau.
+    local function Bande(haut, bas)
+        local t = cadre:CreateTexture(nil, "BACKGROUND", nil, 2)
+        t:SetTexture(M.menu)
+        t:SetPoint("TOPLEFT", cadre, "TOPLEFT", 4, haut)
+        t:SetPoint("BOTTOMRIGHT", cadre, "TOPRIGHT", -4, bas)
+        bandes[t] = true
+        return t
+    end
+    local function Filet(y)
+        local f = cadre:CreateTexture(nil, "BORDER")
+        f:SetColorTexture(1, 1, 1, 1)
+        UI.Filet(f, "TOPLEFT", cadre, "TOPLEFT", 4, y, "TOPRIGHT", cadre, "TOPRIGHT", -4, y)
+        return f
+    end
+    if ct - ft > 29 + 4 then
+        e.bandeHaut = Bande(-29, ft - ct)
+        e.filetHaut = Filet(ft - ct + 1)
+    end
+    if fb - cb > 4 + 4 then
+        e.bandeBas = Bande(fb - ct, -(ct - cb) + 4)
+        e.filetBas = Filet(fb - ct)
+    end
+end
+
+-- Un element choisi (portrait, icone d'onglet, case d'equipement...) : le
+-- halo epais du jeu (qui debordait) laisse la place a une bordure fine a la
+-- couleur d'accent du theme, dans le cadre de l'element.
+local selections = setmetatable({}, { __mode = "k" })
+function UI.HabillerSelection(f, halo)
+    if not (Actif() and Touchable(f)) or selections[f] then return end
+    if not (type(halo) == "table" and halo.GetObjectType and halo:GetObjectType() == "Texture") then return end
+    selections[f] = true
+    halo:SetAlpha(0)
+    local M = UI.MODERNE
+    local p = plats[f]
+    local propre = not p
+    if propre then p = Plat(f, { 0, 0, 0, 0 }, M.accent, M.rayonCase) end
+    local function Maj()
+        local oui = halo:IsShown() and true or false
+        halo:SetAlpha(0)
+        if propre then
+            p.cadre:SetShown(oui)
+            UI.RecolorerPlat(f, { 0, 0, 0, 0 }, UI.MODERNE.accent)
+        else
+            UI.RecolorerPlat(f, UI.MODERNE[p.roleFond or "fenetre"] or UI.MODERNE.fenetre, oui and UI.MODERNE.accent or UI.MODERNE.contour)
+        end
+    end
+    hooksecurefunc(halo, "Show", Maj) hooksecurefunc(halo, "Hide", Maj) hooksecurefunc(halo, "SetShown", Maj)
+    Maj()
+end
+-- La couleur des elements choisis : l'accent du theme en moderne, l'or des
+-- titres du jeu sinon.
+function Suite.CouleurSelection()
+    if Moderne() then local a = UI.MODERNE.accent return a[1], a[2], a[3] end
+    local c = _G.NORMAL_FONT_COLOR
+    if type(c) == "table" and type(c.r) == "number" then return c.r, c.g, c.b end
+    return 1, 0.82, 0
+end
+
+-- Une ligne de liste (bouton large et bas) : jamais de bandeau. Survolee,
+-- un trait fin a gauche (couleur de survol) ; choisie (son fond de
+-- selection), le meme trait a la couleur d'accent.
+local function MarqueDeLigne(t, f, cle)
+    t:SetTexture("Interface\\Buttons\\WHITE8X8")
+    if t.SetTexCoord then t:SetTexCoord(0, 1, 0, 1) end
+    if t.SetBlendMode then t:SetBlendMode("BLEND") end
+    t:ClearAllPoints()
+    t:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -2)
+    t:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 2)
+    t:SetWidth(2)
+    -- (Son opacite reste la sienne : une ligne au survol eteint le garde.)
+    TeinterJeton(t, cle)
+end
+function UI.HabillerLigne(f)
+    if not (Actif() and Touchable(f)) or fait[f] or plats[f] then return end
+    local w, h = f:GetWidth() or 0, f:GetHeight() or 0
+    if not (h > 0 and h <= 44 and w >= 3 * h) then return end
+    fait[f] = true
+    local hl = f.GetHighlightTexture and f:GetHighlightTexture()
+    if hl then MarqueDeLigne(hl, f, "survolBord") end
+    local fond = f.fond
+    if type(fond) == "table" and fond ~= hl and fond.GetObjectType and fond:GetObjectType() == "Texture"
+        and (f.fondSelection or (fond.GetBlendMode and fond:GetBlendMode() == "ADD")) then
+        MarqueDeLigne(fond, f, "accent")
+    end
+end
+
+-- Les onglets du haut d'une page (modele d'onglets du jeu) : le cadre du
+-- theme, l'onglet ouvert en accent, tous de la meme hauteur, le libelle
+-- centre. Appele par la page apres chaque choix ; rien dans l'apparence du jeu.
+function UI.MajOngletHaut(o, actif)
+    if not (Actif() and Touchable(o)) then return end
+    local M = UI.MODERNE
+    if not fait[o] then
+        fait[o] = true
+        local hl = o.GetHighlightTexture and o:GetHighlightTexture()
+        for _, r in ipairs({ o:GetRegions() }) do
+            if r.GetObjectType and r:GetObjectType() == "Texture" and r ~= hl then Effacer(r) end
+        end
+        for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture" }) do
+            if o[f] then pcall(o[f], o, "") end
+        end
+        Plat(o, M.fenetre, M.contour, M.rayonBouton)
+        Survol(o)
+    end
+    UI.RecolorerPlat(o, actif and M.surfaceSurvol or M.fenetre, actif and M.accent or M.contour)
+    local fs = o.GetFontString and o:GetFontString()
+    if fs then Ancrer(fs, "CENTER", o, "CENTER", 0, 0) end
+end
+
 -- Un bouton : le rouge des boutons du jeu, net et lisse (un degrade, sans
 -- grain), dans la meme bordure que la fenetre. Etats : normal, survol (plus
 -- clair), appuye (plus sombre), inactif (gris). Texte or du jeu, gris quand il
@@ -1857,14 +2150,25 @@ function UI.HabillerPortrait(b)
     fait[b] = true
     local M = UI.MODERNE
     if b.cadre and b.cadre.SetAlpha then b.cadre:SetAlpha(0) end
+    -- Un peu plus petit que la bande sous le titre : sa bordure (et celle du
+    -- choisi) reste dans la bande, jamais sur le filet du titre.
+    b:SetSize(28, 28)
     Plat(b, M.fenetre, M.contour, M.rayonCase)
     local h = b.GetHighlightTexture and b:GetHighlightTexture()
     local mg = plats[b] and plats[b].marge or 3
-    if h then h:SetTexture("Interface\\Buttons\\WHITE8X8") h:ClearAllPoints() h:SetPoint("TOPLEFT", mg, -mg) h:SetPoint("BOTTOMRIGHT", -mg, mg) TeinterJeton(h, "survol") end
+    if h then
+        h:SetTexture("Interface\\Buttons\\WHITE8X8") if h.SetBlendMode then h:SetBlendMode("BLEND") end
+        h:ClearAllPoints() h:SetPoint("TOPLEFT", mg, -mg) h:SetPoint("BOTTOMRIGHT", -mg, mg) TeinterJeton(h, "survol")
+    end
     local halo = b.halo
     if halo then
         halo:SetAlpha(0)
-        local function Maj() UI.RecolorerPlat(b, UI.MODERNE.fenetre, halo:IsShown() and UI.MODERNE.accent or UI.MODERNE.contour) end
+        -- Choisi (son halo, ou celui de la selection commune) : bordure d'accent.
+        local function Maj()
+            local sel = b.haloSelection
+            local oui = halo:IsShown() or (sel and sel.IsShown and sel:IsShown())
+            UI.RecolorerPlat(b, UI.MODERNE.fenetre, oui and UI.MODERNE.accent or UI.MODERNE.contour)
+        end
         hooksecurefunc(halo, "Show", Maj) hooksecurefunc(halo, "Hide", Maj) hooksecurefunc(halo, "SetShown", Maj)
         Maj()
     end
@@ -1956,6 +2260,19 @@ function UI.HabillerDefilement(s)
     fait[s] = true
     local M = UI.MODERNE
     EffacerTextures(s)
+    -- La piste du modele classique est dessinee par la zone defilante elle-
+    -- meme, accrochee a l'ascenseur : effacee aussi (rien d'autre).
+    local zone = s.GetParent and s:GetParent()
+    if zone and Touchable(zone) and zone.GetRegions then
+        for _, r in ipairs({ zone:GetRegions() }) do
+            if r.GetObjectType and r:GetObjectType() == "Texture" and r.GetNumPoints then
+                for i = 1, r:GetNumPoints() do
+                    local _, rel = r:GetPoint(i)
+                    if rel == s or (rel and rel.GetParent and rel:GetParent() == s) then Effacer(r) break end
+                end
+            end
+        end
+    end
     local e = Extra(s)
     if not e.rail then
         e.rail = s:CreateTexture(nil, "BACKGROUND")
@@ -1993,6 +2310,51 @@ function UI.HabillerDefilement(s)
             b:HookScript("OnLeave", function() Couleur(t, M.texteDoux) end)
         end
     end
+end
+
+-- Une barre de defilement recente (ScrollFrameTemplate, MinimalScrollBar) :
+-- le meme rendu que la classique, rail fin, curseur, chevrons.
+local function ChevronDeDefilement(b, monte)
+    if not (b and Touchable(b)) or fait[b] then return end
+    fait[b] = true
+    EffacerTextures(b)
+    for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture", "SetHighlightTexture" }) do
+        if b[f] then pcall(b[f], b, "") end
+    end
+    local t = Picto(b, "fleche", 14, "texteDoux")
+    if monte then t:SetTexCoord(0, 1, 1, 0) end
+    b:HookScript("OnEnter", function() t:SetVertexColor(1, 1, 1) end)
+    b:HookScript("OnLeave", function() Couleur(t, UI.MODERNE.texteDoux) end)
+end
+function UI.HabillerBarreRecente(s)
+    if not (Actif() and Touchable(s)) or fait[s] then return end
+    fait[s] = true
+    EffacerTextures(s)
+    if s.Background then Effacer(s.Background) end
+    local piste = s.Track
+    if piste and Touchable(piste) then EffacerTextures(piste) end
+    local e = Extra(s)
+    if not e.rail then
+        local porteur = piste or s
+        e.rail = porteur:CreateTexture(nil, "BACKGROUND")
+        e.rail:SetColorTexture(1, 1, 1, 1)
+        e.rail:SetWidth(2)
+        e.rail:SetPoint("TOP", porteur, "TOP", 0, 0)
+        e.rail:SetPoint("BOTTOM", porteur, "BOTTOM", 0, 0)
+    end
+    TeinterJeton(e.rail, "bord")
+    local pouce = piste and (piste.Thumb or (s.GetThumb and s:GetThumb()))
+    if pouce and Touchable(pouce) and not e.pouce then
+        EffacerTextures(pouce)
+        e.pouce = pouce:CreateTexture(nil, "ARTWORK", nil, 7)
+        e.pouce:SetTexture("Interface\\Buttons\\WHITE8X8")
+        e.pouce:SetWidth(6)
+        e.pouce:SetPoint("TOP", pouce, "TOP", 0, 0)
+        e.pouce:SetPoint("BOTTOM", pouce, "BOTTOM", 0, 0)
+        TeinterJeton(e.pouce, "bordFort")
+    end
+    ChevronDeDefilement(s.Back, true)
+    ChevronDeDefilement(s.Forward, false)
 end
 
 -- Une liste deroulante de la suite : comme un bouton, avec un chevron.
@@ -2039,16 +2401,37 @@ local function Reconnaitre(f)
     local genre = f:GetObjectType()
     if genre == "DropdownButton" or (f.libelle and f.Arrow) then UI.HabillerListe(f) return end
     if genre == "Slider" and f.GetThumbTexture then UI.HabillerDefilement(f) return end
+    -- Les ascenseurs, quel que soit leur modele : celui d'une zone defilante
+    -- (classique ou recent), ou une barre recente seule.
+    if genre == "ScrollFrame" then
+        local nom = f.GetName and f:GetName()
+        local s = f.ScrollBar or (nom and _G[nom .. "ScrollBar"])
+        if type(s) == "table" and s.GetObjectType and Touchable(s) then
+            if s:GetObjectType() == "Slider" and s.GetThumbTexture then UI.HabillerDefilement(s) else UI.HabillerBarreRecente(s) end
+        end
+        return
+    end
+    if f.Track and f.Back and f.Forward then UI.HabillerBarreRecente(f) return end
+    if genre == "Button" and f.Left and f.Right and f.Middle then UI.HabillerBouton(f) return end
+    -- Un portrait d'abord habille (son cadre), puis sa selection.
+    if genre == "Button" and f.visage and f.halo then UI.HabillerPortrait(f) end
+    if genre == "Button" or genre == "CheckButton" then
+        -- Un element choisi : le halo du jeu devient une bordure d'accent.
+        if f.haloSelection then UI.HabillerSelection(f, f.haloSelection) end
+        if f.halo and not f.visage then UI.HabillerSelection(f, f.halo) end
+    end
     if genre == "Button" then
-        if f.Left and f.Right and f.Middle then UI.HabillerBouton(f) return end
-        if f.visage and f.halo then UI.HabillerPortrait(f) return end
+        if f.visage and f.halo then return end
         local n = f.GetNormalTexture and f:GetNormalTexture()
-        local fichier = n and n.GetTexture and n:GetTexture()
-        if type(fichier) == "string" and fichier:lower():find("closebutton") then UI.HabillerCroix(f) end
+        local fichier = FichierDe(n)
+        if fichier and fichier:find("closebutton") then UI.HabillerCroix(f) return end
+        if not (f.halo or f.haloSelection) then UI.HabillerLigne(f) end
         return
     end
     if genre == "CheckButton" then
-        if (f.Icon or f.icone) and (f:GetWidth() or 0) >= 28 then UI.HabillerOnglet(f)
+        -- Un onglet porte une icone (meme les petits, a cote des suivis) ;
+        -- une case a cocher n'en a pas.
+        if (f.Icon or f.icone) and (f:GetWidth() or 0) >= 20 then UI.HabillerOnglet(f)
         elseif f.GetCheckedTexture and f:GetCheckedTexture() and (f:GetWidth() or 0) <= 32 then UI.HabillerCase(f) end
     end
 end
@@ -2078,6 +2461,9 @@ local function Habiller(c)
     local ok, err = pcall(function()
         if c == Suite.liste2 then UI.HabillerChoixDeListe(c) return end
         UI.HabillerFenetre(c)
+        UI.RangerBarreDeTitre(c)
+        UI.PlacerEntete(c)
+        UI.HabillerCompartiments(c)
         UI.HabillerArbre(c)
         for o in pairs(onglets) do if Visible(o) then MajOnglet(o) end end
     end)
@@ -2134,7 +2520,7 @@ do
     chercheur:SetScript("OnEvent", function()
         -- Fin du combat : on reprend ce qui attendait (un theme choisi en
         -- combat se pose maintenant).
-        if Suite.themeEnAttente then Suite.themeEnAttente = nil pcall(Suite.PoserTheme, Suite.ThemeChoisi()) end
+        if Suite.themeEnAttente then Suite.themeEnAttente = nil pcall(Suite.PoserThemeModerne, Suite.ThemeChoisi()) end
         if next(ouvertes) then attente = 0 veille:Show() end
     end)
     chercheur:SetScript("OnUpdate", function(self, ecoule)
@@ -2151,7 +2537,9 @@ end
 -- Nouveau theme : pose tout de suite, sans recharger. Tout ce qui a ete
 -- habille est repeint (fonds, bordures, filets, boutons, coches, onglets,
 -- fond central, panneau du menu) ; un element en erreur est saute.
-function Suite.PoserTheme(v)
+-- (Suite.PoserTheme est celui de la faction, Alliance ou Horde : ne pas
+-- le confondre.)
+function Suite.PoserThemeModerne(v)
     _G.CoreSuiteDB = type(_G.CoreSuiteDB) == "table" and _G.CoreSuiteDB or {}
     local cle = Theme(v).cle
     _G.CoreSuiteDB.themeModerne = (cle ~= "nuit") and cle or nil
@@ -2186,6 +2574,7 @@ function Suite.PoserTheme(v)
             end)
         end
     end
+    for t in pairs(bandes) do Sur(function() t:SetTexture(M.menu) end) end
     -- Le panneau du menu de gauche, partout.
     Sur(Suite.AppliquerTheme)
     for _, t in ipairs(type(_G.SagaCoreMenus) == "table" and _G.SagaCoreMenus or {}) do
@@ -7756,7 +8145,7 @@ local function FenetreInterface()
                   -- Apparence moderne : son theme et la couleur des bordures.
                   page.rTheme = O.Rangee()
                   page.lTheme = O.Liste(page.rTheme, function() return Suite.OptionsTheme() end,
-                      function() return Suite.ThemeChoisi() end, function(v) Suite.PoserTheme(v) end)
+                      function() return Suite.ThemeChoisi() end, function(v) Suite.PoserThemeModerne(v) end)
                   page.rBordure = O.Rangee()
                   page.lBordure = O.Liste(page.rBordure, function() return Suite.OptionsCouleurBordure() end,
                       function() return Suite.CouleurBordureChoisie() end, function(v) Suite.PoserCouleurBordure(v) end)

@@ -1858,6 +1858,9 @@ end
 -- ---------------------------------------------------------------------------
 
 local function CouleurSelection()
+    -- Apparence moderne : la couleur d'accent du theme (voir la suite).
+    local S = _G.CoreSuite
+    if S and S.CouleurSelection then return S.CouleurSelection() end
     local c = _G.NORMAL_FONT_COLOR
     if type(c) == "table" and c.r then return c.r, c.g, c.b end
     return 1, 0.82, 0

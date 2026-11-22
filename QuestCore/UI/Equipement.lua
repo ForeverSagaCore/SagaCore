@@ -111,6 +111,8 @@ local function CreerLigneCandidat(parent, index)
     ligne.fond = ligne:CreateTexture(nil, "BACKGROUND")
     ligne.fond:SetAllPoints()
     ligne.fond:SetColorTexture(0.35, 0.28, 0.12, 0.5)
+    -- Fond de selection (l'apparence moderne en fait un trait d'accent).
+    ligne.fondSelection = true
     ligne.fond:Hide()
 
     ligne.icone = ligne:CreateTexture(nil, "ARTWORK")

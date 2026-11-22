@@ -47,6 +47,9 @@ local BoutonAction
 local ALPHA_ESTOMPE = 0.5
 
 local function CouleurSelection()
+    -- Apparence moderne : la couleur d'accent du theme (voir la suite).
+    local S = _G.CoreSuite
+    if S and S.CouleurSelection then return S.CouleurSelection() end
     local c = _G.NORMAL_FONT_COLOR
     if type(c) == "table" and c.r then return c.r, c.g, c.b end
     return 1, 0.82, 0
@@ -1613,7 +1616,7 @@ local function RendreReglages(contenu)
         if not contenu.listeTheme and S.OptionsTheme then
             contenu.libelleTheme = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             contenu.listeTheme = S.ListeDeroulante(contenu, function() return S.OptionsTheme() end,
-                function() return S.ThemeChoisi() end, function(v) S.PoserTheme(v) end,
+                function() return S.ThemeChoisi() end, function(v) S.PoserThemeModerne(v) end,
                 function() ecran.Montrer("reglages") end)
         end
         if contenu.listeTheme then
