@@ -480,6 +480,9 @@ local function PoserLigne(ligne, retrait, depliable, deplie, auClic)
     ColonneSomme(ligne, false)
     BandeDeClasse(ligne, nil)
     ligne.nom.couleurPropre = nil
+    if ligne.cadreVisage then
+        ligne.cadreVisage:Hide() ligne.visage:Hide() ligne.detail:Hide() ligne.droiteHaut:Hide()
+    end
     ligne.filet:ClearAllPoints()
     ligne.filet:SetPoint("BOTTOMLEFT", ligne, "BOTTOMLEFT", 8, 0)
     ligne.filet:SetPoint("BOTTOMRIGHT", ligne, "BOTTOMRIGHT", -8, 0)
@@ -860,6 +863,56 @@ local function RendreAtelier(contenu)
     contenu:SetHeight(math.max(y, 1))
 end
 
+-- Portrait d'un personnage (defini plus bas, avec la bande des personnages).
+local PoserVisage
+
+-- Ligne d'un personnage, reprise de LegacyCore : son portrait dans un cadre,
+-- son nom a la couleur de sa classe, une ligne de detail dessous, et a
+-- droite son niveau.
+local function LigneDePersonnage(ligne, fiche, estConnecte, couleur, detail, droite)
+    if not ligne.cadreVisage then
+        ligne.cadreVisage = ligne:CreateTexture(nil, "BORDER")
+        ligne.cadreVisage:SetSize(34, 34)
+        ligne.cadreVisage:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
+        ligne.visage = ligne:CreateTexture(nil, "ARTWORK")
+        ligne.visage:SetPoint("TOPLEFT", ligne.cadreVisage, "TOPLEFT", 5, -5)
+        ligne.visage:SetPoint("BOTTOMRIGHT", ligne.cadreVisage, "BOTTOMRIGHT", -5, 5)
+        ligne.detail = ligne:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        ligne.detail:SetJustifyH("LEFT")
+        ligne.droiteHaut = ligne:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        ligne.droiteHaut:SetJustifyH("RIGHT")
+    end
+    ligne.icone:Hide()
+    ligne.cadreVisage:ClearAllPoints()
+    ligne.cadreVisage:SetPoint("TOPLEFT", ligne, "TOPLEFT", 4, 1)
+    ligne.cadreVisage:Show()
+    ligne.visage:SetTexCoord(0, 1, 0, 1)
+    PoserVisage(ligne.visage, fiche, estConnecte)
+    ligne.visage:Show()
+    ligne.nom:ClearAllPoints()
+    ligne.nom:SetPoint("TOPLEFT", ligne, "TOPLEFT", 42, -4)
+    ligne.nom:SetPoint("RIGHT", ligne, "RIGHT", -90, 0)
+    ligne.nom:SetFontObject("GameFontNormal")
+    ligne.nom.agrandir = false
+    if couleur then
+        ligne.nom:SetTextColor(couleur.r, couleur.g, couleur.b)
+        ligne.nom.couleurPropre = true
+    end
+    ligne.nom:SetText(NS.inventaire.NomCourt(fiche.cle))
+    ligne.detail:ClearAllPoints()
+    ligne.detail:SetPoint("TOPLEFT", ligne, "TOPLEFT", 42, -(HAUTEUR_LIGNE - 2))
+    ligne.detail:SetPoint("RIGHT", ligne, "RIGHT", -8, 0)
+    ligne.detail:SetText(detail or "")
+    ligne.detail:SetTextColor(0.8, 0.8, 0.8)
+    ligne.detail:Show()
+    ligne.droiteHaut:ClearAllPoints()
+    ligne.droiteHaut:SetPoint("TOPRIGHT", ligne, "TOPRIGHT", -8, -4)
+    ligne.droiteHaut:SetText(droite or "")
+    ligne.droiteHaut:Show()
+    ligne.sacs:SetText("") ligne.banque:SetText("") ligne.total:SetText("")
+    ligne:SetHeight(38)
+end
+
 -- Texte ramene a une forme simple pour chercher : minuscules, sans accents.
 local ACCENTS = { ["é"] = "e", ["è"] = "e", ["ê"] = "e", ["ë"] = "e", ["É"] = "e", ["È"] = "e", ["Ê"] = "e",
     ["à"] = "a", ["â"] = "a", ["ä"] = "a", ["À"] = "a", ["Â"] = "a", ["î"] = "i", ["ï"] = "i", ["Î"] = "i",
@@ -1103,27 +1156,22 @@ local function RendreStocks(contenu, tous)
     local retraitObjet = tous and (RETRAIT_PAR_NIVEAU * 2) or RETRAIT_PAR_NIVEAU
 
     for rangFiche, fiche in ipairs(fiches) do
-        -- En-tete du personnage : son nom a la couleur de sa classe, sur une
-        -- bande legere de cette couleur, et les titres des colonnes.
+        -- En-tete du personnage, comme dans LegacyCore : portrait, nom a la
+        -- couleur de sa classe, date du releve dessous, niveau a droite.
+        local fiche_ = fiche
         local entete = NouvelleLigne(0, nil)
-        entete.icone:Hide()
-        -- Le nom a la couleur de sa classe ; la date du releve dans l'infobulle.
-        entete.nom.agrandir = false
-        -- Meme police que les personnages de LegacyCore.
-        entete.nom:SetFontObject("GameFontNormal")
-        NommerPersonnage(entete.nom, fiche)
-        local releve = string.format(L.STOCKS_READ_AT, NS.inventaire.NomCourt(fiche.cle), base.ReleveDe(fiche) or "?")
-        entete:EnableMouse(true)
-        entete:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(releve, 1, 1, 1)
-            GameTooltip:Show()
-        end)
-        entete:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        entete:SetHeight(HAUTEUR_LIGNE + 6)
-        EnTetesDeColonnes(entete, true)
+        LigneDePersonnage(entete, fiche_, fiche_.cle == courant, CouleurDe(fiche_),
+            string.format(L.STOCKS_READ_ON, base.ReleveDe(fiche_) or "?"),
+            fiche_.niveau and string.format(L.CHAR_LEVEL, fiche_.niveau) or "")
         entete:Show()
-        y = y + HAUTEUR_LIGNE + 12
+        y = y + 38 + 6
+        -- Les titres des colonnes, sous le personnage.
+        local titresCol = NouvelleLigne(0, nil)
+        titresCol.icone:Hide()
+        titresCol.nom:SetText("")
+        EnTetesDeColonnes(titresCol, true)
+        titresCol:Show()
+        y = y + HAUTEUR_LIGNE + 2
 
         -- Sur un seul personnage, on montre aussi ce qu'il n'a pas mais que
         -- ses autres personnages detiennent : c'est ce qui se rapatrie. Vue
@@ -4209,7 +4257,7 @@ end
 -- jeu donne la forme, comme sur la page de l'equipement.
 local TAILLE_PORTRAIT = 30
 
-local function PoserVisage(texture, fiche, estConnecte)
+PoserVisage = function(texture, fiche, estConnecte)
     -- Le vrai portrait pour le personnage connecte, quand le client le donne.
     if estConnecte and SetPortraitTexture then
         local ok = pcall(SetPortraitTexture, texture, "player")
