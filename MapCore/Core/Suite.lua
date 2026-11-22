@@ -579,6 +579,8 @@ function Suite.RafraichirInterface()
 end
 -- Le fichier du panneau choisi, ou nil pour l'illustration du jeu.
 function Suite.PanneauMenu()
+    -- Apparence moderne : le panneau dessine pour elle.
+    if Suite.UI and Suite.UI.EstModerne and Suite.UI.EstModerne() then return Suite.UI.Media("menu") end
     local choix = Suite.PanneauChoisi()
     for _, p in ipairs(Suite.PANNEAUX) do if p.cle == choix then return p.fichier end end
     return nil
@@ -664,6 +666,9 @@ function Suite.FondDeFaction(tex)
     end
     local choix = Suite.PanneauChoisi()
     local ordre = {}
+    if Suite.UI and Suite.UI.EstModerne and Suite.UI.EstModerne() then
+        table.insert(ordre, { fichier = Suite.UI.Media("menu"), l = 1, h = 1, ratio = 0.31, etirer = true, couleur = true })
+    end
     for _, p in ipairs(Suite.PANNEAUX) do
         if p.cle == choix then
             table.insert(ordre, { fichier = p.fichier, l = 1, h = 1, ratio = 0.31, etirer = true, couleur = true })
@@ -1308,29 +1313,43 @@ function Suite.OptionsHabillage()
     local fr = Suite.Langue() == "frFR"
     return { { "jeu", fr and "Jeu (d'origine)" or "Game (original)" }, { "moderne", fr and "Moderne" or "Modern" } }
 end
--- Les jetons de l'apparence moderne.
+-- Les jetons de l'apparence moderne : une seule palette, des coins arrondis,
+-- des pictos dessines pour la suite (dossier Media de CraftCore).
+local MEDIA_M = "Interface\\AddOns\\CraftCore\\Media\\"
 UI.MODERNE = {
-    fond = { 0.067, 0.07, 0.078, 0.96 },
-    bord = { 0.24, 0.25, 0.28, 1 },
-    bouton = { 0.13, 0.135, 0.15, 1 },
-    survol = { 1, 1, 1, 0.07 },
-    accent = { 0.96, 0.78, 0.3, 1 },
+    fenetre = { 0.055, 0.06, 0.07, 0.97 },     -- cadre des fenetres
+    bord = { 0.20, 0.215, 0.245, 1 },          -- filets et contours
+    bordFort = { 0.30, 0.32, 0.36, 1 },
+    surface = { 0.125, 0.135, 0.155, 1 },      -- boutons, onglets, cases
+    surfaceSurvol = { 0.17, 0.18, 0.205, 1 },
+    survol = { 1, 1, 1, 0.06 },
+    accent = { 0.91, 0.71, 0.29, 1 },          -- or doux de la suite
     texte = { 0.93, 0.93, 0.93 },
+    texteDoux = { 0.62, 0.64, 0.68 },
+    rayonFenetre = 8, rayonBouton = 5, rayonOnglet = 6, rayonCase = 4,
+    arrondi = MEDIA_M .. "moderne_arrondi",
+    fond = MEDIA_M .. "moderne_fond",
+    menu = MEDIA_M .. "moderne_menu",
+    croix = MEDIA_M .. "moderne_croix",
+    coche = MEDIA_M .. "moderne_coche",
+    fleche = MEDIA_M .. "moderne_fleche",
 }
+-- Le fichier de la texture moderne demandee, si ce client l'a.
+function UI.Media(cle) return UI.MODERNE[cle] end
 local function Moderne() return Suite.Habillage() == "moderne" end
 UI.EstModerne = Moderne
 -- Regles de surete, pour ne jamais gener le jeu ni un autre add-on :
 --   * aucun champ n'est ecrit sur les cadres : l'etat est garde ici, a part ;
---   * un cadre protege (boutons d'action securises...) ou interdit n'est
---     jamais touche, ni ce qu'il contient ;
+--   * un cadre protege de lui-meme (boutons d'action securises) ou interdit
+--     n'est jamais touche, ni ce qu'il contient ;
 --   * rien en combat : on attend la fin du combat ;
 --   * aucune boucle permanente : une fenetre est habillee quand elle
 --     s'affiche, puis repassee seulement tant qu'elle reste ouverte ;
 --   * a la moindre erreur, l'habillage s'arrete pour la session (un seul
 --     message), au lieu de se repeter.
 local fait = setmetatable({}, { __mode = "k" })    -- cadre deja habille
-local plats = setmetatable({}, { __mode = "k" })   -- cadre -> son aplat
-local carres = setmetatable({}, { __mode = "k" })  -- case -> son carre
+local plats = setmetatable({}, { __mode = "k" })   -- cadre -> son fond arrondi
+local extras = setmetatable({}, { __mode = "k" })  -- cadre -> ce qu'on lui a ajoute
 local enPanne = false
 local function Panne(err)
     if enPanne then return end
@@ -1342,13 +1361,15 @@ end
 local function Actif()
     return not enPanne and Moderne() and not (InCombatLockdown and InCombatLockdown())
 end
--- Un cadre qu'on a le droit de toucher : un vrai cadre, ni interdit ni protege.
+-- Un cadre qu'on a le droit de toucher : un vrai cadre, ni interdit ni
+-- protege de lui-meme. (Une fenetre qui porte des boutons securises est
+-- protegee "par ancrage" seulement : hors combat, on peut l'habiller.)
 local function Touchable(f)
     if type(f) ~= "table" or type(f.GetObjectType) ~= "function" then return false end
     if f.IsForbidden then local ok, oui = pcall(f.IsForbidden, f) if not ok or oui then return false end end
     if f.IsProtected then
-        local ok, p1, p2 = pcall(f.IsProtected, f)
-        if not ok or p1 or p2 then return false end
+        local ok, _, explicite = pcall(f.IsProtected, f)
+        if not ok or explicite then return false end
     end
     return true
 end
@@ -1357,45 +1378,147 @@ local function Visible(c)
     local ok, oui = pcall(c.IsShown, c)
     return ok and oui and true or false
 end
-local function Plat(f, fond, bord)
-    local b = plats[f]
-    if not b then
-        local ok, nb = pcall(CreateFrame, "Frame", nil, f, "BackdropTemplate")
-        b = ok and nb or CreateFrame("Frame", nil, f)
-        b:SetAllPoints()
-        b:SetFrameLevel(math.max(0, (f:GetFrameLevel() or 1) - 1))
-        if b.SetBackdrop then
-            b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-        end
-        plats[f] = b
-    end
-    if b.SetBackdropColor then
-        b:SetBackdropColor(fond[1], fond[2], fond[3], fond[4] or 1)
-        b:SetBackdropBorderColor(bord[1], bord[2], bord[3], bord[4] or 1)
-    end
-    b:Show()
+local function Couleur(t, c) t:SetVertexColor(c[1], c[2], c[3], c[4] or 1) end
+-- Un fond arrondi avec un filet : deux plaques arrondies l'une sur l'autre,
+-- la plus grande a la couleur du filet, l'autre (1 pixel plus petite) a la
+-- couleur du fond. Sous tout ce que le cadre affiche.
+local function Plaque(parent, niveau)
+    local ok, b = pcall(CreateFrame, "Frame", nil, parent, "BackdropTemplate")
+    if not ok or not b then b = CreateFrame("Frame", nil, parent) end
+    b:SetFrameLevel(math.max(0, niveau))
     return b
 end
+local function PoserArrondi(b, rayon, couleur)
+    if not b.SetBackdrop then return end
+    b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = UI.MODERNE.arrondi, edgeSize = rayon,
+        insets = { left = rayon, right = rayon, top = rayon, bottom = rayon } })
+    b:SetBackdropColor(couleur[1], couleur[2], couleur[3], couleur[4] or 1)
+    b:SetBackdropBorderColor(couleur[1], couleur[2], couleur[3], couleur[4] or 1)
+end
+local function Plat(f, fond, bord, rayon)
+    rayon = rayon or UI.MODERNE.rayonBouton
+    local p = plats[f]
+    if not p then
+        local niveau = (f:GetFrameLevel() or 1) - 1
+        p = { ext = Plaque(f, niveau), int = Plaque(f, niveau) }
+        p.ext:SetAllPoints()
+        p.int:SetPoint("TOPLEFT", 1, -1)
+        p.int:SetPoint("BOTTOMRIGHT", -1, 1)
+        plats[f] = p
+    end
+    PoserArrondi(p.ext, rayon, bord or fond)
+    PoserArrondi(p.int, math.max(2, rayon - 1), fond)
+    p.ext:Show() p.int:Show()
+    return p
+end
 UI.Plat = Plat
+function UI.RecolorerPlat(f, fond, bord)
+    local p = plats[f]
+    if not (p and p.ext.SetBackdropColor) then return end
+    p.ext:SetBackdropColor(bord[1], bord[2], bord[3], bord[4] or 1) p.ext:SetBackdropBorderColor(bord[1], bord[2], bord[3], bord[4] or 1)
+    p.int:SetBackdropColor(fond[1], fond[2], fond[3], fond[4] or 1) p.int:SetBackdropBorderColor(fond[1], fond[2], fond[3], fond[4] or 1)
+end
 local function Effacer(t)
     if not t then return end
     if t.SetAlpha then pcall(t.SetAlpha, t, 0) end
     if t.Hide then pcall(t.Hide, t) end
 end
--- Une fenetre de la suite : le cadre du jeu, ou un aplat sombre bord fin.
+-- Toutes les textures dessinees d'un cadre (pas ses textes), sauf celles
+-- qu'on garde.
+local function EffacerTextures(f, garder)
+    for _, r in ipairs({ f:GetRegions() }) do
+        if r.GetObjectType and r:GetObjectType() == "Texture" and not (garder and garder[r]) then Effacer(r) end
+    end
+end
+local function Extra(f) extras[f] = extras[f] or {} return extras[f] end
+-- Un picto dessine (croix, coche, fleche), centre, teinte.
+local function Picto(f, cle, taille, couleur, couche)
+    local e = Extra(f)
+    local t = e[cle]
+    if not t then
+        t = f:CreateTexture(nil, couche or "ARTWORK", nil, 7)
+        t:SetTexture(UI.MODERNE[cle])
+        t:SetPoint("CENTER")
+        e[cle] = t
+    end
+    t:SetSize(taille, taille)
+    Couleur(t, couleur)
+    t:Show()
+    return t
+end
+-- Survol : un voile clair a l'interieur des coins arrondis.
+local function Survol(b, marge)
+    marge = marge or 2
+    local h = b.GetHighlightTexture and b:GetHighlightTexture()
+    if not h then
+        if not b.SetHighlightTexture then return end
+        b:SetHighlightTexture("Interface\\Buttons\\WHITE8X8", "ADD")
+        h = b:GetHighlightTexture()
+        if not h then return end
+    end
+    h:SetTexture("Interface\\Buttons\\WHITE8X8")
+    h:SetTexCoord(0, 1, 0, 1)
+    if h.SetBlendMode then h:SetBlendMode("BLEND") end
+    h:ClearAllPoints()
+    h:SetPoint("TOPLEFT", marge, -marge)
+    h:SetPoint("BOTTOMRIGHT", -marge, marge)
+    Couleur(h, UI.MODERNE.survol)
+end
+
+-- La croix de fermeture : un picto fin, rouge doux au survol.
+function UI.HabillerCroix(b)
+    if not (Actif() and Touchable(b)) or fait[b] then return end
+    fait[b] = true
+    EffacerTextures(b)
+    for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture" }) do
+        if b[f] then pcall(b[f], b, "") end
+    end
+    b:SetSize(20, 20)
+    local x = Picto(b, "croix", 16, UI.MODERNE.texteDoux)
+    Plat(b, UI.MODERNE.fenetre, UI.MODERNE.fenetre, 4)
+    if b.SetHighlightTexture then
+        b:SetHighlightTexture("Interface\\Buttons\\WHITE8X8", "ADD")
+        local h = b:GetHighlightTexture()
+        if h then h:SetTexture("Interface\\Buttons\\WHITE8X8") h:SetAllPoints() h:SetVertexColor(0.8, 0.25, 0.22, 0.35) end
+    end
+    b:HookScript("OnEnter", function() x:SetVertexColor(1, 1, 1) end)
+    b:HookScript("OnLeave", function() Couleur(x, UI.MODERNE.texteDoux) end)
+end
+
+-- Une fenetre de la suite : un fond sombre arrondi, un filet sous le titre,
+-- la croix moderne. Plus rien du cadre du jeu.
 function UI.HabillerFenetre(cadre)
     if not (Actif() and Touchable(cadre)) or fait[cadre] then return end
     fait[cadre] = true
-    for _, cle in ipairs({ "NineSlice", "Bg", "TitleBg", "TopTileStreaks", "PortraitContainer", "portrait", "PortraitFrame" }) do
+    for _, cle in ipairs({ "NineSlice", "Bg", "TitleBg", "TopTileStreaks", "PortraitContainer", "portrait", "PortraitFrame",
+        "TopLeftCorner", "TopRightCorner", "BotLeftCorner", "BotRightCorner", "TopBorder", "BottomBorder", "LeftBorder", "RightBorder",
+        "TitleBar" }) do
         Effacer(cadre[cle])
     end
     local inset = cadre.Inset
     if inset then Effacer(inset.NineSlice) Effacer(inset.Bg) end
-    Plat(cadre, UI.MODERNE.fond, UI.MODERNE.bord)
-    local titre = cadre.TitleText or (cadre.TitleContainer and cadre.TitleContainer.TitleText)
-    if titre and titre.SetTextColor then local c = UI.MODERNE.texte titre:SetTextColor(c[1], c[2], c[3]) end
+    local M = UI.MODERNE
+    Plat(cadre, M.fenetre, M.bord, M.rayonFenetre)
+    local titre = cadre.TitleText or (cadre.TitleContainer and cadre.TitleContainer.TitleText) or cadre.titre
+    if titre and titre.SetTextColor then local c = M.texte titre:SetTextColor(c[1], c[2], c[3]) end
+    -- Filet sous la barre de titre, en retrait des coins.
+    local e = Extra(cadre)
+    if not e.filet then
+        e.filet = cadre:CreateTexture(nil, "BORDER")
+        e.filet:SetColorTexture(1, 1, 1, 1)
+        e.filet:SetHeight(1)
+        e.filet:SetPoint("TOPLEFT", cadre, "TOPLEFT", 10, -24)
+        e.filet:SetPoint("TOPRIGHT", cadre, "TOPRIGHT", -10, -24)
+    end
+    Couleur(e.filet, M.bord)
+    local croix = cadre.fermer or cadre.CloseButton or cadre.closeButton or (cadre.TitleContainer and cadre.TitleContainer.CloseButton)
+    if croix then
+        UI.HabillerCroix(croix)
+        if Touchable(croix) then croix:ClearAllPoints() croix:SetPoint("TOPRIGHT", cadre, "TOPRIGHT", -4, -2) end
+    end
 end
--- Un bouton du jeu (UIPanelButtonTemplate) : aplat, bord fin, survol clair.
+
+-- Un bouton : surface arrondie, filet, texte clair, voile au survol.
 function UI.HabillerBouton(b)
     if not (Actif() and Touchable(b)) or fait[b] then return end
     fait[b] = true
@@ -1403,50 +1526,183 @@ function UI.HabillerBouton(b)
     for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture" }) do
         if b[f] then pcall(b[f], b, "") end
     end
-    local h = b.GetHighlightTexture and b:GetHighlightTexture()
-    if h then h:SetTexture("Interface\\Buttons\\WHITE8X8") local c = UI.MODERNE.survol h:SetVertexColor(c[1], c[2], c[3], c[4]) end
-    Plat(b, UI.MODERNE.bouton, UI.MODERNE.bord)
+    local M = UI.MODERNE
+    Plat(b, M.surface, M.bord, M.rayonBouton)
+    Survol(b, 2)
     local fs = b.GetFontString and b:GetFontString()
-    if fs then local c = UI.MODERNE.texte fs:SetTextColor(c[1], c[2], c[3]) end
+    if fs then local c = M.texte fs:SetTextColor(c[1], c[2], c[3]) end
+    -- Grise quand il ne sert pas.
+    local function Etat(self)
+        local actif = not self.IsEnabled or self:IsEnabled()
+        local p = plats[self]
+        if p then p.ext:SetAlpha(actif and 1 or 0.5) p.int:SetAlpha(actif and 1 or 0.5) end
+    end
+    hooksecurefunc(b, "Enable", Etat) hooksecurefunc(b, "Disable", Etat)
+    if b.SetEnabled then hooksecurefunc(b, "SetEnabled", Etat) end
+    Etat(b)
 end
--- Une case a cocher : carre plat, coche a la couleur d'accent.
+
+-- Une case a cocher : petit carre arrondi, coche dessinee a l'or de la suite.
 function UI.HabillerCase(c)
     if not (Actif() and Touchable(c)) or fait[c] then return end
     fait[c] = true
-    for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture" }) do if c[f] then pcall(c[f], c, "") end end
-    local coche = c.GetCheckedTexture and c:GetCheckedTexture()
-    if coche then local a = UI.MODERNE.accent coche:SetVertexColor(a[1], a[2], a[3]) end
+    local M = UI.MODERNE
+    for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture" }) do if c[f] then pcall(c[f], c, "") end end
+    if c.SetCheckedTexture then
+        c:SetCheckedTexture(M.coche)
+        local coche = c:GetCheckedTexture()
+        if coche then
+            coche:ClearAllPoints()
+            coche:SetPoint("CENTER")
+            local w = math.floor((c:GetWidth() or 20) * 0.62)
+            coche:SetSize(w, w)
+            Couleur(coche, M.accent)
+        end
+    end
+    if c.SetDisabledCheckedTexture then pcall(c.SetDisabledCheckedTexture, c, M.coche) end
+    -- Le carre, plus petit que la zone cliquable.
+    local e = Extra(c)
+    if not e.carre then
+        e.carre = CreateFrame("Frame", nil, c)
+        e.carre:SetPoint("CENTER")
+        e.carre:SetFrameLevel(math.max(0, c:GetFrameLevel()))
+    end
+    local w = math.max(12, math.floor((c:GetWidth() or 20) * 0.72))
+    e.carre:SetSize(w, w)
+    Plat(e.carre, M.surface, M.bordFort, M.rayonCase)
     local h = c.GetHighlightTexture and c:GetHighlightTexture()
-    if h then h:SetTexture("Interface\\Buttons\\WHITE8X8") local s = UI.MODERNE.survol h:SetVertexColor(s[1], s[2], s[3], s[4]) end
-    local fond = carres[c] or CreateFrame("Frame", nil, c)
-    carres[c] = fond
-    fond:ClearAllPoints()
-    fond:SetPoint("CENTER")
-    local w = math.max(10, math.floor((c:GetWidth() or 20) * 0.6))
-    fond:SetSize(w, w)
-    fond:SetFrameLevel(math.max(0, c:GetFrameLevel() - 1))
-    Plat(fond, UI.MODERNE.bouton, UI.MODERNE.bord)
+    if h then
+        h:SetTexture("Interface\\Buttons\\WHITE8X8") h:ClearAllPoints() h:SetPoint("CENTER") h:SetSize(w - 2, w - 2)
+        Couleur(h, M.survol)
+    end
 end
--- Un onglet lateral (icone) : sans le dessin du grimoire, un carre plat.
+
+-- Un onglet lateral : une tuile arrondie encadree, l'icone en retrait ;
+-- celui de la page ouverte prend un filet d'or.
+local onglets = setmetatable({}, { __mode = "k" })
+local function MajOnglet(o)
+    local M = UI.MODERNE
+    local actif = (o.GetChecked and o:GetChecked()) or (o.cle ~= nil and o.cle == o.courante)
+    UI.RecolorerPlat(o, actif and M.surfaceSurvol or M.surface, actif and M.accent or M.bordFort)
+end
 function UI.HabillerOnglet(o)
     if not (Actif() and Touchable(o)) or fait[o] then return end
     fait[o] = true
+    local M = UI.MODERNE
     local icone = o.icone or o.Icon
-    local survol = o.GetHighlightTexture and o:GetHighlightTexture()
-    local coche = o.GetCheckedTexture and o:GetCheckedTexture()
-    for _, r in ipairs({ o:GetRegions() }) do
-        if r ~= icone and r ~= survol and r ~= coche and r.GetObjectType and r:GetObjectType() == "Texture" then
-            Effacer(r)
+    EffacerTextures(o, { [icone or 0] = true })
+    if o.fond then Effacer(o.fond) end
+    if o.SetCheckedTexture then pcall(o.SetCheckedTexture, o, "") end
+    Plat(o, M.surface, M.bordFort, M.rayonOnglet)
+    if icone then
+        icone:ClearAllPoints()
+        icone:SetPoint("TOPLEFT", 5, -5)
+        icone:SetPoint("BOTTOMRIGHT", -5, 5)
+        if icone.SetTexCoord then icone:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+        icone:Show() icone:SetAlpha(1)
+    end
+    Survol(o, 2)
+    onglets[o] = true
+    hooksecurefunc(o, "SetChecked", MajOnglet)
+    o:HookScript("OnClick", MajOnglet)
+    MajOnglet(o)
+end
+
+-- Une barre de defilement : un rail fin, un curseur arrondi, des chevrons.
+function UI.HabillerDefilement(s)
+    if not (Actif() and Touchable(s)) or fait[s] then return end
+    fait[s] = true
+    local M = UI.MODERNE
+    EffacerTextures(s)
+    local e = Extra(s)
+    if not e.rail then
+        e.rail = s:CreateTexture(nil, "BACKGROUND")
+        e.rail:SetColorTexture(1, 1, 1, 1)
+        e.rail:SetWidth(2)
+        e.rail:SetPoint("TOP", 0, -18)
+        e.rail:SetPoint("BOTTOM", 0, 18)
+    end
+    Couleur(e.rail, M.bord)
+    local pouce = s.GetThumbTexture and s:GetThumbTexture()
+    if pouce then
+        pouce:SetTexture("Interface\\Buttons\\WHITE8X8")
+        pouce:SetTexCoord(0, 1, 0, 1)
+        pouce:SetWidth(6)
+        pouce:SetAlpha(1)
+        pouce:Show()
+        Couleur(pouce, M.bordFort)
+    end
+    -- Les deux boutons : le plus haut monte, l'autre descend.
+    local boutons = {}
+    for _, b in ipairs({ s:GetChildren() }) do
+        if b.GetObjectType and b:GetObjectType() == "Button" and Touchable(b) then table.insert(boutons, b) end
+    end
+    table.sort(boutons, function(a, b) return (a:GetTop() or 0) > (b:GetTop() or 0) end)
+    for i, b in ipairs(boutons) do
+        if not fait[b] then
+            fait[b] = true
+            EffacerTextures(b)
+            for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture", "SetHighlightTexture" }) do
+                if b[f] then pcall(b[f], b, "") end
+            end
+            local t = Picto(b, "fleche", 14, M.texteDoux)
+            if i == 1 then t:SetTexCoord(0, 1, 1, 0) end
+            b:HookScript("OnEnter", function() t:SetVertexColor(1, 1, 1) end)
+            b:HookScript("OnLeave", function() Couleur(t, M.texteDoux) end)
         end
     end
-    if o.fond then Effacer(o.fond) end
-    Plat(o, UI.MODERNE.bouton, UI.MODERNE.bord)
-    if icone and icone.SetTexCoord then icone:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
 end
--- Tout ce qu'une fenetre contient : chaque element reconnu prend l'habillage.
+
+-- Une liste deroulante de la suite : comme un bouton, avec un chevron.
+function UI.HabillerListe(d)
+    if not (Actif() and Touchable(d)) or fait[d] then return end
+    fait[d] = true
+    local M = UI.MODERNE
+    EffacerTextures(d)
+    for _, cle in ipairs({ "Background", "Arrow", "Left", "Middle", "Right" }) do Effacer(d[cle]) end
+    for _, f in ipairs({ "SetNormalTexture", "SetPushedTexture", "SetDisabledTexture" }) do if d[f] then pcall(d[f], d, "") end end
+    Plat(d, M.surface, M.bord, M.rayonBouton)
+    Survol(d, 2)
+    local e = Extra(d)
+    if not e.chevron then
+        e.chevron = d:CreateTexture(nil, "OVERLAY")
+        e.chevron:SetTexture(M.fleche)
+        e.chevron:SetSize(14, 14)
+        e.chevron:SetPoint("RIGHT", -8, 0)
+    end
+    Couleur(e.chevron, M.texteDoux)
+end
+
+-- La fenetre ouverte d'une liste deroulante.
+function UI.HabillerChoixDeListe(l)
+    if not (Actif() and Touchable(l)) then return end
+    local M = UI.MODERNE
+    if not fait[l] then
+        fait[l] = true
+        if l.SetBackdropColor then l:SetBackdropColor(0, 0, 0, 0) l:SetBackdropBorderColor(0, 0, 0, 0) end
+        Plat(l, M.fenetre, M.bordFort, M.rayonBouton)
+    end
+    for _, it in ipairs(l.items or {}) do
+        if not fait[it] then
+            fait[it] = true
+            Survol(it, 1)
+            if it.coche then it.coche:SetTexture(M.coche) Couleur(it.coche, M.accent) end
+        end
+    end
+end
+
+-- Ce qu'est un element, d'apres sa forme.
 local function Reconnaitre(f)
     local genre = f:GetObjectType()
-    if genre == "Button" and f.Left and f.Right and f.Middle then UI.HabillerBouton(f) return end
+    if genre == "DropdownButton" or (f.libelle and f.Arrow) then UI.HabillerListe(f) return end
+    if genre == "Slider" and f.GetThumbTexture then UI.HabillerDefilement(f) return end
+    if genre == "Button" then
+        if f.Left and f.Right and f.Middle then UI.HabillerBouton(f) return end
+        local n = f.GetNormalTexture and f:GetNormalTexture()
+        local fichier = n and n.GetTexture and n:GetTexture()
+        if type(fichier) == "string" and fichier:lower():find("closebutton") then UI.HabillerCroix(f) end
+        return
+    end
     if genre == "CheckButton" then
         if (f.Icon or f.icone) and (f:GetWidth() or 0) >= 28 then UI.HabillerOnglet(f)
         elseif f.GetCheckedTexture and f:GetCheckedTexture() and (f:GetWidth() or 0) <= 32 then UI.HabillerCase(f) end
@@ -1455,26 +1711,28 @@ end
 function UI.HabillerArbre(racine, profondeur)
     if not (Actif() and Touchable(racine)) then return end
     profondeur = profondeur or 0
-    if profondeur > 12 or not racine.GetChildren then return end
+    if profondeur > 14 or not racine.GetChildren then return end
     for _, enfant in ipairs({ racine:GetChildren() }) do
-        -- Un cadre protege et tout ce qu'il contient restent tels quels.
+        -- Un cadre protege de lui-meme et tout ce qu'il contient restent tels quels.
         if Touchable(enfant) then
             Reconnaitre(enfant)
             UI.HabillerArbre(enfant, profondeur + 1)
         end
     end
 end
--- Les fenetres de la suite : habillees a l'affichage, puis repassees une fois
--- par seconde seulement tant qu'au moins une reste ouverte (une page qui
--- change ajoute des boutons). Fermees, plus rien ne tourne.
+-- Les fenetres de la suite : habillees des qu'elles s'affichent, puis
+-- repassees quatre fois par seconde seulement tant qu'au moins une reste
+-- ouverte (une page qui change ajoute des boutons). Fermees, rien ne tourne.
 local ouvertes = setmetatable({}, { __mode = "k" })
 local accrochees = setmetatable({}, { __mode = "k" })
 local veille = CreateFrame("Frame")
 veille:Hide()
 local function Habiller(c)
     local ok, err = pcall(function()
+        if c == Suite.liste2 then UI.HabillerChoixDeListe(c) return end
         UI.HabillerFenetre(c)
         UI.HabillerArbre(c)
+        for o in pairs(onglets) do if Visible(o) then MajOnglet(o) end end
     end)
     if not ok then Panne(err) veille:Hide() end
 end
@@ -1482,7 +1740,7 @@ local attente = 0
 veille:SetScript("OnUpdate", function(self, ecoule)
     attente = attente - (ecoule or 0)
     if attente > 0 then return end
-    attente = 1
+    attente = 0.25
     if enPanne or not Moderne() then self:Hide() return end
     if InCombatLockdown and InCombatLockdown() then return end
     local reste = false
@@ -1497,14 +1755,16 @@ local function Accrocher(c)
     local function Montre(self)
         if enPanne or not Moderne() then return end
         ouvertes[self] = true
-        attente = 0
+        -- Tout de suite, pour ne pas voir l'ancien habillage un instant.
+        if not (InCombatLockdown and InCombatLockdown()) then Habiller(self) end
+        attente = 0.25
         veille:Show()
     end
     pcall(c.HookScript, c, "OnShow", Montre)
     if Visible(c) then Montre(c) end
 end
 -- Les fenetres connues de la suite, accrochees une fois chacune. On les
--- cherche a la connexion puis toutes les 2 secondes (une fenetre est creee
+-- cherche a la connexion puis deux fois par seconde (une fenetre est creee
 -- a sa premiere ouverture) ; chercher ne touche a rien.
 local function Chercher()
     if enPanne or not Moderne() then return end
@@ -1516,7 +1776,9 @@ local function Chercher()
     end
     for _, n in ipairs(Suite.FENETRES_FONDU or {}) do if type(n) == "string" then Accrocher(_G[n]) end end
     for _, w in ipairs(Suite.fenetresAPages or {}) do if type(w) == "table" then Accrocher(w.cadre) end end
-    for _, n in ipairs({ "CraftCoreSuivi", "QuestCoreSuivi", "CoreSuiteMacroCore", "CraftCoreAssistant" }) do Accrocher(_G[n]) end
+    for _, n in ipairs({ "CraftCoreSuivi", "QuestCoreSuivi", "CoreSuiteMacroCore", "CraftCoreAssistant", "CoreSuiteQuiGuide" }) do Accrocher(_G[n]) end
+    Accrocher(Suite.choixGuide)
+    Accrocher(Suite.liste2)
 end
 do
     local chercheur = CreateFrame("Frame")
@@ -1529,7 +1791,7 @@ do
     chercheur:SetScript("OnUpdate", function(self, ecoule)
         t = t - (ecoule or 0)
         if t > 0 then return end
-        t = 2
+        t = 0.5
         if _G.CoreSuite ~= Suite then return end
         if enPanne or not Moderne() then self:SetScript("OnUpdate", nil) return end
         local ok, err = pcall(Chercher)
