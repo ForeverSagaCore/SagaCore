@@ -997,8 +997,10 @@ local function PoserReperes(idCarte)
         if garder and not pt.numero and Suite and Suite.PointVisible and not Suite.PointVisible(pt) then garder = false end
         if guide and not pt.numero then garder = false end
         if queteSeule then garder = pt.quete == queteSeule end
-        -- Zone par zone (sauf les etapes du trajet guide, qui le dessinent).
-        if garder and not (guide and pt.numero) and not queteSeule and not NS.carte.ParZone(pt, idCarte) then garder = false end
+        -- Zone par zone.
+        -- Un itineraire (etapes numerotees d'un parcours affiche) reste entier,
+        -- d'une zone a l'autre : c'est son affichage a lui.
+        if garder and not pt.numero and not queteSeule and not NS.carte.ParZone(pt, idCarte) then garder = false end
         if garder then
             local x, y = NS.carte.Reporter(pt, idCarte)
             if x then table.insert(liste, { pt = pt, x = x, y = y }) end

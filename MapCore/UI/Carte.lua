@@ -1147,7 +1147,7 @@ local function PoserReperes(idCarte)
             if guide then garder = pt.numero ~= nil end
             -- Zone par zone : le detail d'une zone ne s'additionne pas a celui
             -- des autres (sauf les etapes du trajet guide).
-            if garder and not guide and api.ParZone and not api.ParZone(pt, idCarte) then garder = false end
+            if garder and not pt.numero and api.ParZone and not api.ParZone(pt, idCarte) then garder = false end
             if garder then x, y = api.Reporter(pt, idCarte) end
             if x then
                 vue.enService = vue.enService + 1
