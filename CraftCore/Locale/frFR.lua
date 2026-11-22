@@ -806,4 +806,5 @@ L.GEAR_PRES_3_TIP = "Toutes les origines dans une seule liste, chacune avec son 
 L.SETTING_GEAR_ALL_LEVELS = "Tous les niveaux"
 L.ASSIST_ALSO_BANK = "aussi x%d en banque"
 L.ASSIST_NOTHING_IN_BAGS = "Rien dans les sacs : à sortir de la banque d'abord."
+L.ASSIST_PICK = "LB / RB pour choisir, Y pour valider."
 L.ASSIST_PICK_SEND = "Plusieurs envois : LB / RB pour choisir, Y pour préparer."

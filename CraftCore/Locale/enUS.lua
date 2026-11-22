@@ -807,4 +807,5 @@ L.GEAR_PRES_3_TIP = "All sources in one list, each with its title ; switched on 
 L.SETTING_GEAR_ALL_LEVELS = "All levels"
 L.ASSIST_ALSO_BANK = "also x%d in the bank"
 L.ASSIST_NOTHING_IN_BAGS = "Nothing in bags : take it from the bank first."
+L.ASSIST_PICK = "LB / RB to pick, Y to confirm."
 L.ASSIST_PICK_SEND = "Several mails : LB / RB to pick, Y to prepare."

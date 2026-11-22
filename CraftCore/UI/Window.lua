@@ -4694,7 +4694,7 @@ local function PoserIndicesManette(win)
     Marque(win, "rb", "PADRSHOULDER", derniere, "RIGHT", "RIGHT", -2, 0)
     -- LT / RT : au dessus du premier onglet de droite, sous le dernier.
     local premierOnglet = win.onglets and win.ordreOnglets and win.onglets[win.ordreOnglets[1] or ""]
-    premierOnglet = premierOnglet or win.ongletEquipement
+    premierOnglet = premierOnglet or win.ongletCaisses
     Marque(win, "lt", "PADLTRIGGER", premierOnglet, "BOTTOM", "TOP", 0, 12)
     Marque(win, "rt", "PADRTRIGGER", win.ongletCaisses, "TOP", "BOTTOM", 0, -10)
     -- Croix gauche / droite : apres le dernier portrait de personnage.
@@ -5037,7 +5037,7 @@ local function ReglerPlaceDuBandeau(win, visible)
 end
 
 -- Pages de StuffCore (un add-on a part, servi par cette fenetre).
-local PAGES_STUFF = { equipement = true, caisses = true, reglagesStuff = true }
+local PAGES_STUFF = { equipement = true, reglagesStuff = true }
 function ecran.EstStuff(page) return PAGES_STUFF[page or ""] == true end
 
 _G.CraftCoreAPI = _G.CraftCoreAPI or {}
@@ -5045,7 +5045,7 @@ _G.CraftCoreAPI = _G.CraftCoreAPI or {}
 -- arrivant par LT / RT.
 _G.CraftCoreAPI.OuvrirStuff = function()
     local entree = NS.suite and NS.suite.PrendreEntree and NS.suite.PrendreEntree()
-    local page = (entree == "debut" and "equipement") or (entree == "fin" and "caisses") or ecran.pageStuff or "equipement"
+    local page = (entree and "equipement") or ecran.pageStuff or "equipement"
     ecran.Montrer(page)
 end
 -- La fenetre, seulement quand elle montre StuffCore.
@@ -5090,9 +5090,9 @@ function ecran.Montrer(cle)
         if dernier then
             ecran.metier = dernier
             ecran.page = PAGES_PAR_METIER[ecran.page] and ecran.page or "recettes"
-        else
-            ecran.page = "progression"
         end
+        -- Le dernier onglet de droite : les caisses.
+        ecran.page = "caisses"
     end
     if ecran.EstStuff(ecran.page) then ecran.pageStuff = ecran.page end
 
@@ -5184,21 +5184,22 @@ function ecran.Montrer(cle)
     end
 
     local okOnglets, souciOnglets = pcall(SynchroniserOnglets, fenetre)
-    -- A droite : les metiers pour CraftCore, Mon equipement et Caisses pour
-    -- StuffCore, jamais les deux.
+    -- A droite, pour CraftCore seulement : les metiers, et tout en bas les
+    -- caisses, en face de l'onglet Horde de la colonne de gauche. StuffCore
+    -- n'a aucun onglet a droite.
     local modeStuff = ecran.EstStuff(ecran.page)
     for _, onglet in pairs(fenetre.onglets or {}) do onglet:SetShown(not modeStuff) end
-    if fenetre.ongletEquipement and fenetre.ongletEquipement.ClearAllPoints and modeStuff and NS.suite and NS.suite.AncreHaut then
-        local ancre, point = NS.suite.AncreHaut(fenetre, "droite")
-        fenetre.ongletEquipement:ClearAllPoints()
-        fenetre.ongletEquipement:SetPoint("TOPLEFT", ancre, point, 0, NS.suite.HAUT_ONGLET or -7)
-    end
-    for page, onglet in pairs({ equipement = fenetre.ongletEquipement,
-        caisses = fenetre.ongletCaisses }) do
-        local choisi = (ecran.page == page)
-        if onglet.SetChecked then onglet:SetChecked(choisi) end
-        MarquerSelection(onglet, choisi, onglet.Icon)
-        onglet:SetShown(modeStuff)
+    if fenetre.ongletEquipement then fenetre.ongletEquipement:Hide() end
+    local caisses = fenetre.ongletCaisses
+    if caisses then
+        if caisses.ClearAllPoints then
+            caisses:ClearAllPoints()
+            caisses:SetPoint("BOTTOMLEFT", fenetre, "BOTTOMRIGHT", 0, 46)
+        end
+        local choisi = (ecran.page == "caisses")
+        if caisses.SetChecked then caisses:SetChecked(choisi) end
+        MarquerSelection(caisses, choisi, caisses.Icon)
+        caisses:SetShown(not modeStuff)
     end
     if not okOnglets then
         NS.base.NoterIncident("onglets de métier", souciOnglets)
@@ -5494,7 +5495,7 @@ function ecran.PageVoisine(pas)
     if not fenetre then ecran.Montrer() return end
     -- StuffCore : ses trois pages.
     if ecran.EstStuff(ecran.page) then
-        local liste = { "equipement", "caisses", "reglagesStuff" }
+        local liste = { "equipement", "reglagesStuff" }
         local rang = 1
         for k, p in ipairs(liste) do if p == ecran.page then rang = k end end
         local suivant = math.max(1, math.min(#liste, rang + pas))
@@ -5519,15 +5520,12 @@ end
 function ecran.MetierVoisin(pas)
     if not fenetre then ecran.Montrer() end
     local ordre = {}
-    if ecran.EstStuff(ecran.page) then
-        table.insert(ordre, { page = "equipement" })
-        table.insert(ordre, { page = "caisses" })
-    else
-        for _, cle in ipairs(fenetre and fenetre.ordreOnglets or {}) do
-            table.insert(ordre, { metier = cle })
-        end
-        table.insert(ordre, { page = "progression" })
+    -- StuffCore n'a pas d'onglet a droite.
+    if ecran.EstStuff(ecran.page) then return end
+    for _, cle in ipairs(fenetre and fenetre.ordreOnglets or {}) do
+        table.insert(ordre, { metier = cle })
     end
+    table.insert(ordre, { page = "caisses" })
     local index
     for rang, entree in ipairs(ordre) do
         if (entree.page and entree.page == ecran.page)

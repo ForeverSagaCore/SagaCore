@@ -603,14 +603,15 @@ function courrier.ToutSortir()
     if not ok then enCours = false Lacher() NS.base.NoterIncident("sortie de banque", souci) end
 end
 
--- Choisir l'envoi suivant / precedent (manette).
-function courrier.ChoisirEnvoi(pas)
-    local liste = courrier.preparables or {}
+-- Choisir le bouton ou la case suivant / precedent du panneau (manette).
+function courrier.Deplacer(pas)
+    local liste = panneau and panneau.elements or {}
     if #liste < 2 then return end
     local rang = 1
-    for k, e in ipairs(liste) do if e.cle == courrier.envoiChoisi then rang = k end end
+    for k, e in ipairs(liste) do if e == panneau.choix then rang = k end end
     rang = ((rang - 1 + pas) % #liste) + 1
-    courrier.envoiChoisi = liste[rang].cle
+    courrier.focusCle = liste[rang].cle
+    if liste[rang].envoi then courrier.envoiChoisi = liste[rang].envoi end
     if courrier.Actualiser then courrier.Actualiser() end
 end
 
@@ -750,7 +751,7 @@ local function Relais()
         local maintenant = NS.Appeler(_G.GetTime) or 0
         if maintenant - dernier < 0.4 then return end
         dernier = maintenant
-        local b = panneau and (panneau.boutonY or panneau.boutons[1])
+        local b = panneau and panneau.choix and panneau.choix.cadre
         if b and b:IsShown() and b:IsEnabled() then b:Click("LeftButton") end
     end)
     return relaisManette
@@ -760,14 +761,13 @@ local function LierManette(actif)
     if not panneau then return end
     if NS.Appeler(NS.Lecture("InCombatLockdown")) then return end
     pcall(_G.ClearOverrideBindings, panneau)
-    if actif and courrier.ToucheManette() and panneau.boutons[1] and panneau.boutons[1]:IsShown()
-        and panneau.boutons[1]:IsEnabled() then
+    if actif and courrier.ToucheManette() and #(panneau.elements or {}) > 0 then
         Relais()
         -- Y, pas A : A reste au jeu pour prendre et poser les objets de la
         -- banque et des sacs.
         pcall(_G.SetOverrideBindingClick, panneau, true, "PAD4", "CraftCoreAssistantManette", "LeftButton")
-        -- Plusieurs envois a la boite aux lettres : LB / RB choisit lequel.
-        if panneau.plusieursEnvois then
+        -- Plusieurs boutons ou cases : LB / RB choisit lequel.
+        if #panneau.elements > 1 then
             for _, sens in ipairs({ { "PADLSHOULDER", -1 }, { "PADRSHOULDER", 1 } }) do
                 local nomB = "CraftCoreAssistantEnvoi" .. (sens[2] < 0 and "Avant" or "Apres")
                 local b = _G[nomB]
@@ -776,7 +776,7 @@ local function LierManette(actif)
                     b:Hide()
                     pcall(b.RegisterForClicks, b, "AnyDown")
                     local pas = sens[2]
-                    b:SetScript("OnClick", function() courrier.ChoisirEnvoi(pas) end)
+                    b:SetScript("OnClick", function() courrier.Deplacer(pas) end)
                 end
                 pcall(_G.SetOverrideBindingClick, panneau, true, sens[1], nomB, "LeftButton")
             end
@@ -851,18 +851,21 @@ local function Remplir(plan)
             Ligne(l.objet, texteDe(l))
         end
     end
-    local function Action(libelle, auClic)
+    -- Ce qui se choisit a la manette (LB / RB) et se declenche par Y : les
+    -- boutons et les cases, dans l'ordre du panneau.
+    local elements = {}
+    local function Choisissable(cadre, cle) table.insert(elements, { cadre = cadre, cle = cle }) end
+
+    local function Action(libelle, auClic, cle)
         nb = nb + 1
         local b = Bouton(nb)
         b:ClearAllPoints()
         b:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 0, -(y + 4))
-        -- La premiere action se fait aussi a la manette (touche Y) : l'icone
-        -- du jeu devant le libelle.
-        if nb == 1 and courrier.ToucheManette() then
-            local ok, g = pcall(NS.manette.Glyphe, "PAD4", 14)
-            if ok and g then libelle = g .. " " .. libelle end
-        end
+        b.libelle = libelle
         b:SetText(libelle)
+        b:SetAlpha(1)
+        b:UnlockHighlight()
+        Choisissable(b, cle or ("action:" .. (string.gsub(libelle, "%d", ""))))
         -- Toute la largeur du panneau : le texte (icone de la manette et
         -- nombre compris) y tient toujours, et les boutons s'alignent.
         b:SetWidth(largeur)
@@ -878,6 +881,8 @@ local function Remplir(plan)
         c:ClearAllPoints()
         c:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", -2, -(y - 2))
         c:SetChecked(courrier.PileChoisie(objet))
+        c:UnlockHighlight()
+        Choisissable(c, "pile:" .. tostring(objet))
         c:SetScript("OnClick", function(self)
             courrier.ChoisirPile(objet, self:GetChecked() and true or false)
             courrier.Actualiser()
@@ -939,17 +944,6 @@ local function Remplir(plan)
         choisi = choisi or preparables[1]
         courrier.envoiChoisi = choisi and choisi.cle or nil
         courrier.preparables = preparables
-        panneau.plusieursEnvois = #preparables > 1
-        panneau.boutonY = nil
-        if #preparables > 1 and courrier.ToucheManette() then
-            nt = nt + 1
-            local t = Texte(nt, "GameFontDisableSmall")
-            t:ClearAllPoints()
-            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 0, -y)
-            t:SetWidth(largeur)
-            t:SetText(L().ASSIST_PICK_SEND)
-            y = y + 16
-        end
         for rang, envoi in ipairs(plan.envois) do
             if rang > 1 then y = y + 6 end
             vide = false
@@ -972,9 +966,9 @@ local function Remplir(plan)
                 Action(L().ASSIST_PREPARE, function()
                     courrier.envoiChoisi = e.cle
                     courrier.PreparerEnvoi(e)
-                end)
-                if estChoisi then panneau.boutonY = panneau.boutons[nb] end
-                if #preparables > 1 and not estChoisi then panneau.boutons[nb]:SetAlpha(0.6) else panneau.boutons[nb]:SetAlpha(1) end
+                end, "envoi:" .. tostring(e.cle))
+                elements[#elements].envoi = e.cle
+                if #preparables > 1 and not estChoisi then panneau.boutons[nb]:SetAlpha(0.6) end
             elseif envoi.enSacs == 0 then
                 nt = nt + 1
                 local t = Texte(nt, "GameFontDisableSmall")
@@ -1084,6 +1078,36 @@ local function Remplir(plan)
             end
         end
     end
+    -- L'element choisi a la manette : celui d'avant s'il est encore la, sinon
+    -- l'envoi choisi, sinon le premier. Il s'eclaire et porte l'icone Y.
+    local actifs = {}
+    for _, e in ipairs(elements) do if e.cadre:IsEnabled() then table.insert(actifs, e) end end
+    panneau.elements = actifs
+    local choix
+    for _, e in ipairs(actifs) do if e.cle == courrier.focusCle then choix = e end end
+    if not choix and courrier.envoiChoisi then
+        for _, e in ipairs(actifs) do if e.envoi == courrier.envoiChoisi then choix = e end end
+    end
+    choix = choix or actifs[1]
+    panneau.choix = choix
+    courrier.focusCle = choix and choix.cle or nil
+    if choix and courrier.ToucheManette() then
+        choix.cadre:LockHighlight()
+        if choix.cadre.libelle then
+            local ok, g = pcall(NS.manette.Glyphe, "PAD4", 14)
+            if ok and g then choix.cadre:SetText(g .. " " .. choix.cadre.libelle) end
+        end
+        if #actifs > 1 then
+            nt = nt + 1
+            local t = Texte(nt, "GameFontDisableSmall")
+            t:ClearAllPoints()
+            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 0, -(y + 2))
+            t:SetWidth(largeur)
+            t:SetText(L().ASSIST_PICK)
+            y = y + 18
+        end
+    end
+
     -- Resultat de la derniere action, ici meme : pas seulement dans la discussion.
     if statut and not vide then
         nt = nt + 1
@@ -1096,7 +1120,7 @@ local function Remplir(plan)
         y = y + (t:GetStringHeight() or 14) + 6
     end
     panneau.contenu:SetHeight(math.max(1, y))
-    LierManetteBientot(nb > 0)
+    LierManetteBientot(#actifs > 0)
     -- Hauteur : a l'hotel des ventes, toute la sienne ; ailleurs, celle du
     -- contenu, sans depasser la fenetre accompagnee. Au-dela, ca defile.
     local voulu = HAUT_DU_CONTENU + y + BAS_DU_CONTENU
@@ -1151,7 +1175,8 @@ end
 Placer = function()
     panneau:ClearAllPoints()
     panneau:SetWidth(LARGEUR)
-    if panneau.cuir then panneau.cuir:SetShown(lieu == "banque") end
+    -- Le meme fond partout (banque, courrier, encheres).
+    if panneau.cuir then panneau.cuir:Hide() end
     local gauche, droite, bas, haut = Bornes(FENETRES[lieu] or {})
     panneau.hauteurCible = (haut and bas) and (haut - bas) or nil
     if not gauche then

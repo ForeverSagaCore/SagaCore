@@ -1503,6 +1503,9 @@ function fen.Rendre()
             for _, p in ipairs(persos) do if p.cle == moi then moiVisible = true end end
             etat.cle = moiVisible and moi or (persos[1] and persos[1].cle)
         end
+        -- L'equipement a son add-on (StuffCore), la carte le sien (MapCore) :
+        -- plus d'onglets a droite ici.
+        if etat.page == "equipement" or etat.page == "carte" then etat.page = etat.pageMenu or "quetes" end
         RendreListe()
         MarquerMenu()
         local surReglages = etat.page == "reglages"
@@ -1517,6 +1520,7 @@ function fen.Rendre()
             local choisi = etat.page == page_
             if onglet.SetChecked then onglet:SetChecked(choisi) end
             MarquerSelection(onglet, choisi, onglet.Icon)
+            onglet:Hide()
         end
         if surEquipement then
             NS.equipement.Rendre(cadre.zoneFixe, cadre.bandeau, etat.cle)
@@ -1587,7 +1591,7 @@ function fen.Rendre()
             for _, b in ipairs(cadre.bande.boutons or {}) do if b:IsShown() then dernier = b end end
             local PAGES_ = fen.PAGES
             NS.manette.Indices(cadre, cadre.boutonsMenu[PAGES_[1].cle], cadre.boutonsMenu[PAGES_[#PAGES_].cle],
-                cadre.ongletEquipement, dernier, cadre.ongletCarte)
+                nil, dernier, nil)
         end
     end)
     if m and etat.page then m.page = etat.page end
@@ -2024,7 +2028,7 @@ function fen.PageVoisine(pas)
 end
 
 -- LT / RT : les onglets de droite (Equipement, Carte), puis retour aux quetes.
-local ONGLETS = { "quetes", "equipement", "carte" }
+local ONGLETS = { "quetes" }
 -- LT / RT : Quetes (les pages du menu), Equipement, Carte ; s'arrete aux
 -- bouts (les add-ons : Vue + LB / RB).
 function fen.OngletVoisin(pas)
