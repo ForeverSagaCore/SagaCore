@@ -935,8 +935,15 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
             end
             -- Ou ca se fait : qui laisse les objets, ou sont les creatures ;
             -- sans objectif localise, qui reprend la quete.
+            -- Une quete de donjon le dit en clair : elle se fait a l'interieur.
+            local dQ = NS.donjons and NS.donjons.DeQuete and NS.donjons.DeQuete(id)
+            if dQ and dQ.nom then
+                index = index + 1
+                y = Poser(index, y, string.format(L.TRACK_IN_DUNGEON, dQ.nom), { retrait = 22,
+                    couleur = { 1, 0.82, 0 }, police = "GameFontNormalSmall", petit = true, uneLigne = true })
+            end
             local ou, parQui = NS.ref.OuSeFait(id)
-            if ou then
+            if ou and not dQ then
                 index = index + 1
                 y = Poser(index, y, string.format(parQui and L.TRACK_SEE or L.TRACK_WHERE, ou), { retrait = 22,
                     couleur = { 1, 0.82, 0 }, police = "GameFontNormalSmall", petit = true })
@@ -1503,6 +1510,13 @@ RendreEtapeBase = function(moi, id, rang, e, index, y, pion)
             suivi.Rendre()
         end })
     if not replieE then
+        local dE = NS.donjons and NS.donjons.DeQuete and NS.donjons.DeQuete(id)
+        if dE and dE.nom then
+            index = index + 1
+            local ic = Icones()
+            y = Poser(index, y, string.format(L.TRACK_IN_DUNGEON, dE.nom), { retrait = 22, couleur = { 1, 0.82, 0 },
+                police = "GameFontNormalSmall", petit = true, uneLigne = true, pion = ic.pion, voir = ic.voir, margeDroite = ic.marge })
+        end
         local groupeE = TexteDuGroupe(id)
         if groupeE then
             index = index + 1
@@ -3660,6 +3674,20 @@ local function Cible()
                 end
                 if lieu then break end
             end
+            -- Une quete qui se fait (ou se prend) dans un donjon, vue de dehors :
+            -- la fleche mene a l'entree du donjon, et le dit.
+            if not lieu and NS.donjons and NS.donjons.DeQuete then
+                local d = NS.donjons.DeQuete(id)
+                for _, e in ipairs(d and d.entrees or {}) do
+                    local x, y = NS.carte.Reporter({ carte = e.carte, x = e.x, y = e.y }, continent)
+                    if x then
+                        local dd = (x - jx) ^ 2 + (y - jy) ^ 2
+                        if not meilleur or dd < meilleur then
+                            meilleur, lieu = dd, { x = x, y = y, qui = d.nom, entree = d.nom }
+                        end
+                    end
+                end
+            end
             table.insert(restantes, { id = id, lieu = lieu })
         end
     end
@@ -3694,7 +3722,9 @@ local function Cible()
     local qV = moi.quetes[idV]
     local titreV = (qV and qV.titre) or (NS.ref.Lire and NS.ref.Lire("QuestDB", idV, "name")) or ("#" .. idV)
     local quoi
-    if qV and qV.complete == true then
+    if cible.entree then
+        quoi = string.format(L.GUIDE_ENTER_DUNGEON, cible.entree)
+    elseif qV and qV.complete == true then
         quoi = string.format(L.GUIDE_DO_TURNIN, cible.qui or "?")
     elseif qV then
         for _, o in ipairs(qV.objectifs or {}) do

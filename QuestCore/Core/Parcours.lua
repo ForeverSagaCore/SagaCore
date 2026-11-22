@@ -86,10 +86,14 @@ local function Nettoyer(cle, liste)
     end
 end
 
--- Anciens noms des kits ("Prerequis : X") : ils contiennent surtout les
--- quetes du donjon a prendre avant d'y aller, d'ou le nouveau nom.
+-- Anciens noms des kits ("Prerequis : X", "Avant d'y aller : X") : ils
+-- contiennent les quetes du donjon (chacune dit si elle se fait dedans) et
+-- leurs prerequis, d'ou le nom "Quetes du donjon : X".
 local ANCIENS_KITS = { "^Prérequis : (.+)$", "^Prerequisites: (.+)$", "^Voraussetzungen: (.+)$", "^Requisitos: (.+)$",
-    "^Prerequisiti: (.+)$", "^Предварительные задания: (.+)$", "^前置任务：(.+)$" }
+    "^Prerequisiti: (.+)$", "^Предварительные задания: (.+)$", "^前置任务：(.+)$",
+    -- "Avant d'y aller" laissait croire que tout se faisait avant le donjon.
+    "^Avant d'y aller : (.+)$", "^Before you go : (.+)$", "^Vor dem Besuch: (.+)$", "^Antes de ir: (.+)$",
+    "^Prima di andare: (.+)$", "^Перед походом: (.+)$", "^出发前：(.+)$" }
 local function Renommer(liste)
     for _, pc in ipairs(liste) do
         if pc.genre == "kit" and type(pc.nom) == "string" then

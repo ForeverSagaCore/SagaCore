@@ -2692,6 +2692,11 @@ local function CadreGuidage()
     c.fondBoussole:SetSize(25, 25)
     c.fondBoussole:SetPoint("CENTER")
     c.fondBoussole:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    -- Dans l'anneau, l'icone de ce qu'on guide (quete, recolte, carte...).
+    c.icone = c:CreateTexture(nil, "ARTWORK", nil, -1)
+    c.icone:SetSize(22, 22)
+    c.icone:SetPoint("CENTER")
+    if c.icone.SetMask then pcall(c.icone.SetMask, c.icone, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
     c.fleche = c:CreateTexture(nil, "OVERLAY")
     c.fleche:SetSize(30, 30)
     c.fleche:SetTexture("Interface\\Minimap\\MinimapArrow")
@@ -2811,7 +2816,16 @@ function Suite.Guider(cle, fournisseur)
         pcall(ancien.Fin)
     end
     g.cle, g.fournisseur = cle, fournisseur
-    CadreGuidage():Show()
+    local cadreG = CadreGuidage()
+    -- L'icone au centre : celle que donne le guidage, sinon celle de l'add-on.
+    local ICONES_GUIDE = {
+        QuestCore = "Interface\\GossipFrame\\AvailableQuestIcon", QuestCorePointee = "Interface\\GossipFrame\\AvailableQuestIcon",
+        CraftCore = "Interface\\Icons\\INV_Misc_Herb_01", MapCore = "Interface\\Icons\\INV_Misc_Map_01",
+    }
+    if cadreG.icone then
+        cadreG.icone:SetTexture((fournisseur and fournisseur.icone) or ICONES_GUIDE[cle] or "Interface\\Icons\\INV_Misc_Map_01")
+    end
+    cadreG:Show()
     -- Partout ou l'on guide, la carte de MapCore s'ouvre sur la destination,
     -- qui y clignote. Sauf si le guidage part deja d'une carte (carte = false).
     if fournisseur and fournisseur.carte ~= false then
