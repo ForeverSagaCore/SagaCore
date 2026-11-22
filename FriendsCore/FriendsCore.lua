@@ -172,8 +172,13 @@ _G.FriendsCoreAPI = {
     -- qui le guide : la suite lui pose la question.
     -- Reglage "Me demander", un add-on de trajet installe, et rien de choisi
     -- pour ce guidage : la suite pose la question.
-    ADecider = function() return R().trajet == "auto" and choixDuGuidage == nil and #Moyens() > 0 end,
+    ADecider = function() return R().trajet == "auto" and choixDuGuidage == nil end,
     Moyens = function() return Moyens() end,
+    -- Tous les add-ons de trajet connus, installes ou non.
+    Tous = function()
+        return { { cle = "spf", nom = "Shortest Path Forever", installe = SPF() ~= nil },
+            { cle = "tomtom", nom = "TomTom", installe = TomTomPret() } }
+    end,
     -- Pour ce guidage seulement : "spf", "tomtom" ou "aucun" (la fleche).
     Choisir = function(cle) choixDuGuidage = (cle == "spf" or cle == "tomtom") and cle or "aucun" end,
     -- Nouveau guidage : on redemandera.

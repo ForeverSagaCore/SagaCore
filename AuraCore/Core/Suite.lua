@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 133
+local VERSION = 134
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -149,6 +149,9 @@ local DICO = {
     frFR = {
         ["Show or hide everything"] = "Tout afficher ou tout masquer",
         ["Open"] = "Ouvrir",
+        ["Route add-ons"] = "Add-ons d'itinéraire",
+        ["Shortest Path Forever and TomTom draw a detailed route. Install them with CurseForge or WowUp, then restart the game : they become available here."] = "Shortest Path Forever et TomTom tracent un itinéraire détaillé. Installez-les avec CurseForge ou WowUp, puis relancez le jeu : ils deviennent disponibles ici.",
+        ["Greyed : add-on not installed (see the i)."] = "Grisé : add-on non installé (voir le i).",
         ["Who guides you?"] = "Qui vous guide ?",
         ["You can change it later in FriendsCore."] = "Vous pourrez changer dans FriendsCore.",
         ["Follow the route of"] = "Suivez l'itinéraire de",
@@ -2681,13 +2684,33 @@ function Suite.ChoisirGuide()
         f.texte:SetJustifyH("LEFT")
         f.texte:SetWordWrap(false)
         f.boutons = {}
+        -- Le petit i : comment ajouter les add-ons d'itineraire qui manquent.
+        local info = CreateFrame("Button", nil, f)
+        info:SetSize(16, 16)
+        info:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -4)
+        info:SetFrameLevel(f:GetFrameLevel() + 20)
+        info:SetNormalTexture("Interface\\FriendsFrame\\InformationIcon")
+        info:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+        info:SetScript("OnEnter", function()
+            -- Toujours au meme endroit : contre le bord droit de la fenetre.
+            GameTooltip:SetOwner(f, "ANCHOR_NONE")
+            GameTooltip:ClearAllPoints()
+            GameTooltip:SetPoint("TOPLEFT", f, "TOPRIGHT", 4, 0)
+            GameTooltip:SetText(TX("Route add-ons"), 1, 0.82, 0)
+            GameTooltip:AddLine(TX("Shortest Path Forever and TomTom draw a detailed route. Install them with CurseForge or WowUp, then restart the game : they become available here."), 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        info:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        f.note = f.zone:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        f.note:SetJustifyH("LEFT")
+        f.note:SetWordWrap(false)
         -- Fermer sans choisir : pas de guidage.
         if f.fermer then f.fermer:SetScript("OnClick", function() f:Hide() Suite.ArreterGuidage() end) end
         -- Manette : la croix haut / bas passe d'un choix a l'autre (le choix
         -- s'allume), A valide, B ferme sans guider.
         function f.Allumer(i)
             local vus = {}
-            for _, b in ipairs(f.boutons) do if b:IsShown() then table.insert(vus, b) end end
+            for _, b in ipairs(f.boutons) do if b:IsShown() and b:IsEnabled() then table.insert(vus, b) end end
             if #vus == 0 then return end
             i = math.max(1, math.min(#vus, i or 1))
             f.rang = i
@@ -2708,8 +2731,13 @@ function Suite.ChoisirGuide()
         f:Hide()
         Suite.choixGuide = f
     end
-    local choix = {}
-    for _, m in ipairs(hub.Moyens()) do table.insert(choix, { cle = m.cle, nom = m.nom }) end
+    -- Tous les add-ons d'itineraire connus : ceux qui manquent, grises.
+    local choix, manque = {}, false
+    local tous = hub.Tous and hub.Tous() or hub.Moyens()
+    for _, m in ipairs(tous) do
+        table.insert(choix, { cle = m.cle, nom = m.nom, absent = m.installe == false })
+        if m.installe == false then manque = true end
+    end
     table.insert(choix, { cle = "aucun", nom = "Forever SagaCore" })
     if f.titre then f.titre:SetText(TX("Who guides you?")) end
     f.texte:SetText(TX("You can change it later in FriendsCore."))
@@ -2725,6 +2753,7 @@ function Suite.ChoisirGuide()
         b:ClearAllPoints()
         b:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, -22 - (k - 1) * 28)
         b:SetText(ch.nom)
+        b:SetEnabled(not ch.absent)
         local cle = ch.cle
         b:SetScript("OnClick", function()
             hub.Choisir(cle)
@@ -2733,8 +2762,14 @@ function Suite.ChoisirGuide()
         end)
         b:Show()
     end
-    -- Barre de titre, marge, texte, boutons, marge.
-    f:SetHeight(24 + 12 + 22 + #choix * 28 + 12 + 8)
+    -- Sous les boutons : ce que veut dire un choix grise.
+    f.note:ClearAllPoints()
+    f.note:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, -22 - #choix * 28 - 2)
+    f.note:SetPoint("RIGHT", f.zone, "RIGHT", 0, 0)
+    f.note:SetText(manque and TX("Greyed : add-on not installed (see the i).") or "")
+    f.note:SetShown(manque)
+    -- Barre de titre, marge, texte, boutons, note, marge.
+    f:SetHeight(24 + 12 + 22 + #choix * 28 + (manque and 16 or 0) + 12 + 8)
     f:ClearAllPoints()
     -- Toujours au meme endroit, au milieu de l'ecran : on ne peut pas la rater.
     f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
