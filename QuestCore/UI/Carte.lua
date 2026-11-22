@@ -260,6 +260,16 @@ local function PointsDeQuete(id, q)
             end
         end
     end
+    -- Objectif sans lieu connu (parler a quelqu'un, livrer...) : celui qui
+    -- reprend la quete, la ou il faut aller.
+    if #points == 0 then
+        local fin = Lire("QuestDB", id, "finishedBy")
+        if type(fin) == "table" then
+            local c = Collecteur("objectif")
+            for _, pnj in ipairs(fin[1] or {}) do Apparitions("NpcDB", pnj, c) end
+            for _, objet in ipairs(fin[2] or {}) do Apparitions("ObjectDB", objet, c) end
+        end
+    end
     return points
 end
 
