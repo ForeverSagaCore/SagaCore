@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 117
+local VERSION = 118
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -1630,6 +1630,14 @@ local function Eclairer(rangee)
     end
 end
 
+-- Met l'onglet de l'add-on courant en retrait (oui) ou le rallume (non).
+function Suite.CourantEnRetrait(cadre, oui)
+    local rangee = cadre and cadre.suiteEntete
+    if not rangee or rangee.sansCourant == (oui == true) then return end
+    rangee.sansCourant = oui == true
+    pcall(Suite.Actualiser)
+end
+
 function Suite.CurseurActif(cadre)
     local rangee = cadre and cadre.suiteEntete
     return rangee ~= nil and rangee.curseur ~= nil
@@ -1820,7 +1828,9 @@ function Suite.Actualiser()
         end
         for _, b in ipairs(rangee.boutons) do
             local installe = Suite.Installe(b.cle)
-            local courant = b.cle == rangee.courante
+            -- Une page a part (l'equipement de CraftCore) : l'add-on courant
+            -- passe en retrait, comme les autres.
+            local courant = b.cle == rangee.courante and not rangee.sansCourant
             b.icone:SetDesaturated(not installe)
             b:SetAlpha(installe and 1 or 0.5)
             if b.SetChecked then b:SetChecked(courant) end

@@ -25,6 +25,34 @@ local LIGNES_PAR_COLONNE = 5
 local L
 
 -- ---------------------------------------------------------------------------
+-- Navigation : trois scenarios a essayer (choisis dans le menu de gauche)
+--   1 : les origines dans le menu de gauche, une a la fois ;
+--   2 : les origines en onglets au-dessus des emplacements ;
+--   3 : toutes les origines dans une seule liste, triee par gain, chaque
+--       origine allumee ou eteinte dans le menu de gauche.
+-- ---------------------------------------------------------------------------
+
+local function Memoire()
+    CraftCoreDB.memoire = type(CraftCoreDB.memoire) == "table" and CraftCoreDB.memoire or {}
+    local m = CraftCoreDB.memoire
+    m.equip = type(m.equip) == "table" and m.equip or {}
+    return m.equip
+end
+function equipement.Scenario() return tonumber(Memoire().scenario) or 1 end
+function equipement.PoserScenario(n) Memoire().scenario = n end
+function equipement.Categorie() return Memoire().categorie or "craftInterne" end
+function equipement.PoserCategorie(c) Memoire().categorie = c end
+function equipement.FiltreActif(c)
+    local f = Memoire().filtres
+    return not (type(f) == "table" and f[c] == false)
+end
+function equipement.BasculerFiltre(c)
+    local m = Memoire()
+    m.filtres = type(m.filtres) == "table" and m.filtres or {}
+    m.filtres[c] = not equipement.FiltreActif(c)
+end
+
+-- ---------------------------------------------------------------------------
 -- Lecture
 -- ---------------------------------------------------------------------------
 
@@ -124,14 +152,15 @@ local function CreerLigneCandidat(parent, index)
     ligne.nom:SetPoint("TOPLEFT", ligne, "TOPLEFT", 25, -4)
     ligne.nom:SetPoint("RIGHT", ligne, "RIGHT", -20, 0)
     ligne.nom:SetJustifyH("LEFT")
-    ligne.nom:SetWordWrap(true)
-    if ligne.nom.SetMaxLines then ligne.nom:SetMaxLines(2) end
+    -- Jamais sur deux lignes.
+    ligne.nom:SetWordWrap(false)
+    if ligne.nom.SetMaxLines then ligne.nom:SetMaxLines(1) end
 
     ligne.etat = ligne:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     ligne.etat:SetPoint("TOPLEFT", ligne.nom, "BOTTOMLEFT", 0, -2)
     ligne.etat:SetPoint("RIGHT", ligne, "RIGHT", -4, 0)
     ligne.etat:SetJustifyH("LEFT")
-    ligne.etat:SetWordWrap(true)
+    ligne.etat:SetWordWrap(false)
 
     ligne:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
     parent.candidats[index] = ligne
@@ -196,8 +225,10 @@ function equipement.Construire(contenu, bandeau)
                 bouton:SetPoint("TOPLEFT", precedents[cote], "BOTTOMLEFT", 0, -2)
             elseif cote == "g" then
                 bouton:SetPoint("TOPLEFT", vue, "TOPLEFT", 0, 0)
+                vue.premierG = bouton
             else
                 bouton:SetPoint("TOPLEFT", vue, "TOPLEFT", LARGEUR_COLONNE + 8, 0)
+                vue.premierD = bouton
             end
             precedents[cote] = bouton
             if cote == "g" then hauteurColonnes = hauteurColonnes + HAUTEUR_CASE + 2 end
@@ -432,9 +463,64 @@ function equipement.Rendre(contenu, bandeau)
     local vue = equipement.Construire(contenu, bandeau)
     vue:Show()
 
-    local cleAffichee = NS.base.CleAffichee()
+    -- Vue "tous les personnages" (stocks) : l'equipement reste celui du
+    -- personnage connecte.
+    local cleAffichee = NS.base.CleAffichee() or NS.ClePersonnage() or "?"
     local estConnecte = (cleAffichee == NS.ClePersonnage())
     local fiche = NS.base.FicheAffichee()
+
+    -- Scenario 2 : les origines en onglets tout en haut ; le reste descend.
+    local scenario = equipement.Scenario()
+    local decalage = (scenario == 2) and 36 or 0
+    vue.premierG:ClearAllPoints()
+    vue.premierG:SetPoint("TOPLEFT", vue, "TOPLEFT", 0, -decalage)
+    vue.premierD:ClearAllPoints()
+    vue.premierD:SetPoint("TOPLEFT", vue, "TOPLEFT", LARGEUR_COLONNE + 8, -decalage)
+    for _, emplacement in ipairs(NS.emplacements.DuPersonnage) do
+        if emplacement.cote == "bas" then
+            local bouton = vue.cases[emplacement.nom]
+            bouton:ClearAllPoints()
+            bouton:SetPoint("TOPLEFT", vue, "TOPLEFT",
+                bouton.rang * ((LARGEUR_COLONNE * 2 + 8) / 3), -(vue.hauteurColonnes + 8 + decalage))
+        end
+    end
+    vue.choix:ClearAllPoints()
+    vue.choix:SetPoint("TOPLEFT", vue, "TOPLEFT", LARGEUR_COLONNE * 2 + 18, -decalage)
+    vue.choix:SetPoint("BOTTOMRIGHT", vue, "BOTTOMRIGHT", 0, 0)
+    vue.onglets = vue.onglets or {}
+    local precedentOnglet
+    for rang, cat in ipairs(NS.sources.ORDRE) do
+        local o = vue.onglets[rang]
+        if not o then
+            local ok, cree = pcall(CreateFrame, "Button", nil, vue, "PanelTopTabButtonTemplate")
+            if not ok or not cree then ok, cree = pcall(CreateFrame, "Button", nil, vue, "PanelTabButtonTemplate") end
+            if not ok or not cree then cree = CreateFrame("Button", nil, vue, "UIPanelButtonTemplate") end
+            o = cree
+            o:SetHeight(28)
+            vue.onglets[rang] = o
+        end
+        o:SetText(L["GEAR_CAT_" .. cat])
+        local largeurTexte = (o.GetFontString and o:GetFontString() and o:GetFontString():GetStringWidth()) or 80
+        o:SetWidth(largeurTexte + 30)
+        o:ClearAllPoints()
+        if precedentOnglet then o:SetPoint("LEFT", precedentOnglet, "RIGHT", 2, 0)
+        else o:SetPoint("TOPLEFT", vue, "TOPLEFT", 4, 0) end
+        precedentOnglet = o
+        local actif = equipement.Categorie() == cat
+        if actif then
+            if _G.PanelTemplates_SelectTab then pcall(_G.PanelTemplates_SelectTab, o) end
+            o:SetAlpha(1)
+        else
+            if _G.PanelTemplates_DeselectTab then pcall(_G.PanelTemplates_DeselectTab, o) end
+            o:SetAlpha(0.75)
+        end
+        o:SetScript("OnClick", function()
+            equipement.PoserCategorie(cat)
+            NS.ecran.selectionObjets = {}
+            equipement.Rendre(contenu, bandeau)
+        end)
+        o:SetShown(scenario == 2)
+    end
 
     -- Emplacements.
     for _, emplacement in ipairs(NS.emplacements.DuPersonnage) do
@@ -501,14 +587,23 @@ function equipement.Rendre(contenu, bandeau)
         NS.ecran.filtresParPerso[cleAffichee] = filtresPerso
     end
 
-    local candidatsDeLaPlace = NS.transverse.Candidats(emplacementChoisi.code)
+    -- Toutes les sources de cet emplacement, deja filtrees par ce que le
+    -- personnage peut porter et par son niveau (plus la marge reglee).
+    local marge = tonumber(NS.base.ReglagesGeneraux().margeEquipement) or 10
+    if NS.sources.Etat() == "absent" then
+        NS.sources.Construire(function()
+            if NS.ecran.page == "equipement" and contenu:IsVisible() then equipement.Rendre(contenu, bandeau) end
+        end)
+    end
+    local toutes = NS.sources.Candidats(emplacementChoisi.code, fiche, marge)
     local presentes, matieres, nomsMatieres = {}, {}, {}
-    for _, groupe in ipairs({ candidatsDeLaPlace.moi, candidatsDeLaPlace.autres, candidatsDeLaPlace.possedes }) do
-        for _, c in ipairs(groupe) do
-            if c.sousClasse and portables[c.sousClasse] and not presentes[c.sousClasse] then
-                presentes[c.sousClasse] = true
-                nomsMatieres[c.sousClasse] = c.matiere or tostring(c.sousClasse)
-                table.insert(matieres, c.sousClasse)
+    for _, cat in ipairs(NS.sources.ORDRE) do
+        for _, c in ipairs(toutes[cat]) do
+            local sous = NS.transverse.SousClasseDe(c.id)
+            if sous and portables[sous] and not presentes[sous] then
+                presentes[sous] = true
+                nomsMatieres[sous] = NS.transverse.MatiereDe(c.id) or tostring(sous)
+                table.insert(matieres, sous)
             end
         end
     end
@@ -562,220 +657,156 @@ function equipement.Rendre(contenu, bandeau)
         vue.depot.texte:SetText(L.GEAR_DROP)
     end
 
-    -- Candidats, groupes par origine. Une armure que ce personnage ne peut
-    -- pas porter n'apparait jamais ; les autres suivent les filtres.
-    local candidats = candidatsDeLaPlace
+    -- Les candidats : seulement ce qui ameliore ce qui est porte (au moins +1
+    -- dans une statistique, meme si d'autres baissent). Selon le scenario de
+    -- navigation : une origine choisie (menu ou onglets), ou toutes a la fois.
     local aucunFiltre = (next(filtresPerso) == nil)
-    local function garde(c)
-        if not c.sousClasse then return true end
-        if not portables[c.sousClasse] then return false end
+    local function garde(id)
+        local sous = NS.transverse.SousClasseDe(id)
+        if not sous then return true end
+        if not portables[sous] then return false end
         if aucunFiltre then return true end
-        return filtresPerso[c.sousClasse] == true
+        return filtresPerso[sous] == true
     end
-
-    -- Le meilleur pour ce personnage parmi ce qu'on peut fabriquer (lui ou un
-    -- autre), s'il vaut mieux que ce qu'il porte : une coche le signale.
-    local scorePorte = objetPorte and NS.transverse.Score(objetPorte, fiche) or 0
-    -- Comparaison a ce qui est porte, pour chaque objet affiche : fleche
-    -- montante si c'est mieux pour la classe (doree pour le meilleur), fleche
-    -- descendante si c'est moins bien, rien si c'est equivalent.
-    local meilleurObjet, meilleurScore
-    local ameliorations, moinsBien = {}, {}
-    for _, groupe in ipairs({ candidats.moi, candidats.autres, candidats.possedes }) do
-        for _, c in ipairs(groupe) do
-            if garde(c) and c.objet then
-                local s = NS.transverse.Score(c.objet, fiche)
-                if s < scorePorte then moinsBien[c.objet] = true end
-                if s > scorePorte then
-                    ameliorations[c.objet] = true
-                    if not meilleurScore or s > meilleurScore then meilleurObjet, meilleurScore = c.objet, s end
+    local categories = {}
+    if scenario == 3 then
+        for _, cat in ipairs(NS.sources.ORDRE) do
+            if equipement.FiltreActif(cat) then table.insert(categories, cat) end
+        end
+    else
+        categories = { equipement.Categorie() }
+    end
+    local statsPorte = porte and porte.stats or {}
+    local retenus, enAttente = {}, 0
+    local dejaVu = {}
+    for _, cat in ipairs(categories) do
+        for _, c in ipairs(toutes[cat] or {}) do
+            if garde(c.id) and not dejaVu[cat .. ":" .. c.id] then
+                local mieux, gains = NS.sources.Ameliore(c.id, statsPorte)
+                if mieux == nil then
+                    enAttente = enAttente + 1
+                    NS.sources.Charger(c.id)
+                elseif mieux then
+                    dejaVu[cat .. ":" .. c.id] = true
+                    local total = 0
+                    for _, g in ipairs(gains) do total = total + (g.poids or g.ecart) end
+                    table.insert(retenus, { c = c, cat = cat, gains = gains, total = total })
                 end
             end
         end
     end
-    -- Des paliers de progression a montrer dans cette liste ?
-    local paliersVus = false
-    for _, c in ipairs(candidats.moi) do
-        if garde(c) and c.recette then
-            local p = NS.recettes.Palier((CraftCoreDB.recettes or {})[tostring(c.recette)])
-            if p and p ~= "rien" then paliersVus = true break end
-        end
-    end
-    -- Legende, seulement quand il y a des medailles a lire.
+    table.sort(retenus, function(a, b)
+        if a.total ~= b.total then return a.total > b.total end
+        return a.c.id < b.c.id
+    end)
+    vue.enAttente = enAttente
+
+    -- Legende : ce qui est en cours de lecture, ou l'etat de la base.
     if not vue.legende then
         vue.legende = vue.choix:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         vue.legende:SetJustifyH("LEFT")
     end
     vue.legende:ClearAllPoints()
     vue.legende:SetPoint("TOPLEFT", ancreHaut, "BOTTOMLEFT", 0, -6)
-    local textes = {}
-    if meilleurObjet or next(moinsBien) then table.insert(textes, L.GEAR_MEDALS) end
-    if paliersVus then table.insert(textes, NS.recettes.LegendeDesPaliers()) end
     vue.legende:SetWidth(LARGEUR_CHOIX - 10)
-    vue.legende:SetWordWrap(true)
-    vue.legende:SetText(table.concat(textes, "\n"))
-    local avecLegende = #textes > 0
-    vue.legende:SetShown(avecLegende)
-    -- La liste commence sous la legende quand elle est la, sinon sous la case.
+    vue.legende:SetWordWrap(false)
+    local etat = NS.sources.Etat()
+    local texteLegende
+    if etat == "construction" then texteLegende = L.GEAR_INDEXING
+    elseif etat == "sansBase" then texteLegende = L.GEAR_NODB
+    elseif enAttente > 0 then texteLegende = string.format(L.GEAR_LOADING, enAttente) end
+    vue.legende:SetText(texteLegende or "")
+    vue.legende:SetShown(texteLegende ~= nil)
     vue.defilement:ClearAllPoints()
-    vue.defilement:SetPoint("TOPLEFT", avecLegende and vue.legende or ancreHaut, "BOTTOMLEFT", 0, -6)
+    vue.defilement:SetPoint("TOPLEFT", texteLegende and vue.legende or ancreHaut, "BOTTOMLEFT", 0, -6)
     vue.defilement:SetPoint("BOTTOMRIGHT", vue.choix, "BOTTOMRIGHT", -24, 0)
 
     NS.ecran.selectionObjets = NS.ecran.selectionObjets or {}
     local liste = vue.liste
     local index, y = 0, 0
     local choisis = {}
+    local rien = #retenus == 0
 
-    local groupes = {
-        { titre = L.GEAR_MINE, entrees = candidats.moi, origine = "moi" },
-        { titre = L.GEAR_OTHERS, entrees = candidats.autres, origine = "autres" },
-        { titre = L.GEAR_OWNED, entrees = candidats.possedes, origine = "possedes" },
-    }
-
-    local rien = true
-    for _, groupe in ipairs(groupes) do
-        local retenus = {}
-        for _, c in ipairs(groupe.entrees) do
-            if garde(c) then table.insert(retenus, c) end
+    -- Gains en court : les deux plus forts, "+3 Agilite, +2 Endurance".
+    local function TexteGains(gains)
+        local morceaux = {}
+        for k, g in ipairs(gains) do
+            if k > 2 then break end
+            local v = math.floor(g.ecart * 10 + 0.5) / 10
+            local texteV = (v == math.floor(v)) and string.format("%d", v) or string.format("%.1f", v)
+            table.insert(morceaux, "+" .. texteV .. " " .. (NS.objets.LibelleDeStat(g.cle) or tostring(g.cle)))
         end
-        if #retenus > 0 then
-            rien = false
-            index = index + 1
-            local titre = CreerLigneCandidat(liste, index)
-            titre:ClearAllPoints()
-            titre:SetPoint("TOPLEFT", liste, "TOPLEFT", 0, -y)
-            titre:SetPoint("TOPRIGHT", liste, "TOPRIGHT", 0, -y)
-            titre.fond:Hide()
-            titre.icone:Hide()
-            titre.nom:SetFontObject("GameFontNormalSmall")
-            titre.nom:SetText(groupe.titre)
-            titre.nom:SetTextColor(0.82, 0.69, 0.4)
-            titre.etat:SetText("")
-            if titre.coche then titre.coche:Hide() end
-            if titre.palier then titre.palier:Hide() end
-            titre:SetScript("OnEnter", nil)
-            titre:SetScript("OnLeave", nil)
-            titre:SetScript("OnClick", nil)
-            titre:SetHeight(HAUTEUR_CANDIDAT)
-            titre:Show()
-            y = y + HAUTEUR_CANDIDAT
+        return table.concat(morceaux, ", ")
+    end
 
-            for _, c in ipairs(retenus) do
-                index = index + 1
-                local ligne = CreerLigneCandidat(liste, index)
-                ligne:ClearAllPoints()
-                ligne:SetPoint("TOPLEFT", liste, "TOPLEFT", 0, -y)
-                ligne:SetPoint("TOPRIGHT", liste, "TOPRIGHT", 0, -y)
+    for _, r in ipairs(retenus) do
+        local c = r.c
+        index = index + 1
+        local ligne = CreerLigneCandidat(liste, index)
+        ligne:ClearAllPoints()
+        ligne:SetPoint("TOPLEFT", liste, "TOPLEFT", 0, -y)
+        ligne:SetPoint("TOPRIGHT", liste, "TOPRIGHT", 0, -y)
+        local info = NS.objets.Info(c.id)
+        if info and info.icone then ligne.icone:SetTexture(info.icone) ligne.icone:Show() else ligne.icone:Hide() end
+        ligne.nom:SetFontObject("GameFontHighlightSmall")
+        local niveauTexte = ""
+        if c.niveau and c.niveau > (tonumber(fiche and fiche.niveau) or 0) then
+            niveauTexte = "  |cffff4040" .. string.format(L.LEVEL_SHORT or "niv. %d", c.niveau) .. "|r"
+        end
+        ligne.nom:SetText(((info and info.nom) or ("objet " .. tostring(c.id))) .. niveauTexte)
+        ligne.nom:SetTextColor(NS.objets.CouleurDuNom(c.id))
+        local prov = c.provenance or ""
+        if scenario == 3 then prov = L["GEAR_CAT_" .. r.cat] .. " : " .. prov end
+        ligne.etat:SetText(prov)
+        ligne.etat:SetTextColor(0.62, 0.62, 0.62)
+        if not ligne.gains then
+            ligne.gains = ligne:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            ligne.gains:SetPoint("TOPRIGHT", ligne, "TOPRIGHT", -4, -4)
+            ligne.gains:SetJustifyH("RIGHT")
+            ligne.gains:SetWordWrap(false)
+        end
+        ligne.gains:SetText(TexteGains(r.gains))
+        ligne.gains:SetTextColor(0.31, 0.82, 0.41)
+        ligne.gains:Show()
+        ligne.nom:ClearAllPoints()
+        ligne.nom:SetPoint("TOPLEFT", ligne, "TOPLEFT", 25, -4)
+        ligne.nom:SetPoint("RIGHT", ligne.gains, "LEFT", -6, 0)
+        if ligne.coche then ligne.coche:Hide() end
+        if ligne.palier then ligne.palier:Hide() end
 
-                local info = NS.objets.Info(c.objet)
-                if info and info.icone then
-                    ligne.icone:SetTexture(info.icone)
-                    ligne.icone:Show()
-                else
-                    ligne.icone:Hide()
-                end
-                ligne.nom:SetFontObject("GameFontHighlightSmall")
-                ligne.nom:SetText((info and info.nom) or ("objet " .. tostring(c.objet)))
-                ligne.nom:SetTextColor(NS.objets.CouleurDuNom(c.objet))
-
-                if groupe.origine == "moi" then
-                    if c.pret then
-                        ligne.etat:SetText(c.combien and c.combien > 0
-                            and string.format(L.EQUIP_CAN_MAKE, c.combien) or L.RECIPES_CAN_CRAFT)
-                        ligne.etat:SetTextColor(0.31, 0.82, 0.41)
-                    else
-                        ligne.etat:SetText(L.RECIPES_MISSING_SHORT:format(1))
-                        ligne.etat:SetTextColor(0.55, 0.55, 0.55)
-                    end
-                elseif groupe.origine == "autres" then
-                    ligne.etat:SetText(string.format(L.GEAR_MAKER, c.nomCourt))
-                    ligne.etat:SetTextColor(0.55, 0.55, 0.55)
-                else
-                    ligne.etat:SetText(string.format(
-                        c.ou == "banque" and L.GEAR_IN_BANK or L.GEAR_IN_BAGS, c.nomCourt))
-                    ligne.etat:SetTextColor(0.31, 0.82, 0.41)
-                end
-
-                local choisi = NS.ecran.selectionObjets[c.objet] == true
-                ligne.fond:SetShown(choisi)
-                if choisi then
-                    local fiche = InfosObjet(c.objet)
-                    if fiche then
-                        c.origine = groupe.origine
-                        fiche.source = c
-                        table.insert(choisis, fiche)
-                    end
-                end
-
-                local objetCandidat = c.objet
-                -- Survol : l'objet, et pour une recette, ses composants un par un
-                -- avec ce qu'on en a. Rien de plus a l'ecran.
-                local candidatSurvol = c
-                ligne:SetScript("OnEnter", function(self)
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    if GameTooltip.SetItemByID then pcall(GameTooltip.SetItemByID, GameTooltip, candidatSurvol.objet) end
-                    local recette = candidatSurvol.recette and (CraftCoreDB.recettes or {})[tostring(candidatSurvol.recette)]
-                    if recette then NS.inventaire.ComposantsDansLInfobulle(GameTooltip, recette) end
-                    GameTooltip:Show()
-                end)
-                ligne:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-                -- Un seul objet compare a la fois : plus lisible.
-                ligne:SetScript("OnClick", function()
-                    if NS.ecran.selectionObjets[objetCandidat] then
-                        NS.ecran.selectionObjets = {}
-                    else
-                        NS.ecran.selectionObjets = { [objetCandidat] = true }
-                        NS.ecran.objetDepose = nil
-                    end
-                    equipement.Rendre(contenu, bandeau)
-                end)
-                -- Coche du meilleur choix pour ce personnage.
-                if not ligne.coche then
-                    ligne.coche = ligne:CreateTexture(nil, "OVERLAY")
-                    ligne.coche:SetSize(16, 16)
-                    ligne.coche:SetPoint("TOPRIGHT", ligne, "TOPRIGHT", -3, -4)
-                end
-                local medaille = (c.objet == meilleurObjet and "or")
-                    or (ameliorations[c.objet] and "mieux") or (moinsBien[c.objet] and "moins")
-                if medaille == "moins" then
-                    ligne.coche:SetTexture("Interface\\Buttons\\Arrow-Down-Up")
-                    ligne.coche:SetVertexColor(0.9, 0.3, 0.3)
-                else
-                    ligne.coche:SetTexture("Interface\\Buttons\\Arrow-Up-Up")
-                    if medaille == "or" then
-                        ligne.coche:SetVertexColor(1, 0.82, 0)
-                    else
-                        ligne.coche:SetVertexColor(0.31, 0.82, 0.41)
-                    end
-                end
-                ligne.coche:SetShown(medaille and true or false)
-                -- Progression du metier : la meme coche que dans Recettes, en
-                -- coin d'icone, pour ce que ce personnage fabrique lui-meme.
-                if not ligne.palier then
-                    ligne.palier = ligne:CreateTexture(nil, "OVERLAY")
-                    ligne.palier:SetSize(12, 12)
-                    ligne.palier:SetPoint("BOTTOMRIGHT", ligne.icone, "BOTTOMRIGHT", 4, -3)
-                    ligne.palier:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
-                end
-                local palier = groupe.origine == "moi" and c.recette
-                    and NS.recettes.Palier((CraftCoreDB.recettes or {})[tostring(c.recette)])
-                if palier and palier ~= "rien" then
-                    local couleur = NS.recettes.COULEURS_PALIER[palier]
-                    ligne.palier:SetVertexColor(couleur[1], couleur[2], couleur[3])
-                    ligne.palier:Show()
-                    paliersVus = true
-                else
-                    ligne.palier:Hide()
-                end
-                -- Hauteur selon le texte : nom sur une ou deux lignes, puis l'etat.
-                local hauteur = 8 + (ligne.nom:GetStringHeight() or 12) + 2 + (ligne.etat:GetStringHeight() or 12)
-                hauteur = math.max(HAUTEUR_CANDIDAT, math.min(hauteur, 52))
-                ligne:SetHeight(hauteur)
-                ligne:Show()
-                y = y + hauteur + 2
+        local cleChoix = c.id
+        local choisi = NS.ecran.selectionObjets[cleChoix] == true
+        ligne.fond:SetShown(choisi)
+        if choisi then
+            local ficheObjet = InfosObjet(c.id)
+            if ficheObjet then
+                ficheObjet.source = { origine = (r.cat == "craftInterne" and not c.plusTard) and "moi" or r.cat,
+                    objet = c.id, recette = c.recette }
+                table.insert(choisis, ficheObjet)
             end
         end
+        ligne:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            if GameTooltip.SetItemByID then pcall(GameTooltip.SetItemByID, GameTooltip, cleChoix) end
+            local recette = c.recette and (CraftCoreDB.recettes or {})[tostring(c.recette)]
+            if recette then NS.inventaire.ComposantsDansLInfobulle(GameTooltip, recette) end
+            GameTooltip:Show()
+        end)
+        ligne:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        -- Un seul objet compare a la fois : plus lisible.
+        ligne:SetScript("OnClick", function()
+            if NS.ecran.selectionObjets[cleChoix] then
+                NS.ecran.selectionObjets = {}
+            else
+                NS.ecran.selectionObjets = { [cleChoix] = true }
+                NS.ecran.objetDepose = nil
+            end
+            equipement.Rendre(contenu, bandeau)
+        end)
+        -- Toujours la meme hauteur : le nom sur une ligne, la provenance dessous.
+        ligne:SetHeight(36)
+        ligne:Show()
+        y = y + 36 + 2
     end
 
     -- L'objet depose par glisser, s'il va a cet emplacement.
@@ -802,7 +833,8 @@ function equipement.Rendre(contenu, bandeau)
         vide.fond:Hide()
         vide.icone:Hide()
         vide.nom:SetFontObject("GameFontDisableSmall")
-        vide.nom:SetText(L.GEAR_NONE_HERE)
+        vide.nom:SetText(L.GEAR_NO_UPGRADE)
+        if vide.gains then vide.gains:Hide() end
         vide.nom:SetTextColor(0.55, 0.55, 0.55)
         vide.etat:SetText("")
         if vide.coche then vide.coche:Hide() end
@@ -940,4 +972,29 @@ do
         end)
         return unpack(resultat)
     end
+end
+
+-- Objets lus par le jeu apres coup (stats inconnues au premier affichage) :
+-- la page se redessine, au plus deux fois par seconde, tant qu'il en manque.
+do
+    local derniers
+    local rendreAvant = equipement.Rendre
+    equipement.Rendre = function(contenu, bandeau, ...)
+        derniers = { contenu, bandeau }
+        return rendreAvant(contenu, bandeau, ...)
+    end
+    local attente = false
+    local f = CreateFrame("Frame")
+    pcall(f.RegisterEvent, f, "GET_ITEM_INFO_RECEIVED")
+    f:SetScript("OnEvent", function()
+        if attente or not derniers then return end
+        local vue = derniers[1] and derniers[1].equipement
+        if not (vue and vue:IsVisible() and (vue.enAttente or 0) > 0) then return end
+        attente = true
+        C_Timer.After(0.5, function()
+            attente = false
+            local v = derniers[1] and derniers[1].equipement
+            if v and v:IsVisible() then pcall(equipement.Rendre, derniers[1], derniers[2]) end
+        end)
+    end)
 end

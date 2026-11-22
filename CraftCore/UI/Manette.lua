@@ -186,6 +186,8 @@ end
 local function ElementsDeLaPage(win)
     local liste = {}
     if NS.ecran.page == "equipement" then
+        -- Son menu de gauche (scenarios, origines) fait partie de la page.
+        Parcourir(win.menu, liste, 1)
         Parcourir(win.zoneFixe, liste, 1)
         Parcourir(win.bandeau, liste, 1)
     else

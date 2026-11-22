@@ -293,3 +293,353 @@ function transverse.QuiPourraitLePorter(objet, saufCle)
     table.sort(resultat, function(a, b) return a.gain > b.gain end)
     return resultat
 end
+
+-- ===========================================================================
+-- Sources d'equipement : d'ou peut venir un objet qui ameliore le personnage
+-- ===========================================================================
+--
+-- Six origines :
+--   possede      : deja chez un de ses personnages (sacs, banque) ;
+--   craftInterne : un de ses personnages sait le faire, ou pourra (metier
+--                  connu, recette a apprendre) ;
+--   craftExterne : aucun de ses personnages n'a le metier : un artisan ;
+--   monde        : laisse par une creature ou un objet, hors donjon et raid ;
+--   quetes       : recompense de quete (camp, classe et niveau respectes) ;
+--   donjons      : laisse par une creature de donjon ou de raid.
+-- Les quatre dernieres viennent de la base QuestieDB installee avec QuestCore,
+-- lue une fois, petit a petit, sans figer le jeu.
+
+NS.sources = {}
+local sources = NS.sources
+sources.ORDRE = { "possede", "craftInterne", "craftExterne", "monde", "quetes", "donjons" }
+
+local function Base(nom)
+    local e = _G[nom]
+    if type(e) == "table" and type(e.Get) == "function" then return e end
+    return nil
+end
+local function Lire(nom, id, champ)
+    local e = Base(nom)
+    if not e or not id then return nil end
+    local ok, v = pcall(e.Get, id, champ)
+    if ok then return v end
+    return nil
+end
+sources.Lire = Lire
+
+-- Zones des donjons et raids, d'apres la base (la meme table que QuestCore).
+local zonesDonjon
+local function ZonesDonjon()
+    if zonesDonjon then return zonesDonjon end
+    zonesDonjon = {}
+    local lib = _G.LibQuestieDB
+    local support = lib and lib.Support and lib.Support.Get and lib.Support.Get("ZoneDB")
+    local brut = support and support.private and support.private.dungeons
+    if type(brut) == "string" then
+        local fn = loadstring(brut)
+        local ok, t = false, nil
+        if fn then ok, t = pcall(fn) end
+        brut = ok and t or nil
+    end
+    for zone, d in pairs(type(brut) == "table" and brut or {}) do
+        zonesDonjon[zone] = true
+        for _, autre in ipairs(type(d) == "table" and type(d[2]) == "table" and d[2] or {}) do zonesDonjon[autre] = true end
+    end
+    return zonesDonjon
+end
+sources.ZonesDonjon = ZonesDonjon
+
+-- Index des objets equipables de la base, par emplacement.
+local index, etatIndex = {}, "absent"
+function sources.Etat() return etatIndex end
+
+local function CodeEtClasse(id)
+    local lecture = NS.jeu.infoObjetImmediate
+    if not lecture then return nil end
+    local ok, _, _, _, code, _, classe, sousClasse = pcall(lecture, id)
+    if not ok or (classe ~= 2 and classe ~= 4) then return nil end
+    local ref = NS.emplacements.DeLObjet(id)
+    if not ref then return nil end
+    return ref, classe, sousClasse, code
+end
+
+function sources.Construire(auFini)
+    if etatIndex ~= "absent" then return end
+    local base = Base("ItemDB")
+    if not (base and base.GetAllIds) then etatIndex = "sansBase" return end
+    local ok, ids = pcall(base.GetAllIds)
+    if not ok or type(ids) ~= "table" then etatIndex = "sansBase" return end
+    etatIndex = "construction"
+    local donjons = ZonesDonjon()
+    local rang, cadre = 1, CreateFrame("Frame")
+    cadre:SetScript("OnUpdate", function(self)
+        local fin = math.min(#ids, rang + 300)
+        for i = rang, fin do
+            local id = ids[i]
+            local code, classe, sousClasse = CodeEtClasse(id)
+            if code then
+                local quetes = Lire("ItemDB", id, "questRewards")
+                local pnjs = Lire("ItemDB", id, "npcDrops")
+                local objets = Lire("ItemDB", id, "objectDrops")
+                local e = { id = id, classe = classe, sous = sousClasse }
+                if type(quetes) == "table" and #quetes > 0 then e.quetes = quetes end
+                if type(pnjs) == "table" then
+                    for _, pnj in ipairs(pnjs) do
+                        local zone = tonumber(Lire("NpcDB", pnj, "zoneID"))
+                        if zone and donjons[zone] then
+                            e.donjon = e.donjon or { pnj = pnj, zone = zone }
+                        else
+                            e.monde = e.monde or { pnj = pnj, zone = zone }
+                        end
+                    end
+                end
+                if not e.monde and type(objets) == "table" and objets[1] then e.monde = { objet = objets[1] } end
+                if e.quetes or e.donjon or e.monde then
+                    index[code] = index[code] or {}
+                    table.insert(index[code], e)
+                end
+            end
+        end
+        rang = fin + 1
+        if rang > #ids then
+            etatIndex = "pret"
+            self:SetScript("OnUpdate", nil)
+            if auFini then pcall(auFini) end
+        end
+    end)
+end
+
+-- Armes que chaque classe peut apprendre (sous-classes du jeu).
+local ARMES = {
+    WARRIOR = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 13, 15, 16, 18 },
+    PALADIN = { 0, 1, 4, 5, 6, 7, 8 },
+    HUNTER = { 0, 1, 2, 3, 6, 7, 8, 10, 13, 15, 16, 18 },
+    ROGUE = { 2, 3, 4, 7, 13, 15, 16, 18 },
+    PRIEST = { 4, 10, 15, 19 },
+    SHAMAN = { 0, 1, 4, 5, 10, 13, 15 },
+    MAGE = { 7, 10, 15, 19 },
+    WARLOCK = { 7, 10, 15, 19 },
+    DRUID = { 4, 5, 10, 13, 15 },
+}
+local BOUCLIER = { WARRIOR = true, PALADIN = true, SHAMAN = true }
+local RELIQUE = { PALADIN = 7, DRUID = 8, SHAMAN = 9 }
+
+-- Un objet est-il portable par ce personnage (matiere, arme, bouclier) ?
+function sources.Portable(classe, sous, fiche)
+    local jeton = fiche and fiche.jetonClasse
+    if classe == 4 then
+        if sous == 6 then return jeton == nil or BOUCLIER[jeton] == true end
+        if sous == 7 or sous == 8 or sous == 9 or sous == 10 then return jeton == nil or RELIQUE[jeton] == sous end
+        if sous >= 1 and sous <= 4 then
+            local portables = transverse.ArmuresPortables(fiche)
+            return portables[sous] ~= nil
+        end
+        return true
+    end
+    if classe == 2 then
+        local liste = ARMES[jeton or ""]
+        if not liste then return true end
+        for _, s in ipairs(liste) do if s == sous then return true end end
+        return false
+    end
+    return true
+end
+
+-- Niveau requis d'un objet : la base, sinon le jeu.
+function sources.NiveauRequis(id)
+    local n = tonumber(Lire("ItemDB", id, "requiredLevel"))
+    if n then return n end
+    local lecture = NS.Lecture("C_Item.GetItemInfo") or NS.Lecture("GetItemInfo")
+    if lecture then
+        local ok, _, _, _, _, minimum = pcall(lecture, id)
+        if ok then return tonumber(minimum) end
+    end
+    return nil
+end
+
+-- Une quete peut-elle etre faite par ce personnage (camp, classe, niveau) ?
+local function QueteFaisable(q, niveauMax)
+    local races = tonumber(Lire("QuestDB", q, "requiredRaces")) or 0
+    if races ~= 0 then
+        local _, _, idRace = UnitRace("player")
+        if idRace and bit and bit.band(races, 2 ^ (idRace - 1)) == 0 then return false end
+    end
+    local classes = tonumber(Lire("QuestDB", q, "requiredClasses")) or 0
+    if classes ~= 0 then
+        local _, _, idClasse = UnitClass("player")
+        if idClasse and bit and bit.band(classes, 2 ^ (idClasse - 1)) == 0 then return false end
+    end
+    local minimum = tonumber(Lire("QuestDB", q, "requiredLevel")) or tonumber(Lire("QuestDB", q, "questLevel")) or 0
+    return minimum <= niveauMax
+end
+
+local function NomDeZone(zone)
+    if not zone then return nil end
+    local lecture = NS.Lecture("C_Map.GetAreaInfo")
+    if not lecture then return nil end
+    local ok, nom = pcall(lecture, zone)
+    if ok and type(nom) == "string" and nom ~= "" then return nom end
+    return nil
+end
+
+-- Texte court de provenance pour une entree de la base.
+function sources.Provenance(categorie, e)
+    local L = NS.L
+    if categorie == "quetes" and e.quete then
+        local nom = Lire("QuestDB", e.quete, "name") or ("#" .. e.quete)
+        local niveau = tonumber(Lire("QuestDB", e.quete, "questLevel"))
+        return niveau and string.format(L.GEAR_SRC_QUEST, nom, niveau) or nom
+    end
+    local s = (categorie == "donjons") and e.donjon or e.monde
+    if not s then return "" end
+    if s.pnj then
+        local nom = Lire("NpcDB", s.pnj, "name") or "?"
+        local zone = NomDeZone(s.zone)
+        return zone and (nom .. " (" .. zone .. ")") or nom
+    end
+    if s.objet then return Lire("ObjectDB", s.objet, "name") or "?" end
+    return ""
+end
+
+-- Metiers des personnages du compte (meme camp) : ligne -> { fiche, ... }.
+local function MetiersDuCompte()
+    local t = {}
+    for _, fiche in ipairs(NS.base.TousLesPersonnages()) do
+        if NS.inventaire.MemeCamp(fiche) then
+            for cle, sien in pairs(type(fiche.metiers) == "table" and fiche.metiers or {}) do
+                local ligne = tonumber(cle)
+                if ligne and type(sien) == "table" then
+                    t[ligne] = t[ligne] or {}
+                    table.insert(t[ligne], fiche)
+                end
+            end
+        end
+    end
+    return t
+end
+
+-- Crafts d'artisans (metiers qu'aucun personnage n'a) : par emplacement, une fois.
+local externes
+local function Externes()
+    if externes then return externes end
+    externes = {}
+    for objet, brut in pairs(NS.donnees.NIVEAUX or {}) do
+        if objet > 0 then
+            local code, classe, sous = CodeEtClasse(objet)
+            if code then
+                local metier = tonumber(string.match(brut, "/(%d+)$"))
+                local orange = tonumber(string.match(brut, "^(%d+)/"))
+                externes[code] = externes[code] or {}
+                table.insert(externes[code], { id = objet, classe = classe, sous = sous, metier = metier, rangRequis = orange })
+            end
+        end
+    end
+    return externes
+end
+
+-- Tous les candidats d'un emplacement, par origine, deja filtres par ce que
+-- le personnage peut porter et par le niveau (le sien plus la marge).
+-- Chaque entree : { id, provenance, niveau, (recette, qui...) }.
+function sources.Candidats(code, fiche, marge)
+    local L = NS.L
+    local r = {}
+    for _, c in ipairs(sources.ORDRE) do r[c] = {} end
+    if not code or not fiche then return r end
+    local niveau = tonumber(fiche.niveau) or 1
+    local niveauMax = niveau + (tonumber(marge) or 10)
+    local vus = {}
+    local function Garder(categorie, id, entree)
+        vus[categorie] = vus[categorie] or {}
+        if vus[categorie][id] then return end
+        local code2, classe, sous = CodeEtClasse(id)
+        if code2 ~= code or not sources.Portable(classe, sous, fiche) then return end
+        local req = sources.NiveauRequis(id)
+        if req and req > niveauMax then return end
+        entree.id, entree.niveau = id, req
+        vus[categorie][id] = true
+        table.insert(r[categorie], entree)
+    end
+    -- Deja chez un de ses personnages, et les crafts de ses personnages.
+    local candidats = transverse.Candidats(code)
+    for _, c in ipairs(candidats.possedes) do
+        Garder("possede", c.objet, { provenance = string.format(c.ou == "banque" and L.GEAR_IN_BANK or L.GEAR_IN_BAGS, c.nomCourt) })
+    end
+    for _, c in ipairs(candidats.moi) do
+        Garder("craftInterne", c.objet, { recette = c.recette, provenance = c.pret and L.RECIPES_CAN_CRAFT or L.GEAR_SRC_MINE_MISSING, pret = c.pret })
+    end
+    for _, c in ipairs(candidats.autres) do
+        Garder("craftInterne", c.objet, { recette = c.recette, provenance = string.format(L.GEAR_MAKER, c.nomCourt) })
+    end
+    -- Plus tard : une recette du metier d'un de ses personnages, pas encore apprise.
+    local metiers = MetiersDuCompte()
+    for cle, recette in pairs(CraftCoreDB.recettes or {}) do
+        local objet = type(recette) == "table" and recette.objetProduit
+        if objet and NS.emplacements.DeLObjet(objet) == code then
+            local ligne = NS.recettes.MetierDe and NS.recettes.MetierDe(recette)
+            local qui = ligne and metiers[ligne] and metiers[ligne][1]
+            if qui then
+                local rangR = NS.recettes.RangRequis and NS.recettes.RangRequis(recette)
+                Garder("craftInterne", objet, { recette = tonumber(cle) or cle, plusTard = true,
+                    provenance = rangR and string.format(L.GEAR_SRC_LATER, NS.inventaire.NomCourt(qui.cle), rangR)
+                        or string.format(L.GEAR_SRC_LATER_NORANK, NS.inventaire.NomCourt(qui.cle)) })
+            end
+        end
+    end
+    -- Crafts d'artisans : un metier qu'aucun de ses personnages n'a.
+    for _, e in ipairs(Externes()[code] or {}) do
+        if not (e.metier and metiers[e.metier]) then
+            local nomMetier = e.metier and ((NS.recettes.NomDuMetier and NS.recettes.NomDuMetier(e.metier)) or L["TRADE_" .. e.metier])
+            Garder("craftExterne", e.id, { provenance = nomMetier and string.format(L.GEAR_SRC_CRAFTER, nomMetier, e.rangRequis or 0)
+                or L.GEAR_SRC_CRAFTER_ANY })
+        end
+    end
+    -- La base : butins du monde, quetes, donjons.
+    for _, e in ipairs(index[code] or {}) do
+        if e.monde then Garder("monde", e.id, { monde = e.monde }) end
+        if e.donjon then Garder("donjons", e.id, { donjon = e.donjon }) end
+        if e.quetes then
+            for _, q in ipairs(e.quetes) do
+                if QueteFaisable(q, niveauMax) then Garder("quetes", e.id, { quete = q }) break end
+            end
+        end
+    end
+    for categorie, liste in pairs(r) do
+        for _, entree in ipairs(liste) do
+            if not entree.provenance then entree.provenance = sources.Provenance(categorie, entree) end
+        end
+    end
+    return r
+end
+
+-- Ameliore-t-il ce qui est porte ? Vrai des qu'une statistique gagne au moins
+-- 1, meme si d'autres baissent. nil tant que le jeu n'a pas lu l'objet.
+function sources.Ameliore(id, statsPorte)
+    local stats = NS.objets.Stats(id)
+    if not stats then
+        local info = NS.objets.Info(id)
+        if info and info.nom then return false, nil end
+        return nil
+    end
+    local gains = {}
+    for cle, v in pairs(stats) do
+        local ecart = (tonumber(v) or 0) - (tonumber(statsPorte and statsPorte[cle]) or 0)
+        if ecart >= 1 then table.insert(gains, { cle = cle, ecart = ecart }) end
+    end
+    -- L'armure apres les caracteristiques : ses chiffres sont bien plus gros.
+    local function Armure(cle)
+        local t = tostring(cle)
+        return string.find(t, "RESISTANCE0", 1, true) ~= nil or string.find(t, "ARMOR", 1, true) ~= nil
+    end
+    for _, g in ipairs(gains) do g.armure = Armure(g.cle) g.poids = g.armure and g.ecart / 10 or g.ecart end
+    table.sort(gains, function(a, b)
+        if a.armure ~= b.armure then return not a.armure end
+        return a.ecart > b.ecart
+    end)
+    return #gains > 0, gains
+end
+
+-- Demande au jeu de lire un objet pas encore connu (reponse asynchrone).
+function sources.Charger(id)
+    local C = _G.C_Item
+    if C and C.RequestLoadItemDataByID then pcall(C.RequestLoadItemDataByID, id) end
+end

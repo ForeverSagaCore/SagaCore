@@ -1535,6 +1535,9 @@ end
 -- avec son nom (la cible du sort). Si quelqu'un l'a pris avant nous, le
 -- repere reste ; si la recolte aboutit, le vrai lieu le remplace.
 local function NoterNoeudVise(cible, idSort)
+    -- En combat, le jeu peut rendre ces valeurs secretes : on ne les lit pas.
+    local secret = _G.issecretvalue
+    if secret and (secret(cible) or secret(idSort)) then return end
     local nom = NomDeSort(idSort)
     local metier = nom and ((nom == NomDeSort(2366) and "herbes") or (nom == NomDeSort(2575) and "minerais"))
     if not metier then return end

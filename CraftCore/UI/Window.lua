@@ -1629,12 +1629,41 @@ local function RendreReglages(contenu)
             yy = yy + 32
           end
         end
+        -- Equipement : jusqu'a combien de niveaux au-dessus du sien les
+        -- objets sont proposes (de 5 en 5).
+        local S2 = _G.CoreSuite
+        if S2 and S2.Curseur then
+            if not contenu.titreEquipReg then
+                contenu.titreEquipReg = contenu:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                contenu.libelleMarge = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                contenu.curseurMarge = S2.Curseur(contenu, 0, 60, 5,
+                    function() return tonumber(NS.base.ReglagesGeneraux().margeEquipement) or 10 end,
+                    function(v) NS.base.ReglagesGeneraux().margeEquipement = v ecran.Montrer("reglages") end)
+                contenu.curseurMarge.surParchemin = function() return NS.charte.Fond and NS.charte.Fond() == "parchemin" end
+            end
+            contenu.titreEquipReg:SetText(L.SETTING_GEAR)
+            contenu.titreEquipReg:ClearAllPoints()
+            contenu.titreEquipReg:SetPoint("TOPLEFT", contenu, "TOPLEFT", 2, -(yy + 18))
+            contenu.titreEquipReg:Show()
+            StyleDeTitre(contenu.titreEquipReg)
+            yy = yy + 18 + 40
+            contenu.libelleMarge:SetText(L.SETTING_GEAR_MARGIN)
+            contenu.libelleMarge:ClearAllPoints()
+            contenu.libelleMarge:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 7))
+            contenu.libelleMarge:Show()
+            contenu.curseurMarge:ClearAllPoints()
+            contenu.curseurMarge:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -yy)
+            contenu.curseurMarge:Show()
+            if contenu.curseurMarge.Rendre then contenu.curseurMarge.Rendre() end
+            contenu.dernierReglage = contenu.curseurMarge
+            yy = yy + 32
+        end
     end
     -- Les didacticiels ne sont plus dans cette page (ils iront ailleurs).
     contenu.titreTutos:Hide()
     if contenu.titreTutos.filet then contenu.titreTutos.filet:Hide() end
-    local precedent = contenu.sauverCompo or contenu.listeFondSuivis or contenu.libelleFondSuivis
-    local hauteur = 520
+    local precedent = contenu.dernierReglage or contenu.sauverCompo or contenu.listeFondSuivis or contenu.libelleFondSuivis
+    local hauteur = 600
     -- Hauteur reelle quand le jeu la connait : le bas du dernier bloc.
     local haut, bas = contenu:GetTop(), precedent and precedent.GetBottom and precedent:GetBottom()
     if haut and bas and haut > bas then hauteur = haut - bas + 12 end
@@ -4596,6 +4625,13 @@ local function PoserIndicesManette(win)
     -- LB / RB : au bout de la premiere et de la derniere ligne du menu.
     local premiere = win.boutons[PAGES[1].cle]
     local derniere = win.boutons[PAGES[#PAGES].cle]
+    -- Mon equipement : son propre menu, LB / RB y ramenent aux pages.
+    if ecran.page == "equipement" and win.menuEquip then
+        premiere, derniere = nil, nil
+        for _, b in ipairs(win.menuEquip) do
+            if b:IsShown() then premiere = premiere or b derniere = b end
+        end
+    end
     Marque(win, "lb", "PADLSHOULDER", premiere, "RIGHT", "RIGHT", -2, 0)
     Marque(win, "rb", "PADRSHOULDER", derniere, "RIGHT", "RIGHT", -2, 0)
     -- LT / RT : au dessus du premier onglet de droite, sous le dernier.
@@ -4652,6 +4688,7 @@ local function Construire()
     win.trait = trait
 
     win.boutons = {}
+    win.filetsMenu = {}
     local precedent
     for _, page in ipairs(PAGES) do
         local bouton = CreerLigneDeMenu(menu, page.icone)
@@ -4662,6 +4699,7 @@ local function Construire()
             -- Un pixel d'ecran exact, cale sur la grille : tous les filets
             -- ont la meme epaisseur, ou qu'ils tombent.
             local filet = menu:CreateTexture(nil, "ARTWORK")
+            table.insert(win.filetsMenu, filet)
             filet:SetColorTexture(0.8, 0.65, 0.35, 0.35)
             if filet.SetSnapToPixelGrid then filet:SetSnapToPixelGrid(false) filet:SetTexelSnappingBias(0) end
             local PU = _G.PixelUtil
@@ -4686,6 +4724,68 @@ local function Construire()
         bouton:SetScript("OnClick", function() ecran.Montrer(page.cle) end)
         win.boutons[page.cle] = bouton
         precedent = bouton
+    end
+
+    -- Menu de la page Mon equipement : les trois scenarios de navigation a
+    -- essayer, un filet, puis les origines (scenarios 1 et 3).
+    win.menuEquip = {}
+    local function LigneEquip(icone, auClic)
+        local b = CreerLigneDeMenu(menu, icone)
+        b:SetPoint("LEFT", menu, "LEFT", 0, 0)
+        b:SetPoint("RIGHT", menu, "RIGHT", 0, 0)
+        b:SetScript("OnClick", auClic)
+        b:Hide()
+        table.insert(win.menuEquip, b)
+        return b
+    end
+    win.scenariosEquip = {}
+    local precedentE
+    for n = 1, 3 do
+        local b = LigneEquip("Interface\\Icons\\INV_Scroll_0" .. n, function()
+            if NS.equipement then NS.equipement.PoserScenario(n) end
+            NS.ecran.selectionObjets = {}
+            ecran.Montrer("equipement")
+        end)
+        if precedentE then b:SetPoint("TOP", precedentE, "BOTTOM", 0, -2) else b:SetPoint("TOP", menu, "TOP", 0, 0) end
+        b.scenario = n
+        win.scenariosEquip[n] = b
+        precedentE = b
+    end
+    win.filetEquip = menu:CreateTexture(nil, "ARTWORK")
+    win.filetEquip:SetColorTexture(0.8, 0.65, 0.35, 0.35)
+    do
+        local PU = _G.PixelUtil
+        if PU and PU.SetHeight and PU.SetPoint then
+            PU.SetHeight(win.filetEquip, 1, 1)
+            PU.SetPoint(win.filetEquip, "TOPLEFT", precedentE, "BOTTOMLEFT", 6, -6)
+            PU.SetPoint(win.filetEquip, "TOPRIGHT", precedentE, "BOTTOMRIGHT", -6, -6)
+        else
+            win.filetEquip:SetHeight(1)
+            win.filetEquip:SetPoint("TOPLEFT", precedentE, "BOTTOMLEFT", 6, -6)
+            win.filetEquip:SetPoint("TOPRIGHT", precedentE, "BOTTOMRIGHT", -6, -6)
+        end
+    end
+    win.filetEquip:Hide()
+    local ICONES_ORIGINE = {
+        possede = "Interface\\Icons\\INV_Misc_Bag_08", craftInterne = "Interface\\Icons\\Trade_BlackSmithing",
+        craftExterne = "Interface\\Icons\\INV_Misc_Coin_02", monde = "Interface\\Icons\\INV_Misc_Map_01",
+        quetes = "Interface\\GossipFrame\\AvailableQuestIcon", donjons = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
+    }
+    win.originesEquip = {}
+    local premiereOrigine = true
+    for _, cat in ipairs(NS.sources and NS.sources.ORDRE or {}) do
+        local b = LigneEquip(ICONES_ORIGINE[cat], function()
+            if not NS.equipement then return end
+            if NS.equipement.Scenario() == 3 then NS.equipement.BasculerFiltre(cat)
+            else NS.equipement.PoserCategorie(cat) end
+            NS.ecran.selectionObjets = {}
+            ecran.Montrer("equipement")
+        end)
+        b:SetPoint("TOP", precedentE, "BOTTOM", 0, premiereOrigine and -13 or -2)
+        premiereOrigine = false
+        b.origine = cat
+        win.originesEquip[cat] = b
+        precedentE = b
     end
 
     -- Onglets de metier sur le bord droit.
@@ -4932,6 +5032,30 @@ function ecran.Montrer(cle)
     for autre, bouton in pairs(fenetre.boutons) do
         MarquerLigneDeMenu(bouton, autre == ecran.page)
     end
+    -- Mon equipement est a part : son propre menu a gauche, et l'onglet de
+    -- CraftCore (colonne des add-ons) en retrait.
+    do
+        local surEquip = (ecran.page == "equipement")
+        for _, b in pairs(fenetre.boutons) do b:SetShown(not surEquip) end
+        for _, f in ipairs(fenetre.filetsMenu or {}) do f:SetShown(not surEquip) end
+        local scen = NS.equipement and NS.equipement.Scenario() or 1
+        for n, b in pairs(fenetre.scenariosEquip or {}) do
+            local texte = b.text or b.Text or (b.GetFontString and b:GetFontString())
+            if texte then texte:SetText(string.format(L.GEAR_SCENARIO, n)) end
+            b:SetShown(surEquip)
+            MarquerLigneDeMenu(b, n == scen)
+        end
+        if fenetre.filetEquip then fenetre.filetEquip:SetShown(surEquip and scen ~= 2) end
+        for cat, b in pairs(fenetre.originesEquip or {}) do
+            local texte = b.text or b.Text or (b.GetFontString and b:GetFontString())
+            if texte then texte:SetText(L["GEAR_CAT_" .. cat]) end
+            b:SetShown(surEquip and scen ~= 2)
+            local choisi = (scen == 3) and NS.equipement.FiltreActif(cat) or (scen == 1 and NS.equipement.Categorie() == cat)
+            MarquerLigneDeMenu(b, choisi)
+        end
+        local S = NS.suite or _G.CoreSuite
+        if S and S.CourantEnRetrait then S.CourantEnRetrait(fenetre, surEquip) end
+    end
 
     -- Libelles de la barre, relus a chaque fois : l'utilisateur peut assigner
     -- une touche pendant la session.
@@ -5081,6 +5205,10 @@ function ecran.Montrer(cle)
                 if x then x:Hide() end
             end
             if fenetre.contenu.listeFondSuivis then fenetre.contenu.listeFondSuivis:Hide() end
+            for _, x in ipairs({ fenetre.contenu.titreEquipReg, fenetre.contenu.titreEquipReg and fenetre.contenu.titreEquipReg.filet,
+                fenetre.contenu.libelleMarge, fenetre.contenu.curseurMarge }) do
+                if x then x:Hide() end
+            end
             for _, c in ipairs({ fenetre.contenu.caseInfobulles, fenetre.contenu.caseAssistant, fenetre.contenu.caseSuivi,
                 fenetre.contenu.casePermanent, fenetre.contenu.caseAncre }) do
                 c:Hide()

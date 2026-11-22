@@ -862,9 +862,10 @@ function recettes.Niveaux(recette)
     local n = niveauxLus[cle]
     if n == nil then
         local brut = NS.donnees and NS.donnees.NIVEAUX and NS.donnees.NIVEAUX[cle]
-        local o, j, v, g
-        if type(brut) == "string" then o, j, v, g = string.match(brut, "^(%d+)/(%d+)/(%d+)/(%d+)$") end
-        n = o and { orange = tonumber(o), jaune = tonumber(j), vert = tonumber(v), gris = tonumber(g) } or false
+        local o, j, v, g, m
+        if type(brut) == "string" then o, j, v, g, m = string.match(brut, "^(%d+)/(%d+)/(%d+)/(%d+)/?(%d*)$") end
+        n = o and { orange = tonumber(o), jaune = tonumber(j), vert = tonumber(v), gris = tonumber(g),
+            metier = tonumber(m) } or false
         niveauxLus[cle] = n
     end
     return n or nil
