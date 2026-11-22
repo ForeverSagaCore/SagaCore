@@ -48,7 +48,7 @@ local function Reglages()
     if s.souder ~= true then s.souder = false end
     -- Soudes, les quetes sont toujours en haut et la recolte dessous.
     s.ordre = "quetes"
-    if s.vue ~= "parcours" and s.vue ~= "favoris" then s.vue = "quetes" end
+    if s.vue ~= "parcours" and s.vue ~= "favoris" and s.vue ~= "pvp" then s.vue = "quetes" end
     if s.memeOpacite == nil then s.memeOpacite = true end
     if s.masquerNatif ~= true then s.masquerNatif = false end
     -- Quete terminee : par defaut, elle quitte l'onglet Quetes pour ne plus
@@ -1373,8 +1373,11 @@ local function OngletVue(cle, icone, nom, aide)
         local s = Reglages()
         s.vuePerso = nil
         if self.cle == "itineraire" then
-            if s.vue ~= "parcours" then s.vueAvantItineraire = s.vue end
+            if s.vue ~= "parcours" and s.vue ~= "pvp" then s.vueAvantItineraire = s.vue end
             s.vue = "parcours"
+        elseif self.cle == "pvp" then
+            if s.vue ~= "parcours" and s.vue ~= "pvp" then s.vueAvantItineraire = s.vue end
+            s.vue = "pvp"
         else
             s.vue = (s.vueAvantItineraire == "favoris") and "favoris" or "quetes"
         end
@@ -1417,14 +1420,29 @@ PoserOngletsVues = function(replie, nParcours)
     -- Plus de trajet : retour au suivi des quetes.
     if not avecRoute and s.vue == "parcours" then s.vue = "quetes" end
     local enRoute = s.vue == "parcours" and not s.vuePerso
-    quetes:SetChecked(not enRoute and not s.vuePerso)
+    -- Onglet JcJ, sous les deux autres, quand PvPCore est installe.
+    local avecPvp = _G.PvPCoreAPI ~= nil
+    local pvp = avecPvp and OngletVue("pvp", "Interface\\Icons\\INV_BannerPVP_02", L.TRACK_SIDE_PVP, L.TRACK_SIDE_PVP_TIP)
+    if not avecPvp and s.vue == "pvp" then s.vue = "quetes" end
+    local enPvp = s.vue == "pvp" and not s.vuePerso
+    if enPvp then enRoute = false end
+    quetes:SetChecked(not enRoute and not enPvp and not s.vuePerso)
     route:SetChecked(enRoute)
     route:SetEnabled(avecRoute)
     route.icone:SetDesaturated(not avecRoute)
     route.icone:SetAlpha(avecRoute and 1 or 0.5)
     quetes:ClearAllPoints()
     route:ClearAllPoints()
-    route:SetPoint("BOTTOMRIGHT", cadre, "BOTTOMLEFT", -2, 40)
+    if pvp then
+        pvp:ClearAllPoints()
+        pvp:SetPoint("BOTTOMRIGHT", cadre, "BOTTOMLEFT", -2, 40)
+        pvp:SetChecked(enPvp)
+        pvp:SetShown(not replie)
+        route:SetPoint("BOTTOM", pvp, "TOP", 0, 12)
+    else
+        route:SetPoint("BOTTOMRIGHT", cadre, "BOTTOMLEFT", -2, 40)
+        if cadre.ongletsVues and cadre.ongletsVues.pvp then cadre.ongletsVues.pvp:Hide() end
+    end
     quetes:SetPoint("BOTTOM", route, "TOP", 0, 12)
     quetes:SetShown(not replie)
     route:SetShown(not replie)
@@ -1594,6 +1612,44 @@ local function RendreTournee(index, y)
         y = Poser(index, y, string.format("|T%s:14|t %s", tostring(NS.ref.IconeDObjet(objet)), NS.ref.NomDObjet(objet)),
             { retrait = 22, couleur = { 1, 1, 1 }, uneLigne = true,
             droite = string.format(L.TRACK_FARM_SPOTS, parObjet[objet]), couleurDroite = { 0.8, 0.8, 0.8 } })
+    end
+    return index, y + 6
+end
+
+-- Onglet JcJ (avec PvPCore) : ses rubriques (champ de bataille en cours,
+-- files d'attente, rang, victoires honorables, marques, quetes JcJ), meme
+-- presentation que les zones et les quetes. Rafraichi toutes les 3 secondes
+-- tant que l'onglet est ouvert (temps d'attente, objectifs).
+local rafraichirPvp = false
+local function RendreVuePvp(index, y)
+    local api = _G.PvPCoreAPI
+    local rubriques = (api and api.Rubriques) and api.Rubriques() or {}
+    if #rubriques == 0 then
+        index = index + 1
+        y = Poser(index, y, L.TRACK_PVP_EMPTY, { couleur = { 0.6, 0.6, 0.6 } })
+    end
+    for k, x in ipairs(rubriques) do
+        index = index + 1
+        y = Poser(index, y, x.titre, { police = "GameFontNormal", zone = true, uneLigne = true, couleur = { 1, 0.82, 0 },
+            separateur = k > 1, apres = 4 })
+        for _, e in ipairs(x.lignes or {}) do
+            index = index + 1
+            y = Poser(index, y, e.texte or "", { retrait = 22, couleur = e.couleur or { 1, 1, 1 }, uneLigne = true,
+                droite = e.droite, couleurDroite = { 0.85, 0.85, 0.85 } })
+        end
+    end
+    if not rafraichirPvp then
+        -- Une veille legere (une fois) : toutes les 3 secondes, seulement
+        -- tant que l'onglet JcJ est ouvert et le suivi visible.
+        rafraichirPvp = true
+        local veille, attente = CreateFrame("Frame"), 3
+        veille:SetScript("OnUpdate", function(_, ecoule)
+            attente = attente - (ecoule or 0)
+            if attente > 0 then return end
+            attente = 3
+            local s = Reglages()
+            if s.vue == "pvp" and not s.replie and cadre and cadre:IsShown() then pcall(suivi.Rendre) end
+        end)
     end
     return index, y + 6
 end
@@ -1856,7 +1912,7 @@ function suivi.Rendre()
         cadre.vues.favoris:Compter(nFavoris)
         -- Onglet Itineraire : ses trois onglets a la place de ceux des quetes.
         local enItineraire = s.vue == "parcours" and not s.vuePerso
-        for _, b in pairs(cadre.vues) do b:SetShown(not s.replie and not enItineraire) end
+        for _, b in pairs(cadre.vues) do b:SetShown(not s.replie and not enItineraire and s.vue ~= "pvp") end
         local nDivers, nDonjons = 0, 0
         for _, pc in ipairs(NS.parcours and NS.parcours.Liste(NS.ClePersonnage()) or {}) do
             if CategorieDe(pc) == "donjons" then nDonjons = nDonjons + 1 else nDivers = nDivers + 1 end
@@ -2127,7 +2183,7 @@ function suivi.Rendre()
             bilan:SetPoint("BOTTOMRIGHT", cadre.zone, "BOTTOMRIGHT", 0, bas)
             -- Le bilan : dans les quatre onglets (A rendre, prochain niveau,
             -- trajet), pour ne pas avoir a changer d'onglet.
-            local avecBilan = not s.replie and not s.vuePerso
+            local avecBilan = not s.replie and not s.vuePerso and s.vue ~= "pvp"
             bilan:SetShown(avecBilan)
             local hauteurBilan = avecBilan and math.ceil(bilan.hauteur or 24) or -4
             bilan:SetHeight(hauteurBilan)
@@ -2146,6 +2202,13 @@ function suivi.Rendre()
             cadre:SetHeight(math.min(math.max(s.hauteur or HAUTEUR, HAUTEUR_MINI), HauteurMaxi()))
             BasDeListe(false)
             local _, yFin = RendreVueFavoris(moi, 0, 0)
+            corps:SetHeight(math.max(yFin, 1))
+            return
+        end
+        if s.vue == "pvp" and not s.replie and _G.PvPCoreAPI then
+            cadre:SetHeight(math.min(math.max(s.hauteur or HAUTEUR, HAUTEUR_MINI), HauteurMaxi()))
+            BasDeListe(false)
+            local _, yFin = RendreVuePvp(0, 0)
             corps:SetHeight(math.max(yFin, 1))
             return
         end

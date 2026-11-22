@@ -1,0 +1,8 @@
+<Bindings>
+	<Binding name="PVPCORE_OPAQUE" header="PVPCORE">
+		PvPCore_CarteOpaque()
+	</Binding>
+	<Binding name="PVPCORE_CACHEE">
+		PvPCore_CarteCachee()
+	</Binding>
+</Bindings>
