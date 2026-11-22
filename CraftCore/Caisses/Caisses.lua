@@ -54,7 +54,8 @@ end
 
 -- Objets du compte, nom en minuscules vers identifiant et quantite. Sert a
 -- rapprocher un libelle de pack de ce qu'on possede reellement.
-local function StocksParNom()
+local parNomMemo, parNomQuand
+local function StocksParNomBrut()
     local parNom = {}
     for _, fiche in ipairs(NS.base.TousLesPersonnages()) do
         -- L'autre camp ne peut rien fournir : meme regle que partout.
@@ -91,7 +92,32 @@ local function StocksParNom()
             for _, comp in ipairs(recette.composants or {}) do Connu(comp.objet) end
         end
     end
+    -- Les objets deja retrouves une fois par leur nom (au survol, ou le jeu
+    -- les avait en memoire) : reconnus ensuite meme hors de la memoire du jeu.
+    for nom, id in pairs((CraftCoreDB and CraftCoreDB.objetsParNom) or {}) do
+        if type(nom) == "string" and tonumber(id) and not parNom[nom] then
+            parNom[nom] = { id = tonumber(id), total = 0 }
+        end
+    end
     return parNom
+end
+local function StocksParNom()
+    local maintenant = (NS.Appeler(_G.GetTime) or 0)
+    if parNomMemo and parNomQuand and maintenant - parNomQuand < 2 then return parNomMemo end
+    parNomMemo, parNomQuand = StocksParNomBrut(), maintenant
+    return parNomMemo
+end
+function caisses.OublierNoms() parNomMemo = nil end
+
+-- Un objet retrouve par son nom : garde pour la suite.
+function caisses.RetenirNom(nom, id)
+    if type(nom) ~= "string" or not tonumber(id) or type(CraftCoreDB) ~= "table" then return end
+    CraftCoreDB.objetsParNom = CraftCoreDB.objetsParNom or {}
+    nom = string.lower(nom)
+    if CraftCoreDB.objetsParNom[nom] ~= tonumber(id) then
+        CraftCoreDB.objetsParNom[nom] = tonumber(id)
+        parNomMemo = nil
+    end
 end
 
 -- Le libelle d'un pack est au pluriel et porte une unite : "4 essences
@@ -146,9 +172,12 @@ end
 -- Lire l'infobulle de chaque objet coute cher. On ne refait le tour que
 -- lorsque les sacs ont change, pas a chaque affichage de la page.
 local dernierTour
+-- Infobulle deja lue d'un objet charge : on ne la relit plus.
+local analyses = {}
 
 function caisses.MarquerARelever()
     dernierTour = nil
+    parNomMemo = nil
 end
 
 -- Caisses actuellement dans les conteneurs, avec leurs packs.
@@ -206,13 +235,22 @@ function caisses.Relever(forcer)
                 -- creer une seconde ligne.
                 vues[id].exemplaires = vues[id].exemplaires + 1
             elseif id then
-                local info = NS.objets.Info(id)
+                local deja = analyses[id]
+                local info, charge, lignes, voie, packs
+                if deja then
+                    info, charge, lignes, voie, packs = deja.info, true, deja.lignes, deja.voie, deja.packs
+                else
+                    info = NS.objets.Info(id)
+                    charge = NS.objets.EstCharge(id)
+                    lignes, voie = NS.objets.LignesDInfobulle(id)
+                    packs = LignesDePacks(lignes)
+                    if charge and lignes and info and info.nom then
+                        analyses[id] = { info = info, lignes = lignes, voie = voie, packs = packs }
+                    end
+                end
                 bilan.objets = bilan.objets + 1
-                local charge = NS.objets.EstCharge(id)
                 if charge then bilan.charges = bilan.charges + 1 end
-                local lignes, voie = NS.objets.LignesDInfobulle(id)
                 if lignes then bilan.avecInfobulle = bilan.avecInfobulle + 1 end
-                local packs = LignesDePacks(lignes)
                 if #packs > 0 then bilan.avecPacks = bilan.avecPacks + 1 end
                 if #bilan.exemples < 5 then
                     table.insert(bilan.exemples, {

@@ -1367,14 +1367,14 @@ local function RendreReglagesStuff(contenu)
                     { { 1, L.GEAR_PRES_1 }, { 2, L.GEAR_PRES_2 }, { 3, L.GEAR_PRES_3 } },
                     function() return NS.equipement.Scenario() end,
                     function(v) NS.equipement.PoserScenario(tonumber(v) or 1) end,
-                    function() ecran.Montrer("reglages") end)
+                    function() ecran.Montrer("reglagesStuff") end)
                 contenu.textePresentation = contenu:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
                 contenu.textePresentation:SetJustifyH("LEFT")
                 contenu.textePresentation:SetWordWrap(false)
                 contenu.libelleMarge = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
                 contenu.curseurMarge = S2.Curseur(contenu, 0, 60, 1,
                     function() return tonumber(NS.base.ReglagesGeneraux().margeEquipement) or 10 end,
-                    function(v) NS.base.ReglagesGeneraux().margeEquipement = v ecran.Montrer("reglages") end,
+                    function(v) NS.base.ReglagesGeneraux().margeEquipement = v ecran.Montrer("reglagesStuff") end,
                     nil, nil, 5)
                 contenu.curseurMarge.surParchemin = function() return NS.charte.Fond and NS.charte.Fond() == "parchemin" end
                 contenu.caseTousNiveaux = CreateFrame("CheckButton", nil, contenu, "UICheckButtonTemplate")
@@ -1382,7 +1382,7 @@ local function RendreReglagesStuff(contenu)
                 contenu.caseTousNiveaux.libelle = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
                 contenu.caseTousNiveaux:SetScript("OnClick", function(self)
                     NS.base.ReglagesGeneraux().tousNiveauxEquipement = self:GetChecked() and true or nil
-                    ecran.Montrer("reglages")
+                    ecran.Montrer("reglagesStuff")
                 end)
             end
             contenu.titreEquipReg:SetText(L.SETTING_GEAR)
@@ -1747,7 +1747,11 @@ local function ObjetParNom(nom)
     local essai2 = table.concat(singulier, " ")
     for _, essai in ipairs({ nom, essai2, (string.gsub(essai2, "^%l", string.upper)) }) do
         local ok, _, lien = pcall(lecture, essai)
-        if ok and type(lien) == "string" then return tonumber(string.match(lien, "item:(%d+)")) end
+        if ok and type(lien) == "string" then
+            local id = tonumber(string.match(lien, "item:(%d+)"))
+            if id and NS.caisses.RetenirNom then NS.caisses.RetenirNom(nom, id) end
+            return id
+        end
     end
     return nil
 end
