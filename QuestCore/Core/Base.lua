@@ -464,17 +464,44 @@ local function TableXP()
     return tableXP
 end
 
+-- XP habituelle d'une quete de chaque niveau : la mediane des quetes connues
+-- de ce niveau (calculee une fois). Sert aux quetes que la base ne connait
+-- pas encore (contenu propre a Forever, jamais releve).
+local medianes
+local function MedianeDuNiveau(niveau)
+    if not medianes then
+        medianes = {}
+        local parNiveau = {}
+        for _, e in pairs(TableXP() or {}) do
+            local n, x = type(e) == "table" and tonumber(e[1]), type(e) == "table" and tonumber(e[2])
+            if n and x and x > 0 then parNiveau[n] = parNiveau[n] or {} table.insert(parNiveau[n], x) end
+        end
+        for n, liste in pairs(parNiveau) do
+            table.sort(liste)
+            medianes[n] = liste[math.floor((#liste + 1) / 2)]
+        end
+    end
+    return medianes[niveau]
+end
+
+-- Deuxieme valeur : vrai quand l'XP est estimee (quete absente de la base).
 function ref.XPDeLaBase(id, niveauPerso)
     local t = TableXP()
     local e = t and t[id]
-    if type(e) ~= "table" or not tonumber(e[2]) then return nil end
+    local estimee = false
+    if type(e) ~= "table" or not tonumber(e[2]) then
+        local niveau = tonumber(Lire("QuestDB", id, "questLevel"))
+        local m = niveau and niveau > 0 and MedianeDuNiveau(niveau)
+        if not m then return nil end
+        e, estimee = { niveau, m }, true
+    end
     local xp, niveauQuete = tonumber(e[2]), tonumber(e[1]) or 0
     local ecart = (tonumber(niveauPerso) or 0) - niveauQuete
     if ecart > 5 then
         local facteurs = { [6] = 0.8, [7] = 0.6, [8] = 0.4, [9] = 0.2 }
         xp = xp * (facteurs[ecart] or 0.1)
     end
-    return math.floor(xp / 5 + 0.5) * 5
+    return math.floor(xp / 5 + 0.5) * 5, estimee
 end
 
 local objetsParQuete, indexPret = {}, false
@@ -517,12 +544,14 @@ function ref.InfobulleDeLaBase(tt, id, p)
     local donneurs = ref.Donneurs(id)
     if #donneurs > 0 then tt:AddLine(string.format(L.GIVEN_BY, table.concat(donneurs, ", ")), 0.8, 0.8, 0.8, true) end
     ref.LigneDonjon(tt, id)
-    local xp = ref.XPDeLaBase(id, p and p.niveau)
+    local xp, estimee = ref.XPDeLaBase(id, p and p.niveau)
     local objets = ref.ObjetsDeLaBase(id)
     if xp or objets then
         tt:AddLine(" ")
         tt:AddLine(L.REWARDS, 1, 0.82, 0)
-        if xp and xp > 0 then tt:AddLine("  " .. string.format(L.REWARD_XP, xp), 1, 1, 1) end
+        if xp and xp > 0 then
+            tt:AddLine("  " .. (estimee and string.format(L.REWARD_XP_ESTIMATED, xp) or string.format(L.REWARD_XP, xp)), 1, 1, 1)
+        end
         for _, objet in ipairs(objets or {}) do LigneObjet(tt, { objet = objet, n = 1 }) end
         tt:AddLine(L.REWARD_BASE_NOTE, 0.6, 0.6, 0.6, true)
     end

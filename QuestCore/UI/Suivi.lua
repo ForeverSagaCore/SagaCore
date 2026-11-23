@@ -1454,11 +1454,11 @@ RendreEtapeBase = function(moi, id, rang, e, index, y, pion)
             y = Poser(index, y, groupeE, { retrait = 22, couleur = { 0.85, 0.85, 0.85 }, police = "GameFontNormalSmall",
                 petit = true, uneLigne = true, pion = ic.pion, voir = ic.voir, margeDroite = ic.marge })
         end
-        local xp = NS.ref.XPDeLaBase(id, moi.niveau)
+        local xp, estimee = NS.ref.XPDeLaBase(id, moi.niveau)
         if xp and xp > 0 then
             index = index + 1
             local ic = Icones()
-            y = Poser(index, y, string.format(L.REWARD_LINE, string.format(L.REWARD_XP, xp)), { retrait = 22,
+            y = Poser(index, y, string.format(L.REWARD_LINE, string.format(estimee and L.REWARD_XP_ABOUT or L.REWARD_XP, xp)), { retrait = 22,
                 couleur = { 1, 0.82, 0 }, police = "GameFontNormalSmall", petit = true, uneLigne = true,
                 pion = ic.pion, voir = ic.voir, margeDroite = ic.marge })
         end
