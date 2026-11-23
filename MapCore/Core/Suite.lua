@@ -59,55 +59,73 @@ if not _G.SagaCoreRoyaume then
             if t[neuve] == nil then t[neuve] = t[cle] t[cle] = nil end
         end
     end
-    function _G.SagaCoreRoyaume()
-        local r
-        for _, source in ipairs(SOURCES) do
-            local ok, v = pcall(source)
-            if ok and not (_G.issecretvalue and _G.issecretvalue(v)) then r = Propre(v) end
-            if r then break end
-        end
-        local db = type(_G.CoreSuiteDB) == "table" and _G.CoreSuiteDB or nil
-        if r then
-            if db then
-                local provisoire = db.royaumeProvisoire or db.dernierRoyaume == PROVISOIRE
-                db.dernierRoyaume = r
-                if provisoire and r ~= PROVISOIRE then
-                    db.royaumeProvisoire = nil
-                    for _, base in ipairs(BASES(db)) do pcall(Renommer, base, PROVISOIRE, r, 1) end
+    -- Les royaumes sous lesquels la suite a deja range des donnees, avec leur
+    -- nombre de cles "Nom - Royaume" (le royaume provisoire mis a part).
+    local function RoyaumesConnus(db)
+        local compte = {}
+        local function Parcourir(t, prof)
+            if type(t) ~= "table" or prof > 3 then return end
+            for cle, v in pairs(t) do
+                if type(cle) == "string" then
+                    local roy = Propre(cle:match("^[^%s]+ %- (.+)$"))
+                    if roy and roy ~= PROVISOIRE then compte[roy] = (compte[roy] or 0) + 1 end
                 end
+                if type(v) == "table" then Parcourir(v, prof + 1) end
             end
+        end
+        for _, base in ipairs(BASES(db)) do pcall(Parcourir, base, 1) end
+        local meilleur, n = nil, 0
+        for roy, c in pairs(compte) do if c > n then meilleur, n = roy, c end end
+        return meilleur
+    end
+    local retenu
+    function _G.SagaCoreRoyaume()
+        local db = type(_G.CoreSuiteDB) == "table" and _G.CoreSuiteDB or nil
+        -- 1. Le nom que le jeu donne d'habitude : il fait foi.
+        local ok, r = pcall(GetRealmName)
+        r = ok and not (_G.issecretvalue and _G.issecretvalue(r)) and Propre(r) or nil
+        if r then
+            if db then db.dernierRoyaume = r end
+            retenu = r
             return r
         end
-        if db and Propre(db.dernierRoyaume) then return db.dernierRoyaume end
-        local okn, nom = pcall(UnitName, "player")
-        if not okn or type(nom) ~= "string" or nom == "" then return "" end
-        local motif = "^" .. (nom:gsub("(%W)", "%%%1")) .. " %- (.+)$"
-        local trouve, double = nil, false
-        for _, base in ipairs(BASES(db)) do
-            if type(base) == "table" then
-                for _, t in pairs(base) do
-                    if type(t) == "table" then
-                        for cle in pairs(t) do
-                            local roy = type(cle) == "string" and Propre(cle:match(motif))
-                            if roy then
-                                if trouve and trouve ~= roy then double = true end
-                                trouve = trouve or roy
-                            end
-                        end
+        if retenu then return retenu end
+        -- 2. Le jeu ne le donne pas : le royaume sous lequel la suite a deja
+        -- ses donnees (jamais un autre nom du meme royaume, qui ferait croire
+        -- a un nouveau personnage).
+        local connu = RoyaumesConnus(db)
+        if connu then
+            if db then db.dernierRoyaume = connu end
+            retenu = connu
+            return connu
+        end
+        if db and Propre(db.dernierRoyaume) and db.dernierRoyaume ~= PROVISOIRE then
+            retenu = db.dernierRoyaume
+            return retenu
+        end
+        -- 3. Installation neuve : les autres fonctions du jeu.
+        for k = 2, #SOURCES do
+            local okS, v = pcall(SOURCES[k])
+            v = okS and not (_G.issecretvalue and _G.issecretvalue(v)) and Propre(v) or nil
+            if v then
+                if db then
+                    if db.royaumeProvisoire then
+                        db.royaumeProvisoire = nil
+                        for _, base in ipairs(BASES(db)) do pcall(Renommer, base, PROVISOIRE, v, 1) end
                     end
+                    db.dernierRoyaume = v
+                    retenu = v
                 end
+                return v
             end
         end
-        if trouve and not double then
-            if db then db.dernierRoyaume = trouve end
-            return trouve
-        end
+        -- 4. Rien nulle part : un nom provisoire, pour que tout s'enregistre.
         if db then db.royaumeProvisoire = true end
         return PROVISOIRE
     end
 end
 
-local VERSION = 137
+local VERSION = 138
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
