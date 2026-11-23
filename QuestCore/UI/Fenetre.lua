@@ -303,9 +303,10 @@ local function RendreQuetes(contenu, p, index, y)
         { L.TURNIN_ALL, function() NS.base.PoserFiltreARendre(false) end, filtre },
         { string.format(L.TURNIN_TAB, nRendre), function() NS.base.PoserFiltreARendre(true) end, not filtre },
         -- Le meme bouton Guider que le suivi (personnage connecte seulement).
-        (p.cle == NS.ClePersonnage()) and { L.GUIDE_START, function()
-            if NS.suivi and NS.suivi.Guider then NS.suivi.Guider() end
-        end, nRendre > 0 } or nil,
+        (p.cle == NS.ClePersonnage()) and { NS.guidage.EstActif("rendus", {}) and L.GUIDE_STOP or L.GUIDE_START, function()
+            NS.guidage.Basculer("rendus", {})
+            fen.Rendre()
+        end, nRendre > 0 or NS.guidage.EstActif("rendus", {}) } or nil,
     }
     for id, q in pairs(p.quetes or {}) do
       if not filtre or q.complete == true then
@@ -743,15 +744,10 @@ local function RendreParcours(contenu, p, index, y)
     y = Titre(contenu, index, y, string.format(L.ROUTE_TITLE, #liste), {
         { connecte and string.format(L.ROUTE_MAKE_LEVEL, (p.niveau or 0) + 1, manque) or L.ROUTE_MAKE_LEVEL_OFF,
             function()
-                local ok, pc, raison = pcall(NS.disponibles.CreerProgression, p.cle, p)
-                if not ok then NS.base.NoterIncident("progression", pc) return end
-                if pc then
-                    etat.ouvertes["pc" .. pc.id] = true
-                    etat.ouvertes["grpprogression"] = nil
-                else
-                    NS.Dire(raison == "rien" and L.ROUTE_LEVEL_NOTHING or L.ROUTE_LEVEL_NONE)
-                end
-                ParcoursChange()
+                -- Le guidage vers le niveau suivant (objectif "niveau").
+                local ok, lance = pcall(NS.guidage.Lancer, "niveau", { niveau = (p.niveau or 0) + 1 })
+                if not ok then NS.base.NoterIncident("progression", lance) return end
+                fen.Rendre()
             end, connecte and manque > 0 },
     })
     if #liste == 0 then
@@ -866,8 +862,8 @@ local function RendreParcours(contenu, p, index, y)
                 end
             end
             local confirmer = etat.confirmerParcours == idP
-            local guideIci = NS.guidage and NS.guidage.Actif() and (NS.guidage.ParcoursGuide() == idP
-                or (NS.guidage.ParcoursGuide() == nil and pc.genre == "rendu"))
+            local uidP = pc.uid
+            local guideIci = NS.guidage.EstActif("parcours", { uid = uidP })
             if etat.renommer == idP then
                 index = index + 1
                 local yLigne = y + 4
@@ -910,6 +906,7 @@ local function RendreParcours(contenu, p, index, y)
                 end },
                 { confirmer and L.ROUTE_DELETE_CONFIRM or L.ROUTE_DELETE, function()
                     if confirmer then
+                        if guideIci then NS.suite.Arreter("joueur") end
                         NS.parcours.Supprimer(p.cle, idP)
                         etat.confirmerParcours = nil
                     else
@@ -918,7 +915,7 @@ local function RendreParcours(contenu, p, index, y)
                     ParcoursChange()
                 end },
                 (p.cle == NS.ClePersonnage()) and { guideIci and L.ROUTE_GUIDE_STOP or L.ROUTE_GUIDE_START, function()
-                    if NS.guidage then NS.guidage.Basculer(not guideIci, idP) end
+                    NS.guidage.Basculer("parcours", { uid = uidP })
                     if not guideIci and NS.suivi and NS.suivi.MontrerParcours then pcall(NS.suivi.MontrerParcours, idP) end
                     fen.Rendre()
                 end } or nil,
@@ -1144,7 +1141,7 @@ RendreDonjonOuvert = function(contenu, p, d, index, y)
                 -- Comme tout nouveau trajet : le suivi le montre et la fleche part.
                 if cleP == NS.ClePersonnage() then
                     if NS.suivi and NS.suivi.MontrerParcours then pcall(NS.suivi.MontrerParcours, pc.id) end
-                    if NS.guidage then pcall(NS.guidage.Basculer, true, pc.id) end
+                    pcall(NS.guidage.Lancer, "parcours", { uid = pc.uid })
                 end
                 fen.Rendre()
             end
@@ -1769,9 +1766,6 @@ local function ConstruireReglages(parent)
         0.05, 0, 1, PctTexte)
     Reglage(L.SET_ALPHA_HOVER, function() return S().alphaSurvol end, function(v) S().alphaSurvol = v end,
         0.05, 0.1, 1, PctTexte)
-    Choix(L.SET_ADJUST, "ajustementAuto", { { true, L.SET_ADJUST_AUTO }, { false, L.SET_ADJUST_ASK } },
-        function() return { ajustementAuto = NS.base.ReglagesGeneraux().ajustementAuto ~= false } end,
-        function(v) NS.base.ReglagesGeneraux().ajustementAuto = v end)
     Choix(L.SET_PARTY, "groupe", { { true, L.YES }, { false, L.NO } },
         function() return { groupe = NS.groupe.Actif() } end, function(v) NS.groupe.PoserActif(v) end)
     -- Couleur du cadeau des dons partiels (le vert reste celui du don complet).
@@ -2075,13 +2069,6 @@ local function Construire()
     cadre = NS.charte.Fenetre("QuestCoreFenetre", LARGEUR, HAUTEUR, {})
     cadre:SetPoint("CENTER")
     cadre:Hide()
-    -- Le guidage d'un parcours vit avec sa carte : fenetre fermee, il
-    -- s'arrete, et le bouton du suivi redevient Guider.
-    cadre:HookScript("OnHide", function()
-        if NS.guidage and NS.guidage.Actif() and NS.guidage.ParcoursGuide and NS.guidage.ParcoursGuide() then
-            pcall(NS.guidage.Basculer, false)
-        end
-    end)
     table.insert(UISpecialFrames, "QuestCoreFenetre")
     if cadre.portrait or (cadre.PortraitContainer and cadre.PortraitContainer.portrait) then
         local portrait = cadre.portrait or cadre.PortraitContainer.portrait
@@ -2335,9 +2322,6 @@ do
             Valeur(L.SET_ALPHA_REST, function() return S().alphaRepos end, function(v) S().alphaRepos = v end, 0.05, 0, 1, PctTexte),
             Valeur(L.SET_ALPHA_MOVE, function() return S().alphaMouvement end, function(v) S().alphaMouvement = v end, 0.05, 0, 1, PctTexte),
             Valeur(L.SET_ALPHA_HOVER, function() return S().alphaSurvol end, function(v) S().alphaSurvol = v end, 0.05, 0.1, 1, PctTexte),
-            Choix(L.SET_ADJUST, { { true, L.SET_ADJUST_AUTO }, { false, L.SET_ADJUST_ASK } },
-                function() return NS.base.ReglagesGeneraux().ajustementAuto ~= false end,
-                function(v) NS.base.ReglagesGeneraux().ajustementAuto = v end),
             Case(L.SET_PARTY, function() return NS.groupe.Actif() end, function(v) NS.groupe.PoserActif(v) end),
             Choix(L.SET_GIFT, { { "violet", L.SET_GIFT_PURPLE }, { "bleu", L.SET_GIFT_BLUE }, { "orange", L.SET_GIFT_ORANGE },
                 { "rouge", L.SET_GIFT_RED }, { "jaune", L.SET_GIFT_YELLOW } },

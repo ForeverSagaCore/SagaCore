@@ -13,8 +13,9 @@ local _, NS = ...
 --   Disponible() : vrai si un add-on de trajet est la (selon les reglages)
 --   NomTrajet()  : son nom
 --   Trajet({ carte, x, y, titre }) : lui demande le chemin jusqu'au point
---     (x, y de 0 a 1 sur la carte), et coupe la fleche de la suite s'il le
---     faut, pour n'avoir qu'une fleche a l'ecran.
+--     (x, y de 0 a 1 sur la carte). Le guidage de la suite continue : seule
+--     la suite decide de s'arreter (objectif atteint, arret demande, nouvel
+--     objectif).
 
 local FR = (GetLocale and GetLocale() == "frFR")
 local function T(fr, en)
@@ -30,7 +31,6 @@ local function R()
     -- Une fois : retour a "Me demander" (le choix d'un guidage ne devait pas
     -- devenir un reglage).
     if not d.choixParGuidage then d.choixParGuidage = true d.trajet = "auto" end
-    if d.couperFleche == nil then d.couperFleche = true end
     return d
 end
 
@@ -76,12 +76,12 @@ NS.ADDONS = {
       url = "https://www.curseforge.com/wow/addons/shortest-path-forever",
       role = function() return T("Le chemin détaillé jusqu'aux étapes : à pied en contournant les obstacles, en vol, en bateau, en zeppelin, par portail.",
           "The detailed way to each step: on foot around obstacles, by flight, ship, zeppelin or portal.") end,
-      sert = function() return T("Bouton « Itinéraire détaillé » du suivi des quêtes.", "\"Detailed route\" button of the quest tracker.") end },
+      sert = function() return T("Le chemin détaillé jusqu'à l'étape guidée par la suite.", "The detailed way to the step the suite guides.") end },
     { cle = "tomtom", nom = "TomTom", dossiers = { "TomTom" },
       url = "https://www.curseforge.com/wow/addons/tomtom",
       role = function() return T("Des repères et une flèche ; la plupart des guides savent les suivre.",
           "Waypoints and an arrow; most guides can follow them.") end,
-      sert = function() return T("Itinéraire détaillé quand aucun autre add-on de trajet n'est là.", "Detailed route when no other route add-on is there.") end },
+      sert = function() return T("Le chemin jusqu'à l'étape guidée, quand aucun autre add-on de trajet n'est là.", "The way to the guided step when no other route add-on is there.") end },
     { cle = "mapzeroth", nom = "Mapzeroth", dossiers = { "Mapzeroth" },
       url = "https://www.curseforge.com/wow/addons/mapzeroth",
       role = function() return T("Le trajet le plus rapide avec vos sorts, vos objets, la pierre de foyer et les transports.",
@@ -154,12 +154,6 @@ end
 local function Envoyer(dest)
     local moyen = Moyen()
     if not (moyen and type(dest) == "table" and dest.carte and dest.x and dest.y) then return false end
-    -- Une seule fleche a l'ecran : celle de l'add-on de trajet. Le guidage de
-    -- la suite s'arrete avant l'envoi, pour ne pas effacer ce qu'on envoie.
-    -- (Pas quand c'est la suite elle-meme qui passe l'etape : elle n'affiche
-    -- alors plus de fleche, seulement l'etape a suivre.)
-    local S = _G.CoreSuite
-    if not dest.depuisSuite and R().couperFleche and S and S.ArreterGuidage and S.GuidageActif and S.GuidageActif() then pcall(S.ArreterGuidage) end
     local titre = string.gsub(tostring(dest.titre or ""), "[\r\n]", " ")
     if moyen == "spf" then
         local info = _G.C_Map and _G.C_Map.GetMapInfo and select(2, pcall(_G.C_Map.GetMapInfo, dest.carte))
@@ -193,7 +187,8 @@ _G.FriendsCoreAPI = {
     -- qui le guide : la suite lui pose la question.
     -- Reglage "Me demander", un add-on de trajet installe, et rien de choisi
     -- pour ce guidage : la suite pose la question.
-    ADecider = function() return R().trajet == "auto" and choixDuGuidage == nil end,
+    -- Sans add-on de trajet installe, aucune question.
+    ADecider = function() return R().trajet == "auto" and choixDuGuidage == nil and #Moyens() > 0 end,
     Moyens = function() return Moyens() end,
     -- Tous les add-ons de trajet connus, installes ou non.
     Tous = function()
@@ -310,23 +305,18 @@ function F.Construire()
                   page.rActuel = O.Rangee()
                   page.actuel = page.rActuel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
                   page.actuel:SetPoint("RIGHT", page.rActuel, "RIGHT", -10, 0)
-                  page.rCouper = O.Rangee()
-                  page.cCouper = O.Case(page.rCouper, function(oui) R().couperFleche = oui end)
-                  page.cCouper:SetPoint("RIGHT", page.rCouper, "RIGHT", -8, 0)
                   page.aide = O.Detail(40)
               end,
               rendre = function(page)
                   page.titre:SetText(T("Itinéraires détaillés", "Detailed routes"))
-                  page.intro:SetText(T("Le suivi des quêtes sait quoi faire et dans quel ordre. Pour le chemin lui-même, il passe la main à un add-on de trajet : le bouton « Itinéraire détaillé » lui envoie la prochaine étape.",
-                      "The quest tracker knows what to do and in which order. For the way itself, it hands over to a route add-on: the \"Detailed route\" button sends it the next step."))
+                  page.intro:SetText(T("La suite sait quoi faire et dans quel ordre. Pour le chemin lui-même, elle passe la main à un add-on de trajet : chaque étape guidée lui est envoyée.",
+                      "The suite knows what to do and in which order. For the way itself, it hands over to a route add-on : each guided step is sent to it."))
                   page.rMoyen.nom:SetText(T("Add-on de trajet", "Route add-on"))
                   page.rActuel.nom:SetText(T("Utilisé maintenant", "Used now"))
                   local nom = _G.FriendsCoreAPI.NomTrajet()
-                  page.actuel:SetText(nom or T("Aucun : le bouton est caché", "None: the button is hidden"))
-                  page.rCouper.nom:SetText(T("Couper la flèche de la suite", "Turn off the suite's arrow"))
-                  page.cCouper:SetChecked(R().couperFleche)
-                  page.aide:SetText(T("Quand l'add-on de trajet prend la main, la flèche de la suite s'arrête : une seule flèche à l'écran.",
-                      "When the route add-on takes over, the suite's arrow stops: a single arrow on screen."))
+                  page.actuel:SetText(nom or T("Aucun : la flèche de la suite", "None : the suite's arrow"))
+                  page.aide:SetText(T("Me demander : la question est posée au début de chaque guidage, et le choix est gardé pour cet objectif.",
+                      "Ask me : the question comes at the start of each guidance, and the choice is kept for that goal."))
               end },
         },
     })

@@ -58,9 +58,9 @@ L.ADVICE = {
         { "Réinitialisation chez le maître de classe", "Les points sont communs au compte mais dépensés par personnage : au 60, réinitialisez pour passer de la montée à votre arbre de fin de jeu." } },
 }
 L.PAD_SUITE = "Add-ons"
-L.CHALLENGE_CLICK_ROUTE = "Clic : parcours vers le niveau suivant (QuestCore)"
+L.CHALLENGE_CLICK_ROUTE = "Clic : guider vers le niveau %d (QuestCore)"
 L.CHALLENGE_LOG_ON = "(connectez-vous sur %s pour un parcours)"
-L.CHALLENGE_ROUTE_NONE = "Aucune quête trouvée pour un parcours de progression."
+L.CHALLENGE_ROUTE_NONE = "Aucune quête trouvée pour guider vers ce niveau."
 L.NAV_TIMELINE = "Chronologie"
 L.TREES_TITLE = "Mes arbres"
 L.RANK_OF = "Rang %d / %d"

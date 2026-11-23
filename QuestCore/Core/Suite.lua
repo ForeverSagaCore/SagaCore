@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 142
+local VERSION = 143
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -162,6 +162,7 @@ local DICO = {
         ["Who guides you?"] = "Qui vous guide ?",
         ["You can change it later in FriendsCore."] = "Vous pourrez changer dans FriendsCore.",
         ["Follow the route of"] = "Suivez l'itinéraire de",
+        ["Step %d of %d"] = "Étape %d sur %d",
         ["Forever SagaCore Dev is not installed."] = "Forever SagaCore Dev n'est pas installé.",
         ["Back to the normal suite."] = "Retour à la suite normale.",
         ["Switching to Forever SagaCore Dev."] = "Passage à Forever SagaCore Dev.",
@@ -471,7 +472,7 @@ SlashCmdList.FOREVERSAGACORE = function(arg)
     local r = Suite.Raccourci and Suite.Raccourci(arg:match("^%s*(%S+)%s*$"))
     if r then Suite.Lancer(r) return end
     -- /sagacore stop : arrete le guidage en cours (a mettre dans une macro).
-    if arg:match("^%s*stop%s*$") then Suite.ArreterGuidage() return end
+    if arg:match("^%s*stop%s*$") then Suite.Arreter("joueur") return end
     -- /sagacore suivis : piloter les fenetres de suivi a la manette.
     if arg:match("^%s*suivis?%s*$") then Suite.Piloter() return end
     if arg:match("^%s*macros%s*$") then Suite.OuvrirMacros() return end
@@ -2474,18 +2475,42 @@ end
 
 -- ---------------------------------------------------------------------------
 -- Guidage, commun a la suite : une fleche au milieu du haut de l'ecran qui
--- montre la direction de la prochaine etape d'un trajet (tournee de rendu de
--- QuestCore, tournee de recolte de MapCore...), avec la distance. Un seul
--- guidage a la fois : en lancer un arrete le precedent.
---   Suite.Guider(cle, fournisseur) ; Suite.ArreterGuidage(cle) ;
---   Suite.GuidageActif(cle).
--- fournisseur = {
---   Cible = function() -> { carte, x, y, qui, rang, total, titre } ou nil, raison, detail
---           (raison "fini" : le trajet est termine, le guidage s'arrete ;
---           detail : texte affiche sous "hors de portee", ou aller),
---   Arrivee = function(cible) (facultatif : le personnage est arrive),
---   Clic = function() (facultatif : clic sur la fleche),
---   Fin = function() (le guidage s'arrete, quelle qu'en soit la raison) }
+-- montre la direction de la prochaine etape d'un objectif, avec la distance.
+-- Un seul objectif guide a la fois.
+--
+-- Un objectif est une valeur : un proprietaire (l'add-on qui le declare), un
+-- type de son catalogue et des parametres. Son identite en decoule. Chaque
+-- bouton guide un objectif precis et s'y tient : il n'affiche "Arreter" que
+-- si cette identite exacte est guidee.
+--
+-- Le guidage ne s'arrete que pour trois raisons : "atteint" (le type le dit),
+-- "joueur" (arret demande) ou "remplace" (un autre objectif est lance).
+-- L'objectif en cours est garde par personnage et repris apres /reload.
+--
+--   Suite.DeclarerObjectifs(proprietaire, { [type] = def })
+--   Suite.LancerObjectif(proprietaire, type, params) -> vrai si lance
+--   Suite.BasculerObjectif(proprietaire, type, params)
+--   Suite.Arreter(raison) ; Suite.EstActif(proprietaire, type, params)
+--   Suite.ObjectifActif() ; Suite.EtatGuidage() ; Suite.Invalider()
+--   Suite.Lieux (outils geographiques) ; Suite.TypePoint(o)
+--
+-- def = {
+--   icone, AideClic, nonPersiste,
+--   Cle(params) -> texte (facultatif : identite par les parametres),
+--   Libelle(params, etat) -> le nom de l'objectif,
+--   Preparer(params, etat) -> false, message : pas de lancement,
+--   Reprendre(params, etat) -> false : objectif oublie a la reprise,
+--   Etapes(params, etat) -> etapes, raison, detail, compte
+--       etapes : { { carte, x, y, titre, qui, cle }, ... }, la premiere visee ;
+--       raison : nil, "atteint" (seule raison d'arret), "loin", "inconnu" ;
+--       detail : texte sous "Hors de portee" ;
+--       compte : { fait, total } pour "Etape X sur Y",
+--   Arrivee(params, etat, etape) -> "suivante" (defaut) ou "atteint",
+--   Evenements = { ... } (invalident le calcul),
+--   Clic(params, etat), Fin(params, etat, raison) }
+--
+-- Compatibilite (TradeCore, hors depot) : Suite.Guider(cle, fournisseur),
+-- Suite.ArreterGuidage(cle), Suite.GuidageActif(cle).
 -- ---------------------------------------------------------------------------
 
 local TG = Paresseux({
@@ -2495,31 +2520,238 @@ local TG = Paresseux({
 })
 
 Suite.guide = Suite.guide or {}
+Suite.catalogues = Suite.catalogues or {}
 
-function Suite.GuidageActif(cle)
-    local g = Suite.guide
-    return g.cle ~= nil and (cle == nil or g.cle == cle)
+-- Le personnage connecte ("Nom - Royaume"), ou nil tant qu'il n'est pas sur.
+local function ClePersoGuidage()
+    local okN, nom = pcall(UnitName, "player")
+    local royaume = _G.SagaCoreRoyaume and _G.SagaCoreRoyaume() or ""
+    if not okN or type(nom) ~= "string" or nom == "" or type(royaume) ~= "string" or royaume == "" then return nil end
+    return nom .. " - " .. royaume
 end
 
+-- L'objectif garde de chaque personnage : CoreSuiteDB.guidage.persos.
+local function Persos()
+    CoreSuiteDB = type(CoreSuiteDB) == "table" and CoreSuiteDB or {}
+    local g = type(CoreSuiteDB.guidage) == "table" and CoreSuiteDB.guidage or {}
+    CoreSuiteDB.guidage = g
+    g.persos = type(g.persos) == "table" and g.persos or {}
+    return g.persos
+end
+
+local function DefDe(proprietaire, nom)
+    local c = Suite.catalogues[proprietaire]
+    return c and c[nom]
+end
+local function Def(inst) return inst and DefDe(inst.proprietaire, inst.type) end
+
+local function Identite(proprietaire, nom, params)
+    local def = DefDe(proprietaire, nom)
+    local s = ""
+    if def and def.Cle then
+        local ok, r = pcall(def.Cle, params or {})
+        if ok and r ~= nil then s = tostring(r) end
+    end
+    return tostring(proprietaire) .. ":" .. tostring(nom) .. (s ~= "" and (":" .. s) or "")
+end
+
+function Suite.DeclarerObjectifs(proprietaire, catalogue)
+    if type(proprietaire) ~= "string" or type(catalogue) ~= "table" then return end
+    local c = Suite.catalogues[proprietaire] or {}
+    Suite.catalogues[proprietaire] = c
+    for nom, def in pairs(catalogue) do
+        if type(def) == "table" then c[nom] = def end
+    end
+end
+
+function Suite.ObjectifActif() return Suite.guide.actif end
+
+function Suite.EstActif(proprietaire, nom, params)
+    local a = Suite.guide.actif
+    return a ~= nil and a.cle == Identite(proprietaire, nom, params)
+end
+
+-- ---------------------------------------------------------------------------
+-- Outils geographiques, communs a tous les types
+-- ---------------------------------------------------------------------------
+
+local function Lire(chemin)
+    local t = _G
+    for morceau in string.gmatch(chemin, "[^%.]+") do
+        if type(t) ~= "table" then return nil end
+        t = t[morceau]
+    end
+    return t
+end
+
+local function InfoCarte(carte)
+    local f = Lire("C_Map.GetMapInfo")
+    if not (f and carte) then return nil end
+    local ok, info = pcall(f, carte)
+    return ok and type(info) == "table" and info or nil
+end
+
+local zones = {}
+Suite.Lieux = {}
+local Lieux = Suite.Lieux
+
+-- La zone (carte de type 3) d'une carte : une grotte ou une mine qui a sa
+-- propre carte compte dans sa zone. Un continent reste un continent.
+function Lieux.ZoneDe(carte)
+    if not carte then return nil end
+    if zones[carte] ~= nil then return zones[carte] end
+    local c, trouve = carte, nil
+    for _ = 1, 8 do
+        local info = InfoCarte(c)
+        if not info then break end
+        if info.mapType == 3 then trouve = c break end
+        if (info.mapType or 0) < 3 then break end
+        c = info.parentMapID
+        if not c or c == 0 then break end
+    end
+    zones[carte] = trouve or carte
+    return zones[carte]
+end
+
+-- Un point d'une sous-carte (grotte, mine) en coordonnees de sa zone.
+function Lieux.VersZone(carte, x, y)
+    local zone = Lieux.ZoneDe(carte)
+    if not (zone and zone ~= carte and x and y) then return carte, x, y end
+    local f = Lire("C_Map.GetMapRectOnMap")
+    if not f then return carte, x, y end
+    local ok, minX, maxX, minY, maxY = pcall(f, carte, zone)
+    if not (ok and minX and maxX and minY and maxY) or maxX == minX or maxY == minY then return carte, x, y end
+    return zone, minX + x * (maxX - minX), minY + y * (maxY - minY)
+end
+
+-- Position dans le monde (yards) et continent d'un point d'une carte. Une
+-- sous-carte sans position dans le monde passe par sa zone.
 local function PositionMonde(carte, x, y)
-    local f, V = _G.C_Map and _G.C_Map.GetWorldPosFromMapPos, _G.CreateVector2D
+    local f, V = Lire("C_Map.GetWorldPosFromMapPos"), _G.CreateVector2D
     if not (f and V and carte and x) then return nil end
     local ok, continent, p = pcall(f, carte, V(x, y))
     if ok and p and p.GetXY then
         local a, b = p:GetXY()
-        return a, b, continent
+        if a then return a, b, continent end
     end
     return nil
 end
+function Lieux.Monde(carte, x, y)
+    local a, b, c = PositionMonde(carte, x, y)
+    if a then return a, b, c end
+    local zc, zx, zy = Lieux.VersZone(carte, x, y)
+    if zc ~= carte then return PositionMonde(zc, zx, zy) end
+    return nil
+end
 
-local function PositionJoueur()
-    local carte = _G.C_Map and _G.C_Map.GetBestMapForUnit and _G.C_Map.GetBestMapForUnit("player")
-    local pos = carte and _G.C_Map.GetPlayerMapPosition and _G.C_Map.GetPlayerMapPosition(carte, "player")
-    if not (pos and pos.GetXY) then return nil end
+-- Ou est le personnage : { carte, x, y, zone, continent, wx, wy }, ou nil.
+function Lieux.Ici()
+    local f, g = Lire("C_Map.GetBestMapForUnit"), Lire("C_Map.GetPlayerMapPosition")
+    if not (f and g) then return nil end
+    local okC, carte = pcall(f, "player")
+    if not okC or not carte then return nil end
+    local okP, pos = pcall(g, carte, "player")
+    if not (okP and type(pos) == "table" and pos.GetXY) then return nil end
     local x, y = pos:GetXY()
     if not x then return nil end
-    return PositionMonde(carte, x, y)
+    local wx, wy, continent = Lieux.Monde(carte, x, y)
+    return { carte = carte, x = x, y = y, zone = Lieux.ZoneDe(carte), continent = continent, wx = wx, wy = wy }
 end
+
+local function Coord(p)
+    if p.wx then return p.wx, p.wy end
+    return p.x, p.y
+end
+local function Ecart(a, b)
+    local ax, ay = Coord(a)
+    local bx, by = Coord(b)
+    if not (ax and bx) then return math.huge end
+    return math.sqrt((ax - bx) ^ 2 + (ay - by) ^ 2)
+end
+Lieux.Distance = Ecart
+
+-- Le plus proche du depart, puis le plus proche du precedent, et ainsi de
+-- suite (au plus `maxi` points). `memoire` (facultatif) garde la cible
+-- visee : elle reste la premiere tant qu'une autre n'est pas au moins 20 %
+-- plus proche, pour que la fleche ne saute pas d'un point a l'autre.
+function Lieux.Chaine(points, depart, maxi, memoire)
+    local reste, ordre = {}, {}
+    for _, p in ipairs(points or {}) do table.insert(reste, p) end
+    local ici = depart
+    maxi = maxi or math.huge
+    while #reste > 0 and #ordre < maxi do
+        local meilleur, rang
+        for k, p in ipairs(reste) do
+            local d = ici and Ecart(ici, p) or 0
+            if not meilleur or d < meilleur then meilleur, rang = d, k end
+        end
+        if #ordre == 0 and memoire and memoire.visee and ici then
+            for k, p in ipairs(reste) do
+                if p.cle ~= nil and p.cle == memoire.visee and k ~= rang then
+                    if meilleur >= Ecart(ici, p) * 0.8 then rang = k end
+                    break
+                end
+            end
+        end
+        local p = table.remove(reste, rang)
+        table.insert(ordre, p)
+        ici = p
+    end
+    if memoire then memoire.visee = ordre[1] and ordre[1].cle end
+    return ordre
+end
+
+-- 2-opt : retourne un morceau du trajet tant que cela le raccourcit.
+function Lieux.Decroiser(trajet, depart)
+    local ameliore, tours = true, 0
+    while ameliore and tours < 50 do
+        ameliore, tours = false, tours + 1
+        for i = 1, #trajet - 1 do
+            for j = i + 1, #trajet do
+                local a = (i == 1) and depart or trajet[i - 1]
+                local b, c, d = trajet[i], trajet[j], trajet[j + 1]
+                if a then
+                    local avant = Ecart(a, b) + (d and Ecart(c, d) or 0)
+                    local apres = Ecart(a, c) + (d and Ecart(b, d) or 0)
+                    if apres + 1e-6 < avant then
+                        local g, h = i, j
+                        while g < h do
+                            trajet[g], trajet[h] = trajet[h], trajet[g]
+                            g, h = g + 1, h - 1
+                        end
+                        ameliore = true
+                    end
+                end
+            end
+        end
+    end
+    return trajet
+end
+
+-- Un type "un point" : guide jusqu'a lui, atteint a l'arrivee.
+function Suite.TypePoint(o)
+    o = o or {}
+    return {
+        icone = o.icone, AideClic = o.AideClic, Clic = o.Clic, Fin = o.Fin,
+        Cle = function(p)
+            return string.format("%s:%d:%d", tostring(p.carte), math.floor((tonumber(p.x) or 0) * 1000),
+                math.floor((tonumber(p.y) or 0) * 1000))
+        end,
+        Libelle = function(p) return p.nom end,
+        Preparer = function(p)
+            if not (p.carte and tonumber(p.x) and tonumber(p.y)) then return false end
+            return true
+        end,
+        Etapes = function(p)
+            return { { carte = p.carte, x = p.x, y = p.y, titre = p.nom, qui = p.nom, cle = "point" } }
+        end,
+        Arrivee = function() return "atteint" end,
+    }
+end
+
+-- ---------------------------------------------------------------------------
+-- La fleche
+-- ---------------------------------------------------------------------------
 
 -- La fleche de l'add-on d'itineraire choisi, s'il en montre une : Shortest
 -- Path Forever (cadre sans nom, reconnu a ses elements), TomTom (nomme).
@@ -2556,9 +2788,11 @@ local function BasDeFleche(f)
     return bas
 end
 
-local function CadreGuidage()
+local Finir, Calculer
+
+local function CadreObjectifs()
     local g = Suite.guide
-    if g.cadre then return g.cadre end
+    if g.cadreObjectifs then return g.cadreObjectifs end
     local c = CreateFrame("Button", "CoreSuiteGuidage", UIParent)
     c:SetSize(64, 64)
     c:SetFrameStrata("HIGH")
@@ -2581,16 +2815,19 @@ local function CadreGuidage()
     end)
     c:SetScript("OnClick", function(self, bouton)
         if self.finGlisser and GetTime and GetTime() - self.finGlisser < 0.3 then return end
-        if bouton == "RightButton" then Suite.ArreterGuidage() return end
-        local f = Suite.guide.fournisseur
-        if f and f.Clic then pcall(f.Clic) end
+        if bouton == "RightButton" then Suite.Arreter("joueur") return end
+        local inst = Suite.guide.actif
+        local def = Def(inst)
+        if def and def.Clic then pcall(def.Clic, inst.params, inst.etat) end
     end)
     c:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
         GameTooltip:SetText(TG.titre, 1, 0.82, 0)
         if self.titre then GameTooltip:AddLine(self.titre, 1, 1, 1) end
-        local f = Suite.guide.fournisseur
-        if f and f.AideClic then GameTooltip:AddLine(f.AideClic, 0.7, 0.7, 0.7, true) end
+        local def = Def(Suite.guide.actif)
+        local aideClic = def and def.AideClic
+        if type(aideClic) == "function" then local okA, t = pcall(aideClic) aideClic = okA and t or nil end
+        if type(aideClic) == "string" then GameTooltip:AddLine(aideClic, 0.7, 0.7, 0.7, true) end
         GameTooltip:AddLine(TG.aide, 0.7, 0.7, 0.7, true)
         GameTooltip:Show()
     end)
@@ -2627,6 +2864,22 @@ local function CadreGuidage()
     c.temps:SetTextColor(0.8, 0.8, 0.8)
     c.qui = c:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     c.qui:SetPoint("TOP", c.temps, "BOTTOM", 0, -1)
+    -- Sous la fleche d'un add-on d'itineraire, de haut en bas : l'add-on de
+    -- la suite et son objectif (QuestCore : Vers le niveau 25), le compte des
+    -- etapes quand il y en a plusieurs (Etape 2 sur 6), puis Changer de guide.
+    -- Toujours sur une ligne : un libelle trop long est coupe.
+    c.etape = c:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    c.etape:SetWidth(320)
+    c.etape:SetJustifyH("CENTER")
+    c.etape:SetWordWrap(false)
+    c.etape:SetShadowOffset(1, -1)
+    c.etape:Hide()
+    c.compte = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    c.compte:SetWidth(320)
+    c.compte:SetJustifyH("CENTER")
+    c.compte:SetWordWrap(false)
+    c.compte:SetShadowOffset(1, -1)
+    c.compte:Hide()
     -- Sous la boussole, pour tous les guidages : changer de guide en route
     -- (quand un add-on d'itineraire est installe).
     c.changer = CreateFrame("Button", "CoreSuiteGuidageChanger", c, "UIPanelButtonTemplate")
@@ -2640,52 +2893,59 @@ local function CadreGuidage()
         attente = attente - (ecoule or 0)
         if attente > 0 then return end
         attente = 0.05
-        local f = Suite.guide.fournisseur
-        if not f then self:Hide() return end
-        if self.changer then
-            self.changer:SetShown(Suite.PeutChangerDeGuide and Suite.PeutChangerDeGuide() or false)
-            -- En marche, le bouton s'efface presque (10 %) : on sait qu'il est
-            -- la ; a l'arret, il revient et se clique.
-            local enMarche = false
-            if _G.GetUnitSpeed then
-                local okM, vM = pcall(_G.GetUnitSpeed, "player")
-                enMarche = okM and (vM or 0) > 0
-            end
-            local vise = enMarche and 0.1 or 1
-            local a = self.changer:GetAlpha() or 1
-            if a ~= vise then
-                a = (a < vise) and math.min(vise, a + 0.15) or math.max(vise, a - 0.15)
-                self.changer:SetAlpha(a)
-            end
-            self.changer:EnableMouse(not enMarche)
+        local inst = Suite.guide.actif
+        if not inst then self:Hide() return end
+        self.changer:SetShown(Suite.PeutChangerDeGuide and Suite.PeutChangerDeGuide() or false)
+        -- En marche, le bouton s'efface presque (10 %) : on sait qu'il est
+        -- la ; a l'arret, il revient et se clique.
+        local enMarche = false
+        if _G.GetUnitSpeed then
+            local okM, vM = pcall(_G.GetUnitSpeed, "player")
+            enMarche = okM and (vM or 0) > 0
         end
-        local ok, cible, raison, detail = pcall(f.Cible)
-        if not ok then return end
+        local vise = enMarche and 0.1 or 1
+        local a = self.changer:GetAlpha() or 1
+        if a ~= vise then
+            a = (a < vise) and math.min(vise, a + 0.15) or math.max(vise, a - 0.15)
+            self.changer:SetAlpha(a)
+        end
+        self.changer:EnableMouse(not enMarche)
+        local calcul = Calculer()
+        -- Objectif atteint pendant le calcul : tout est deja range.
+        if Suite.guide.actif ~= inst then return end
+        local cible = calcul and type(calcul.etapes) == "table" and calcul.etapes[1] or nil
+        local hub = _G.FriendsCoreAPI
         if not cible then
-            if raison == "fini" then Suite.ArreterGuidage() return end
+            -- Rien a viser pour l'instant (autre continent, aucun lieu
+            -- connu...) : le guidage reste, la boussole dit ou aller ; l'add-on
+            -- de trajet n'a plus rien a suivre (une seule fleche a l'ecran).
+            if Suite.guide.envoye and hub and hub.Effacer then
+                Suite.guide.envoye = nil
+                pcall(hub.Effacer)
+            end
+            for _, e in ipairs({ self.boussole, self.fondBoussole, self.icone, self.distance, self.temps, self.qui }) do e:Show() end
+            self:EnableMouse(true)
+            self.etape:Hide() self.compte:Hide()
+            self.changer:ClearAllPoints()
+            self.changer:SetPoint("TOP", self.qui, "BOTTOM", 0, -6)
             self.fleche:Hide() self.arrivee:Hide() self.temps:SetText("")
             self.distance:SetText(TG.loin)
-            -- Hors de portee (autre continent...) : ou aller, si on le sait.
-            self.qui:SetText(type(detail) == "string" and detail or "")
+            self.qui:SetText(type(calcul and calcul.detail) == "string" and calcul.detail or "")
             return
         end
         self.titre = cible.titre
-        if cible.rang and cible.total then
-            self.qui:SetText(string.format("%d/%d  %s", cible.rang, cible.total, cible.qui or ""))
+        local rang, total = calcul.rang or 1, calcul.total or 1
+        if total > 1 then
+            self.qui:SetText(string.format("%d/%d  %s", rang, total, cible.qui or ""))
         else
             self.qui:SetText(cible.qui or "")
         end
         -- Un add-on de trajet installe (reconnu par FriendsCore) : c'est lui qui
         -- donne le chemin. La suite lui passe chaque etape et n'affiche plus
-        -- de fleche, seulement "Suivez l'itineraire de ..." et l'etape. Sans
-        -- lui, la fleche de la suite. Jamais les deux.
-        local hub = _G.FriendsCoreAPI
-        -- Les deux sont la et rien n'est choisi : on demande, une fois.
-        if hub and hub.ADecider and hub.ADecider() then Suite.ChoisirGuide() end
+        -- de fleche. Sans lui, la fleche de la suite. Jamais les deux.
+        -- Les deux sont la et rien n'est choisi pour cet objectif : on demande.
+        if hub and hub.ADecider and not inst.guide and hub.ADecider() then Suite.ChoisirGuide() end
         local externe = hub and hub.Disponible and hub.NomTrajet and hub.Disponible() and hub.NomTrajet() or nil
-        -- Avec un add-on d'itineraire, sa fleche a lui dit tout (direction,
-        -- distance, etape) : la boussole de la suite s'efface entierement,
-        -- seul "Changer de guide" reste, juste sous sa fleche.
         self.modeExterne = externe and true or false
         for _, e in ipairs({ self.boussole, self.fondBoussole, self.icone, self.distance, self.temps, self.qui }) do
             e:SetShown(not externe)
@@ -2694,58 +2954,46 @@ local function CadreGuidage()
         -- La fleche de l'add-on d'itineraire met un instant a paraitre : en
         -- attendant (au plus 2 s), rien sous elle, pour ne pas s'afficher au
         -- milieu de sa boussole puis sauter dessous.
-        local enAttenteFleche = false
-        if self.changer then
-            local fl = externe and FlecheExterne()
-            local maintenant = (_G.GetTime and _G.GetTime()) or 0
-            if not externe then self.debutExterne = nil
-            elseif not self.debutExterne then self.debutExterne = maintenant end
-            self.changer:ClearAllPoints()
-            if fl and fl:IsShown() then
-                self.changer:SetPoint("TOP", BasDeFleche(fl), "BOTTOM", 0, -8)
-            elseif externe then
-                enAttenteFleche = maintenant - (self.debutExterne or maintenant) < 2
-                self.changer:SetPoint("TOP", self, "CENTER", 0, 0)
-            else
-                self.changer:SetPoint("TOP", self.qui, "BOTTOM", 0, -6)
-            end
-            if enAttenteFleche then self.changer:Hide() end
-        end
-        -- Avec un add-on d'itineraire, il ne montre que l'etape en cours : le
-        -- compte des etapes reste celui de la suite, sous Changer de guide.
-        -- Sous Changer de guide : l'add-on de la suite qui guide et ce qu'il
-        -- guide (QuestCore : Vers le niveau 25), puis le compte des etapes
-        -- quand il y en a plusieurs (Etape 2 sur 10).
-        if not self.etape then
-            self.etape = self:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            self.etape:SetPoint("TOP", self.changer or self, "BOTTOM", 0, -4)
-            self.etape:SetWordWrap(false)
-            self.etape:SetShadowOffset(1, -1)
-            self.compte = self:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            self.compte:SetPoint("TOP", self.etape, "BOTTOM", 0, -2)
-            self.compte:SetWordWrap(false)
-            self.compte:SetShadowOffset(1, -1)
-        end
+        local fl = externe and FlecheExterne()
+        local maintenant = (_G.GetTime and _G.GetTime()) or 0
+        if not externe then self.debutExterne = nil
+        elseif not self.debutExterne then self.debutExterne = maintenant end
+        local enAttenteFleche = externe and not (fl and fl:IsShown())
+            and maintenant - (self.debutExterne or maintenant) < 2
+        self.etape:ClearAllPoints()
+        self.compte:ClearAllPoints()
+        self.changer:ClearAllPoints()
         if externe and not enAttenteFleche then
-            local fr = Suite.Langue() == "frFR"
-            local qui = tostring(Suite.guide.cle or ""):gsub("Pointee$", "")
-            local nomF = f.nom
-            if type(nomF) == "function" then local okN, n = pcall(nomF) nomF = okN and n or nil end
-            local quoi = cible.guidage or nomF or cible.titre
+            if fl and fl:IsShown() then
+                self.etape:SetPoint("TOP", BasDeFleche(fl), "BOTTOM", 0, -8)
+            else
+                self.etape:SetPoint("TOP", self, "CENTER", 0, 0)
+            end
+            local nomP = Def(inst) and Def(inst).nomProprietaire or inst.proprietaire
+            local quoi = inst.libelle
+            if type(quoi) ~= "string" or quoi == "" then quoi = cible.guidage or cible.titre end
             quoi = type(quoi) == "string" and quoi:gsub("[\r\n].*$", "") or ""
-            local ligne = qui ~= "" and ("|cffffd100" .. qui .. "|r") or ""
-            if quoi ~= "" then ligne = (ligne ~= "" and (ligne .. " : ") or "") .. quoi end
+            local ligne = "|cffffd100" .. tostring(nomP) .. "|r"
+            if quoi ~= "" then ligne = ligne .. " : " .. quoi end
             self.etape:SetText(ligne)
-            self.etape:SetShown(ligne ~= "")
-            if cible.rang and cible.total and cible.total > 1 then
-                self.compte:SetText(string.format(fr and "Étape %d sur %d" or "Step %d of %d", cible.rang, cible.total))
+            self.etape:Show()
+            self.compte:SetPoint("TOP", self.etape, "BOTTOM", 0, -2)
+            if total > 1 then
+                self.compte:SetText(string.format(TX("Step %d of %d"), rang, total))
                 self.compte:Show()
             else
                 self.compte:Hide()
             end
+            self.changer:SetPoint("TOP", self.compte:IsShown() and self.compte or self.etape, "BOTTOM", 0, -6)
         else
             self.etape:Hide()
             self.compte:Hide()
+            if externe then
+                self.changer:SetPoint("TOP", self, "CENTER", 0, 0)
+                self.changer:Hide()
+            else
+                self.changer:SetPoint("TOP", self.qui, "BOTTOM", 0, -6)
+            end
         end
         -- Plus d'add-on de trajet pour ce guidage : ce qu'on lui avait envoye
         -- s'efface, la fleche de la suite reste seule.
@@ -2755,16 +3003,20 @@ local function CadreGuidage()
         end
         if externe then
             self.fleche:Hide() self.arrivee:Hide()
-            local cleE = tostring(cible.carte) .. ":" .. math.floor((cible.x or 0) * 1000) .. ":" .. math.floor((cible.y or 0) * 1000)
+            -- Un point sous la carte d'une grotte part avec sa zone.
+            local zc, zx, zy = Lieux.VersZone(cible.carte, cible.x, cible.y)
+            local cleE = tostring(zc) .. ":" .. math.floor((zx or 0) * 1000) .. ":" .. math.floor((zy or 0) * 1000)
             if Suite.guide.envoye ~= cleE and hub.Trajet then
                 Suite.guide.envoye = cleE
-                pcall(hub.Trajet, { carte = cible.carte, x = cible.x, y = cible.y, titre = cible.titre or cible.qui, depuisSuite = true })
+                pcall(hub.Trajet, { carte = zc, x = zx, y = zy, titre = cible.titre or cible.qui, depuisSuite = true })
             end
-            self.fleche:Hide() self.temps:SetText("")
+            self.temps:SetText("")
             self.distance:SetText(TX("Follow the route of") .. " " .. externe)
         end
-        local ax, ay, ca = PositionJoueur()
-        local bx, by, cb = PositionMonde(cible.carte, cible.x, cible.y)
+        local ici = Lieux.Ici()
+        local ax, ay, ca
+        if ici then ax, ay, ca = ici.wx, ici.wy, ici.continent end
+        local bx, by, cb = Lieux.Monde(cible.carte, cible.x, cible.y)
         if externe and not (ax and bx and (not (ca and cb) or ca == cb)) then return end
         if not (ax and bx) or (ca and cb and ca ~= cb) then
             self.fleche:Hide() self.arrivee:Hide() self.temps:SetText("")
@@ -2794,23 +3046,22 @@ local function CadreGuidage()
             self.arrivee:SetShown(not externe)
             self.temps:SetText("")
             self.boussole:SetVertexColor(0.4, 1, 0.4)
-            if f.Arrivee then pcall(f.Arrivee, cible) end
-            -- Message de la suite, une fois par destination.
-            local cleArrivee = tostring(cible.carte) .. ":" .. math.floor((cible.x or 0) * 1000) .. ":" .. math.floor((cible.y or 0) * 1000)
-            if Suite.guide.arrivee ~= cleArrivee then
-                Suite.guide.arrivee = cleArrivee
-                -- Une seule destination (pas un circuit) : arrive, le guidage
-                -- s'arrete tout seul, apres un court instant pour voir la coche.
-                if not (cible.total and cible.total > 1) and _G.C_Timer then
-                    local fournisseur = f
-                    _G.C_Timer.After(2.5, function()
-                        if Suite.guide.fournisseur == fournisseur and Suite.guide.arrivee == cleArrivee then
-                            Suite.ArreterGuidage()
-                        end
-                    end)
+            -- Une fois par destination : le type dit si l'objectif est
+            -- atteint ; sinon la cible suivante est calculee tout de suite.
+            local cleA = cible.cle and (tostring(inst.cle) .. "|" .. tostring(cible.cle))
+                or (tostring(cible.carte) .. ":" .. math.floor((cible.x or 0) * 1000) .. ":" .. math.floor((cible.y or 0) * 1000))
+            if Suite.guide.arrivee ~= cleA then
+                Suite.guide.arrivee = cleA
+                local def = Def(inst)
+                local res = "suivante"
+                if def and def.Arrivee then
+                    local okA, r = pcall(def.Arrivee, inst.params, inst.etat, cible)
+                    if okA and r then res = r end
                 end
                 local M = _G.SagaCoreMessages
-                if M and M.Dire then pcall(M.Dire, "MapCore", "arrivee", { lieu = cible.qui or cible.titre or "" }, nil, cleArrivee) end
+                if M and M.Dire then pcall(M.Dire, "MapCore", "arrivee", { lieu = cible.qui or cible.titre or "" }, nil, cleA) end
+                if res == "atteint" then Finir("atteint") return end
+                Suite.Invalider()
             end
             return
         end
@@ -2833,13 +3084,26 @@ local function CadreGuidage()
         end
     end)
     c:Hide()
-    g.cadre = c
+    g.cadreObjectifs = c
     return c
 end
 
+-- La fleche de la suite choisie pour l'objectif en cours (le choix est garde
+-- dans l'objectif, donc apres /reload) : l'add-on de trajet n'a plus rien a
+-- guider. Le guidage continue.
+local function ChoisirFlecheSuite()
+    local hub = _G.FriendsCoreAPI
+    local a = Suite.guide.actif
+    if a then a.guide = "aucun" end
+    if hub and hub.Choisir then pcall(hub.Choisir, "aucun") end
+    if hub and hub.Effacer then pcall(hub.Effacer) end
+    Suite.guide.envoye = nil
+end
+
 -- Qui guide ? Un add-on de trajet est installe (Shortest Path Forever...) et
--- le joueur n'a pas encore choisi : une petite fenetre propose l'un ou la
--- fleche de la suite. Le choix se change ensuite dans FriendsCore.
+-- le joueur n'a pas encore choisi pour cet objectif : une petite fenetre
+-- propose l'un ou la fleche de la suite. Fermer sans choisir garde la fleche
+-- de la suite, sans arreter le guidage.
 function Suite.ChoisirGuide()
     local hub = _G.FriendsCoreAPI
     if not (hub and hub.Moyens and hub.Choisir) then return end
@@ -2876,10 +3140,14 @@ function Suite.ChoisirGuide()
         f.note = f.zone:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         f.note:SetJustifyH("LEFT")
         f.note:SetWordWrap(false)
-        -- Fermer sans choisir : pas de guidage.
-        if f.fermer then f.fermer:SetScript("OnClick", function() f:Hide() Suite.ArreterGuidage() end) end
+        -- Fermer sans choisir (croix, B, Echap) : la fleche de la suite.
+        if f.fermer then f.fermer:SetScript("OnClick", function() f:Hide() end) end
+        f:HookScript("OnHide", function(self)
+            if not self.choisi and Suite.guide.actif then ChoisirFlecheSuite() end
+            self.choisi = true
+        end)
         -- Manette : la croix haut / bas passe d'un choix a l'autre (le choix
-        -- s'allume), A valide, B ferme sans guider.
+        -- s'allume), A valide, B ferme (fleche de la suite).
         function f.Allumer(i)
             local vus = {}
             for _, b in ipairs(f.boutons) do if b:IsShown() and b:IsEnabled() then table.insert(vus, b) end end
@@ -2894,12 +3162,13 @@ function Suite.ChoisirGuide()
                 if bouton == "PADDUP" then f.Allumer((f.rang or 1) - 1)
                 elseif bouton == "PADDDOWN" then f.Allumer((f.rang or 1) + 1)
                 elseif bouton == "PAD1" then local b = f.vus and f.vus[f.rang or 1] if b then b:Click("LeftButton") end
-                elseif bouton == "PAD2" then f:Hide() Suite.ArreterGuidage()
+                elseif bouton == "PAD2" then f:Hide()
                 end
             end)
             f:HookScript("OnShow", function(self) pcall(self.EnableGamePadButton, self, true) end)
             f:HookScript("OnHide", function(self) pcall(self.EnableGamePadButton, self, false) end)
         end
+        f.choisi = true
         f:Hide()
         Suite.choixGuide = f
     end
@@ -2928,11 +3197,14 @@ function Suite.ChoisirGuide()
         b:SetEnabled(not ch.absent)
         local cle = ch.cle
         b:SetScript("OnClick", function()
-            hub.Choisir(cle)
-            -- La fleche de la suite choisie : l'add-on de trajet n'a plus rien
-            -- a guider (une seule fleche a l'ecran).
-            if cle == "aucun" and hub.Effacer then pcall(hub.Effacer) end
-            Suite.guide.envoye = nil
+            f.choisi = true
+            if cle == "aucun" then
+                ChoisirFlecheSuite()
+            else
+                hub.Choisir(cle)
+                if Suite.guide.actif then Suite.guide.actif.guide = cle end
+                Suite.guide.envoye = nil
+            end
             f:Hide()
         end)
         b:Show()
@@ -2948,6 +3220,7 @@ function Suite.ChoisirGuide()
     f:ClearAllPoints()
     -- Toujours au meme endroit, au milieu de l'ecran : on ne peut pas la rater.
     f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    f.choisi = false
     f:Show()
     f.Allumer(1)
 end
@@ -2956,71 +3229,247 @@ end
 -- "Qui vous guide ?" revient tout de suite.
 function Suite.PeutChangerDeGuide()
     local hub = _G.FriendsCoreAPI
-    return hub and hub.Moyens and #hub.Moyens() > 0 and Suite.guide.fournisseur ~= nil or false
+    return hub and hub.Moyens and #hub.Moyens() > 0 and Suite.guide.actif ~= nil or false
 end
 function Suite.ChangerDeGuide()
     local hub = _G.FriendsCoreAPI
+    if Suite.guide.actif then Suite.guide.actif.guide = nil end
     if hub and hub.Oublier then pcall(hub.Oublier) end
     Suite.guide.envoye = nil
     pcall(Suite.ChoisirGuide)
 end
 
-function Suite.Guider(cle, fournisseur)
-    local g = Suite.guide
-    if g.cle and g.cle ~= cle and g.fournisseur and g.fournisseur.Fin then
-        local ancien = g.fournisseur
-        g.cle, g.fournisseur = nil, nil
-        pcall(ancien.Fin)
+-- ---------------------------------------------------------------------------
+-- Lancer, calculer, arreter
+-- ---------------------------------------------------------------------------
+
+-- Les evenements du type guide invalident le calcul (un seul cadre).
+local function EcouterEvenements(liste)
+    local f = Suite.cadreEvenementsGuidage
+    if not f then
+        f = CreateFrame("Frame")
+        f:SetScript("OnEvent", function()
+            local S = _G.CoreSuite
+            if S and S.Invalider then S.Invalider() end
+        end)
+        Suite.cadreEvenementsGuidage = f
     end
-    -- Un nouveau guidage (pas la meme destination qui se met a jour) : la
-    -- question "Qui vous guide ?" sera reposee.
-    if g.fournisseur ~= fournisseur then
-        local hub = _G.FriendsCoreAPI
-        if hub and hub.Oublier then pcall(hub.Oublier) end
-    end
-    g.cle, g.fournisseur = cle, fournisseur
-    g.envoye = nil
-    local cadreG = CadreGuidage()
-    -- L'icone au centre : celle que donne le guidage, sinon celle de l'add-on.
-    local ICONES_GUIDE = {
-        QuestCore = "Interface\\GossipFrame\\AvailableQuestIcon", QuestCorePointee = "Interface\\GossipFrame\\AvailableQuestIcon",
-        CraftCore = "Interface\\Icons\\INV_Misc_Herb_01", MapCore = "Interface\\Icons\\INV_Misc_Map_01",
-    }
-    if cadreG.icone then
-        cadreG.icone:SetTexture((fournisseur and fournisseur.icone) or ICONES_GUIDE[cle] or "Interface\\Icons\\INV_Misc_Map_01")
-    end
-    cadreG:Show()
-    -- Guider ne fait qu'une chose : la fleche. La carte de MapCore ne s'ouvre
-    -- plus d'elle-meme (seulement si un guidage le demande expressement).
-    if fournisseur and fournisseur.ouvrirCarte == true then
-        local api = _G.MapCoreAPI
-        if api and api.Montrer and fournisseur.Cible then
-            local ok, pt = pcall(fournisseur.Cible)
-            if ok and type(pt) == "table" and pt.carte and pt.x and pt.y then
-                pcall(api.Montrer, { carte = pt.carte, x = pt.x, y = pt.y, nom = pt.qui or pt.titre,
-                    icone = fournisseur.icone })
-            end
-        end
-    end
+    if f.UnregisterAllEvents then pcall(f.UnregisterAllEvents, f) end
+    for _, e in ipairs(type(liste) == "table" and liste or {}) do pcall(f.RegisterEvent, f, e) end
 end
 
-function Suite.ArreterGuidage(cle)
+Finir = function(raison)
     local g = Suite.guide
-    if cle and g.cle ~= cle then return end
+    local inst = g.actif
+    if not inst then return end
+    local def = Def(inst)
+    g.actif, g.calcul, g.arrivee = nil, nil, nil
+    local cle = ClePersoGuidage()
+    if cle and Persos()[cle] == inst then Persos()[cle] = nil end
+    EcouterEvenements(nil)
     if Suite.choixGuide then Suite.choixGuide:Hide() end
-    local f = g.fournisseur
-    g.cle, g.fournisseur = nil, nil
-    g.arrivee = nil
     -- Le guidage s'arrete : l'add-on de trajet aussi, s'il suivait nos etapes.
     if g.envoye then
         g.envoye = nil
         local hub = _G.FriendsCoreAPI
         if hub and hub.Effacer then pcall(hub.Effacer) end
     end
-    if g.cadre then g.cadre:Hide() end
-    if f and f.Fin then pcall(f.Fin) end
+    if g.cadreObjectifs then g.cadreObjectifs:Hide() end
+    if def and def.Fin then pcall(def.Fin, inst.params, inst.etat, raison) end
     local M = _G.SagaCoreMessages
-    if f and M and M.Dire then pcall(M.Dire, "MapCore", "arret") end
+    if M and M.Dire and raison == "atteint" then
+        pcall(M.Dire, "MapCore", "atteint", { quoi = inst.libelle or "" })
+    elseif M and M.Dire and raison == "joueur" then
+        pcall(M.Dire, "MapCore", "arret")
+    end
+end
+
+-- Arreter le guidage : "joueur" (par defaut), "atteint" ou "remplace".
+function Suite.Arreter(raison)
+    if raison ~= "atteint" and raison ~= "remplace" then raison = "joueur" end
+    Finir(raison)
+end
+
+-- Lance un objectif (il remplace celui en cours). `reprise` : l'objectif
+-- garde, repris tel quel (memes parametres, meme memoire, meme guide).
+function Suite.LancerObjectif(proprietaire, nom, params, reprise)
+    local def = DefDe(proprietaire, nom)
+    if not def then return false end
+    local inst = reprise
+    if not inst then
+        params = type(params) == "table" and params or {}
+        inst = { v = 1, proprietaire = proprietaire, type = nom, params = params,
+            cle = Identite(proprietaire, nom, params), etat = {}, depuis = (_G.time and _G.time()) or 0 }
+        if def.Preparer then
+            local ok, pret, message = pcall(def.Preparer, inst.params, inst.etat)
+            if not ok or pret == false then
+                if ok and type(message) == "string" and message ~= "" then
+                    print("|cffffd100" .. tostring(def.nomProprietaire or proprietaire) .. "|r " .. message)
+                end
+                return false
+            end
+        end
+    end
+    inst.params = type(inst.params) == "table" and inst.params or {}
+    inst.etat = type(inst.etat) == "table" and inst.etat or {}
+    if Suite.guide.actif then Finir("remplace") end
+    if def.Libelle then
+        local okL, lib = pcall(def.Libelle, inst.params, inst.etat)
+        if okL and type(lib) == "string" then inst.libelle = lib end
+    end
+    local g = Suite.guide
+    g.actif, g.calcul, g.arrivee, g.envoye = inst, nil, nil, nil
+    if not def.nonPersiste then
+        local cle = ClePersoGuidage()
+        if cle then Persos()[cle] = inst end
+    end
+    -- Le guide choisi pour cet objectif (garde), sinon on redemandera.
+    local hub = _G.FriendsCoreAPI
+    if hub then
+        if inst.guide and hub.Choisir then pcall(hub.Choisir, inst.guide)
+        elseif hub.Oublier then pcall(hub.Oublier) end
+    end
+    EcouterEvenements(def.Evenements)
+    local cadre = CadreObjectifs()
+    if cadre.icone then cadre.icone:SetTexture(def.icone or "Interface\\Icons\\INV_Misc_Map_01") end
+    cadre:Show()
+    return true
+end
+
+-- Meme objectif deja guide : arret ; sinon il est lance.
+function Suite.BasculerObjectif(proprietaire, nom, params)
+    if Suite.EstActif(proprietaire, nom, params) then Suite.Arreter("joueur") return false end
+    return Suite.LancerObjectif(proprietaire, nom, params)
+end
+
+-- Le prochain passage recalcule les etapes.
+function Suite.Invalider()
+    if Suite.guide.calcul then Suite.guide.calcul.quand = -100 end
+end
+
+-- Les etapes de l'objectif, recalculees au plus toutes les 4 secondes ou
+-- des qu'elles sont invalidees.
+Calculer = function()
+    local g = Suite.guide
+    local inst = g.actif
+    local def = Def(inst)
+    if not def then return nil end
+    if g.enCalcul then return g.calcul end
+    local maintenant = (_G.GetTime and _G.GetTime()) or 0
+    if g.calcul and maintenant - g.calcul.quand < 4 and maintenant >= g.calcul.quand then return g.calcul end
+    g.enCalcul = true
+    local ok, etapes, raison, detail, compte = pcall(def.Etapes, inst.params, inst.etat)
+    g.enCalcul = false
+    if not ok then
+        if Suite.Prive and Suite.Prive() then print("|cffffd100SagaCore|r " .. tostring(etapes)) end
+        etapes, raison, detail, compte = nil, "loin", nil, nil
+    end
+    if g.actif ~= inst then return nil end
+    if raison == "atteint" then Finir("atteint") return nil end
+    if def.Libelle then
+        local okL, lib = pcall(def.Libelle, inst.params, inst.etat)
+        if okL and type(lib) == "string" then inst.libelle = lib end
+    end
+    if type(etapes) ~= "table" then etapes = nil end
+    local n = etapes and #etapes or 0
+    local fait = type(compte) == "table" and tonumber(compte.fait) or 0
+    local total = type(compte) == "table" and tonumber(compte.total) or (fait + n)
+    local premiere = n > 0 and etapes[1] or nil
+    -- La destination change : la coche d'arrivee repart a zero.
+    local cleCible = premiere and (premiere.cle or (tostring(premiere.carte) .. ":" .. tostring(premiere.x) .. ":" .. tostring(premiere.y)))
+    if not g.calcul or g.calcul.cleCible ~= cleCible then g.arrivee = nil end
+    g.calcul = { quand = maintenant, etapes = etapes, raison = raison, detail = detail,
+        rang = math.max(1, math.min(fait + 1, math.max(total, 1))), total = math.max(total or 0, 0), cleCible = cleCible }
+    return g.calcul
+end
+
+-- Ce que guide la suite : { objectif, etapes, rang, total, raison, detail },
+-- ou nil.
+function Suite.EtatGuidage()
+    local inst = Suite.guide.actif
+    if not inst then return nil end
+    local c = Calculer() or {}
+    if Suite.guide.actif ~= inst then return nil end
+    return { objectif = inst, etapes = c.etapes, rang = c.rang, total = c.total, raison = c.raison, detail = c.detail }
+end
+
+-- ---------------------------------------------------------------------------
+-- Compatibilite : les anciens fournisseurs (TradeCore, hors depot) deviennent
+-- des objectifs "Suite:<cle>", non gardes d'une session a l'autre.
+-- ---------------------------------------------------------------------------
+
+function Suite.Guider(cle, fournisseur)
+    if type(cle) ~= "string" or type(fournisseur) ~= "table" or type(fournisseur.Cible) ~= "function" then return end
+    Suite.catalogues.Suite = Suite.catalogues.Suite or {}
+    local ancien = Suite.catalogues.Suite[cle]
+    local a = Suite.guide.actif
+    -- La meme destination qui se met a jour : rien a relancer.
+    if ancien and ancien.fournisseur == fournisseur and a and a.proprietaire == "Suite" and a.type == cle then
+        Suite.Invalider()
+        return
+    end
+    Suite.catalogues.Suite[cle] = {
+        fournisseur = fournisseur, nonPersiste = true, nomProprietaire = cle,
+        icone = fournisseur.icone, AideClic = fournisseur.AideClic,
+        Libelle = function()
+            local n = fournisseur.nom
+            if type(n) == "function" then local ok, v = pcall(n) n = ok and v or nil end
+            return type(n) == "string" and n or nil
+        end,
+        Etapes = function()
+            local c, r, d = fournisseur.Cible()
+            if not c then return nil, (r == "fini") and "atteint" or r, d end
+            return { c }, nil, nil, (c.rang and c.total) and { fait = c.rang - 1, total = c.total } or nil
+        end,
+        Arrivee = function(_, _, e) if fournisseur.Arrivee then fournisseur.Arrivee(e) end return "suivante" end,
+        Clic = fournisseur.Clic and function() fournisseur.Clic() end or nil,
+        Fin = function() if fournisseur.Fin then fournisseur.Fin() end end,
+    }
+    Suite.LancerObjectif("Suite", cle, {})
+end
+
+function Suite.ArreterGuidage(cle)
+    local a = Suite.guide.actif
+    if a and (cle == nil or a.proprietaire == cle or a.type == cle) then Suite.Arreter("joueur") end
+end
+
+function Suite.GuidageActif(cle)
+    local a = Suite.guide.actif
+    return a ~= nil and (cle == nil or a.proprietaire == cle or a.type == cle)
+end
+
+-- Reprise apres /reload ou connexion : le meme objectif exactement, pour ce
+-- personnage seulement. Une seconde apres l'entree dans le monde, quand tous
+-- les add-ons ont declare leur catalogue.
+if not Suite.cadreRepriseGuidage then
+    local f = CreateFrame("Frame")
+    Suite.cadreRepriseGuidage = f
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:SetScript("OnEvent", function(self, evenement)
+        if evenement ~= "PLAYER_ENTERING_WORLD" then return end
+        if self.UnregisterAllEvents then pcall(self.UnregisterAllEvents, self) end
+        local function Reprendre()
+            local S = _G.CoreSuite
+            if not (S and S.ReprendreObjectif) then return end
+            pcall(S.ReprendreObjectif)
+        end
+        if _G.C_Timer and _G.C_Timer.After then _G.C_Timer.After(1, Reprendre) else Reprendre() end
+    end)
+end
+
+function Suite.ReprendreObjectif()
+    if Suite.guide.actif then return end
+    local cle = ClePersoGuidage()
+    local inst = cle and Persos()[cle]
+    if type(inst) ~= "table" or inst.v ~= 1 then return end
+    local def = Def(inst)
+    -- Son add-on n'est pas charge : l'objectif reste garde, sans guider.
+    if not def then return end
+    if def.Reprendre then
+        local ok, oui = pcall(def.Reprendre, inst.params or {}, inst.etat or {})
+        if not ok or oui == false then Persos()[cle] = nil return end
+    end
+    Suite.LancerObjectif(inst.proprietaire, inst.type, inst.params, inst)
 end
 
 -- Une fois tous les add-ons charges : bouton de minicarte et barre.
@@ -3398,7 +3847,7 @@ local function Pilote()
                     if f then pcall(f, e, cote) end
                 end
             end
-        elseif bouton == "PAD4" then Suite.ArreterGuidage()
+        elseif bouton == "PAD4" then Suite.Arreter("joueur")
         elseif bouton == "PADBACK" then p.barreVisible = not p.barreVisible
         elseif bouton == "PAD2" then
             local f = _G[p.nom]
@@ -3560,13 +4009,13 @@ Suite.RACCOURCIS = {
       action = function() Api("QuestCoreAPI", "BasculerSuivi") end, dispo = function() return _G.QuestCoreAPI ~= nil end },
     { cle = "stop", desc = "Arrête le guidage en cours.", descEn = "Stops the current guidance.",
       fr = "Arrêter le guidage", en = "Stop guidance", icone = "Spell_Holy_Silence",
-      action = function() Suite.ArreterGuidage() end },
+      action = function() Suite.Arreter("joueur") end },
     { cle = "rendus", desc = "Te guide vers les personnages où rendre tes quêtes terminées.", descEn = "Guides you to where your completed quests are turned in.",
       fr = "Guider les quêtes à rendre", en = "Guide quest turn-ins", icone = "INV_Misc_Note_02",
-      action = function() Api("QuestCoreAPI", "Guider", true) end, dispo = function() return _G.QuestCoreAPI ~= nil end },
+      action = function() Api("QuestCoreAPI", "GuiderRendus") end, dispo = function() return _G.QuestCoreAPI ~= nil end },
     { cle = "recolte", desc = "Te guide vers les points de récolte des ressources qui manquent à tes fabrications.", descEn = "Guides you to gathering spots for the resources your crafts still need.",
       fr = "Guider la récolte", en = "Guide gathering", icone = "INV_Misc_Herb_01",
-      action = function() Api("CraftCoreAPI", "GuiderRecolte", true) end, dispo = function() return _G.CraftCoreAPI ~= nil end },
+      action = function() Api("CraftCoreAPI", "GuiderRecolte") end, dispo = function() return _G.CraftCoreAPI ~= nil end },
     { cle = "metier", desc = "Ouvre la page Monter un métier de CraftCore.", descEn = "Opens the CraftCore Level a profession page.",
       fr = "Monter un métier", en = "Level a profession", icone = "INV_Misc_Book_09",
       action = function() Api("CraftCoreAPI", "MonterUnMetier") end, dispo = function() return _G.CraftCoreAPI ~= nil end },
@@ -7076,7 +7525,7 @@ local BASES = { CraftCore = "CraftCoreDB", QuestCore = "QuestCoreDB", MapCore = 
     LegacyCore = "LegacyCoreDB", TradeCore = "TradeCoreDB" }
 local PRIVES = { TradeCore = true }
 -- Cles de la suite qui ne voyagent pas : propres au compte ou au personnage.
-local HORS_PROFIL = { profils = true, prive = true, macrosDesPersos = true, raccourcisOff = true }
+local HORS_PROFIL = { profils = true, prive = true, macrosDesPersos = true, raccourcisOff = true, guidage = true }
 
 local function Copier(v, profondeur)
     profondeur = profondeur or 0
