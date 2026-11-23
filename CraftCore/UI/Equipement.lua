@@ -139,6 +139,8 @@ local function CreerBoutonFiltre(parent)
     return bouton
 end
 
+local PalierDAmelioration
+
 local function CreerLigneCandidat(parent, index)
     parent.candidats = parent.candidats or {}
     local ligne = parent.candidats[index]
@@ -488,6 +490,32 @@ local function RendreBandeau(bandeau, porte, choisis)
     end
 end
 
+-- Trois paliers d'amelioration, d'apres la part des caracteristiques qui
+-- progressent (toutes celles de l'objet et de ce qui est porte) :
+--   haut   : toutes progressent, le meilleur choix ;
+--   moyen  : plusieurs progressent, pas toutes ;
+--   bas    : une seule progresse.
+-- Signe : une gemme du jeu (verte, jaune, rouge) au coin de l'icone.
+local PALIERS = {
+    haut = { texture = "Interface\\COMMON\\Indicator-Green", cle = "GEAR_TIER_HIGH", couleur = { 0.31, 0.82, 0.41 } },
+    moyen = { texture = "Interface\\COMMON\\Indicator-Yellow", cle = "GEAR_TIER_MID", couleur = { 1, 0.82, 0 } },
+    bas = { texture = "Interface\\COMMON\\Indicator-Red", cle = "GEAR_TIER_LOW", couleur = { 1, 0.35, 0.3 } },
+}
+equipement.PALIERS = PALIERS
+PalierDAmelioration = function(id, statsPorte, gains)
+    local stats = NS.objets.Stats(id) or {}
+    local cles = {}
+    for cle, v in pairs(stats) do if (tonumber(v) or 0) ~= 0 then cles[cle] = true end end
+    for cle, v in pairs(statsPorte or {}) do if (tonumber(v) or 0) ~= 0 then cles[cle] = true end end
+    local total = 0
+    for _ in pairs(cles) do total = total + 1 end
+    local n = #(gains or {})
+    if n == 0 then return nil end
+    if n >= total then return "haut" end
+    if n == 1 then return "bas" end
+    return "moyen"
+end
+
 function equipement.Rendre(contenu, bandeau)
     L = NS.L
     local vue = equipement.Construire(contenu, bandeau)
@@ -768,7 +796,8 @@ function equipement.Rendre(contenu, bandeau)
                     dejaVu[cat .. ":" .. c.id] = true
                     local total = 0
                     for _, g in ipairs(gains) do total = total + (g.poids or g.ecart) end
-                    table.insert(retenus, { c = c, cat = cat, gains = gains, total = total })
+                    table.insert(retenus, { c = c, cat = cat, gains = gains, total = total,
+                        palier = PalierDAmelioration(c.id, statsPorte, gains) })
                 end
             end
         end
@@ -908,7 +937,19 @@ function equipement.Rendre(contenu, bandeau)
         ligne.nom:SetPoint("RIGHT", ligne, "RIGHT", -4, 0)
         ligne:EnableMouse(true)
         if ligne.coche then ligne.coche:Hide() end
-        if ligne.palier then ligne.palier:Hide() end
+        -- Le palier d'amelioration : une gemme au coin de l'icone.
+        local palier = r.palier and PALIERS[r.palier]
+        if palier and info and info.icone then
+            if not ligne.palier then
+                ligne.palier = ligne:CreateTexture(nil, "OVERLAY")
+                ligne.palier:SetSize(12, 12)
+                ligne.palier:SetPoint("BOTTOMRIGHT", ligne.icone, "BOTTOMRIGHT", 5, -4)
+            end
+            ligne.palier:SetTexture(palier.texture)
+            ligne.palier:Show()
+        elseif ligne.palier then
+            ligne.palier:Hide()
+        end
 
         local cleChoix = c.id
         local choisi = NS.ecran.selectionObjets[cleChoix] == true
@@ -924,6 +965,10 @@ function equipement.Rendre(contenu, bandeau)
         ligne:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             if GameTooltip.SetItemByID then pcall(GameTooltip.SetItemByID, GameTooltip, cleChoix) end
+            if palier then
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("|T" .. palier.texture .. ":12|t " .. L[palier.cle], palier.couleur[1], palier.couleur[2], palier.couleur[3])
+            end
             local recette = c.recette and (CraftCoreDB.recettes or {})[tostring(c.recette)]
             if recette then NS.inventaire.ComposantsDansLInfobulle(GameTooltip, recette) end
             GameTooltip:Show()
