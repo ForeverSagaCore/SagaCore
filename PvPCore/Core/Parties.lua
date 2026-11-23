@@ -48,6 +48,9 @@ function P.Verifier(lignes)
         issue = (gagnant == 255 or gagnant == 2) and "nul" or (gagnant == nous and "victoire" or "defaite"),
         vh = Nombre(l.vh) or 0, cm = Nombre(l.cm) or 0, morts = Nombre(l.morts) or 0, honneur = Nombre(l.honneur) or 0,
     }
+    -- Le score final (captures, ressources ou renforts), de notre cote d'abord.
+    local okS, score = pcall(function() return NS.bataille and NS.bataille.Score() end)
+    if okS and type(score) == "string" then partie.score = score end
     local liste = P.Liste()
     table.insert(liste, partie)
     while #liste > MAXI do table.remove(liste, 1) end
@@ -68,7 +71,7 @@ end
 function P.Resume(p)
     local issue = P.Issue(p)
     local morts = p.morts or 0
-    return issue .. " (" .. p.champ .. ") : " .. Chiffres(p) .. "  ·  " .. morts .. " "
+    return issue .. " (" .. p.champ .. (p.score and (", " .. p.score) or "") .. ") : " .. Chiffres(p) .. "  ·  " .. morts .. " "
         .. (morts > 1 and T("morts", "deaths") or T("mort", "death"))
 end
 
@@ -104,8 +107,44 @@ function P.Rubriques()
     for i = #liste, math.max(1, #liste - 9), -1 do
         local p = liste[i]
         local issue, couleur = P.Issue(p)
-        table.insert(dernieres.lignes, { texte = issue .. "  ·  " .. p.champ, couleur = couleur, droite = Chiffres(p) })
+        table.insert(dernieres.lignes, { texte = issue .. "  ·  " .. p.champ .. (p.score and ("  ·  " .. p.score) or ""), couleur = couleur, droite = Chiffres(p) })
     end
     table.insert(r, dernieres)
+    local rec = P.Records(liste)
+    if rec then table.insert(r, rec) end
     return r
+end
+
+-- Les records des parties gardees : series de victoires, meilleure partie.
+function P.Records(liste)
+    liste = liste or P.Liste()
+    if #liste == 0 then return nil end
+    local H = NS.honneur
+    local serie, meilleure, enCours = 0, 0, 0
+    for _, p in ipairs(liste) do
+        if p.issue == "victoire" then serie = serie + 1 else serie = 0 end
+        if serie > meilleure then meilleure = serie end
+    end
+    enCours = serie
+    local function Plus(champ)
+        local m
+        for _, p in ipairs(liste) do if (p[champ] or 0) > 0 and (not m or p[champ] > m[champ]) then m = p end end
+        return m
+    end
+    local plusCourte
+    for _, p in ipairs(liste) do
+        if p.issue == "victoire" and (p.duree or 0) > 0 and (not plusCourte or p.duree < plusCourte.duree) then plusCourte = p end
+    end
+    local function Fois(n) return n .. " " .. (n > 1 and T("victoires", "wins") or T("victoire", "win")) end
+    local x = { titre = T("Records", "Records"), lignes = {} }
+    table.insert(x.lignes, { texte = T("Série de victoires en cours", "Current winning streak"), droite = Fois(enCours) })
+    table.insert(x.lignes, { texte = T("Meilleure série", "Best streak"), droite = Fois(meilleure) })
+    local vh = Plus("vh")
+    if vh then table.insert(x.lignes, { texte = T("Le plus de VH en une partie", "Most HK in a match"), droite = vh.vh .. "  ·  " .. vh.champ }) end
+    local cm = Plus("cm")
+    if cm then table.insert(x.lignes, { texte = T("Le plus de CG en une partie", "Most KB in a match"), droite = cm.cm .. "  ·  " .. cm.champ }) end
+    local hon = Plus("honneur")
+    if hon then table.insert(x.lignes, { texte = T("Le plus d'honneur en une partie", "Most honour in a match"), droite = H.Lisible(hon.honneur) .. "  ·  " .. hon.champ }) end
+    if plusCourte then table.insert(x.lignes, { texte = T("Victoire la plus rapide", "Fastest win"), droite = H.Duree(plusCourte.duree) .. "  ·  " .. plusCourte.champ }) end
+    return x
 end

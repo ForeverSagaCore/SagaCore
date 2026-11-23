@@ -8,4 +8,21 @@
 	<Binding name="PVPCORE_FENETRE">
 		PvPCore_Fenetre()
 	</Binding>
+	<Binding name="PVPCORE_INC1">
+		PvPCore_Inc("inc1")
+	</Binding>
+	<Binding name="PVPCORE_INC2">
+		PvPCore_Inc("inc2")
+	</Binding>
+	<Binding name="PVPCORE_INC3">
+		PvPCore_Inc("inc3")
+	</Binding>
+	<Binding name="PVPCORE_INC5">
+		PvPCore_Inc("inc5")
+	</Binding>
+	<Binding name="PVPCORE_DEGAGE">
+		PvPCore_Inc("degage")
+	</Binding>
+	<Binding name="CLICK PvPCoreCiblePorteur:LeftButton">
+	</Binding>
 </Bindings>

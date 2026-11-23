@@ -69,13 +69,21 @@ function H.Rubriques()
         if NS.champ then textes = NS.champ.Annoter(textes) end
         for _, texte in ipairs(textes) do Ligne(x, texte) end
         if NS.champ then
-            for _, l in ipairs(NS.champ.Lignes()) do Ligne(x, l.texte, nil, l.couleur) end
+            -- En Alterac, les minuteurs des tours sont dans leur rubrique.
+            local quel = NS.bataille and NS.bataille.Quel()
+            for _, l in ipairs(NS.champ.Lignes({ captures = quel ~= "alterac" and quel ~= "arathi" })) do Ligne(x, l.texte, nil, l.couleur) end
             local moi = NS.champ.MesChiffres()
             if moi then
                 Ligne(x, T("Vos chiffres", "Your numbers"), string.format("%d %s  ·  %d %s  ·  %d %s", moi.cm or 0, T("CG", "KB"),
                     moi.vh or 0, T("VH", "HK"), moi.morts or 0, (moi.morts or 0) > 1 and T("morts", "deaths") or T("mort", "death")))
             end
         end
+    end
+
+    -- Ce que ce champ de bataille a de propre (drapeaux, bases, tours...).
+    if NS.bataille and H.EnChamp() then
+        local ok, liste = pcall(NS.bataille.Rubriques)
+        for _, rb in ipairs(ok and liste or {}) do table.insert(r, rb) end
     end
 
     -- Files d'attente.

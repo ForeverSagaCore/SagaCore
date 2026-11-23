@@ -25,22 +25,42 @@ end
 C.Minutes = Minutes
 
 -- Icones "en conflit" des points d'interet (index de POIIcons) et le camp
--- qui attaque, comme Capping : cimetieres et tours d'Alterac, bases d'Arathi.
-local CONFLIT = {
-    [4] = "Alliance", [14] = "Horde", [9] = "Alliance", [12] = "Horde",
-    [17] = "Alliance", [19] = "Horde", [22] = "Alliance", [24] = "Horde",
-    [27] = "Alliance", [29] = "Horde", [32] = "Alliance", [34] = "Horde",
-    [37] = "Alliance", [39] = "Horde",
+-- qui attaque, comme Capping. La planche d'icones du jeu n'est pas la meme
+-- sur les clients classiques (dont Forever) et sur le jeu moderne : les
+-- premiers index (mines, cimetieres, tours d'Alterac) y sont decales d'un
+-- rang. Les bases d'Arathi ont les memes index partout.
+local function Moderne()
+    local projet, moderne = _G.WOW_PROJECT_ID, _G.WOW_PROJECT_MAINLINE
+    if projet and moderne then return projet == moderne end
+    local ok, _, _, _, toc = pcall(_G.GetBuildInfo or function() end)
+    return ok and tonumber(toc) and tonumber(toc) >= 100000 or false
+end
+C.Moderne = Moderne
+local CONFLIT_ARATHI = {
+    [17] = "Alliance", [19] = "Horde", [22] = "Alliance", [24] = "Horde", [27] = "Alliance", [29] = "Horde",
+    [32] = "Alliance", [34] = "Horde", [37] = "Alliance", [39] = "Horde",
 }
+local CONFLIT = {}
+for k, v in pairs(CONFLIT_ARATHI) do CONFLIT[k] = v end
+if Moderne() then
+    CONFLIT[4], CONFLIT[14], CONFLIT[9], CONFLIT[12] = "Alliance", "Horde", "Alliance", "Horde"
+else
+    CONFLIT[3], CONFLIT[13], CONFLIT[8], CONFLIT[11] = "Alliance", "Horde", "Alliance", "Horde"
+end
 C.CONFLIT = CONFLIT
--- Duree d'une capture, par carte : Vallee d'Alterac 4 minutes, Bassin
--- Arathi 1 minute ; une minute ailleurs.
-local DUREES = { [1459] = 240, [1461] = 60 }
+-- Duree d'une capture, par carte : Vallee d'Alterac 5 minutes sur les
+-- clients classiques (4 sur le jeu moderne), Bassin Arathi 1 minute ; une
+-- minute ailleurs.
+local DUREES = { [1459] = Moderne() and 240 or 300, [1461] = 60 }
 C.DUREES = DUREES
+-- Goulet des Chanteguerres : les drapeaux reviennent 12 secondes apres une
+-- capture (Capping, clients classiques).
+C.RETOUR_DRAPEAUX = 12
 
 local etat
 function C.Remettre()
-    etat = { porteurs = {}, icones = {}, captures = {}, classes = {}, debutFin = nil, ressources = {}, enregistre = false }
+    etat = { porteurs = {}, icones = {}, captures = {}, classes = {}, debutFin = nil, ressources = {}, enregistre = false,
+        retourDrapeaux = nil, chefs = {} }
 end
 C.Remettre()
 function C.Etat() return etat end
@@ -80,7 +100,24 @@ function C.Annonce(camp, texte)
         return "prise", nom
     end
     if Position(CHUTE, bas) then etat.porteurs[camp] = nil return "chute" end
-    if Contient(CAPTURE, bas) then etat.porteurs = {} return "capture" end
+    if Contient(CAPTURE, bas) then
+        etat.porteurs = {}
+        etat.retourDrapeaux = Horloge() + C.RETOUR_DRAPEAUX
+        return "capture"
+    end
+end
+-- Les drapeaux de retour apres une capture : secondes restantes, ou nil.
+function C.ResteRetourDrapeaux()
+    if not etat.retourDrapeaux then return nil end
+    local reste = etat.retourDrapeaux - Horloge()
+    if reste <= 0 then etat.retourDrapeaux = nil return nil end
+    return reste
+end
+-- Le porteur adverse (celui qui tient notre drapeau) : son nom, ou nil.
+function C.PorteurAdverse()
+    local camp = NS.Appeler(UnitFactionGroup, "player")
+    local p = etat.porteurs[camp == "Horde" and "Alliance" or "Horde"]
+    return p and p.nom
 end
 
 -- Le compte a rebours du debut : l'evenement du jeu, sinon l'annonce
@@ -237,7 +274,8 @@ function C.Annoter(textes)
         local n, m = texte:match("(%d+)%s*/%s*(%d+)")
         n, m = tonumber(n), tonumber(m)
         local ligne = texte
-        if n and m and m > n then
+        -- Seulement des ressources (le Goulet compte ses captures sur 3).
+        if n and m and m > n and m > 10 then
             local cle = i .. ":" .. (texte:gsub("%d", ""))
             local h = etat.ressources[cle]
             if not h or n < h.n then h = { t = maintenant, n = n } etat.ressources[cle] = h end
@@ -278,7 +316,7 @@ function C.Lignes(options)
             end
         end
     end
-    if options.minuteurs ~= false then
+    if options.minuteurs ~= false and options.captures ~= false then
         local liste = {}
         for id, c in pairs(etat.captures) do
             if c.fin > maintenant then table.insert(liste, c) else etat.captures[id] = nil end
@@ -302,12 +340,15 @@ cadre:SetScript("OnEvent", function(_, ev, a, b)
     local ok, souci = pcall(function()
         if ev == "PLAYER_ENTERING_WORLD" then
             C.Remettre()
+            if NS.annonces and NS.annonces.MajCible then NS.annonces.MajCible() end
             if NS.honneur.EnChamp() and _G.RequestBattlefieldScoreData then pcall(_G.RequestBattlefieldScoreData) end
             return
         end
         if not NS.honneur.EnChamp() then return end
-        if ev == "CHAT_MSG_BG_SYSTEM_ALLIANCE" then C.Annonce("Alliance", a)
-        elseif ev == "CHAT_MSG_BG_SYSTEM_HORDE" then C.Annonce("Horde", a)
+        if ev == "CHAT_MSG_BG_SYSTEM_ALLIANCE" or ev == "CHAT_MSG_BG_SYSTEM_HORDE" then
+            local quoi = C.Annonce(ev == "CHAT_MSG_BG_SYSTEM_HORDE" and "Horde" or "Alliance", a)
+            -- Le bouton de ciblage du porteur adverse suit (hors combat seulement).
+            if quoi and NS.annonces and NS.annonces.MajCible then NS.annonces.MajCible() end
         elseif ev == "CHAT_MSG_BG_SYSTEM_NEUTRAL" then C.AnnonceNeutre(a)
         elseif ev == "START_TIMER" then C.Debut(b)
         elseif ev == "AREA_POIS_UPDATED" then
