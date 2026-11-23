@@ -200,10 +200,21 @@ local function PageCarte()
             page.rMinuteurs = O.Rangee()
             page.cMinuteurs = O.Case(page.rMinuteurs, function(oui) R().minuteurs = oui and true or false end)
             page.cMinuteurs:SetPoint("RIGHT", page.rMinuteurs, "RIGHT", -8, 0)
+            page.sAnnonces = O.Section()
+            page.rClic = O.Rangee()
+            page.cClic = O.Case(page.rClic, function(oui) R().clic = oui and true or false end)
+            page.cClic:SetPoint("RIGHT", page.rClic, "RIGHT", -8, 0)
+            page.dClic = O.Detail(18)
+            page.dClic:SetWordWrap(false)
             page.aide = O.Detail(44)
         end,
         rendre = function(page)
             page.t1:SetText(T("La carte de champ de bataille", "The battleground map"))
+            page.sAnnonces:SetText(T("Annonces", "Calls"))
+            page.rClic.nom:SetText(T("Clic sur une base ou une tour pour annoncer", "Click a base or tower to make a call"))
+            page.cClic:SetChecked(R().clic ~= false)
+            page.dClic:SetText(T("Une liste s'ouvre : Inc 1, 2, 3, 5+ ou dégagé. Rien ne part sans votre choix. Carte verrouillée : pas de clic.",
+                "A list opens : Inc 1, 2, 3, 5+ or clear. Nothing is sent until you pick. Locked map : no click."))
             page.intro:SetText(T("Une petite carte à placer où vous voulez : votre groupe à la couleur de sa classe, vous en flèche, les bases et les tours du champ de bataille.",
                 "A small map you place anywhere : your group in its class colour, you as an arrow, the battleground's bases and towers."))
             page.sAffichage:SetText(T("Affichage", "Display"))
@@ -268,7 +279,7 @@ end
 function F.Construire()
     local S = _G.CoreSuite
     if F.w or not (S and S.FenetreAPages) then return F.w end
-    local pages = { PageHonneur(), PageParties(), PageCarte(), PageReglages() }
+    local pages = { PageHonneur(), PageParties(), NS.pageMacros.Page(), PageCarte(), PageReglages() }
     if S.Seul and S.Seul() then table.insert(pages, PageSuite()) end
     F.w = S.FenetreAPages({
         nom = "PvPCoreFenetre", cle = "PvPCore", icone = "Interface\\Icons\\INV_BannerPVP_02",
@@ -283,3 +294,14 @@ function F.Ouvrir()
     if F.Construire() and S and S.Ouvrir then S.Ouvrir("PvPCore") return true end
     return false
 end
+
+-- En champ de bataille, la page Honneur se tient a jour (une fois par
+-- seconde, seulement quand elle est affichee).
+local veille, attente = CreateFrame("Frame"), 1
+veille:SetScript("OnUpdate", function(_, ecoule)
+    attente = attente - (ecoule or 0)
+    if attente > 0 then return end
+    attente = 1
+    local w = F.w
+    if w and w.cadre and w.cadre:IsShown() and w.page == "honneur" and NS.honneur.EnChamp() then pcall(w.Rendre) end
+end)

@@ -13,7 +13,7 @@ local C = NS.carte
 local T = NS.T
 
 local DEFAUTS = { taille = 300, alphaMarche = 0.35, alphaArret = 0.9, verrouillee = false, partout = false, affichee = true,
-    objectifs = true, porteurs = true, minuteurs = true }
+    objectifs = true, porteurs = true, minuteurs = true, clic = true }
 function C.Reglages()
     PvPCoreDB = type(PvPCoreDB) == "table" and PvPCoreDB or {}
     PvPCoreDB.carte = type(PvPCoreDB.carte) == "table" and PvPCoreDB.carte or {}
@@ -207,7 +207,7 @@ end
 
 -- Les points d'interet de la carte (bases, tours, cimetieres, drapeaux).
 local function PointsDInteret(f, carte)
-    for _, p in ipairs(f.poi) do p:Hide() p.minuteur:Hide() end
+    for _, p in ipairs(f.poi) do p:Hide() p.minuteur:Hide() p.bouton:Hide() end
     local pourCarte = Lire("C_AreaPoiInfo.GetAreaPOIForMap")
     local info = Lire("C_AreaPoiInfo.GetAreaPOIInfo")
     if not (pourCarte and info) then return end
@@ -228,9 +228,22 @@ local function PointsDInteret(f, carte)
                 t.minuteur:SetPoint("TOP", t, "BOTTOM", 0, 1)
                 t.minuteur:SetShadowOffset(1, -1)
                 t.minuteur:Hide()
+                -- Un clic sur le lieu : la liste des annonces (Inc 1, 2, 3, 5+,
+                -- degage), envoyee seulement quand on en choisit une.
+                t.bouton = CreateFrame("Button", nil, f.toile)
+                t.bouton:SetSize(18, 18)
+                t.bouton:SetPoint("CENTER", t, "CENTER", 0, 0)
+                t.bouton:RegisterForClicks("LeftButtonUp")
+                t.bouton:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+                t.bouton:SetScript("OnClick", function(self)
+                    if self.nom and NS.annonces then NS.annonces.Menu(self, self.nom) end
+                end)
+                t.bouton:Hide()
                 f.poi[rang] = t
             end
             t.id = id
+            local nomPoi = type(poi.name) == "string" and not Secret(poi.name) and poi.name or nil
+            t.bouton.nom = nomPoi
             local pose = false
             if type(poi.atlasName) == "string" and poi.atlasName ~= "" then pose = pcall(t.SetAtlas, t, poi.atlasName) end
             if not pose and poi.textureIndex and _G.GetPOITextureCoords then
@@ -242,6 +255,8 @@ local function PointsDInteret(f, carte)
                 end
             end
             if pose then PoserSur(f, t, x, y) t:Show() end
+            local cliquable = pose and nomPoi and R().clic and not R().verrouillee and NS.honneur.EnChamp()
+            t.bouton:SetShown(cliquable and true or false)
         end
     end
 end
@@ -358,10 +373,20 @@ function C.LignesSousCarte()
     if r.objectifs then
         local textes = NS.honneur.Objectifs()
         if NS.champ then textes = NS.champ.Annoter(textes) end
-        for _, texte in ipairs(textes) do table.insert(lignes, { texte = texte }) end
+        -- Les compteurs du Goulet ("1/3") sont dits par camp plus bas.
+        local goulet = NS.bataille and NS.bataille.Quel() == "goulet"
+        for _, texte in ipairs(textes) do
+            if not (goulet and NS.bataille.DejaDit(texte, "goulet")) then table.insert(lignes, { texte = texte }) end
+        end
     end
     if NS.champ then
         for _, l in ipairs(NS.champ.Lignes({ porteurs = r.porteurs, minuteurs = r.minuteurs })) do table.insert(lignes, l) end
+    end
+    -- Ce que les objectifs du jeu ne disent pas : prevision d'Arathi, retour
+    -- des drapeaux du Goulet, vie des chefs d'Alterac.
+    if r.objectifs and NS.bataille then
+        local ok, extra = pcall(NS.bataille.Lignes)
+        for _, l in ipairs(ok and extra or {}) do table.insert(lignes, l) end
     end
     return lignes
 end
