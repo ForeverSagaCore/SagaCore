@@ -426,8 +426,8 @@ local function CreerRepere(parent)
             if pt.attente then GameTooltip:AddLine(L.MAP_NOT_YET, 0.6, 0.6, 0.6) end
             local cle = NS.ClePersonnage()
             local p = cle and NS.base.PersoParCle(cle)
-            local xp = NS.ref.XPDeLaBase(pt.quete, p and p.niveau)
-            if xp and xp > 0 then GameTooltip:AddLine(string.format(L.REWARD_XP, xp), 1, 1, 1) end
+            local xp, estimee = NS.ref.XPDeLaBase(pt.quete, p and p.niveau)
+            if xp and xp > 0 then GameTooltip:AddLine(string.format(estimee and L.REWARD_XP_ESTIMATED or L.REWARD_XP, xp), 1, 1, 1) end
             local niveau = NS.ref.Lire("QuestDB", pt.quete, "questLevel")
             if niveau then GameTooltip:AddLine(string.format(L.LEVEL, niveau), 0.7, 0.7, 0.7) end
         elseif pt.quoi then
