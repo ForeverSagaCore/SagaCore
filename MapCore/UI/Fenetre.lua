@@ -317,6 +317,10 @@ local function Indications()
         morceaux = { { "PADDUP PADDDOWN", L_.PAD_LINES }, { "PAD1", L_.PAD_SELECT },
             { "PADLSHOULDER PADRSHOULDER", L_.PAD_ZOOM }, { "PAD3", L_.PAD_MAP_UP },
             { "PADBACK", L_.PAD_ZONE_IN }, { "PADLSTICK PADRSTICK", L_.PAD_SUITE }, { "PAD2", L_.PAD_CLOSE } }
+        local S = NS.suite or _G.CoreSuite
+        if NS.pageCarte.EnPlan and NS.pageCarte.EnPlan() and S and S.OutilDonjon and S.OutilDonjon() then
+            table.insert(morceaux, 4, { "PAD4", L_.PAD_PLAN_TOOL })
+        end
     end
     local texte = {}
     for _, m in ipairs(morceaux) do
@@ -372,6 +376,11 @@ local function Traiter(bouton)
     if bouton == "PADLTRIGGER" then NS.pageCarte.ContinentVoisin(-1) return false end
     if bouton == "PADRTRIGGER" then NS.pageCarte.ContinentVoisin(1) return false end
     if bouton == "PAD3" then NS.pageCarte.Remonter() return false end
+    -- Y, dans un donjon : l'outil de donjon choisi, sur ce seul appui.
+    if bouton == "PAD4" and NS.pageCarte.EnPlan and NS.pageCarte.EnPlan() then
+        NS.pageCarte.OuvrirOutilDonjon()
+        return false
+    end
     if bouton == "PADLSHOULDER" then NS.pageCarte.Zoomer(1 / 1.25) return false end
     if bouton == "PADRSHOULDER" then NS.pageCarte.Zoomer(1.25) return false end
     if bouton == "PAD2" then cadre:Hide() return false end

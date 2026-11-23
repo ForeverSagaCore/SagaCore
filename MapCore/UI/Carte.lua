@@ -892,6 +892,23 @@ local function Construire(parent, basDroite)
     vue.allerA:SetFrameLevel(toile:GetFrameLevel() + 30)
     vue.allerA:Hide()
 
+    -- Dans un donjon : l'outil de donjon choisi (Donjon Journal...), ouvert
+    -- seulement sur ce clic. "Changer d'outil" quand il y en a plusieurs.
+    vue.outil = Bouton(bord, "", 60)
+    vue.outil:SetPoint("TOPLEFT", bord, "TOPLEFT", 8, -34)
+    vue.outil:SetFrameLevel(toile:GetFrameLevel() + 30)
+    vue.outil:SetScript("OnClick", function() page.OuvrirOutilDonjon() end)
+    vue.outil:Hide()
+    vue.outilChanger = Bouton(bord, L.PLAN_TOOL_CHANGE, 60)
+    vue.outilChanger:SetPoint("LEFT", vue.outil, "RIGHT", 4, 0)
+    vue.outilChanger:SetFrameLevel(toile:GetFrameLevel() + 30)
+    vue.outilChanger:SetScript("OnClick", function()
+        local S = NS.suite or _G.CoreSuite
+        if S and S.OutilDonjonSuivant then S.OutilDonjonSuivant() end
+        page.Rendre()
+    end)
+    vue.outilChanger:Hide()
+
     -- Aide, sous la carte.
     vue.aide = vue:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     vue.aide:SetPoint("BOTTOM", vue, "BOTTOM", 0, 2)
@@ -2047,6 +2064,19 @@ local function RendrePlan(cle, d, nom)
             page.Rendre()
         end)
     end
+    -- L'outil de donjon choisi : un bouton, rien ne s'ouvre sans ce clic.
+    local S = NS.suite or _G.CoreSuite
+    local o, nb
+    if S and S.OutilDonjon then o, nb = S.OutilDonjon() end
+    if o then
+        vue.outil:SetText(string.format(L.PLAN_TOOL_OPEN, o.nom))
+        vue.outil:SetWidth((vue.outil.GetTextWidth and vue.outil:GetTextWidth() or 100) + 24)
+        vue.outil:Show()
+        vue.outilChanger:SetShown((nb or 0) > 1)
+    else
+        vue.outil:Hide()
+        vue.outilChanger:Hide()
+    end
     vue.vide:Hide()
     if derniereCarte ~= "plan:" .. cle then zoom, decX, decY = 1, 0, 0 derniereCarte = "plan:" .. cle end
     vue.largeur, vue.hauteur = L0, H0
@@ -2054,6 +2084,15 @@ local function RendrePlan(cle, d, nom)
     Disposer()
     return true
 end
+-- Le clic explicite du joueur (bouton ou Y a la manette) : seul chemin vers
+-- l'outil de donjon d'un autre add-on.
+function page.OuvrirOutilDonjon()
+    if not (vue and vue.plan) then return false end
+    local S = NS.suite or _G.CoreSuite
+    if not (S and S.OuvrirOutilDonjon) then return false end
+    return S.OuvrirOutilDonjon(vue.plan)
+end
+function page.EnPlan() return vue ~= nil and vue.plan ~= nil end
 page.EtagePrecedent = function()
     if vue and vue.plan then
         etagePlan[vue.plan] = math.max(1, (etagePlan[vue.plan] or 1) - 1)
@@ -2131,6 +2170,8 @@ function page.Rendre(parent, basDroite, menuParent, menuHaut, mere)
     if cleP and RendrePlan(cleP, donneesP, nomP) then return end
     for _, pin in ipairs(vue.pinsPlan or {}) do pin:Hide() end
     vue.nPlan = 0
+    vue.outil:Hide()
+    vue.outilChanger:Hide()
     vue.remonter:SetEnabled(true)
     vue.allerA:SetEnabled(true)
     -- L'echelon du dessus, nomme : "Voir Dun Morogh".

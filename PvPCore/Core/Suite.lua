@@ -8083,6 +8083,64 @@ function Suite.OuvrirPlanDuDonjon()
     return false
 end
 
+-- Outils de donjon d'autres add-ons, comme les guides : un catalogue, le
+-- joueur choisit le sien, et l'outil ne s'ouvre QUE sur son clic explicite.
+-- Jamais d'ouverture automatique, quelle que soit la situation.
+local function OuvrirFDJ(donjon)
+    local FDJ = _G.ForeverDungeonJournal_NS
+    if type(FDJ) ~= "table" then return false end
+    local cadre = _G.ForeverDungeonJournalFrame
+    if not (cadre and cadre:IsShown()) and type(_G.ForeverDungeonJournal_Toggle) == "function" then
+        pcall(_G.ForeverDungeonJournal_Toggle)
+    end
+    local function Page()
+        if donjon and type(FDJ.OpenDungeonMap) == "function" then pcall(FDJ.OpenDungeonMap, donjon) end
+        local f = _G.ForeverDungeonJournalFrame
+        if f and f.Raise then pcall(f.Raise, f) end
+    end
+    if _G.C_Timer and _G.C_Timer.After then _G.C_Timer.After(0.2, Page) else Page() end
+    return true
+end
+Suite.OUTILS_DONJON = {
+    { cle = "fdj", nom = "Donjon Journal", addon = "ForeverDungeonJournal",
+      present = function() return type(_G.ForeverDungeonJournal_NS) == "table" end,
+      ouvrir = OuvrirFDJ },
+}
+-- Les outils installes, dans l'ordre du catalogue.
+function Suite.OutilsDonjon()
+    local l = {}
+    for _, o in ipairs(Suite.OUTILS_DONJON) do
+        local ok, oui = pcall(o.present)
+        if ok and oui then table.insert(l, o) end
+    end
+    return l
+end
+-- L'outil choisi par le joueur (le premier installe tant qu'il n'a rien choisi).
+function Suite.OutilDonjon()
+    local l = Suite.OutilsDonjon()
+    local voulu = type(CoreSuiteDB) == "table" and CoreSuiteDB.outilDonjon
+    for _, o in ipairs(l) do if o.cle == voulu then return o, #l end end
+    return l[1], #l
+end
+-- Passer a l'outil suivant (seulement s'il y en a plusieurs d'installes).
+function Suite.OutilDonjonSuivant()
+    local l = Suite.OutilsDonjon()
+    if #l < 2 then return Suite.OutilDonjon() end
+    local o = Suite.OutilDonjon()
+    local i = 1
+    for k, x in ipairs(l) do if x == o then i = k end end
+    local suivant = l[i % #l + 1]
+    if type(CoreSuiteDB) == "table" then CoreSuiteDB.outilDonjon = suivant.cle end
+    return suivant, #l
+end
+-- Ouvrir l'outil choisi sur ce donjon : a n'appeler que depuis un clic du joueur.
+function Suite.OuvrirOutilDonjon(donjon)
+    local o = Suite.OutilDonjon()
+    if not o then return false end
+    local ok, fait = pcall(o.ouvrir, donjon)
+    return ok and fait or false
+end
+
 -- La vitesse du personnage, ou nil quand le jeu la cache (valeur secrete en
 -- champ de bataille ou en combat : on ne la compare jamais).
 function Suite.VitesseJoueur()

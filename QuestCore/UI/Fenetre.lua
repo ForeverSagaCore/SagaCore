@@ -1365,8 +1365,14 @@ local function RendreDisponibles(contenu, p, index, y)
         if a.niveau ~= b.niveau then return a.niveau < b.niveau end
         return a.nom < b.nom
     end)
+    -- Le compte couvre toutes les zones du monde (pas seulement celle ou l'on
+    -- est) : on le dit, avec le nombre de zones et la part des grises.
+    local grises = 0
+    for _, z in ipairs(zones) do for _, d in ipairs(z.ids) do if d.gris then grises = grises + 1 end end end
+    local titre = etat.disposGrises and string.format(L.AVAIL_TITLE_ALL_GRAY, total, #zones, grises)
+        or string.format(L.AVAIL_TITLE_ALL, total, #zones)
     index = index + 1
-    y = Titre(contenu, index, y, string.format(L.AVAIL_TITLE, total), {
+    y = Titre(contenu, index, y, titre, {
         { etat.disposGrises and L.AVAIL_HIDE_GRAY or L.AVAIL_SHOW_GRAY, function()
             etat.disposGrises = not etat.disposGrises
             fen.Rendre()
