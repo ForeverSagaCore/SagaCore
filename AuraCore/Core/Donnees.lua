@@ -578,8 +578,66 @@ local function ConstruirePub()
     pub = b
     return b
 end
+-- Apres un donjon, en chuchotement, a qui on veut : la cible (pastille a
+-- droite de la precedente) ou un nom (/merci Nom-Royaume).
+local MERCI = "Hey ! Merci pour le donjon, c'était top. J'ai oublié ma petite pub : je bidouille un add-on, Forever SagaCore, sur CurseForge, pensé pour aller avec Questie et Forever Dungeon Journal. Si tu y jettes un oeil, ça me ferait trop plaisir. Bonne soirée !"
+local merci
+local function Clair(v) return v ~= nil and not (_G.issecretvalue and _G.issecretvalue(v)) end
+-- Le nom complet de la cible si c'est un autre joueur, sinon nil.
+local function CibleJoueur()
+    local okP, joueur = pcall(_G.UnitIsPlayer, "target")
+    if not (okP and Clair(joueur) and joueur) then return nil end
+    local okM, moi = pcall(_G.UnitIsUnit, "target", "player")
+    if not okM or not Clair(moi) or moi then return nil end
+    local okN, nom = pcall(_G.GetUnitName, "target", true)
+    if okN and Clair(nom) and type(nom) == "string" and nom ~= "" then return nom end
+    return nil
+end
+function M.Remercier(nom)
+    nom = nom or CibleJoueur()
+    if not nom or nom == "" then
+        NS.Dire(T("Ciblez un joueur, ou tapez /merci Nom-Royaume.", "Target a player, or type /merci Name-Realm."))
+        return
+    end
+    local envoyer = (_G.C_ChatInfo and _G.C_ChatInfo.SendChatMessage) or _G.SendChatMessage
+    local ok, err = pcall(envoyer, MERCI, "WHISPER", nil, nom)
+    if not ok then NS.Dire(T("Envoi refusé par le jeu : ", "Sending refused by the game : ") .. tostring(err)) end
+end
+SLASH_AURACOREMERCI1 = "/merci"
+SlashCmdList["AURACOREMERCI"] = function(texte)
+    if not Prive() then return end
+    texte = (texte or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    M.Remercier(texte ~= "" and texte or nil)
+end
+local function ConstruireMerci()
+    if merci then return merci end
+    local b = CreateFrame("Button", "AuraCoreBoutonMerci", UIParent)
+    b:SetFrameStrata("MEDIUM")
+    b:RegisterForClicks("LeftButtonUp")
+    b.p = NS.anneau.Pastille(b)
+    b.p:SetPoint("CENTER")
+    b.p:EnableMouse(false)
+    b.p:Show()
+    b.p.icone:SetTexture("Interface\\Icons\\INV_Misc_Gift_02")
+    b:SetScript("OnClick", function(self) if self.actif then M.Remercier() end end)
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
+        GameTooltip:SetText(T("Remercier la cible en chuchotement", "Thank your target in a whisper"), 1, 0.82, 0)
+        GameTooltip:AddLine(MERCI, 1, 1, 1, true)
+        GameTooltip:AddLine(T("Sans cible : /merci Nom-Royaume", "Without a target : /merci Name-Realm"), 0.6, 0.6, 0.6, true)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    merci = b
+    return b
+end
+
 local function MettreAJourPub(b, t)
-    if not Prive() or R().boutonBuffsCache then if pub then pub:Hide() end return end
+    if not Prive() or R().boutonBuffsCache then
+        if pub then pub:Hide() end
+        if merci then merci:Hide() end
+        return
+    end
     local p = ConstruirePub()
     -- Collee a droite du cor, de la meme taille : elle le suit quand on le deplace.
     p:ClearAllPoints()
@@ -590,6 +648,16 @@ local function MettreAJourPub(b, t)
     NS.anneau.Cercler(p.p, actif and "actif" or "absent")
     NS.anneau.Opacite(p.p, not actif)
     p:Show()
+    -- La troisieme, a droite de la pub : remercier la cible.
+    local m = ConstruireMerci()
+    m:ClearAllPoints()
+    m:SetPoint("LEFT", p, "RIGHT", 4, 0)
+    if m.taille ~= t then m.taille = t m:SetSize(t, t) m.p:Taille(t) end
+    local cible = CibleJoueur() ~= nil
+    m.actif = cible
+    NS.anneau.Cercler(m.p, cible and "actif" or "absent")
+    NS.anneau.Opacite(m.p, not cible)
+    m:Show()
 end
 
 function M.ReplacerBouton()
@@ -601,7 +669,7 @@ end
 -- inactif) hors groupe, en combat ou quand rien ne manque ; illumine sinon.
 function M.MettreAJour()
     local b = Construire()
-    if R().boutonBuffsCache then b:Hide() if pub then pub:Hide() end return end
+    if R().boutonBuffsCache then b:Hide() if pub then pub:Hide() end if merci then merci:Hide() end return end
     b:Show()
     -- La taille des icones de l'anneau.
     local t = tonumber(R().taille) or 30
