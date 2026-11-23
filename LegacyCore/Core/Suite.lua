@@ -165,6 +165,8 @@ local DICO = {
         ["Forever SagaCore Dev is not installed."] = "Forever SagaCore Dev n'est pas installé.",
         ["Back to the normal suite."] = "Retour à la suite normale.",
         ["Switching to Forever SagaCore Dev."] = "Passage à Forever SagaCore Dev.",
+        ["Forever SagaCore Live is not installed."] = "Forever SagaCore Live n'est pas installé.",
+        ["Switching to Forever SagaCore Live."] = "Passage à Forever SagaCore Live, la version publiée.",
         ["Click: show everything"] = "Clic : tout afficher",
         ["Click: hide everything"] = "Clic : tout masquer",
         ["Faction theme"] = "Thème de faction",
@@ -1254,38 +1256,70 @@ end
 -- Jamais les deux suites actives a la fois.
 -- ---------------------------------------------------------------------------
 Suite.ADDONS_SUITE = { "CraftCore", "QuestCore", "MapCore", "LegacyCore", "StuffCore", "FriendsCore", "AuraCore", "PvPCore", "AchievementCore" }
-function Suite.BasculerDev()
-    if not Suite.Prive() then return end
+-- Trois suites cote a cote, une seule active :
+--   normale  : les dossiers X ;
+--   Dev      : les dossiers XDev, la version d'essai (/sagadev) ;
+--   Live     : les dossiers XLive, la derniere version publiee, telle que
+--              les joueurs l'ont (/sagalive).
+-- Chaque commande bascule vers sa suite, ou revient a la normale si on y est
+-- deja. TradeCore (prive, jamais publie) reste coupe en Live.
+local MODES_SUITE = { normale = "", dev = "Dev", live = "Live" }
+local PRIVES_HORS_LIVE = { "TradeCore" }
+function Suite.ModeSuite()
     local A = _G.C_AddOns or {}
     local charge = A.IsAddOnLoaded or _G.IsAddOnLoaded
+    if not charge then return "normale" end
+    for mode, suffixe in pairs(MODES_SUITE) do
+        if suffixe ~= "" then
+            for _, n in ipairs(Suite.ADDONS_SUITE) do
+                local ok, oui = pcall(charge, n .. suffixe)
+                if ok and oui then return mode end
+            end
+        end
+    end
+    return "normale"
+end
+function Suite.BasculerSuite(cible)
+    local A = _G.C_AddOns or {}
     local activer = A.EnableAddOn or _G.EnableAddOn
     local couper = A.DisableAddOn or _G.DisableAddOn
     local info = A.GetAddOnInfo or _G.GetAddOnInfo
-    if not (charge and activer and couper and info) then return end
-    local enDev = false
-    for _, n in ipairs(Suite.ADDONS_SUITE) do
-        local ok, oui = pcall(charge, n .. "Dev")
-        if ok and oui then enDev = true end
-    end
+    if not (activer and couper and info) then return end
+    if Suite.ModeSuite() == cible then cible = "normale" end
     local function Existe(n) local ok, nom = pcall(info, n) return ok and nom ~= nil end
     local present = 0
     for _, n in ipairs(Suite.ADDONS_SUITE) do
-        local vers, depuis = enDev and n or (n .. "Dev"), enDev and (n .. "Dev") or n
-        if Existe(vers) then
-            present = present + 1
-            pcall(couper, depuis)
-            pcall(activer, vers)
-        end
+        if Existe(n .. MODES_SUITE[cible]) then present = present + 1 end
     end
     if present == 0 then
-        print("|cffffd100SagaCore|r " .. TX("Forever SagaCore Dev is not installed."))
+        print("|cffffd100SagaCore|r " .. (cible == "live" and TX("Forever SagaCore Live is not installed.") or TX("Forever SagaCore Dev is not installed.")))
         return
     end
-    print("|cffffd100SagaCore|r " .. (enDev and TX("Back to the normal suite.") or TX("Switching to Forever SagaCore Dev.")))
+    for _, n in ipairs(Suite.ADDONS_SUITE) do
+        for mode, suffixe in pairs(MODES_SUITE) do
+            if Existe(n .. suffixe) then
+                if mode == cible then pcall(activer, n .. suffixe) else pcall(couper, n .. suffixe) end
+            end
+        end
+    end
+    for _, n in ipairs(PRIVES_HORS_LIVE) do
+        if Existe(n) then
+            if cible == "live" then pcall(couper, n) else pcall(activer, n) end
+        end
+    end
+    local textes = { normale = "Back to the normal suite.", dev = "Switching to Forever SagaCore Dev.",
+        live = "Switching to Forever SagaCore Live." }
+    print("|cffffd100SagaCore|r " .. TX(textes[cible]))
     if _G.C_UI and _G.C_UI.Reload then _G.C_UI.Reload() elseif _G.ReloadUI then _G.ReloadUI() end
+end
+function Suite.BasculerDev()
+    if not Suite.Prive() then return end
+    Suite.BasculerSuite("dev")
 end
 SLASH_SAGACOREDEV1 = "/sagadev"
 SlashCmdList["SAGACOREDEV"] = function() Suite.BasculerDev() end
+SLASH_SAGACORELIVE1 = "/sagalive"
+SlashCmdList["SAGACORELIVE"] = function() if Suite.Prive() then Suite.BasculerSuite("live") end end
 
 -- Point d'attache des onglets lateraux : au ras du bord de la fenetre, a la
 -- hauteur du trait qui separe l'en-tete du contenu. Les deux colonnes
