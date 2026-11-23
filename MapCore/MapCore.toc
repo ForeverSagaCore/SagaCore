@@ -24,6 +24,7 @@ Data\Reveal.lua
 Data\Services.lua
 UI\Charte.lua
 UI\Carte.lua
+UI\Guidage.lua
 UI\Fenetre.lua
 UI\Annonces.lua
 MapCore.lua

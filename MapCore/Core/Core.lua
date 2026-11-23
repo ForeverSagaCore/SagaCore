@@ -109,11 +109,17 @@ _G.MapCoreAPI = {
         local t = pg.Tournee()
         if not t.carte or #(t.points or {}) == 0 then return nil end
         local faits = 0
-        for _ in pairs(t.faits or {}) do faits = faits + 1 end
-        return { carte = t.carte, points = t.points, faits = faits, total = #t.points,
-            guide = pg.EnGuidage and pg.EnGuidage() or false }
+        local guide = pg.EnGuidage and pg.EnGuidage() or false
+        if guide and pg.FaitsTournee then for _ in pairs(pg.FaitsTournee()) do faits = faits + 1 end end
+        return { carte = t.carte, points = t.points, faits = faits, total = #t.points, guide = guide }
     end,
-    GuiderTournee = function(oui) if NS.pageCarte and NS.pageCarte.Guider then NS.pageCarte.Guider(oui) end end,
+    -- Guider la tournee, ou l'arreter si c'est elle qui est guidee.
+    BasculerTournee = function() if NS.pageCarte and NS.pageCarte.BasculerTournee then NS.pageCarte.BasculerTournee() end end,
+    GuiderTournee = function(oui)
+        local pg = NS.pageCarte
+        if not pg then return end
+        if (oui ~= false) ~= (pg.EnGuidage and pg.EnGuidage() or false) and pg.BasculerTournee then pg.BasculerTournee() end
+    end,
     EffacerTournee = function() if NS.pageCarte and NS.pageCarte.EffacerTournee then NS.pageCarte.EffacerTournee() end end,
 }
 
