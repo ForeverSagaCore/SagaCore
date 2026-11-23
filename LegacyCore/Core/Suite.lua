@@ -59,7 +59,7 @@ if not _G.SagaCoreRoyaume then
     end
 end
 
-local VERSION = 135
+local VERSION = 136
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -2467,6 +2467,8 @@ local function PositionMonde(carte, x, y)
     local ok, continent, p = pcall(f, carte, V(x, y))
     if ok and p and p.GetXY then
         local a, b = p:GetXY()
+        local secret = _G.issecretvalue
+        if secret and (secret(a) or secret(b) or secret(continent)) then return nil end
         return a, b, continent
     end
     return nil
@@ -2477,7 +2479,9 @@ local function PositionJoueur()
     local pos = carte and _G.C_Map.GetPlayerMapPosition and _G.C_Map.GetPlayerMapPosition(carte, "player")
     if not (pos and pos.GetXY) then return nil end
     local x, y = pos:GetXY()
-    if not x then return nil end
+    -- Position cachee par le jeu (valeur secrete) : jamais comparee.
+    local secret = _G.issecretvalue
+    if not x or (secret and (secret(x) or secret(y) or secret(carte))) then return nil end
     return PositionMonde(carte, x, y)
 end
 
@@ -2618,7 +2622,9 @@ local function CadreGuidage()
         local vitesse = 0
         if _G.GetUnitSpeed then
             local okV, v = pcall(_G.GetUnitSpeed, "player")
-            if okV and type(v) == "number" then vitesse = v end
+            -- Vitesse cachee par le jeu (valeur secrete en champ de bataille
+            -- ou en combat) : jamais comparee.
+            if okV and type(v) == "number" and not (_G.issecretvalue and _G.issecretvalue(v)) then vitesse = v end
         end
         if vitesse < 1 then vitesse = 7 end
         local sec = math.floor(yards / vitesse + 0.5)
