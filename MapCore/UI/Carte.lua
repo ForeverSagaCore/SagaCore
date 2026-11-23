@@ -712,6 +712,7 @@ local function Disposer()
     if vue.clignote and vue.clignote:IsShown() then Prendre(vue.clignote) end
     for i = 1, (vue.nServices or 0) do Prendre(vue.services[i]) end
     for i = 1, (vue.nMiens or 0) do Prendre(vue.miens[i]) end
+    for i = 1, (vue.nPlan or 0) do Prendre(vue.pinsPlan[i]) end
     -- Recalcule seulement si le zoom ou les reperes changent (pas en glissant).
     local morceaux = { string.format("%.4f", echelle) }
     for _, e in ipairs(poses) do morceaux[#morceaux + 1] = string.format("%.3f,%.3f", e.b.ax, e.b.ay) end
@@ -1291,6 +1292,7 @@ local continentChoisi
 function page.Zoomer(facteur) if vue then Zoomer(facteur) end end
 
 function page.Remonter()
+    if page.EtagePrecedent and page.EtagePrecedent() then return end
     local parent = vue and CarteParente(vue.idCarte)
     if not parent then return end
     carteChoisie = parent
@@ -1879,6 +1881,189 @@ function page.Retenir()
     m.zoom, m.decX, m.decY = zoom, decX, decY
 end
 
+-- ---------------------------------------------------------------------------
+-- Plan du donjon : dans une instance, la carte de MapCore montre le plan du
+-- donjon (salles, boss, entree, PNJ de quetes, etages), lu dans les donnees
+-- du Donjon Journal de Forever. Zoom et glisser comme une carte ; un etage a
+-- la fois, choisi par "Etage precedent / suivant". Le personnage n'y est
+-- place que si le jeu donne sa position dans ce donjon.
+-- ---------------------------------------------------------------------------
+local etagePlan = {}
+local function PlanCourant()
+    if carteChoisie then return nil end
+    local S = NS.suite or _G.CoreSuite
+    if not (S and S.PlanDuDonjon) then return nil end
+    local ok, cle, donnees, nom = pcall(S.PlanDuDonjon)
+    if ok and cle and type(donnees) == "table" and type(donnees.floors) == "table" and #donnees.floors > 0 then
+        return cle, donnees, nom
+    end
+    return nil
+end
+
+local ICONES_PLAN = {
+    boss = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull",
+    entree = "Interface\\Icons\\INV_Misc_Map_01",
+    quete = "Interface\\GossipFrame\\ActiveQuestIcon",
+    passage = "Interface\\Icons\\Spell_Arcane_PortalUndercity",
+    joueur = "Interface\\WorldMap\\WorldMapArrow",
+}
+local function PinPlan(rang)
+    vue.pinsPlan = vue.pinsPlan or {}
+    local b = vue.pinsPlan[rang]
+    if b then return b end
+    b = CreateFrame("Frame", nil, vue.toile)
+    b:SetSize(20, 20)
+    b:SetFrameLevel((vue.toile:GetFrameLevel() or 1) + 5)
+    b.icone = b:CreateTexture(nil, "OVERLAY")
+    b.icone:SetAllPoints()
+    b.nom = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    b.nom:SetPoint("TOP", b, "BOTTOM", 0, -1)
+    b.nom:SetWordWrap(false)
+    b.nom:SetShadowOffset(1, -1)
+    vue.pinsPlan[rang] = b
+    return b
+end
+
+-- Pose le plan ; rend largeur, hauteur, etage, nombre d'etages.
+local function PoserPlan(cle, d)
+    Cacher(vue.toile.tuiles) Cacher(vue.toile.revelees) Cacher(vue.toile.explorees)
+    for i = 1, vue.enService do vue.reperes[i]:Hide() end
+    vue.enService = 0
+    for _, b in ipairs(vue.services or {}) do b:Hide() end
+    vue.nServices = 0
+    for _, b in ipairs(vue.miens or {}) do b:Hide() if b.zone then b.zone:Hide() end end
+    vue.nMiens = 0
+    for i = 1, (vue.nLieux or 0) do if vue.lieux[i] then vue.lieux[i]:Hide() end end
+    vue.nLieux = 0
+    for i = 1, (vue.nPersos or 0) do if vue.persos[i] then vue.persos[i]:Hide() end end
+    vue.nPersos = 0
+    if vue.clignote then vue.clignote:Hide() end
+    if calque then calque.fleche:Hide() for _, t in ipairs(calque.points or {}) do t:Hide() end end
+    local n = #d.floors
+    -- L'etage ou est le personnage, quand le jeu le dit.
+    local ici = NS.Appeler(Lecture("C_Map.GetBestMapForUnit"), "player")
+    if not etagePlan[cle] then
+        for i, f in ipairs(d.floors) do if f.uiMapID and f.uiMapID == ici then etagePlan[cle] = i end end
+    end
+    local etage = math.min(math.max(etagePlan[cle] or (d.entrance and d.entrance.floor) or 1, 1), n)
+    etagePlan[cle] = etage
+    local f = d.floors[etage]
+    local L0, H0
+    if f.tiles then
+        L0, H0 = 1002, 668
+        for i = 1, 12 do
+            local t = Tuile(vue.toile.tuiles, i)
+            t:ClearAllPoints()
+            t:SetSize(256, 256)
+            t:SetPoint("TOPLEFT", vue.toile, "TOPLEFT", ((i - 1) % 4) * 256, -math.floor((i - 1) / 4) * 256)
+            t:SetTexture(f.tiles .. i)
+            t:SetTexCoord(0, 1, 0, 1)
+            t:Show()
+        end
+    elseif f.texture then
+        local droite, bas = f.texRight or 1, f.texBottom or 1
+        L0, H0 = 1024 * droite, 1024 * bas
+        local t = Tuile(vue.toile.tuiles, 1)
+        t:ClearAllPoints()
+        t:SetSize(L0, H0)
+        t:SetPoint("TOPLEFT", vue.toile, "TOPLEFT", 0, 0)
+        t:SetTexture(f.texture)
+        t:SetTexCoord(0, droite, 0, bas)
+        t:Show()
+    else
+        return nil
+    end
+    -- Les retouches du journal (symboles de la carte d'origine effaces).
+    for k, pa in ipairs(type(f.patches) == "table" and f.patches or {}) do
+        local t = Tuile(vue.toile.tuiles, 12 + k, "BORDER")
+        t:ClearAllPoints()
+        t:SetSize(math.max(1, (pa.x1 - pa.x0) * L0), math.max(1, (pa.y1 - pa.y0) * H0))
+        t:SetPoint("TOPLEFT", vue.toile, "TOPLEFT", pa.x0 * L0, -pa.y0 * H0)
+        t:SetTexture(pa.tex)
+        t:SetTexCoord(0, 1, 0, 1)
+        t:Show()
+    end
+    -- Reperes : boss, entree, PNJ de quetes, passages vers un autre etage.
+    local rang = 0
+    local function Poser(genre, x, y, nom)
+        if not (tonumber(x) and tonumber(y)) then return end
+        rang = rang + 1
+        local b = PinPlan(rang)
+        b.icone:SetTexture(ICONES_PLAN[genre])
+        b.icone:SetTexCoord(0, 1, 0, 1)
+        b:SetSize(genre == "boss" and 22 or 18, genre == "boss" and 22 or 18)
+        b.nom:SetText(nom or "")
+        b.ax, b.ay = x, y
+        b:Show()
+    end
+    local surEtage = function(e) return (tonumber(e.floor) or 1) == etage end
+    for _, b in ipairs(type(d.bosses) == "table" and d.bosses or {}) do
+        if surEtage(b) then Poser("boss", b.x, b.y, b.name) end
+    end
+    if type(d.entrance) == "table" and surEtage(d.entrance) then Poser("entree", d.entrance.x, d.entrance.y, L.PLAN_ENTRANCE) end
+    for _, q in ipairs(type(d.turnins) == "table" and d.turnins or {}) do
+        if surEtage(q) then Poser("quete", q.x, q.y, q.npc) end
+    end
+    for _, tr in ipairs(type(d.transitions) == "table" and d.transitions or {}) do
+        if surEtage(tr) and tr.to then Poser("passage", tr.x, tr.y, string.format(L.PLAN_FLOOR_TO, tr.to)) end
+    end
+    -- Le personnage, si le jeu donne sa position sur cet etage.
+    if f.uiMapID and f.uiMapID == ici then
+        local pos = NS.Appeler(Lecture("C_Map.GetPlayerMapPosition"), f.uiMapID, "player")
+        local okXY, x, y = false, nil, nil
+        if type(pos) == "table" and pos.GetXY then okXY, x, y = pcall(pos.GetXY, pos) end
+        local secret = _G.issecretvalue
+        if okXY and x and y and not (secret and (secret(x) or secret(y))) and x > 0 then
+            Poser("joueur", x, y, "")
+            local b = vue.pinsPlan[rang]
+            local cap = NS.Appeler(Lecture("GetPlayerFacing"))
+            if cap and b.icone.SetRotation then pcall(b.icone.SetRotation, b.icone, cap) end
+        end
+    end
+    for i = rang + 1, #(vue.pinsPlan or {}) do vue.pinsPlan[i]:Hide() end
+    vue.nPlan = rang
+    return L0, H0, etage, n
+end
+
+local function RendrePlan(cle, d, nom)
+    local L0, H0, etage, n = PoserPlan(cle, d)
+    if not L0 then return false end
+    vue.idCarte = nil
+    vue.plan = cle
+    vue.titre:SetText((nom or cle) .. (n > 1 and ("  " .. string.format(L.PLAN_FLOOR, etage, n)) or ""))
+    -- Etages : precedent et suivant, a la place de "Voir ..." et "Revenir".
+    vue.remonter:SetShown(n > 1)
+    vue.allerA:SetShown(n > 1)
+    if n > 1 then
+        vue.remonter:SetText(L.PLAN_FLOOR_PREV)
+        vue.remonter:SetWidth((vue.remonter.GetTextWidth and vue.remonter:GetTextWidth() or 100) + 24)
+        vue.remonter:SetEnabled(etage > 1)
+        vue.allerA:SetText(L.PLAN_FLOOR_NEXT)
+        vue.allerA:SetWidth((vue.allerA.GetTextWidth and vue.allerA:GetTextWidth() or 100) + 24)
+        vue.allerA:SetEnabled(etage < n)
+        vue.allerA:SetScript("OnClick", function()
+            etagePlan[cle] = math.min(n, (etagePlan[cle] or 1) + 1)
+            zoom, decX, decY = 1, 0, 0
+            page.Rendre()
+        end)
+    end
+    vue.vide:Hide()
+    if derniereCarte ~= "plan:" .. cle then zoom, decX, decY = 1, 0, 0 derniereCarte = "plan:" .. cle end
+    vue.largeur, vue.hauteur = L0, H0
+    vue.toile:SetSize(L0, H0)
+    Disposer()
+    return true
+end
+page.EtagePrecedent = function()
+    if vue and vue.plan then
+        etagePlan[vue.plan] = math.max(1, (etagePlan[vue.plan] or 1) - 1)
+        zoom, decX, decY = 1, 0, 0
+        page.Rendre()
+        return true
+    end
+    return false
+end
+
 function page.Rendre(parent, basDroite, menuParent, menuHaut, mere)
     if mere then fenetreMere = mere end
     Restaurer()
@@ -1940,6 +2125,14 @@ function page.Rendre(parent, basDroite, menuParent, menuHaut, mere)
     pcall(RendrePortraits)
     pcall(RendreOnglets, idCarte)
     if NS.fenetre and NS.fenetre.ApresRendu then pcall(NS.fenetre.ApresRendu) end
+    -- Dans un donjon qui a un plan : le plan, a la place de la carte.
+    vue.plan = nil
+    local cleP, donneesP, nomP = PlanCourant()
+    if cleP and RendrePlan(cleP, donneesP, nomP) then return end
+    for _, pin in ipairs(vue.pinsPlan or {}) do pin:Hide() end
+    vue.nPlan = 0
+    vue.remonter:SetEnabled(true)
+    vue.allerA:SetEnabled(true)
     -- L'echelon du dessus, nomme : "Voir Dun Morogh".
     local parent = CarteParente(idCarte)
     if parent then

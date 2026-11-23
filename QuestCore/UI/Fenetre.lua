@@ -2192,8 +2192,6 @@ local function Construire()
 
     -- Carte, juste dessous.
     local ongletCarte = CreerOngletLateral(cadre, "Interface\\Icons\\INV_Misc_Map_01", function()
-        local S = NS.suite or _G.CoreSuite
-        if etat.page ~= "carte" and S and S.PlanDuDonjon and S.PlanDuDonjon() then return end
         etat.page = (etat.page == "carte") and "quetes" or "carte"
         fen.Rendre()
     end)
@@ -2270,9 +2268,6 @@ function fen.VoirQuete(id, p, sansFleche)
 end
 
 function fen.OuvrirCarte()
-    -- Dans un donjon : son plan (Donjon Journal), pas la carte du monde.
-    local S = NS.suite or _G.CoreSuite
-    if S and S.PlanDuDonjon and S.PlanDuDonjon() then return end
     if not cadre then Construire() end
     ChoisirPerso(NS.ClePersonnage() or etat.cle)
     etat.page = "carte"

@@ -99,6 +99,13 @@ _G.MapCoreAPI = {
         end
         return liste
     end,
+    -- Ouvre la carte (dans un donjon : son plan).
+    Ouvrir = function()
+        local S = _G.CoreSuite
+        if S and S.Ouvrir and S.membres and S.membres.MapCore then S.Ouvrir("MapCore")
+        elseif NS.fenetre and NS.fenetre.Ouvrir then NS.fenetre.Ouvrir() end
+        if NS.pageCarte and NS.pageCarte.Rendre then pcall(NS.pageCarte.Rendre) end
+    end,
     -- Ouvre la carte sur un point { carte, x (0-1), y (0-1), nom, icone }.
     Montrer = function(dst) if NS.pageCarte and NS.pageCarte.Localiser then NS.pageCarte.Localiser(dst) end end,
     -- La tournee de recolte, pour l'itineraire du suivi de QuestCore :

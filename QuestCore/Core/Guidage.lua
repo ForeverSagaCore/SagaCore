@@ -239,7 +239,7 @@ local function Commun(def)
     def.AideClic = function() return L.GUIDE_CLICK end
     def.Evenements = def.Evenements or { "QUEST_LOG_UPDATE", "QUEST_TURNED_IN", "ZONE_CHANGED_NEW_AREA" }
     def.Clic = function()
-        if S() and S().PlanDuDonjon and S().PlanDuDonjon() then return end
+        if S() and S().OuvrirPlanDuDonjon and S().OuvrirPlanDuDonjon() then return end
         if NS.pageCarte and NS.pageCarte.Filigrane then pcall(NS.pageCarte.Filigrane) end
     end
     def.Fin = function()

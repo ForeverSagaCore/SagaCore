@@ -8050,25 +8050,37 @@ Suite.FENETRES_FONDU = { "CraftCoreWindow", "QuestCoreFenetre", "MapCoreFenetre"
 local ALPHA_MARCHE = 0.1
 
 -- En vol : trajet de maitre de vol ou monture volante.
--- Dans un donjon, le plan du donjon (salles, boss, entree, etages) : celui
--- du Donjon Journal de Forever, quand il en a un pour ce donjon. Vrai si le
--- plan s'est ouvert ; sinon chaque carte de la suite garde son affichage.
+-- Dans un donjon : le plan du donjon (salles, boss, entree, etages), lu dans
+-- les donnees du Donjon Journal de Forever quand il en a un. Rend la cle du
+-- donjon, ses donnees de plan et son nom dans la langue du jeu, ou nil. Rien
+-- ne s'ouvre ici : c'est la carte de MapCore qui l'affiche.
 function Suite.PlanDuDonjon()
-    if type(_G.IsInInstance) ~= "function" then return false end
+    if type(_G.IsInInstance) ~= "function" then return nil end
     local okI, dedans, genre = pcall(_G.IsInInstance)
-    if not (okI and dedans) or genre == "pvp" or genre == "arena" then return false end
+    if not (okI and dedans) or genre == "pvp" or genre == "arena" then return nil end
     local FDJ = _G.ForeverDungeonJournal_NS
-    if type(FDJ) ~= "table" or type(FDJ.DUNGEON_MAPS) ~= "table" or type(FDJ.CurrentDungeon) ~= "function" then return false end
+    if type(FDJ) ~= "table" or type(FDJ.DUNGEON_MAPS) ~= "table" or type(FDJ.CurrentDungeon) ~= "function" then return nil end
     local ok, donjon = pcall(FDJ.CurrentDungeon)
-    if not ok or not donjon or not FDJ.DUNGEON_MAPS[donjon] then return false end
-    -- Le journal n'est construit qu'a sa premiere ouverture.
-    if type(FDJ.OpenDungeonMap) ~= "function" and _G.SlashCmdList and _G.SlashCmdList.FOREVERDUNGEONJOURNAL then
-        pcall(_G.SlashCmdList.FOREVERDUNGEONJOURNAL, "")
+    if not ok or not donjon or type(FDJ.DUNGEON_MAPS[donjon]) ~= "table" then return nil end
+    if FDJ.IsDungeonMapLocked then
+        local okV, ferme = pcall(FDJ.IsDungeonMapLocked, donjon)
+        if okV and ferme then return nil end
     end
-    if type(FDJ.OpenDungeonMap) ~= "function" then return false end
-    local journal = _G.ForeverDungeonJournalFrame
-    if journal and not journal:IsShown() then pcall(journal.Show, journal) end
-    return (pcall(FDJ.OpenDungeonMap, donjon))
+    local nom
+    if _G.GetInstanceInfo then
+        local okN, n = pcall(_G.GetInstanceInfo)
+        if okN then nom = n end
+    end
+    if type(nom) ~= "string" or nom == "" or (_G.issecretvalue and _G.issecretvalue(nom)) then nom = donjon end
+    return donjon, FDJ.DUNGEON_MAPS[donjon], nom
+end
+
+-- Ouvre la carte de MapCore sur le plan du donjon. Vrai si c'est fait.
+function Suite.OuvrirPlanDuDonjon()
+    if not Suite.PlanDuDonjon() then return false end
+    local api = _G.MapCoreAPI
+    if type(api) == "table" and type(api.Ouvrir) == "function" then return (pcall(api.Ouvrir)) end
+    return false
 end
 
 -- La vitesse du personnage, ou nil quand le jeu la cache (valeur secrete en
