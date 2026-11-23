@@ -23,12 +23,59 @@ if not _G.SagaCoreRoyaume then
         if r == "" or r == "?" then return nil end
         return r
     end
+    -- Toutes les fonctions du jeu qui peuvent donner le royaume, dans l'ordre.
+    local SOURCES = {
+        function() return GetRealmName() end,
+        function() return GetNormalizedRealmName() end,
+        function() local _, r = UnitFullName("player") return r end,
+        function() return select(7, GetPlayerInfoByGUID(UnitGUID("player"))) end,
+        function() return GetCVar("realmName") end,
+    }
+    -- Dernier recours, quand le jeu ne donne le royaume nulle part : un nom
+    -- fixe, pour que tout s'enregistre quand meme. Des que le vrai royaume
+    -- arrive, les donnees rangees sous ce nom passent sous le vrai.
+    local PROVISOIRE = "Forever"
+    -- Les sauvegardes presentes (sans trou : ipairs s'arreterait au premier absent).
+    local NOMS_BASES = { "QuestCoreDB", "CraftCoreDB", "MapCoreDB", "LegacyCoreDB", "TradeCoreDB",
+        "FriendsCoreDB", "AchievementCoreDB", "PvPCoreDB" }
+    local BASES = function(db)
+        local l = {}
+        for _, n in ipairs(NOMS_BASES) do if type(_G[n]) == "table" then table.insert(l, _G[n]) end end
+        if db then table.insert(l, db) end
+        return l
+    end
+    local function Renommer(t, ancien, nouveau, prof)
+        if type(t) ~= "table" or prof > 3 then return end
+        local a_renommer = {}
+        for cle, v in pairs(t) do
+            if type(cle) == "string" and cle:sub(-#ancien) == ancien then
+                local nom = cle:sub(1, -#ancien - 1)
+                if nom:match(" %- $") then table.insert(a_renommer, cle) end
+            end
+            if type(v) == "table" then Renommer(v, ancien, nouveau, prof + 1) end
+        end
+        for _, cle in ipairs(a_renommer) do
+            local neuve = cle:sub(1, -#ancien - 1) .. nouveau
+            if t[neuve] == nil then t[neuve] = t[cle] t[cle] = nil end
+        end
+    end
     function _G.SagaCoreRoyaume()
-        local ok, r = pcall(GetRealmName)
-        r = ok and Propre(r)
+        local r
+        for _, source in ipairs(SOURCES) do
+            local ok, v = pcall(source)
+            if ok and not (_G.issecretvalue and _G.issecretvalue(v)) then r = Propre(v) end
+            if r then break end
+        end
         local db = type(_G.CoreSuiteDB) == "table" and _G.CoreSuiteDB or nil
         if r then
-            if db then db.dernierRoyaume = r end
+            if db then
+                local provisoire = db.royaumeProvisoire or db.dernierRoyaume == PROVISOIRE
+                db.dernierRoyaume = r
+                if provisoire and r ~= PROVISOIRE then
+                    db.royaumeProvisoire = nil
+                    for _, base in ipairs(BASES(db)) do pcall(Renommer, base, PROVISOIRE, r, 1) end
+                end
+            end
             return r
         end
         if db and Propre(db.dernierRoyaume) then return db.dernierRoyaume end
@@ -36,7 +83,7 @@ if not _G.SagaCoreRoyaume then
         if not okn or type(nom) ~= "string" or nom == "" then return "" end
         local motif = "^" .. (nom:gsub("(%W)", "%%%1")) .. " %- (.+)$"
         local trouve, double = nil, false
-        for _, base in ipairs({ _G.QuestCoreDB, _G.CraftCoreDB, _G.MapCoreDB, _G.LegacyCoreDB, _G.TradeCoreDB, db }) do
+        for _, base in ipairs(BASES(db)) do
             if type(base) == "table" then
                 for _, t in pairs(base) do
                     if type(t) == "table" then
@@ -55,11 +102,12 @@ if not _G.SagaCoreRoyaume then
             if db then db.dernierRoyaume = trouve end
             return trouve
         end
-        return ""
+        if db then db.royaumeProvisoire = true end
+        return PROVISOIRE
     end
 end
 
-local VERSION = 136
+local VERSION = 137
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
