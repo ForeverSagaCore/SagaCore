@@ -341,9 +341,10 @@ local function ZonesDonjon()
         if fn then ok, t = pcall(fn) end
         brut = ok and t or nil
     end
+    -- Chaque zone (et ses sous-zones) pointe vers la zone du donjon.
     for zone, d in pairs(type(brut) == "table" and brut or {}) do
-        zonesDonjon[zone] = true
-        for _, autre in ipairs(type(d) == "table" and type(d[2]) == "table" and d[2] or {}) do zonesDonjon[autre] = true end
+        zonesDonjon[zone] = zone
+        for _, autre in ipairs(type(d) == "table" and type(d[2]) == "table" and d[2] or {}) do zonesDonjon[autre] = zone end
     end
     return zonesDonjon
 end
@@ -611,7 +612,12 @@ function sources.Candidats(code, fiche, marge)
     -- La base : butins du monde, quetes, donjons.
     for _, e in ipairs(index[code] or {}) do
         if e.monde then Garder("monde", e.id, { monde = e.monde }) end
-        if e.donjon then Garder("donjons", e.id, { donjon = e.donjon }) end
+        if e.donjon then
+            -- Range sous son donjon ou son raid.
+            local principale = ZonesDonjon()[e.donjon.zone] or e.donjon.zone
+            Garder("donjons", e.id, { donjon = e.donjon, groupe = "d" .. tostring(principale),
+                groupeNom = NomDeZone(principale) or NomDeZone(e.donjon.zone) or "?" })
+        end
         if e.quetes then
             for _, q in ipairs(e.quetes) do
                 if QueteFaisable(q, niveauMax) then Garder("quetes", e.id, { quete = q }) break end
