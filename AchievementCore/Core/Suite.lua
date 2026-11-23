@@ -2917,7 +2917,12 @@ local function CadreObjectifs()
         local hub = _G.FriendsCoreAPI
         if not cible then
             -- Rien a viser pour l'instant (autre continent, aucun lieu
-            -- connu...) : le guidage reste, la boussole dit ou aller.
+            -- connu...) : le guidage reste, la boussole dit ou aller ; l'add-on
+            -- de trajet n'a plus rien a suivre (une seule fleche a l'ecran).
+            if Suite.guide.envoye and hub and hub.Effacer then
+                Suite.guide.envoye = nil
+                pcall(hub.Effacer)
+            end
             for _, e in ipairs({ self.boussole, self.fondBoussole, self.icone, self.distance, self.temps, self.qui }) do e:Show() end
             self:EnableMouse(true)
             self.etape:Hide() self.compte:Hide()

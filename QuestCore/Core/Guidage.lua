@@ -339,6 +339,18 @@ TYPES.parcours = Commun({
 
 if S() and S().DeclarerObjectifs then S().DeclarerObjectifs("QuestCore", TYPES) end
 
+-- Une fois les sauvegardes chargees : l'ancien etat du guidage, commun au
+-- compte, n'a plus cours (l'objectif est garde par personnage par la suite).
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_LOGIN")
+    f:SetScript("OnEvent", function(_, evenement)
+        if evenement ~= "PLAYER_LOGIN" then return end
+        local ok, g = pcall(NS.base.ReglagesGeneraux)
+        if ok and type(g) == "table" then g.guidage = nil g.ajustementAuto = nil end
+    end)
+end
+
 -- ---------------------------------------------------------------------------
 -- Pour les boutons de QuestCore et les autres add-ons
 -- ---------------------------------------------------------------------------

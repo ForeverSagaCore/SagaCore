@@ -694,7 +694,7 @@ L.PAD_LINE_9_WHAT = "Previous / next add-on of the suite"
 L.GUIDE_GOALS = "Guide"
 L.GUIDE_GOALS_STOP = "Stop"
 L.GUIDE_GOALS_TITLE = "To what is missing"
-L.GUIDE_GOALS_HELP = "The arrow at the top of the screen leads to the nearest known gathering spot of a material your goals still need, then the next one."
+L.GUIDE_GOALS_HELP = "The arrow at the top of the screen leads to the known gathering spots of what is missing here, only what this character can gather : first in the zone, then on the continent, one spot after another."
 L.OPEN_SETTINGS = "CraftCore settings"
 
 -- Monter un metier : la page guidee.

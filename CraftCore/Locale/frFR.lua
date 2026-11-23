@@ -693,7 +693,7 @@ L.PAD_LINE_9_WHAT = "Add-on précédent / suivant de la suite"
 L.GUIDE_GOALS = "Guider"
 L.GUIDE_GOALS_STOP = "Arrêter"
 L.GUIDE_GOALS_TITLE = "Vers ce qui manque"
-L.GUIDE_GOALS_HELP = "La flèche en haut de l'écran mène au lieu de récolte connu le plus proche d'une matière qui manque à vos objectifs, puis au suivant."
+L.GUIDE_GOALS_HELP = "La flèche en haut de l'écran mène aux lieux de récolte connus de ce qui manque ici, seulement ce que ce personnage sait récolter : d'abord dans la zone, puis sur le continent, un lieu après l'autre."
 L.OPEN_SETTINGS = "Réglages de CraftCore"
 
 -- Monter un metier : la page guidee.
