@@ -73,9 +73,6 @@ function fen.Rendre()
 end
 
 function fen.Ouvrir()
-    -- Dans un donjon : son plan (Donjon Journal), pas la carte du monde.
-    local S = _G.CoreSuite
-    if S and S.PlanDuDonjon and S.PlanDuDonjon() then return end
     if not cadre then Construire() end
     if not cadre:IsShown() then cadre:Show() end
 end
