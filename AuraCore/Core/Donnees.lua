@@ -532,6 +532,66 @@ local function Construire()
     return b
 end
 
+-- ---------------------------------------------------------------------------
+-- Poste de l'auteur seulement : juste a droite du cor, une pastille identique
+-- qui presente la suite au groupe (un message, sur un clic).
+-- ---------------------------------------------------------------------------
+
+local PUB = "Hello la team ! Je bidouille des add-ons à mes heures : Forever SagaCore, dispo sur CurseForge. Quêtes, cartes, métiers, stuff, il fait copain-copain avec Questie, Forever Dungeon Journal et Shortest Path Forever. Testez, et balancez-moi vos retours :)"
+local pub
+local dernierePub = 0
+local function Prive()
+    local S = _G.CoreSuite
+    return S and S.Prive and S.Prive() or false
+end
+function M.EnvoyerPub()
+    local canal = Canal()
+    if not canal then NS.Dire(T("Vous n'êtes pas en groupe.", "You are not in a group.")) return end
+    local maintenant = (_G.GetTime and _G.GetTime()) or 0
+    if maintenant - dernierePub < 60 then
+        NS.Dire(T("Déjà annoncé il y a moins d'une minute.", "Already announced less than a minute ago."))
+        return
+    end
+    dernierePub = maintenant
+    local envoyer = (_G.C_ChatInfo and _G.C_ChatInfo.SendChatMessage) or _G.SendChatMessage
+    local ok, err = pcall(envoyer, PUB, canal)
+    if not ok then NS.Dire(T("Envoi refusé par le jeu (", "Sending refused by the game (") .. tostring(canal) .. ") : " .. tostring(err)) end
+end
+local function ConstruirePub()
+    if pub then return pub end
+    local b = CreateFrame("Button", "AuraCoreBoutonPub", UIParent)
+    b:SetFrameStrata("MEDIUM")
+    b:RegisterForClicks("LeftButtonUp")
+    b.p = NS.anneau.Pastille(b)
+    b.p:SetPoint("CENTER")
+    b.p:EnableMouse(false)
+    b.p:Show()
+    b.p.icone:SetTexture("Interface\\Icons\\INV_Letter_15")
+    b:SetScript("OnClick", function(self) if self.actif then M.EnvoyerPub() end end)
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
+        GameTooltip:SetText(T("Présenter Forever SagaCore au groupe", "Introduce Forever SagaCore to the group"), 1, 0.82, 0)
+        GameTooltip:AddLine(PUB, 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    pub = b
+    return b
+end
+local function MettreAJourPub(b, t)
+    if not Prive() or R().boutonBuffsCache then if pub then pub:Hide() end return end
+    local p = ConstruirePub()
+    -- Collee a droite du cor, de la meme taille : elle le suit quand on le deplace.
+    p:ClearAllPoints()
+    p:SetPoint("LEFT", b, "RIGHT", 4, 0)
+    if p.taille ~= t then p.taille = t p:SetSize(t, t) p.p:Taille(t) end
+    local actif = Canal() ~= nil
+    p.actif = actif
+    NS.anneau.Cercler(p.p, actif and "actif" or "absent")
+    NS.anneau.Opacite(p.p, not actif)
+    p:Show()
+end
+
 function M.ReplacerBouton()
     R().boutonBuffs = nil
     if bouton then Placer(bouton) end
@@ -541,7 +601,7 @@ end
 -- inactif) hors groupe, en combat ou quand rien ne manque ; illumine sinon.
 function M.MettreAJour()
     local b = Construire()
-    if R().boutonBuffsCache then b:Hide() return end
+    if R().boutonBuffsCache then b:Hide() if pub then pub:Hide() end return end
     b:Show()
     -- La taille des icones de l'anneau.
     local t = tonumber(R().taille) or 30
@@ -551,6 +611,7 @@ function M.MettreAJour()
         b.p:Taille(t)
         b.lueur:SetSize(t * 0.95, t * 0.95)
     end
+    pcall(MettreAJourPub, b, t)
     local manque = Canal() ~= nil and (not EnCombat()) and #M.Analyser() > 0
     b.actif = manque
     -- Comme une place de l'anneau : grise quand rien ne manque, en couleur
