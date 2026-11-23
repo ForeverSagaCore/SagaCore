@@ -1924,6 +1924,15 @@ local ICONES_PLAN = {
     passage = "Interface\\Icons\\Spell_Arcane_PortalUndercity",
     joueur = "Interface\\WorldMap\\WorldMapArrow",
 }
+-- Un repere du plan qu'on range : son portrait retourne au journal.
+local function RangerPinPlan(b)
+    if b.portrait then
+        local FDJ = _G.ForeverDungeonJournal_NS
+        if type(FDJ) == "table" and FDJ.ReleasePortrait then pcall(FDJ.ReleasePortrait, b.icone) end
+        b.portrait = nil
+    end
+    b:Hide()
+end
 local function PinPlan(rang)
     vue.pinsPlan = vue.pinsPlan or {}
     local b = vue.pinsPlan[rang]
@@ -1931,12 +1940,25 @@ local function PinPlan(rang)
     b = CreateFrame("Frame", nil, vue.toile)
     b:SetSize(20, 20)
     b:SetFrameLevel((vue.toile:GetFrameLevel() or 1) + 5)
-    b.icone = b:CreateTexture(nil, "OVERLAY")
+    b.icone = b:CreateTexture(nil, "ARTWORK")
     b.icone:SetAllPoints()
-    b.nom = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    b.nom:SetPoint("TOP", b, "BOTTOM", 0, -1)
+    -- Portrait de boss : rond, dans l'anneau d'or du jeu.
+    b.anneau = b:CreateTexture(nil, "OVERLAY")
+    b.anneau:SetPoint("TOPLEFT", -5, 5)
+    b.anneau:SetPoint("BOTTOMRIGHT", 5, -5)
+    b.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    b.anneau:SetTexCoord(0, 0.6, 0, 0.6)
+    b.anneau:Hide()
+    -- Le nom, lisible sur n'importe quel plan : sur un bandeau sombre.
+    b.nom = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    b.nom:SetPoint("TOP", b, "BOTTOM", 0, -3)
     b.nom:SetWordWrap(false)
     b.nom:SetShadowOffset(1, -1)
+    b.nom:SetShadowColor(0, 0, 0, 1)
+    b.fondNom = b:CreateTexture(nil, "BORDER")
+    b.fondNom:SetColorTexture(0, 0, 0, 0.72)
+    b.fondNom:SetPoint("TOPLEFT", b.nom, "TOPLEFT", -3, 2)
+    b.fondNom:SetPoint("BOTTOMRIGHT", b.nom, "BOTTOMRIGHT", 3, -2)
     vue.pinsPlan[rang] = b
     return b
 end
@@ -2002,20 +2024,59 @@ local function PoserPlan(cle, d)
     end
     -- Reperes : boss, entree, PNJ de quetes, passages vers un autre etage.
     local rang = 0
-    local function Poser(genre, x, y, nom)
+    local FDJ = _G.ForeverDungeonJournal_NS
+    -- La fiche du boss dans le journal (son portrait), sinon son PNJ.
+    local function FicheBoss(mb)
+        local dj = type(FDJ) == "table" and type(FDJ.DB) == "table" and FDJ.DB[cle]
+        for _, c in ipairs(type(dj) == "table" and type(dj.bosses) == "table" and dj.bosses or {}) do
+            if c.name == mb.name then return c end
+        end
+        if mb.npcID then return { name = mb.name, npcID = mb.npcID } end
+        return nil
+    end
+    local function Poser(genre, x, y, nom, fiche)
         if not (tonumber(x) and tonumber(y)) then return end
         rang = rang + 1
         local b = PinPlan(rang)
+        -- Un portrait pris au journal se rend avant de reservir le repere.
+        if b.portrait and type(FDJ) == "table" and FDJ.ReleasePortrait then pcall(FDJ.ReleasePortrait, b.icone) end
+        b.portrait = nil
+        if b.icone.SetMask then pcall(b.icone.SetMask, b.icone, "") end
         b.icone:SetTexture(ICONES_PLAN[genre])
         b.icone:SetTexCoord(0, 1, 0, 1)
-        b:SetSize(genre == "boss" and 22 or 18, genre == "boss" and 22 or 18)
+        b.anneau:Hide()
+        local taille = 18
+        if genre == "boss" then
+            taille = 26
+            -- Le vrai portrait du boss, rendu par le Donjon Journal (une simple
+            -- texture : le journal ne s'ouvre pas) ; la tete de mort sinon.
+            if fiche and type(FDJ) == "table" and type(FDJ.SetBossPortrait) == "function" then
+                local ok, oui = pcall(FDJ.SetBossPortrait, b.icone, cle, fiche)
+                if ok and oui then
+                    b.portrait = true
+                    if b.icone.SetMask then pcall(b.icone.SetMask, b.icone, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+                    b.anneau:Show()
+                else
+                    b.icone:SetTexture(ICONES_PLAN.boss)
+                    b.icone:SetTexCoord(0, 1, 0, 1)
+                end
+            end
+            if type(FDJ) == "table" and FDJ.LocalizeBossName then
+                local okN, n = pcall(FDJ.LocalizeBossName, nom)
+                if okN and type(n) == "string" and n ~= "" then nom = n end
+            end
+        end
+        b:SetSize(taille, taille)
         b.nom:SetText(nom or "")
+        -- Boss en or, le reste en blanc ; bandeau seulement s'il y a un nom.
+        if genre == "boss" then b.nom:SetTextColor(1, 0.82, 0) else b.nom:SetTextColor(1, 1, 1) end
+        b.fondNom:SetShown((nom or "") ~= "")
         b.ax, b.ay = x, y
         b:Show()
     end
     local surEtage = function(e) return (tonumber(e.floor) or 1) == etage end
     for _, b in ipairs(type(d.bosses) == "table" and d.bosses or {}) do
-        if surEtage(b) then Poser("boss", b.x, b.y, b.name) end
+        if surEtage(b) then Poser("boss", b.x, b.y, b.name, FicheBoss(b)) end
     end
     if type(d.entrance) == "table" and surEtage(d.entrance) then Poser("entree", d.entrance.x, d.entrance.y, L.PLAN_ENTRANCE) end
     for _, q in ipairs(type(d.turnins) == "table" and d.turnins or {}) do
@@ -2037,7 +2098,7 @@ local function PoserPlan(cle, d)
             if cap and b.icone.SetRotation then pcall(b.icone.SetRotation, b.icone, cap) end
         end
     end
-    for i = rang + 1, #(vue.pinsPlan or {}) do vue.pinsPlan[i]:Hide() end
+    for i = rang + 1, #(vue.pinsPlan or {}) do RangerPinPlan(vue.pinsPlan[i]) end
     vue.nPlan = rang
     return L0, H0, etage, n
 end
@@ -2168,7 +2229,7 @@ function page.Rendre(parent, basDroite, menuParent, menuHaut, mere)
     vue.plan = nil
     local cleP, donneesP, nomP = PlanCourant()
     if cleP and RendrePlan(cleP, donneesP, nomP) then return end
-    for _, pin in ipairs(vue.pinsPlan or {}) do pin:Hide() end
+    for _, pin in ipairs(vue.pinsPlan or {}) do RangerPinPlan(pin) end
     vue.nPlan = 0
     vue.outil:Hide()
     vue.outilChanger:Hide()

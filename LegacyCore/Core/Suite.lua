@@ -2899,11 +2899,9 @@ function Suite.Entete(cadre, cleCourante)
         end)
         b.courante = cleCourante
         b:ClearAllPoints()
-        -- Les blocs experimentaux (TradeCore...) un peu plus bas, a part.
-        if precedent and info.discret and not rangee.separe then
-            rangee.separe = true
-            b:SetPoint("TOPRIGHT", precedent, "BOTTOMRIGHT", 0, -Suite.ECART_ENTRE_ONGLETS - 26)
-        elseif precedent then b:SetPoint("TOPRIGHT", precedent, "BOTTOMRIGHT", 0, -Suite.ECART_ENTRE_ONGLETS)
+        -- Toutes les icones a la suite, sans espace entre les blocs : la
+        -- colonne tient dans la fenetre et la manette les voit toutes.
+        if precedent then b:SetPoint("TOPRIGHT", precedent, "BOTTOMRIGHT", 0, -Suite.ECART_ENTRE_ONGLETS)
         else
             local a, point = Suite.AncreHaut(cadre, "gauche")
             b:SetPoint("TOPRIGHT", a, point, 0, Suite.HAUT_ONGLET)
@@ -2935,9 +2933,6 @@ function Suite.Entete(cadre, cleCourante)
                     -- Seul (AuraCore sans la suite) : en tete de colonne.
                     local a, point = Suite.AncreHaut(cadre, "gauche")
                     b:SetPoint("TOPRIGHT", a, point, 0, Suite.HAUT_ONGLET)
-                elseif not rangee.separe then
-                    rangee.separe = true
-                    b:SetPoint("TOPRIGHT", precedent, "BOTTOMRIGHT", 0, -Suite.ECART_ENTRE_ONGLETS - 26)
                 else
                     b:SetPoint("TOPRIGHT", precedent, "BOTTOMRIGHT", 0, -Suite.ECART_ENTRE_ONGLETS)
                 end
@@ -2977,6 +2972,11 @@ function Suite.Entete(cadre, cleCourante)
         else b:SetPoint("BOTTOMRIGHT", cadre, "BOTTOMLEFT", 0, 46) end
         table.insert(rangee.factions, b)
         dessous = b
+    end
+    -- R3 tout en bas, sous la Horde : il ne prend plus la place d'une icone.
+    if rangee.factions[1] then
+        rangee.r3:ClearAllPoints()
+        rangee.r3:SetPoint("TOP", rangee.factions[1], "BOTTOM", 0, -6)
     end
     rangee.cadre = cadre
     pcall(Suite.LogoDuMenu, cadre)
