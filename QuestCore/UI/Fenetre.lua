@@ -2202,7 +2202,12 @@ local function Construire()
     ongletCarte:SetPoint("TOPLEFT", onglet, "BOTTOMLEFT", 0, -((NS.suite and NS.suite.ECART_ENTRE_ONGLETS) or 14))
     cadre.ongletCarte = ongletCarte
 
-    cadre:SetScript("OnShow", function() fen.Rendre() end)
+    cadre:SetScript("OnShow", function()
+        -- La carte etait en filigrane (clic sur la fleche) : elle revient dans
+        -- la fenetre, avec la molette et le glisser.
+        if NS.pageCarte and NS.pageCarte.EnFiligrane and NS.pageCarte.EnFiligrane() then pcall(NS.pageCarte.Filigrane, false) end
+        fen.Rendre()
+    end)
     -- Les add-ons de la suite, en haut a droite : on bascule de l'un a l'autre.
     if NS.suite then pcall(NS.suite.Entete, cadre, "QuestCore", cadre.entete) end
 end
@@ -2244,6 +2249,17 @@ end
 -- se prend, son point d'exclamation qui clignote (clic : guidage).
 function fen.VoirQuete(id, p, sansFleche)
     local lieu = NS.donjons.LieuDuDonneur(id)
+    -- Donneur a l'interieur d'un donjon (sa carte ne s'affiche pas) : on
+    -- montre l'entree du donjon, sur la carte de sa zone.
+    local info = lieu and NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), lieu.carte)
+    local dedans = not lieu or (type(info) == "table" and (info.mapType or 0) >= 4)
+    local d = dedans and NS.donjons.DeQuete and NS.donjons.DeQuete(id)
+    local e = d and d.entrees and d.entrees[1]
+    if e and NS.pageCarte and NS.pageCarte.MontrerEntree then
+        NS.pageCarte.MontrerEntree(e.carte, e.x, e.y, d.nom)
+        fen.OuvrirCarte()
+        return
+    end
     if not lieu then return end
     -- Voir sur la carte ne fait que montrer : jamais de guidage en plus (le
     -- guidage, c'est le bouton Guider).
@@ -2258,6 +2274,7 @@ function fen.OuvrirCarte()
     if not cadre then Construire() end
     ChoisirPerso(NS.ClePersonnage() or etat.cle)
     etat.page = "carte"
+    if NS.pageCarte and NS.pageCarte.EnFiligrane and NS.pageCarte.EnFiligrane() then pcall(NS.pageCarte.Filigrane, false) end
     if cadre:IsShown() then fen.Rendre() else cadre:Show() end
 end
 

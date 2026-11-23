@@ -68,7 +68,26 @@ function page.EnModeTrajet() return modeTrajet and TrajetCourant() ~= nil end
 -- Entree d'un donjon a montrer (page Donjons) : la carte de sa zone, un
 -- repere a l'entree.
 local entree
+-- Une entree posee sur la carte d'une ville ou d'un sous-sol (Fossoyeuse...)
+-- se montre la ou elle est dans le monde : sur la carte de la zone qui la
+-- contient, tant que cette zone l'englobe.
+local function SurLaZone(idCarte, x, y)
+    local info, rect = Lecture("C_Map.GetMapInfo"), Lecture("C_Map.GetMapRectOnMap")
+    if not (info and rect) then return idCarte, x, y end
+    for _ = 1, 3 do
+        local i = NS.Appeler(info, idCarte)
+        local parent = type(i) == "table" and i.parentMapID
+        local p = parent and NS.Appeler(info, parent)
+        if type(p) ~= "table" or p.mapType ~= 3 then break end
+        local g, d, h, b = NS.Appeler(rect, idCarte, parent)
+        if not (g and d and h and b) or d - g <= 0 or b - h <= 0 then break end
+        idCarte, x, y = parent, g + x * (d - g), h + y * (b - h)
+    end
+    return idCarte, x, y
+end
+page.SurLaZone = SurLaZone
 function page.MontrerEntree(idCarte, x, y, nom)
+    idCarte, x, y = SurLaZone(idCarte, x, y)
     modeTrajet = false
     quetePointee = nil
     queteSeule = nil
@@ -91,7 +110,7 @@ function page.MontrerQuete(id, idCarte, x, y, nomQuete, nomDonneur, sansFleche, 
     if NS.carte and NS.carte.EstInstance and NS.carte.EstInstance(idCarte) then
         local e = NS.carte.EntreeDInstance(idCarte)
         if not e then return end
-        idCarte, x, y = e.carte, e.x, e.y
+        idCarte, x, y = SurLaZone(e.carte, e.x, e.y)
     end
     modeTrajet = false
     entree = nil
