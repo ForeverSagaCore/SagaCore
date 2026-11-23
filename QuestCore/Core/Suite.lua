@@ -3938,7 +3938,8 @@ local function PositionMonde(carte, x, y)
     local ok, continent, p = pcall(f, carte, V(x, y))
     if ok and p and p.GetXY then
         local a, b = p:GetXY()
-        if a then return a, b, continent end
+        local secret = _G.issecretvalue
+        if a and not (secret and (secret(a) or secret(b) or secret(continent))) then return a, b, continent end
     end
     return nil
 end
@@ -3954,12 +3955,13 @@ end
 function Lieux.Ici()
     local f, g = Lire("C_Map.GetBestMapForUnit"), Lire("C_Map.GetPlayerMapPosition")
     if not (f and g) then return nil end
+    local secret = _G.issecretvalue
     local okC, carte = pcall(f, "player")
-    if not okC or not carte then return nil end
+    if not okC or not carte or (secret and secret(carte)) then return nil end
     local okP, pos = pcall(g, carte, "player")
     if not (okP and type(pos) == "table" and pos.GetXY) then return nil end
-    local x, y = pos:GetXY()
-    if not x then return nil end
+    local okX, x, y = pcall(pos.GetXY, pos)
+    if not okX or not x or (secret and (secret(x) or secret(y))) then return nil end
     local wx, wy, continent = Lieux.Monde(carte, x, y)
     return { carte = carte, x = x, y = y, zone = Lieux.ZoneDe(carte), continent = continent, wx = wx, wy = wy }
 end
@@ -4204,11 +4206,8 @@ local function CadreObjectifs()
         self.changer:SetShown(Suite.PeutChangerDeGuide and Suite.PeutChangerDeGuide() or false)
         -- En marche, le bouton s'efface presque (10 %) : on sait qu'il est
         -- la ; a l'arret, il revient et se clique.
-        local enMarche = false
-        if _G.GetUnitSpeed then
-            local okM, vM = pcall(_G.GetUnitSpeed, "player")
-            enMarche = okM and (vM or 0) > 0
-        end
+        local vM = Suite.VitesseJoueur()
+        local enMarche = vM ~= nil and vM > 0
         local vise = enMarche and 0.1 or 1
         local a = self.changer:GetAlpha() or 1
         if a ~= vise then
@@ -4335,11 +4334,7 @@ local function CadreObjectifs()
         if not externe then self.distance:SetText(string.format("%d m", math.floor(yards * 0.9144 + 0.5))) end
         -- Duree estimee : a la vitesse actuelle (monture comprise), sinon a
         -- la vitesse de course a pied (7 yards par seconde).
-        local vitesse = 0
-        if _G.GetUnitSpeed then
-            local okV, v = pcall(_G.GetUnitSpeed, "player")
-            if okV and type(v) == "number" then vitesse = v end
-        end
+        local vitesse = Suite.VitesseJoueur() or 0
         if vitesse < 1 then vitesse = 7 end
         local sec = math.floor(yards / vitesse + 0.5)
         if sec >= 60 then
@@ -9383,6 +9378,16 @@ Suite.FENETRES_FONDU = { "CraftCoreWindow", "QuestCoreFenetre", "MapCoreFenetre"
 local ALPHA_MARCHE = 0.1
 
 -- En vol : trajet de maitre de vol ou monture volante.
+-- La vitesse du personnage, ou nil quand le jeu la cache (valeur secrete en
+-- champ de bataille ou en combat : on ne la compare jamais).
+function Suite.VitesseJoueur()
+    if not _G.GetUnitSpeed then return nil end
+    local ok, v = pcall(_G.GetUnitSpeed, "player")
+    if not ok or v == nil then return nil end
+    if _G.issecretvalue and _G.issecretvalue(v) then return nil end
+    return tonumber(v)
+end
+
 function Suite.EnVol()
     if _G.UnitOnTaxi then local ok, oui = pcall(_G.UnitOnTaxi, "player") if ok and oui then return true end end
     if _G.IsFlying then local ok, oui = pcall(_G.IsFlying) if ok and oui then return true end end

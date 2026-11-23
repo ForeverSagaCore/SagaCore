@@ -47,13 +47,33 @@ local function Presente(m)
     return false
 end
 
-local function Basculer(cible)
+-- Les add-ons dont un add-on a besoin pour se charger (RequiredDeps).
+local function Requis(nom)
+    local f = F("GetAddOnDependencies")
+    local r = {}
+    if f then
+        local ok, liste = pcall(function() return { f(nom) } end)
+        for _, d in ipairs(ok and liste or {}) do r[d] = true end
+    end
+    return r
+end
+
+-- seul : en Live, un seul add-on (et ce dont il a besoin), comme un joueur
+-- qui n'aurait installe que celui-la.
+local function Basculer(cible, seul)
     local activer, couper = F("EnableAddOn"), F("DisableAddOn")
     if not (activer and couper) then return end
+    local gardes
+    if seul then
+        gardes = Requis(seul .. "Live")
+        gardes[seul .. "Live"] = true
+    end
     for _, n in ipairs(ADDONS) do
         for _, m in ipairs(MODES) do
-            if Existe(n .. m.suffixe) then
-                if m.cle == cible then pcall(activer, n .. m.suffixe) else pcall(couper, n .. m.suffixe) end
+            local nom = n .. m.suffixe
+            if Existe(nom) then
+                local oui = m.cle == cible and (not gardes or gardes[nom])
+                if oui then pcall(activer, nom) else pcall(couper, nom) end
             end
         end
     end
@@ -69,7 +89,7 @@ local fenetre
 local function Fenetre()
     if fenetre then return fenetre end
     local f = CreateFrame("Frame", "SagaCoreBascule", UIParent, "BasicFrameTemplateWithInset")
-    f:SetSize(240, 162)
+    f:SetSize(240, 236)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetMovable(true)
@@ -91,6 +111,48 @@ local function Fenetre()
         b.mode = m
         f.boutons[i] = b
     end
+    -- Live, un add-on seul : le nom entre deux fleches, puis Lancer.
+    local filet = f:CreateTexture(nil, "ARTWORK")
+    filet:SetColorTexture(1, 0.82, 0, 0.35)
+    filet:SetSize(200, 1)
+    filet:SetPoint("TOP", f, "TOP", 0, -144)
+    local legende = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    legende:SetPoint("TOP", filet, "BOTTOM", 0, -6)
+    legende:SetText("|cff33ccffLive|r, un add-on seul")
+    local nom = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    nom:SetPoint("TOP", legende, "BOTTOM", 0, -10)
+    nom:SetWidth(130)
+    nom:SetWordWrap(false)
+    f.nomSeul = nom
+    local function Fleche(sens)
+        local b = CreateFrame("Button", nil, f)
+        b:SetSize(24, 24)
+        local base = sens < 0 and "Interface\\Buttons\\UI-SpellbookIcon-PrevPage-" or "Interface\\Buttons\\UI-SpellbookIcon-NextPage-"
+        b:SetNormalTexture(base .. "Up")
+        b:SetPushedTexture(base .. "Down")
+        b:SetDisabledTexture(base .. "Disabled")
+        b:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+        b:SetPoint(sens < 0 and "RIGHT" or "LEFT", nom, sens < 0 and "LEFT" or "RIGHT", sens < 0 and -4 or 4, 0)
+        b:SetScript("OnClick", function()
+            local liste = f.liveDispos or {}
+            if #liste == 0 then return end
+            f.choixSeul = ((f.choixSeul or 1) - 1 + sens) % #liste + 1
+            nom:SetText(liste[f.choixSeul])
+        end)
+        return b
+    end
+    Fleche(-1)
+    Fleche(1)
+    local lancer = CreateFrame("Button", "SagaCoreBasculeSeul", f, "UIPanelButtonTemplate")
+    lancer:SetSize(200, 26)
+    lancer:SetPoint("TOP", nom, "BOTTOM", 0, -10)
+    lancer:SetText("Lancer cet add-on seul")
+    lancer:SetScript("OnClick", function()
+        local liste = f.liveDispos or {}
+        local choisi = liste[f.choixSeul or 1]
+        if choisi then Basculer("live", choisi) end
+    end)
+    f.lancerSeul = lancer
     f:Hide()
     fenetre = f
     return f
@@ -108,6 +170,14 @@ local function Rafraichir()
         b:SetText(texte)
         b:SetEnabled(present and actif ~= m.cle)
     end
+    -- Les add-ons Live installes, pour le choix d'un add-on seul.
+    f.liveDispos = {}
+    for _, n in ipairs(ADDONS) do
+        if Existe(n .. "Live") then table.insert(f.liveDispos, n) end
+    end
+    if not f.choixSeul or f.choixSeul > #f.liveDispos then f.choixSeul = 1 end
+    f.nomSeul:SetText(f.liveDispos[f.choixSeul] or "aucun")
+    f.lancerSeul:SetEnabled(#f.liveDispos > 0)
 end
 local function Ouvrir()
     local f = Fenetre()
