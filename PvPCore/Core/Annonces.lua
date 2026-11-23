@@ -1,6 +1,6 @@
 local _, NS = ...
 
--- Les annonces du champ de bataille : "Inc Ferme 3", "Ferme : dégagé"...
+-- Les annonces du champ de bataille : "Inc Ferme 3", "Ferme : degage"...
 -- Rien ne part jamais tout seul : chaque annonce suit un clic ou une touche
 -- du joueur (carte, raccourci, macro). Le canal est celui du champ de
 -- bataille (instance, sinon raid), comme Capping sur les clients classiques.
@@ -91,7 +91,7 @@ function A.Texte(lieu, variante)
     if not v or type(lieu) ~= "string" then return nil end
     return string.format(T(v.fr, v.en), lieu)
 end
--- Libelle d'une variante dans une liste ("Inc 3", "Dégagé"...).
+-- Libelle d'une variante dans une liste ("Inc 3", "Degage"...).
 function A.LibelleVariante(cle)
     local libelles = { inc1 = "Inc 1", inc2 = "Inc 2", inc3 = "Inc 3", inc5 = "Inc 5+",
         degage = T("Dégagé", "Clear"), aide = T("Besoin d'aide", "Need help"), porteur = T("Porteur ennemi ici", "Enemy carrier here") }
@@ -119,17 +119,17 @@ A.ARATHI = {
 -- Les appels sans lieu, par champ de bataille.
 A.APPELS = {
     goulet = {
-        { cle = "aideporteur", fr = "Notre porteur a besoin d'aide", en = "Our carrier needs help" },
-        { cle = "drapeausol", fr = "Notre drapeau est au sol", en = "Our flag is on the ground" },
-        { cle = "defbase", fr = "Défendez la base", en = "Defend the base" },
+        { cle = "aideporteur", fr = "Notre porteur a besoin d'aide", en = "Our carrier needs help", nfr = "Aide porteur", nen = "Help carrier" },
+        { cle = "drapeausol", fr = "Notre drapeau est au sol", en = "Our flag is on the ground", nfr = "Drapeau au sol", nen = "Flag down" },
+        { cle = "defbase", fr = "Défendez la base", en = "Defend the base", nfr = "Défense base", nen = "Defend base" },
     },
     arathi = {
-        { cle = "gardez", fr = "Restez défendre vos bases", en = "Stay and defend your bases" },
-        { cle = "poursuite", fr = "Ne poursuivez pas, revenez", en = "Do not chase, come back" },
+        { cle = "gardez", fr = "Restez défendre vos bases", en = "Stay and defend your bases", nfr = "Gardez bases", nen = "Hold bases" },
+        { cle = "poursuite", fr = "Ne poursuivez pas, revenez", en = "Do not chase, come back", nfr = "Revenez", nen = "Come back" },
     },
     alterac = {
-        { cle = "general", fr = "Tous sur le général", en = "Everyone on the general" },
-        { cle = "deftours", fr = "Défendez nos tours", en = "Defend our towers" },
+        { cle = "general", fr = "Tous sur le général", en = "Everyone on the general", nfr = "Sur le général", nen = "On general" },
+        { cle = "deftours", fr = "Défendez nos tours", en = "Defend our towers", nfr = "Défense tours", nen = "Defend towers" },
     },
 }
 
@@ -267,6 +267,25 @@ local function Couper(texte, maxi)
 end
 A.Couper = Couper
 
+-- Un nom de lieu raccourci pour le nom d'une macro (16 octets au plus) :
+-- sans articles, les mots de genre abreges ("Cimetiere de Glace-sang" :
+-- "Cim Glace-sang"). Le texte envoye garde le nom entier.
+local ABREGES = {
+    ["cimetière"] = "Cim", ["fortin"] = "Fort", ["capitaine"] = "Cap", ["poste"] = "Poste",
+    graveyard = "GY", bunker = "Bunk", tower = "Tow", captain = "Capt",
+}
+local ARTICLES = { de = true, des = true, du = true, la = true, le = true, les = true, ["l'"] = true, ["d'"] = true, the = true, of = true }
+function A.Abreger(nom)
+    local mots = {}
+    for mot in nom:gmatch("%S+") do
+        local bas = mot:lower()
+        local avant, reste = mot:match("^([lLdD]')(.+)$")
+        if avant then table.insert(mots, ABREGES[reste:lower()] or reste)
+        elseif not ARTICLES[bas] then table.insert(mots, ABREGES[bas] or mot) end
+    end
+    return table.concat(mots, " ")
+end
+
 -- Le catalogue d'un champ de bataille : { cle, nom, texte, corps, icone, libelle }.
 function A.Catalogue(quel, variantes)
     variantes = variantes or {}
@@ -280,12 +299,12 @@ function A.Catalogue(quel, variantes)
         local v = variantes[quel .. ":" .. l.cle]
         if not PAR_VARIANTE[v] or (PAR_VARIANTE[v].goulet and quel ~= "goulet") then v = "inc3" end
         local def = PAR_VARIANTE[v]
-        Ajouter(quel .. ":" .. l.cle .. ":" .. v, def.court .. " " .. l.nom, A.Texte(l.nom, v), ICONES[v], l.nom)
+        Ajouter(quel .. ":" .. l.cle .. ":" .. v, def.court .. " " .. A.Abreger(l.nom), A.Texte(l.nom, v), ICONES[v], l.nom)
         r[#r].lieu, r[#r].variante = l.cle, v
     end
     for _, a in ipairs(A.APPELS[quel] or {}) do
         local texte = T(a.fr, a.en)
-        Ajouter(quel .. ":" .. a.cle, texte, texte, ICONES.appel, texte)
+        Ajouter(quel .. ":" .. a.cle, T(a.nfr, a.nen), texte, ICONES.appel, texte)
     end
     if quel == "goulet" then
         Ajouter("goulet:cible", T("Cibler porteur", "Target carrier"), nil, ICONES.cible, T("Cibler le porteur ennemi", "Target the enemy carrier"),

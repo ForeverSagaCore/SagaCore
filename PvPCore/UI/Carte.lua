@@ -229,7 +229,7 @@ local function PointsDInteret(f, carte)
                 t.minuteur:SetShadowOffset(1, -1)
                 t.minuteur:Hide()
                 -- Un clic sur le lieu : la liste des annonces (Inc 1, 2, 3, 5+,
-                -- dégagé), envoyee seulement quand on en choisit une.
+                -- degage), envoyee seulement quand on en choisit une.
                 t.bouton = CreateFrame("Button", nil, f.toile)
                 t.bouton:SetSize(18, 18)
                 t.bouton:SetPoint("CENTER", t, "CENTER", 0, 0)
@@ -373,7 +373,11 @@ function C.LignesSousCarte()
     if r.objectifs then
         local textes = NS.honneur.Objectifs()
         if NS.champ then textes = NS.champ.Annoter(textes) end
-        for _, texte in ipairs(textes) do table.insert(lignes, { texte = texte }) end
+        -- Les compteurs du Goulet ("1/3") sont dits par camp plus bas.
+        local goulet = NS.bataille and NS.bataille.Quel() == "goulet"
+        for _, texte in ipairs(textes) do
+            if not (goulet and NS.bataille.DejaDit(texte, "goulet")) then table.insert(lignes, { texte = texte }) end
+        end
     end
     if NS.champ then
         for _, l in ipairs(NS.champ.Lignes({ porteurs = r.porteurs, minuteurs = r.minuteurs })) do table.insert(lignes, l) end

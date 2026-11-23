@@ -67,7 +67,10 @@ function H.Rubriques()
         if ms and ms > 0 then Ligne(x, T("Durée", "Time"), Duree(ms / 1000)) end
         local textes = H.Objectifs()
         if NS.champ then textes = NS.champ.Annoter(textes) end
-        for _, texte in ipairs(textes) do Ligne(x, texte) end
+        local quel = NS.bataille and NS.bataille.Quel()
+        for _, texte in ipairs(textes) do
+            if not (quel and NS.bataille.DejaDit(texte, quel)) then Ligne(x, texte) end
+        end
         if NS.champ then
             -- En Alterac, les minuteurs des tours sont dans leur rubrique.
             local quel = NS.bataille and NS.bataille.Quel()

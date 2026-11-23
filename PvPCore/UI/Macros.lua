@@ -2,7 +2,7 @@ local _, NS = ...
 
 -- La page Macros : des macros toutes faites pour chaque champ de bataille,
 -- annonces d'inc par lieu et appels d'objectif. Le joueur choisit l'annonce
--- de chaque lieu dans une liste, puis "Créer" : la macro du jeu est creee
+-- de chaque lieu dans une liste, puis "Creer" : la macro du jeu est creee
 -- (hors combat), dans le compte ou ce personnage, la place restante comptee.
 -- Les lignes sont disposees a chaque affichage, comme les rubriques.
 

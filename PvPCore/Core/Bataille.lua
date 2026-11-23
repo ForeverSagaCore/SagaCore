@@ -16,6 +16,7 @@ local T = NS.T
 local function Secret(v) return _G.issecretvalue and _G.issecretvalue(v) or false end
 local function Nombre(v) if Secret(v) then return nil end return tonumber(v) end
 local function Lire(nom) return NS.Lecture(nom) end
+local RENFORTS = { "renfort", "reinforc" }
 local function Horloge() return (GetTime and GetTime()) or 0 end
 local function Minutes(s) return NS.champ.Minutes(s) end
 
@@ -338,15 +339,41 @@ end
 -- Lignes sous la carte et rubriques (fenetre, suivi de QuestCore)
 -- ---------------------------------------------------------------------------
 
-local RENFORTS = { "renfort", "reinforc" }
 local function Couleur(camp) return NS.champ.CouleurCamp(camp) end
 local function Camp(camp) return NS.champ.NomCamp(camp) end
+
+-- Vrai pour un objectif du jeu deja dit, mieux, par nos lignes (compteurs
+-- du Goulet, bases d'Arathi, renforts d'Alterac) : on ne le repete pas.
+function B.DejaDit(texte, quel)
+    quel = quel or B.Quel()
+    if type(texte) ~= "string" or Secret(texte) then return false end
+    if quel == "goulet" then
+        local c = B.Compteurs()
+        return (c.Alliance and c.Horde and texte:match("^%s*%d+%s*/%s*%d+%s*$")) and true or false
+    elseif quel == "arathi" then
+        return (B.LireArathi() and texte:match("%d[^%d]+%d+%s*/%s*%d+")) and true or false
+    elseif quel == "alterac" then
+        local c = B.Compteurs(RENFORTS)
+        local bas = texte:lower()
+        return (c.Alliance and c.Horde and (bas:find("renfort", 1, true) or bas:find("reinforc", 1, true))) and true or false
+    end
+    return false
+end
 
 -- Lignes courtes, sous la carte : ce que les objectifs du jeu ne disent pas.
 function B.Lignes()
     local quel = B.Quel()
     local l = {}
     if quel == "goulet" then
+        local c = B.Compteurs()
+        if c.Alliance and c.Horde then
+            local function Teinte(camp)
+                local k = Couleur(camp)
+                return string.format("|cff%02x%02x%02x", math.floor(k[1] * 255), math.floor(k[2] * 255), math.floor(k[3] * 255))
+            end
+            table.insert(l, { texte = T("Captures : ", "Captures : ") .. Teinte("Alliance") .. Camp("Alliance") .. " " .. c.Alliance.n .. "|r  ·  "
+                .. Teinte("Horde") .. Camp("Horde") .. " " .. c.Horde.n .. "|r", couleur = { 1, 1, 1 } })
+        end
         local reste = NS.champ.ResteRetourDrapeaux()
         if reste then table.insert(l, { texte = T("Drapeaux de retour dans ", "Flags back in ") .. Minutes(reste), couleur = { 1, 0.82, 0 } }) end
     elseif quel == "arathi" then
@@ -374,8 +401,12 @@ local function EtatPoint(p)
     local reste, camp = NS.champ.ResteCapture(p.id)
     if p.detruite then return T("détruite", "destroyed"), { 0.6, 0.6, 0.6 } end
     if p.attaque then
-        local texte = T("attaqué par ", "assaulted by ") .. Camp(p.attaque)
-        if reste then texte = texte .. "  " .. Minutes(reste) end
+        -- Une tour attaquee est detruite au bout du minuteur ; une base ou un
+        -- cimetiere passe a l'attaquant.
+        local texte
+        if p.genre == "tour" then texte = T("détruite", "destroyed")
+        else texte = p.attaque == "Horde" and T("à la Horde", "Horde") or T("à l'Alliance", "Alliance") end
+        if reste then texte = texte .. T(" dans ", " in ") .. Minutes(reste) end
         return texte, Couleur(camp or p.attaque)
     end
     if p.camp then return Camp(p.camp), Couleur(p.camp) end
@@ -463,7 +494,7 @@ function B.Rubriques()
     return r
 end
 
--- Le score de fin de partie, de notre point de vue : "3 à 1", ou nil.
+-- Le score de fin de partie, de notre point de vue : "3 a 1", ou nil.
 function B.Score()
     local quel = B.Quel()
     if not quel then return nil end
