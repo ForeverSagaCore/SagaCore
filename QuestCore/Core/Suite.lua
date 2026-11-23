@@ -59,49 +59,67 @@ if not _G.SagaCoreRoyaume then
             if t[neuve] == nil then t[neuve] = t[cle] t[cle] = nil end
         end
     end
-    function _G.SagaCoreRoyaume()
-        local r
-        for _, source in ipairs(SOURCES) do
-            local ok, v = pcall(source)
-            if ok and not (_G.issecretvalue and _G.issecretvalue(v)) then r = Propre(v) end
-            if r then break end
-        end
-        local db = type(_G.CoreSuiteDB) == "table" and _G.CoreSuiteDB or nil
-        if r then
-            if db then
-                local provisoire = db.royaumeProvisoire or db.dernierRoyaume == PROVISOIRE
-                db.dernierRoyaume = r
-                if provisoire and r ~= PROVISOIRE then
-                    db.royaumeProvisoire = nil
-                    for _, base in ipairs(BASES(db)) do pcall(Renommer, base, PROVISOIRE, r, 1) end
+    -- Les royaumes sous lesquels la suite a deja range des donnees, avec leur
+    -- nombre de cles "Nom - Royaume" (le royaume provisoire mis a part).
+    local function RoyaumesConnus(db)
+        local compte = {}
+        local function Parcourir(t, prof)
+            if type(t) ~= "table" or prof > 3 then return end
+            for cle, v in pairs(t) do
+                if type(cle) == "string" then
+                    local roy = Propre(cle:match("^[^%s]+ %- (.+)$"))
+                    if roy and roy ~= PROVISOIRE then compte[roy] = (compte[roy] or 0) + 1 end
                 end
+                if type(v) == "table" then Parcourir(v, prof + 1) end
             end
+        end
+        for _, base in ipairs(BASES(db)) do pcall(Parcourir, base, 1) end
+        local meilleur, n = nil, 0
+        for roy, c in pairs(compte) do if c > n then meilleur, n = roy, c end end
+        return meilleur
+    end
+    local retenu
+    function _G.SagaCoreRoyaume()
+        local db = type(_G.CoreSuiteDB) == "table" and _G.CoreSuiteDB or nil
+        -- 1. Le nom que le jeu donne d'habitude : il fait foi.
+        local ok, r = pcall(GetRealmName)
+        r = ok and not (_G.issecretvalue and _G.issecretvalue(r)) and Propre(r) or nil
+        if r then
+            if db then db.dernierRoyaume = r end
+            retenu = r
             return r
         end
-        if db and Propre(db.dernierRoyaume) then return db.dernierRoyaume end
-        local okn, nom = pcall(UnitName, "player")
-        if not okn or type(nom) ~= "string" or nom == "" then return "" end
-        local motif = "^" .. (nom:gsub("(%W)", "%%%1")) .. " %- (.+)$"
-        local trouve, double = nil, false
-        for _, base in ipairs(BASES(db)) do
-            if type(base) == "table" then
-                for _, t in pairs(base) do
-                    if type(t) == "table" then
-                        for cle in pairs(t) do
-                            local roy = type(cle) == "string" and Propre(cle:match(motif))
-                            if roy then
-                                if trouve and trouve ~= roy then double = true end
-                                trouve = trouve or roy
-                            end
-                        end
+        if retenu then return retenu end
+        -- 2. Le jeu ne le donne pas : le royaume sous lequel la suite a deja
+        -- ses donnees (jamais un autre nom du meme royaume, qui ferait croire
+        -- a un nouveau personnage).
+        local connu = RoyaumesConnus(db)
+        if connu then
+            if db then db.dernierRoyaume = connu end
+            retenu = connu
+            return connu
+        end
+        if db and Propre(db.dernierRoyaume) and db.dernierRoyaume ~= PROVISOIRE then
+            retenu = db.dernierRoyaume
+            return retenu
+        end
+        -- 3. Installation neuve : les autres fonctions du jeu.
+        for k = 2, #SOURCES do
+            local okS, v = pcall(SOURCES[k])
+            v = okS and not (_G.issecretvalue and _G.issecretvalue(v)) and Propre(v) or nil
+            if v then
+                if db then
+                    if db.royaumeProvisoire then
+                        db.royaumeProvisoire = nil
+                        for _, base in ipairs(BASES(db)) do pcall(Renommer, base, PROVISOIRE, v, 1) end
                     end
+                    db.dernierRoyaume = v
+                    retenu = v
                 end
+                return v
             end
         end
-        if trouve and not double then
-            if db then db.dernierRoyaume = trouve end
-            return trouve
-        end
+        -- 4. Rien nulle part : un nom provisoire, pour que tout s'enregistre.
         if db then db.royaumeProvisoire = true end
         return PROVISOIRE
     end
@@ -4367,6 +4385,11 @@ function Suite.ToutDecocher()
     end
     r.raccourcisOff[ClePersoSuite()] = t
 end
+function Suite.ToutCocher()
+    local r = Reglages()
+    r.raccourcisOff = type(r.raccourcisOff) == "table" and r.raccourcisOff or {}
+    r.raccourcisOff[ClePersoSuite()] = {}
+end
 function Suite.PoserRaccourciActif(id, oui)
     local r = Reglages()
     r.raccourcisOff = type(r.raccourcisOff) == "table" and r.raccourcisOff or {}
@@ -4495,11 +4518,19 @@ local function FenetreMacros()
 
     f.sectionMacros = Poser(Titre(), 18, 16)
     f.texteMacros = Poser(Texte(), 28, 4)
-    f.tout = Poser(Bouton(f, L_CHOIX + 6 + L_PETIT), 22, 4)
-    f.decocher = Bouton(f, L_CHOIX)
+    -- Trois boutons sur une ligne, dans la largeur utile (468).
+    f.tout = Poser(Bouton(f, 180), 22, 4)
+    f.decocher = Bouton(f, 136)
     f.decocher:SetPoint("LEFT", f.tout, "RIGHT", 8, 0)
     f.decocher:SetScript("OnClick", function()
         Suite.ToutDecocher()
+        Suite.RendreMacros()
+        Suite.RafraichirRaccourcis()
+    end)
+    f.cocher = Bouton(f, 136)
+    f.cocher:SetPoint("LEFT", f.decocher, "RIGHT", 8, 0)
+    f.cocher:SetScript("OnClick", function()
+        Suite.ToutCocher()
         Suite.RendreMacros()
         Suite.RafraichirRaccourcis()
     end)
@@ -4665,7 +4696,7 @@ local function FenetreMacros()
         f.focus = 1
         f.Elements = function()
             local liste = { f.rRond.choix, f.replacer, f.rOuverture.choix, f.rForme.choix,
-                f.rParLigne.moins, f.rParLigne.plus, f.rLignes.moins, f.rLignes.plus, f.tout, f.decocher }
+                f.rParLigne.moins, f.rParLigne.plus, f.rLignes.moins, f.rLignes.plus, f.tout, f.decocher, f.cocher }
             for _, l in ipairs(f.lignes) do
                 if l:IsShown() then
                     table.insert(liste, l.actif)
@@ -4740,6 +4771,7 @@ function Suite.RendreMacros()
         "One macro per shortcut, named \"SC ...\". Hover a row to see its command. Not in combat."))
     f.tout:SetText(TR("Créer toutes les macros", "Create all macros"))
     f.decocher:SetText(TR("Tout décocher", "Uncheck all"))
+    f.cocher:SetText(TR("Tout cocher", "Check all"))
     local rang = 0
     for _, l in ipairs(f.lignes) do l:Hide() end
     for _, rac in ipairs(Suite.RACCOURCIS) do
@@ -7181,7 +7213,7 @@ local function FenetreMacrosPages()
                       for _, r in ipairs(Suite.RACCOURCIS) do if Dispo(r) then Suite.CreerMacro(r) end end
                   end)
                   page.bTout:SetPoint("LEFT", page.rTout, "LEFT", O.RETRAIT, 0)
-                  page.bDecocher = O.Bouton(page.rTout, 160, function()
+                  page.bDecocher = O.Bouton(page.rTout, 140, function()
                       Suite.ToutDecocher()
                       Suite.RafraichirRaccourcis()
                       for _, w in ipairs(Suite.fenetresAPages or {}) do
@@ -7189,6 +7221,14 @@ local function FenetreMacrosPages()
                       end
                   end)
                   page.bDecocher:SetPoint("LEFT", page.bTout, "RIGHT", 8, 0)
+                  page.bCocher = O.Bouton(page.rTout, 140, function()
+                      Suite.ToutCocher()
+                      Suite.RafraichirRaccourcis()
+                      for _, w in ipairs(Suite.fenetresAPages or {}) do
+                          if w.cadre and w.cadre:IsShown() and w.Rendre then pcall(w.Rendre) end
+                      end
+                  end)
+                  page.bCocher:SetPoint("LEFT", page.bDecocher, "RIGHT", 8, 0)
                   page.lignes = {}
                   for i = 1, #Suite.RACCOURCIS + #Suite.FAMILLES do
                       local l = O.Rangee(24)
@@ -7217,6 +7257,7 @@ local function FenetreMacrosPages()
                       "The box puts the shortcut in this character's panel. \"Create\" also makes it a game macro, with a 3-letter name (PFa, PQu...) and the shortcut's icon : find it in the game's Macros window (/macro), General tab, and drag it onto a bar."))
                   page.bTout:SetText(TR("Créer toutes les macros", "Create all macros"))
                   page.bDecocher:SetText(TR("Tout décocher", "Uncheck all"))
+                  page.bCocher:SetText(TR("Tout cocher", "Check all"))
                   local rang = 0
                   for _, l in ipairs(page.lignes) do l:Hide() end
                   -- Par famille : un titre, puis ses raccourcis.
