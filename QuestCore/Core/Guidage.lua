@@ -94,6 +94,11 @@ local function PointDeQuete(id, moi, continent, jx, jy)
         local d = NS.donjons.DeQuete(id)
         for _, e in ipairs(d and d.entrees or {}) do
             local x, y = NS.carte.Reporter({ carte = e.carte, x = e.x, y = e.y }, continent)
+            -- Entree sur la carte d'une ville ou d'une grotte : par sa zone.
+            if not x and S() and S().Lieux and S().Lieux.VersZone then
+                local zc, zx, zy = S().Lieux.VersZone(e.carte, e.x, e.y)
+                if zc and zc ~= e.carte then x, y = NS.carte.Reporter({ carte = zc, x = zx, y = zy }, continent) end
+            end
             if x then
                 local dd = (x - jx) ^ 2 + (y - jy) ^ 2
                 if not meilleur or dd < meilleur then meilleur, lieu = dd, { x = x, y = y, qui = d.nom, entree = d.nom } end
@@ -121,6 +126,47 @@ local function Qui(id, moi, lieu)
     return Titre(id, moi) .. (quoi and quoi ~= "" and ("\n|cffb3b3b3" .. quoi .. "|r") or "")
 end
 
+local Ailleurs
+
+-- Le continent d'une carte (mapType 2), en remontant ses parents.
+local function ContinentDe(carte)
+    local info = NS.Lecture("C_Map.GetMapInfo")
+    for _ = 1, 6 do
+        local i = carte and info and NS.Appeler(info, carte)
+        if type(i) ~= "table" then return nil end
+        if i.mapType == 2 then return carte end
+        carte = i.parentMapID
+    end
+    return nil
+end
+local function NomCarte(carte)
+    local i = carte and NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), carte)
+    return type(i) == "table" and i.name or nil
+end
+
+-- La premiere quete qui a un lieu sur un autre continent : son point, en
+-- coordonnees de ce continent, avec "Aller a : zone (continent)".
+Ailleurs = function(ids, moi)
+    for _, id in ipairs(ids) do
+        local cartes = {}
+        local ok, points = pcall(NS.carte.PointsPour, id, moi)
+        for _, pt in ipairs(ok and points or {}) do if pt.carte then table.insert(cartes, pt.carte) end end
+        local d = NS.donjons and NS.donjons.DeQuete and NS.donjons.DeQuete(id)
+        for _, e in ipairs(d and d.entrees or {}) do table.insert(cartes, e.carte) end
+        for _, carte in ipairs(cartes) do
+            local continent = ContinentDe(carte)
+            local lieu = continent and PointDeQuete(id, moi, continent, 0.5, 0.5)
+            if lieu then
+                local zone, nomC = NomCarte(carte), NomCarte(continent)
+                local ou = zone and (nomC and string.format("%s (%s)", zone, nomC) or zone) or nomC
+                return { carte = continent, x = lieu.x, y = lieu.y, cle = "q" .. id, id = id,
+                    titre = Titre(id, moi), qui = ou and string.format(L.GUIDE_GO_TO, ou) or Qui(id, moi, lieu) }
+            end
+        end
+    end
+    return nil
+end
+
 -- Les etapes d'une liste de quetes, la plus proche d'abord, puis la plus
 -- proche de la precedente.
 local function EtapesDeQuetes(ids, moi, etat, compte)
@@ -141,7 +187,14 @@ local function EtapesDeQuetes(ids, moi, etat, compte)
                 titre = Titre(id, moi), qui = Qui(id, moi, lieu) })
         end
     end
-    if #points == 0 then return nil, "loin", OuAller(moi, ids) end
+    if #points == 0 then
+        -- Rien sur ce continent : on vise quand meme la premiere quete sur
+        -- son continent (l'add-on d'itineraire sait y mener ; la fleche de la
+        -- suite dit ou aller).
+        local ailleurs = Ailleurs(ids, moi)
+        if ailleurs then return { ailleurs }, nil, nil, compte end
+        return nil, "loin", OuAller(moi, ids)
+    end
     etat.chaine = type(etat.chaine) == "table" and etat.chaine or {}
     local ordre = S().Lieux.Chaine(points, { x = jx, y = jy }, nil, etat.chaine)
     return ordre, nil, nil, compte
