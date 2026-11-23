@@ -554,18 +554,50 @@ end
 -- `siIncomplet` : n'ajoute rien quand tout est deja dans les sacs.
 -- ---------------------------------------------------------------------------
 function inventaire.ComposantsDansLInfobulle(tt, recette, siIncomplet)
+    if not (recette and type(recette.composants) == "table" and #recette.composants > 0) then return end
+    local liste = {}
+    for _, comp in ipairs(recette.composants) do
+        table.insert(liste, { objet = comp.objet, besoin = tonumber(comp.quantite) or 1 })
+    end
+    inventaire.BesoinsDansLInfobulle(tt, liste, siIncomplet)
+end
+
+-- Toutes les matieres d'un objectif (un rang vise, un projet), aux quantites
+-- de l'objectif entier : pour chacune, ce qu'on a et ce qu'il faut, et des
+-- qu'elle n'est pas toute dans les sacs, ou est le reste (banque, courrier,
+-- autres personnages).
+function inventaire.MatieresDansLInfobulle(tt, matieres)
+    local liste = {}
+    for _, m in ipairs(matieres or {}) do
+        if (tonumber(m.requis) or 0) > 0 then table.insert(liste, { objet = m.objet, besoin = tonumber(m.requis) }) end
+    end
+    inventaire.BesoinsDansLInfobulle(tt, liste)
+end
+
+-- Des matieres tout juste reunies mais pas toutes dans les sacs ?
+function inventaire.HorsDesSacs(matieres)
+    for _, m in ipairs(matieres or {}) do
+        local requis = tonumber(m.requis) or 0
+        if requis > 0 and (tonumber(m.manque) or 0) == 0 and (inventaire.DisponibleDansLesSacs(m.objet) or 0) < requis then
+            return true
+        end
+    end
+    return false
+end
+
+function inventaire.BesoinsDansLInfobulle(tt, besoins, siIncomplet)
     local L = NS.L
-    if not (tt and recette and type(recette.composants) == "table" and #recette.composants > 0) then return end
+    if not (tt and type(besoins) == "table" and #besoins > 0) then return end
     local moi = NS.base.FicheAffichee()
     if not moi then return end
     local Nom, OuTexte, C = inventaire.NomCourt, inventaire.TexteSacsBanque, inventaire.COULEURS
 
     local lignes, manque, enSacs = {}, 0, true
-    for _, comp in ipairs(recette.composants) do
-        local besoin = tonumber(comp.quantite) or 1
-        local sacs, banque = inventaire.SacsEtBanque(moi, comp.objet)
+    for _, comp in ipairs(besoins) do
+        local besoin = comp.besoin
+        local sacs, banque, courrier = inventaire.SacsEtBanque(moi, comp.objet)
         local ailleurs, detail = inventaire.DetailChezLesAutres(moi, comp.objet)
-        local total = sacs + banque + ailleurs
+        local total = sacs + banque + (courrier or 0) + ailleurs
         local r, g, b = unpack(C.sacs)
         if total < besoin then
             r, g, b = unpack(C.manque)
@@ -576,7 +608,7 @@ function inventaire.ComposantsDansLInfobulle(tt, recette, siIncomplet)
         end
         local sous = {}
         if sacs < besoin then
-            if banque > 0 then table.insert(sous, { Nom(moi.cle), OuTexte(0, banque) }) end
+            if banque > 0 or (courrier or 0) > 0 then table.insert(sous, { Nom(moi.cle), OuTexte(sacs, banque, courrier) }) end
             for _, d in ipairs(detail) do table.insert(sous, { Nom(d.cle), OuTexte(d.sacs, d.banque) }) end
         end
         table.insert(lignes, { nom = inventaire.NomDObjet(comp.objet),

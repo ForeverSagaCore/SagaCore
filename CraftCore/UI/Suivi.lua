@@ -932,7 +932,12 @@ local function DessinerObjectifs(y, objectifs, vue)
                 b.droite:SetFontObject(TITRE)
                 Taille(b.droite, TAILLE_LIGNE)
                 b.droite:SetText(pct .. " %")
-                if pct >= 100 then b.droite:SetTextColor(0.31, 0.82, 0.41) else b.droite:SetTextColor(0.8, 0.8, 0.8) end
+                -- 100 % en vert quand tout est dans les sacs ; en or quand tout
+                -- est reuni mais qu'il faut encore aller chercher (banque...).
+                if pct >= 100 and not o.atteint and NS.inventaire.HorsDesSacs(o.matieres) then
+                    b.droite:SetTextColor(1, 0.82, 0)
+                elseif pct >= 100 then b.droite:SetTextColor(0.31, 0.82, 0.41)
+                else b.droite:SetTextColor(0.8, 0.8, 0.8) end
                 b.nom:SetPoint("RIGHT", b.droite, "LEFT", -8, 0)
                 -- Etoile de favori, a droite, comme pour les quetes.
                 if not b.etoile then
@@ -985,14 +990,14 @@ local function DessinerObjectifs(y, objectifs, vue)
                     if e then
                         GameTooltip:AddLine(string.format(L.CRAFT_STEP_TIP, rangE, #etapesS, NS.inventaire.NomDObjet(e.objet), e.fois or 1), 1, 1, 1, true)
                         local pret = NS.actions and NS.actions.EtatPourFabriquer and NS.actions.EtatPourFabriquer(e.recette)
-                        if pret == false then
-                            GameTooltip:AddLine(" ")
-                            GameTooltip:AddLine(L.CRAFT_NOT_IN_BAGS, 1, 0.5, 0.3, true)
-                            NS.inventaire.ComposantsDansLInfobulle(GameTooltip, e.recette)
-                        elseif pret == nil then
+                        if pret == nil then
                             GameTooltip:AddLine(L.CRAFT_OTHER_CHAR, 0.8, 0.8, 0.8, true)
                         end
                     end
+                    -- Toutes les matieres de l'objectif, aux quantites de
+                    -- l'objectif entier, et ou elles sont des qu'elles ne sont
+                    -- pas toutes dans les sacs (banque, courrier, autres persos).
+                    NS.inventaire.MatieresDansLInfobulle(GameTooltip, objectif.matieres)
                     for _, achat in pairs(objectif.achats or {}) do
                         GameTooltip:AddLine(L.CRAFT_TO_BUY, 1, 0.82, 0, true)
                         break
@@ -1217,7 +1222,11 @@ local function DessinerObjectifs(y, objectifs, vue)
                         compte:SetWidth(60)
                         compte:SetJustifyH("RIGHT")
                         compte:SetText(math.min(m.possede, m.requis) .. " / " .. m.requis)
-                        if m.manque == 0 then
+                        if m.manque == 0 and (NS.inventaire.DisponibleDansLesSacs(m.objet) or 0) < m.requis then
+                            -- Reunie, mais pas toute dans les sacs : en or.
+                            nom:SetTextColor(0.85, 0.85, 0.85)
+                            compte:SetTextColor(1, 0.82, 0)
+                        elseif m.manque == 0 then
                             nom:SetTextColor(0.5, 0.5, 0.5)
                             compte:SetTextColor(0.31, 0.82, 0.41)
                         elseif m.possede == 0 then
