@@ -809,9 +809,20 @@ function equipement.Rendre(contenu, bandeau)
     -- Dans chaque origine : les recettes connues, puis a apprendre, puis a
     -- looter (craft interne) ; et dans chacune, par niveau requis, du plus
     -- haut au plus bas (sans niveau connu a la fin), puis le plus gros gain.
+    -- Donjons et raids : un groupe par instance (par nom), et dans chacune
+    -- du meilleur palier d'amelioration au moins bon, puis le plus gros gain.
     local RANG_GROUPE = { connue = 1, apprendre = 2, looter = 3 }
+    local RANG_PALIER = { haut = 1, moyen = 2, bas = 3 }
     table.sort(retenus, function(a, b)
         if a.cat ~= b.cat then return rangCat[a.cat] < rangCat[b.cat] end
+        if a.cat == "donjons" then
+            local na, nb = a.c.groupeNom or "", b.c.groupeNom or ""
+            if na ~= nb then return na < nb end
+            local pa, pb = RANG_PALIER[a.palier or ""] or 4, RANG_PALIER[b.palier or ""] or 4
+            if pa ~= pb then return pa < pb end
+            if a.total ~= b.total then return a.total > b.total end
+            return a.c.id < b.c.id
+        end
         local ga, gb = RANG_GROUPE[a.c.groupe or ""] or 0, RANG_GROUPE[b.c.groupe or ""] or 0
         if ga ~= gb then return ga < gb end
         local na, nb = a.c.niveau or -1, b.c.niveau or -1
@@ -901,9 +912,9 @@ function equipement.Rendre(contenu, bandeau)
             groupePrecedent = nil
             Titre(L["GEAR_CAT_" .. r.cat])
         end
-        if r.cat == "craftInterne" and c.groupe and c.groupe ~= groupePrecedent then
+        if c.groupe and c.groupe ~= groupePrecedent then
             groupePrecedent = c.groupe
-            Titre(L["GEAR_GROUP_" .. c.groupe] or c.groupe, true)
+            Titre(c.groupeNom or L["GEAR_GROUP_" .. c.groupe] or c.groupe, true)
         end
         index = index + 1
         local ligne = CreerLigneCandidat(liste, index)
