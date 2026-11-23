@@ -2,7 +2,7 @@
 -- ouvre trois choix exclusifs :
 --   Ma version : toute ta suite, rien d'autre (ni Dev, ni Live) ;
 --   Dev        : toute la suite Dev, rien d'autre ;
---   Live       : la version publiee, complete ou un seul module.
+--   Live       : la version publiee, complete ou les modules coches.
 -- Chaque choix remet TOUT en ordre, quel que soit l'etat de depart (meme un
 -- melange), puis recharge l'interface. Toujours actif, independant des
 -- suites. Prive.  /saga : la meme fenetre.
@@ -58,20 +58,25 @@ local function EtatActuel()
     local m = modes[1]
     if m == "normale" then return "|cffffd100Ma version|r" end
     if m == "dev" then return "|cffff8000Dev|r" end
-    local n = vus.live
-    return "|cff33ccffLive|r" .. (n == 1 and " (un module)" or "")
+    local n, total = vus.live, 0
+    for _, a in ipairs(ADDONS) do if Existe(a .. "Live") then total = total + 1 end end
+    if n >= total then return "|cff33ccffLive|r" end
+    return "|cff33ccffLive|r" .. (n == 1 and " (un module)" or (" (" .. n .. " modules)"))
 end
 
 -- Le coeur : active exactement la cible, coupe tout le reste des trois
--- suites, puis recharge. `seul` : en Live, un seul module (et ce dont il a
--- besoin pour se charger).
-local function Appliquer(cible, seul)
+-- suites, puis recharge. `seuls` : en Live, les modules coches (et ce dont
+-- ils ont besoin pour se charger) ; nil ou vide : la suite complete.
+local function Appliquer(cible, seuls)
     local activer, couper = F("EnableAddOn"), F("DisableAddOn")
     if not (activer and couper) then return end
     local gardes
-    if seul then
-        gardes = Requis(seul .. "Live")
-        gardes[seul .. "Live"] = true
+    if seuls and next(seuls) then
+        gardes = {}
+        for module in pairs(seuls) do
+            for d in pairs(Requis(module .. "Live")) do gardes[d] = true end
+            gardes[module .. "Live"] = true
+        end
     end
     for _, n in ipairs(ADDONS) do
         for mode, suffixe in pairs(SUFFIXES) do
@@ -87,10 +92,13 @@ local function Appliquer(cible, seul)
     if _G.C_UI and _G.C_UI.Reload then _G.C_UI.Reload() elseif _G.ReloadUI then _G.ReloadUI() end
 end
 
--- La fenetre : trois lignes, un bouton chacune. Live a son choix
--- (Complete ou un module) entre deux fleches, a cote.
+-- La fenetre : trois lignes, un bouton chacune. Sous Live, une case par
+-- module : rien de coche, la suite complete ; sinon les modules coches.
 local fenetre
-local CHOIX_LIVE = { "Complete" }
+local function Coches()
+    SagaCoreBasculeDB.modulesLive = type(SagaCoreBasculeDB.modulesLive) == "table" and SagaCoreBasculeDB.modulesLive or {}
+    return SagaCoreBasculeDB.modulesLive
+end
 local function Fenetre()
     if fenetre then return fenetre end
     local f = CreateFrame("Frame", "SagaCoreBascule", UIParent, "BasicFrameTemplateWithInset")
@@ -123,8 +131,9 @@ local function Fenetre()
     f.bNormale = Bouton("SagaCoreBasculeNormale", "|cffffd100Ma version|r", -56, function() Appliquer("normale") end)
     f.bDev = Bouton("SagaCoreBasculeDev", "|cffff8000Dev|r", -92, function() Appliquer("dev") end)
     f.bLive = Bouton("SagaCoreBasculeLive", "|cff33ccffLive|r", -128, function()
-        local choix = CHOIX_LIVE[f.choix or 1]
-        Appliquer("live", choix ~= "Complete" and choix or nil)
+        local seuls = {}
+        for m, oui in pairs(Coches()) do if oui and Existe(m .. "Live") then seuls[m] = true end end
+        Appliquer("live", seuls)
     end)
     local function Legende(b, texte)
         local t = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -137,41 +146,55 @@ local function Fenetre()
     end
     Legende(f.bNormale, "toute ta suite")
     Legende(f.bDev, "toute la suite Dev")
-
-    -- Choix Live : Complete ou un module, entre deux fleches.
-    local nom = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    nom:SetPoint("LEFT", f.bLive, "RIGHT", 34, 0)
-    nom:SetWidth(84)
-    nom:SetWordWrap(false)
-    f.nomLive = nom
-    local function Fleche(sens)
-        local b = CreateFrame("Button", nil, f)
-        b:SetSize(22, 22)
-        local base = sens < 0 and "Interface\\Buttons\\UI-SpellbookIcon-PrevPage-" or "Interface\\Buttons\\UI-SpellbookIcon-NextPage-"
-        b:SetNormalTexture(base .. "Up")
-        b:SetPushedTexture(base .. "Down")
-        b:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-        b:SetPoint(sens < 0 and "RIGHT" or "LEFT", nom, sens < 0 and "LEFT" or "RIGHT", sens < 0 and -2 or 2, 0)
-        b:SetScript("OnClick", function()
-            f.choix = ((f.choix or 1) - 1 + sens) % #CHOIX_LIVE + 1
-            nom:SetText(CHOIX_LIVE[f.choix])
-        end)
-    end
-    Fleche(-1)
-    Fleche(1)
+    f.legendeLive = Legende(f.bLive, "")
+    f.cases = {}
     f:Hide()
     fenetre = f
     return f
 end
 
+-- Les cases des modules Live installes, sur deux colonnes sous le bouton Live.
+local function PoserCases(f)
+    local modules = {}
+    for _, n in ipairs(ADDONS) do if Existe(n .. "Live") then table.insert(modules, n) end end
+    for _, c in ipairs(f.cases) do c:Hide() end
+    for i, n in ipairs(modules) do
+        local c = f.cases[i]
+        if not c then
+            c = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+            c:SetSize(24, 24)
+            c.texte = c.text or c.Text or c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            c.texte:ClearAllPoints()
+            c.texte:SetPoint("LEFT", c, "RIGHT", 2, 0)
+            c.texte:SetFontObject("GameFontHighlightSmall")
+            c.texte:SetWordWrap(false)
+            c:SetScript("OnClick", function(self)
+                Coches()[self.module] = self:GetChecked() and true or nil
+                f.MajLegende()
+            end)
+            f.cases[i] = c
+        end
+        c.module = n
+        c.texte:SetText(n)
+        c:ClearAllPoints()
+        c:SetPoint("TOPLEFT", f, "TOPLEFT", 16 + ((i - 1) % 2) * 134, -160 - math.floor((i - 1) / 2) * 24)
+        c:SetChecked(Coches()[n] == true)
+        c:Show()
+    end
+    f:SetHeight(160 + math.ceil(#modules / 2) * 24 + 14)
+    return modules
+end
+
 local function Rafraichir()
     local f = Fenetre()
     f.etat:SetText("Chargee : " .. EtatActuel())
-    -- Les modules Live installes.
-    for i = #CHOIX_LIVE, 2, -1 do table.remove(CHOIX_LIVE, i) end
-    for _, n in ipairs(ADDONS) do if Existe(n .. "Live") then table.insert(CHOIX_LIVE, n) end end
-    if not f.choix or f.choix > #CHOIX_LIVE then f.choix = 1 end
-    f.nomLive:SetText(CHOIX_LIVE[f.choix])
+    PoserCases(f)
+    function f.MajLegende()
+        local n = 0
+        for m, oui in pairs(Coches()) do if oui and Existe(m .. "Live") then n = n + 1 end end
+        f.legendeLive:SetText(n == 0 and "complete (rien de coche)" or (n == 1 and "le module coche" or (n .. " modules coches")))
+    end
+    f.MajLegende()
     local v = Version("CraftCoreLive")
     f.bLive:SetText("|cff33ccffLive|r" .. (v and (" " .. v) or ""))
     local function Present(suffixe)
@@ -182,9 +205,37 @@ local function Rafraichir()
     f.bLive:SetEnabled(Present("Live"))
 end
 
+-- Manette : la croix passe d'un element a l'autre (il s'allume), A valide,
+-- B ferme.
+local function Elements(f)
+    local l = { f.bNormale, f.bDev, f.bLive }
+    for _, c in ipairs(f.cases) do if c:IsShown() then table.insert(l, c) end end
+    return l
+end
+local function Allumer(f)
+    for i, b in ipairs(Elements(f)) do
+        if i == f.rang then b:LockHighlight() else b:UnlockHighlight() end
+    end
+end
+local function BrancherManette(f)
+    if f.manette or not f.EnableGamePadButton then return end
+    f.manette = true
+    f:SetScript("OnGamePadButtonDown", function(self, bouton)
+        local l = Elements(self)
+        if bouton == "PADDUP" or bouton == "PADDLEFT" then self.rang = math.max(1, (self.rang or 1) - 1)
+        elseif bouton == "PADDDOWN" or bouton == "PADDRIGHT" then self.rang = math.min(#l, (self.rang or 1) + 1)
+        elseif bouton == "PAD1" then local b = l[self.rang or 1] if b and b:IsEnabled() then b:Click() end
+        elseif bouton == "PAD2" then self:Hide() return end
+        Allumer(self)
+    end)
+    f:HookScript("OnShow", function(self) pcall(self.EnableGamePadButton, self, true) self.rang = 1 Allumer(self) end)
+    f:HookScript("OnHide", function(self) pcall(self.EnableGamePadButton, self, false) end)
+end
+
 local function Ouvrir()
     local f = Fenetre()
     if f:IsShown() then f:Hide() return end
+    BrancherManette(f)
     Rafraichir()
     f:Show()
 end
