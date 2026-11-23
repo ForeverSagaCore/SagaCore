@@ -321,7 +321,9 @@ cadre:SetScript("OnEvent", function(_, evenement, argument1)
     elseif evenement == "MAIL_CLOSED" then
         ecran.courrierOuvert = nil
         if NS.courrier then NS.courrier.Ferme("courrier") end
-    elseif evenement == "BAG_UPDATE_DELAYED" then
+    elseif evenement == "BAG_UPDATE_DELAYED" or evenement == "PLAYERBANKSLOTS_CHANGED"
+        or evenement == "PLAYERREAGENTBANKSLOTS_CHANGED" or evenement == "PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED" then
+        -- Sacs, et banque ouverte (deposer, retirer) : releve, puis le suivi.
         ReleverBientot()
         if NS.commandes then pcall(NS.commandes.VerifierReception) end
     elseif evenement == "TRADE_SKILL_SHOW" or evenement == "TRADE_SKILL_LIST_UPDATE"
@@ -354,6 +356,9 @@ end)
 Brancher("PLAYER_LOGIN")
 Brancher("BAG_UPDATE_DELAYED")
 Brancher("BANKFRAME_OPENED")
+Brancher("PLAYERBANKSLOTS_CHANGED")
+Brancher("PLAYERREAGENTBANKSLOTS_CHANGED")
+Brancher("PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED")
 Brancher("BANKFRAME_CLOSED")
 Brancher("TRADE_SKILL_SHOW")
 Brancher("TRADE_SKILL_LIST_UPDATE")
