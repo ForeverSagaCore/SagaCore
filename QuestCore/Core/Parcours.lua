@@ -18,8 +18,9 @@ local MAX_ETAPES = 40
 -- ---------------------------------------------------------------------------
 
 -- Parcours qui n'ont plus lieu d'etre, retires d'eux-memes (personnage
--- connecte seulement) : un parcours vers un niveau deja atteint, une tournee
--- de rendu dont toutes les quetes sont rendues.
+-- connecte seulement) : un parcours vers un niveau deja atteint. Les
+-- anciennes tournees de rendu (genre "rendu") disparaissent : rendre les
+-- quetes terminees est un objectif de guidage, sans parcours enregistre.
 -- Kit de donjon : il se complete tout seul. Une quete du donjon qui devient
 -- prenable (son prerequis fait, comme Boissons fortes apres les cornes de
 -- raptors) ou qu'on prend s'y ajoute, a la suite. Au plus toutes les 5 s.
@@ -73,16 +74,8 @@ local function Nettoyer(cle, liste)
     local p = NS.base.Perso(cle)
     for i = #liste, 1, -1 do
         local pc = liste[i]
-        local vise = (pc.genre == "progression" and (pc.niveauVise or tonumber(string.match(tostring(pc.nom), "(%d+)"))))
-            or (pc.genre == "rendu" and pc.niveauVise)
-        local fini = false
-        if pc.genre == "rendu" and p then
-            fini = true
-            for _, id in ipairs(pc.etapes or {}) do
-                if not (p.faites and p.faites[id]) then fini = false break end
-            end
-        end
-        if (vise and niveau >= vise) or fini then table.remove(liste, i) end
+        local vise = pc.genre == "progression" and (pc.niveauVise or tonumber(string.match(tostring(pc.nom), "(%d+)")))
+        if (vise and niveau >= vise) or pc.genre == "rendu" then table.remove(liste, i) end
     end
 end
 
@@ -105,6 +98,18 @@ local function Renommer(liste)
     end
 end
 
+-- Identifiant unique d'un parcours, jamais reutilise (l'id d'ordre peut
+-- l'etre apres une suppression) : c'est lui que guide un objectif.
+local function NouvelUid()
+    local t = tonumber(NS.Appeler(time)) or 0
+    return string.format("p%d:%d", t, math.random(1000, 9999))
+end
+local function PoserUids(liste)
+    for _, pc in ipairs(liste) do
+        if type(pc) == "table" and type(pc.uid) ~= "string" then pc.uid = NouvelUid() end
+    end
+end
+
 function parcours.Liste(cle)
     local d = QuestCoreDB
     if type(d) ~= "table" or not cle then return {} end
@@ -112,6 +117,7 @@ function parcours.Liste(cle)
     d.parcours[cle] = d.parcours[cle] or {}
     pcall(Renommer, d.parcours[cle])
     pcall(Nettoyer, cle, d.parcours[cle])
+    pcall(PoserUids, d.parcours[cle])
     return d.parcours[cle]
 end
 
@@ -124,6 +130,14 @@ end
 function parcours.Trouver(cle, id)
     for rang, pc in ipairs(parcours.Liste(cle)) do
         if pc.id == id then return pc, rang end
+    end
+    return nil
+end
+
+function parcours.TrouverUid(cle, uid)
+    if not uid then return nil end
+    for rang, pc in ipairs(parcours.Liste(cle)) do
+        if pc.uid == uid then return pc, rang end
     end
     return nil
 end
@@ -264,7 +278,7 @@ function parcours.CreerSuite(cle, p, id)
     if #etapes == 0 then return nil end
     local liste = parcours.Liste(cle)
     local derniere = etapes[#etapes]
-    local pc = { id = NouvelId(liste), genre = "suite", carte = true, etapes = etapes,
+    local pc = { id = NouvelId(liste), uid = NouvelUid(), genre = "suite", carte = true, etapes = etapes,
         nom = NS.ref.NomDeQuete(derniere, p) }
     table.insert(liste, pc)
     return pc
@@ -272,7 +286,7 @@ end
 
 function parcours.CreerSelection(cle, p, premiere)
     local liste = parcours.Liste(cle)
-    local pc = { id = NouvelId(liste), genre = "selection", carte = true, etapes = { premiere },
+    local pc = { id = NouvelId(liste), uid = NouvelUid(), genre = "selection", carte = true, etapes = { premiere },
         nom = string.format(NS.L.ROUTE_DEFAULT_NAME, NouvelId(liste)) }
     table.insert(liste, pc)
     return pc
@@ -288,7 +302,7 @@ function parcours.CreerKit(cle, ids, nom, zone)
     end
     local etapes = {}
     for _, id in ipairs(ids) do table.insert(etapes, id) end
-    local pc = { id = NouvelId(liste), genre = "kit", carte = true, etapes = etapes, nom = nom, donjon = zone }
+    local pc = { id = NouvelId(liste), uid = NouvelUid(), genre = "kit", carte = true, etapes = etapes, nom = nom, donjon = zone }
     table.insert(liste, pc)
     return pc
 end
@@ -346,25 +360,35 @@ end
 -- Pour la carte : etapes a montrer, { [quete] = numero }, des parcours
 -- affiches du personnage. Une etape faite n'a rien a montrer ; une etape pas
 -- encore prenable est montree en retrait, chez son donneur.
--- Pendant le guidage, seul le trajet guide est montre : pas de conflit de
--- numeros ni de pointilles avec un autre parcours. Sinon, la tournee de rendu
--- passe d'abord (une quete presente dans deux parcours garde son numero).
+-- Pendant le guidage d'un objectif de QuestCore, seules ses etapes sont
+-- montrees, numerotees dans l'ordre vise : pas de conflit de numeros ni de
+-- pointilles avec un parcours.
 function parcours.EtapesSurCarte(cle, p)
     local numeros = {}
-    local guide = (NS.guidage and NS.guidage.Actif and NS.guidage.Actif())
-        or (NS.pageCarte and NS.pageCarte.EnModeTrajet and NS.pageCarte.EnModeTrajet())
-    -- Un parcours precis guide (kit de donjon...) : lui seul.
-    local idGuide = NS.guidage and NS.guidage.Actif and NS.guidage.Actif()
-        and NS.guidage.ParcoursGuide and NS.guidage.ParcoursGuide()
+    local g = NS.guidage
+    local objectif = g and g.Objectif and g.Objectif()
+    local uidGuide = objectif and objectif.type == "parcours" and objectif.params.uid or nil
+    if objectif and not uidGuide then
+        local etapes = g.Etapes and g.Etapes() or {}
+        local rang = 0
+        for _, e in ipairs(etapes) do
+            if e.id and not numeros[e.id] then
+                rang = rang + 1
+                numeros[e.id] = { numero = rang, etat = parcours.EtatEtape(p, e.id), parcours = objectif.libelle, idParcours = "objectif" }
+            end
+        end
+        return numeros
+    end
     local liste = {}
     for _, pc in ipairs(parcours.Liste(cle)) do
-        if idGuide then
-            if pc.id == idGuide then table.insert(liste, pc) end
-        elseif pc.genre == "rendu" then table.insert(liste, 1, pc)
-        elseif not guide then table.insert(liste, pc) end
+        if uidGuide then
+            if pc.uid == uidGuide then table.insert(liste, pc) end
+        else
+            table.insert(liste, pc)
+        end
     end
     for _, pc in ipairs(liste) do
-        if pc.carte or (guide and (pc.genre == "rendu" or pc.id == idGuide)) then
+        if pc.carte or pc.uid == uidGuide then
             -- Numerotees dans l'ordre de ce qui reste a faire : 1, 2, 3...
             local rang = 0
             for _, id in ipairs(pc.etapes) do

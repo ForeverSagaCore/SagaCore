@@ -40,6 +40,7 @@ UI\Minimap.lua
 UI\Carte.lua
 UI\CartePage.lua
 UI\Suivi.lua
+Core\Guidage.lua
 UI\Courrier.lua
 Core\Annonces.lua
 QuestCore.lua

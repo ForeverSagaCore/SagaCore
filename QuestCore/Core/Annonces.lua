@@ -16,7 +16,7 @@ local function Definir()
     M.Definir("QuestCore", {
         { cle = "assez", libelle = T("Assez de quêtes pour monter", "Enough quests to level up"),
           texte = T("{quetes} quêtes à rendre : de quoi passer niveau {niveau}.", "{quetes} quests to turn in : enough for level {niveau}."),
-          valeurs = { "quetes", "niveau" }, exemples = { quetes = 4, niveau = 18 }, actions = { T("Créer l'itinéraire", "Plan the route"), T("Plus tard", "Later") } },
+          valeurs = { "quetes", "niveau" }, exemples = { quetes = 4, niveau = 18 }, actions = { string.format(T("Guider vers le niveau %d", "Guide to level %d"), 18), T("Plus tard", "Later") } },
         { cle = "proche", libelle = T("Niveau suivant en approche", "Next level close"),
           texte = T("Niveau {niveau} en approche : plus que {reste} % à faire.", "Level {niveau} is close : only {reste} % to go."),
           valeurs = { "niveau", "reste" }, exemples = { niveau = 18, reste = 8 }, delai = 3600 },
@@ -45,7 +45,7 @@ end
 
 local function GuiderRendus()
     local api = _G.QuestCoreAPI
-    if api and api.Guider then api.Guider(true) end
+    if api and api.GuiderRendus then api.GuiderRendus() end
 end
 
 -- XP d'une quete du journal : le jeu d'abord, sinon la base.
@@ -72,8 +72,12 @@ local function Examiner()
             n = n + 1
             total = total + XP(id)
             if completes and not completes[id] then
+                local idQ = id
                 Dire("terminee", { quete = q.titre or (NS.ref and NS.ref.NomDeQuete(id, p)) or id },
-                    { { T("Guider", "Guide"), GuiderRendus } }, id)
+                    { { T("Guider", "Guide"), function()
+                        local api = _G.QuestCoreAPI
+                        if api and api.GuiderQuetes then api.GuiderQuetes({ idQ }) end
+                    end } }, id)
             end
         end
     end
@@ -81,8 +85,12 @@ local function Examiner()
     local reste = (UnitXPMax("player") or 0) - (UnitXP("player") or 0)
     local maxi = _G.GetMaxPlayerLevel and _G.GetMaxPlayerLevel() or 60
     if n > 0 and reste > 0 and total >= reste and niveau < maxi then
-        Dire("assez", { quetes = n, niveau = niveau + 1 },
-            { { T("Créer l'itinéraire", "Plan the route"), GuiderRendus }, { T("Plus tard", "Later"), function() end, non = true } },
+        local vise = niveau + 1
+        Dire("assez", { quetes = n, niveau = vise },
+            { { string.format(T("Guider vers le niveau %d", "Guide to level %d"), vise), function()
+                local api = _G.QuestCoreAPI
+                if api and api.GuiderNiveau then api.GuiderNiveau(vise) end
+            end }, { T("Plus tard", "Later"), function() end, non = true } },
             niveau)
     end
 end

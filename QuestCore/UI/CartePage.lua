@@ -41,15 +41,21 @@ end
 
 page.Reglages = Reglages
 
--- Carte cloisonnee sur le trajet de quetes : ouverte par "Trajet (n)" ou
--- "Trajet niveau", elle ne montre que ce trajet (ni recolte, ni reperes, ni
--- autres quetes, ni filtres) et la liste de ses etapes a gauche.
+-- Carte cloisonnee sur l'objectif de QuestCore guide : ouverte au lancement
+-- du guidage, elle ne montre que lui (ni recolte, ni reperes, ni autres
+-- quetes, ni filtres) et la liste de ses etapes a gauche, dans l'ordre vise.
+-- Un parcours guide garde sa liste a lui.
 local modeTrajet = false
 local function TrajetCourant()
-    local cle = NS.ClePersonnage()
-    for _, pc in ipairs(NS.parcours and NS.parcours.Liste(cle) or {}) do
-        if pc.genre == "rendu" then return pc end
+    local g = NS.guidage
+    local a = g and g.Objectif and g.Objectif()
+    if not a then return nil end
+    if a.type == "parcours" then
+        return NS.parcours and NS.parcours.TrouverUid(NS.ClePersonnage(), a.params.uid)
     end
+    local etapes = {}
+    for _, e in ipairs(g.Etapes and g.Etapes() or {}) do if e.id then table.insert(etapes, e.id) end end
+    return { nom = a.libelle, etapes = etapes }
 end
 local queteSeule
 function page.ModeTrajet(oui)
@@ -91,21 +97,8 @@ function page.MontrerQuete(id, idCarte, x, y, nomQuete, nomDonneur, sansFleche, 
     entree = nil
     quetePointee = { carte = idCarte, x = x, y = y, quete = id, nom = nomQuete, donneur = nomDonneur, genre = genre }
     carteChoisie = idCarte
-    -- Voir sur la carte : la fleche de guidage part aussi vers la quete.
-    -- Sauf pendant le guidage d'un parcours : sa fleche reste.
-    local S = NS.suite or _G.CoreSuite
-    if S and S.Guider and x and y and not sansFleche then
-        local point = { carte = idCarte, x = x, y = y, titre = nomQuete, qui = nomDonneur }
-        S.Guider("QuestCorePointee", {
-            carte = false,
-            Cible = function() return point end,
-            Arrivee = function()
-                local plusTard = NS.Lecture("C_Timer.After")
-                if plusTard then plusTard(0, function() S.ArreterGuidage("QuestCorePointee") end) end
-            end,
-            Fin = function() end,
-        })
-    end
+    -- Voir sur la carte ne guide pas : la fleche part au clic sur le point
+    -- violet (objectif "quetes" de cette seule quete).
 end
 
 local function PoserQuetePointee(idCarte)
@@ -141,21 +134,12 @@ local function PoserQuetePointee(idCarte)
             GameTooltip:Show()
         end)
         b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        -- Clic : la fleche de guidage de la suite mene jusqu'a la quete.
+        -- Clic : la fleche de guidage de la suite mene a cette quete (ses
+        -- objectifs, puis son rendu).
         b:SetScript("OnClick", function(self)
-            local S = NS.suite or _G.CoreSuite
             local q = quetePointee
-            if not (S and S.Guider and q) then return end
-            local point = { carte = q.carte, x = q.x, y = q.y, titre = q.nom, qui = q.donneur }
-            S.Guider("QuestCorePointee", {
-                carte = false,
-                Cible = function() return point end,
-                Arrivee = function()
-                    local plusTard = NS.Lecture("C_Timer.After")
-                    if plusTard then plusTard(0, function() S.ArreterGuidage("QuestCorePointee") end) end
-                end,
-                Fin = function() end,
-            })
+            local api = _G.QuestCoreAPI
+            if q and q.quete and api and api.GuiderQuetes then api.GuiderQuetes({ q.quete }) end
             GameTooltip:Hide()
         end)
         vue.pointee = b
@@ -1218,17 +1202,12 @@ local function RendreMenu(idCarte)
             end
         end
         y = y + 10
-        local actif = NS.guidage and NS.guidage.Actif()
-        Ligne(actif and L.ROUTE_GUIDE_STOP or L.ROUTE_GUIDE_START, nil, false, function()
-            if NS.guidage then NS.guidage.Basculer(not actif) end
-            page.Rendre()
-        end, nil, nil, { 0.5, 0.95, 0.4 })
-        Ligne(L.ROUTE_CLEAR, nil, false, function()
-            if NS.guidage and NS.guidage.Actif() then NS.guidage.Basculer(false) end
-            NS.parcours.Supprimer(cle, pcT.id)
+        -- La liste n'existe que pendant le guidage : Arreter.
+        Ligne(L.ROUTE_GUIDE_STOP, nil, false, function()
+            if NS.guidage and NS.guidage.Basculer then NS.guidage.Basculer(false) end
             page.ModeTrajet(false)
             Changement()
-        end)
+        end, nil, nil, { 0.5, 0.95, 0.4 })
         Ligne(L.ROUTE_SHOW_ALL, nil, false, function()
             page.ModeTrajet(false)
             Changement()

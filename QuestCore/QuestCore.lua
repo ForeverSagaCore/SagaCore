@@ -20,12 +20,10 @@ local function ReleverBientot()
             local okC, souciC = pcall(NS.carte.Rendre)
             if not okC then NS.base.NoterIncident("carte", souciC) end
         end
-        -- Guidage d'un trajet de niveau : il s'adapte aux quetes du moment.
-        if NS.guidage and NS.guidage.Actif() and NS.suivi.AdapterTrajetNiveau then
-            local okA, souciA = pcall(NS.suivi.AdapterTrajetNiveau)
-            if not okA then NS.base.NoterIncident("trajet de niveau", souciA) end
-            local okB, souciB = pcall(NS.suivi.AdapterTrajet)
-            if not okB then NS.base.NoterIncident("trajet, quete en route", souciB) end
+        -- Journal releve : l'objectif guide recalcule ses etapes tout de suite.
+        if NS.guidage and NS.guidage.Actif and NS.guidage.Actif() then
+            local S = NS.suite or _G.CoreSuite
+            if S and S.Invalider then S.Invalider() end
         end
         if NS.fenetre.Visible() then NS.fenetre.Rendre() end
         if NS.suivi then NS.suivi.Rendre() end
@@ -85,7 +83,8 @@ evenements:SetScript("OnEvent", function(_, evenement, ...)
         local id = ...
         pcall(NS.journal.Rendue, tonumber(id))
         -- Le guidage passe tout de suite a l'etape suivante.
-        if NS.suivi and NS.suivi.OublierCible then pcall(NS.suivi.OublierCible) end
+        local S = NS.suite or _G.CoreSuite
+        if S and S.Invalider then pcall(S.Invalider) end
         NS.disponibles.Invalider()
         ReleverBientot()
     elseif evenement == "ZONE_CHANGED_NEW_AREA" then

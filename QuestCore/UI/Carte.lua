@@ -615,26 +615,15 @@ function carte.Installer() end
 
 -- Pour les autres add-ons de la suite (MapCore) : les reperes de quetes.
 _G.QuestCoreAPI = {
-    -- Pour la vue d'ensemble de MapCore : le trajet de quetes du personnage
-    -- connecte (nom, etapes restantes, total, guide ou non), ou nil.
+    -- L'objectif de QuestCore guide (nom, etapes restantes, total), ou nil.
     Circuit = function()
-        local cle = NS.ClePersonnage()
-        local moi = cle and NS.base.Perso(cle)
-        if not moi or not NS.parcours then return nil end
-        for _, pc in ipairs(NS.parcours.Liste(cle)) do
-            if pc.genre == "rendu" then
-                local reste = 0
-                for _, id in ipairs(pc.etapes) do
-                    if NS.parcours.EtatEtape(moi, id) ~= "faite" then reste = reste + 1 end
-                end
-                if reste == 0 then return nil end
-                return { nom = pc.nom, reste = reste, total = #pc.etapes,
-                    guide = NS.guidage and NS.guidage.Actif() or false }
-            end
-        end
-        return nil
+        local a = NS.guidage and NS.guidage.Objectif and NS.guidage.Objectif()
+        if not a then return nil end
+        local e = (NS.suite or _G.CoreSuite).EtatGuidage()
+        if not e then return nil end
+        local total = e.total or 0
+        return { nom = a.libelle, reste = math.max(0, total - (e.rang or 1) + 1), total = total, guide = true }
     end,
-    Guider = function(oui) if NS.guidage then NS.guidage.Basculer(oui) end end,
     -- Le bandeau d'avancement, pour les autres add-ons de la suite (CraftCore :
     -- projet termine). Memes reglages, meme place que pour les quetes.
     Bandeau = function(titre, detail, terminee, detail2)
@@ -649,7 +638,8 @@ _G.QuestCoreAPI = {
     NiveauDeCarte = function(idCarte) return carte.NiveauDeCarte(idCarte) end,
     -- Parcours de progression vers le niveau suivant, pour le personnage
     -- connecte, puis ouverture de la page Parcours. Rend le parcours ou nil
-    -- et la raison ("rien", "aucune").
+    -- et la raison ("rien", "aucune"). (Les boutons guident plutot vers un
+    -- niveau : QuestCoreAPI.GuiderNiveau, Core/Guidage.lua.)
     CreerProgression = function()
         local cle = NS.ClePersonnage()
         local p = cle and NS.base.PersoParCle(cle)
