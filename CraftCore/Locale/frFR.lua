@@ -821,3 +821,11 @@ L.ASSIST_ALSO_BANK = "aussi x%d en banque"
 L.ASSIST_NOTHING_IN_BAGS = "Rien dans les sacs : à sortir de la banque d'abord."
 L.ASSIST_PICK = "LB / RB pour choisir, Y pour valider."
 L.ASSIST_PICK_SEND = "Plusieurs envois : LB / RB pour choisir, Y pour préparer."
+
+-- Guidage : objectifs de recolte
+L.GUIDE_GATHER_ZONE_EMPTY = "Dans cette zone, vous n'avez encore relevé aucun %s. Il y en a : récoltez ici pour les ajouter à vos relevés."
+L.GUIDE_GATHER_NO_PROFESSION = "Guidage de la récolte : ce personnage n'a pas le métier pour récolter ces matières."
+L.GUIDE_GATHER_NONE_CONTINENT = "Aucun lieu relevé sur ce continent : %s"
+L.GUIDE_OBJ_GATHER_TAB = "Récolte de l'onglet %s"
+L.GUIDE_OBJ_GATHER_GOAL = "Récolte pour %s"
+L.GUIDE_OBJ_GATHER_ALL = "Récolte de ce qui manque"

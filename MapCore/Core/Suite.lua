@@ -2825,7 +2825,9 @@ local function CadreObjectifs()
         GameTooltip:SetText(TG.titre, 1, 0.82, 0)
         if self.titre then GameTooltip:AddLine(self.titre, 1, 1, 1) end
         local def = Def(Suite.guide.actif)
-        if def and def.AideClic then GameTooltip:AddLine(def.AideClic, 0.7, 0.7, 0.7, true) end
+        local aideClic = def and def.AideClic
+        if type(aideClic) == "function" then local okA, t = pcall(aideClic) aideClic = okA and t or nil end
+        if type(aideClic) == "string" then GameTooltip:AddLine(aideClic, 0.7, 0.7, 0.7, true) end
         GameTooltip:AddLine(TG.aide, 0.7, 0.7, 0.7, true)
         GameTooltip:Show()
     end)
@@ -3372,7 +3374,7 @@ Calculer = function()
     local cleCible = premiere and (premiere.cle or (tostring(premiere.carte) .. ":" .. tostring(premiere.x) .. ":" .. tostring(premiere.y)))
     if not g.calcul or g.calcul.cleCible ~= cleCible then g.arrivee = nil end
     g.calcul = { quand = maintenant, etapes = etapes, raison = raison, detail = detail,
-        rang = math.max(1, math.min(fait + 1, math.max(total, 1))), total = math.max(total, n), cleCible = cleCible }
+        rang = math.max(1, math.min(fait + 1, math.max(total, 1))), total = math.max(total or 0, 0), cleCible = cleCible }
     return g.calcul
 end
 

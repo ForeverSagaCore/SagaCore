@@ -822,3 +822,11 @@ L.ASSIST_ALSO_BANK = "also x%d in the bank"
 L.ASSIST_NOTHING_IN_BAGS = "Nothing in bags : take it from the bank first."
 L.ASSIST_PICK = "LB / RB to pick, Y to confirm."
 L.ASSIST_PICK_SEND = "Several mails : LB / RB to pick, Y to prepare."
+
+-- Guidance : gathering goals
+L.GUIDE_GATHER_ZONE_EMPTY = "In this zone, you have not recorded any %s yet. There is some : gather here to add it to your records."
+L.GUIDE_GATHER_NO_PROFESSION = "Gathering guide : this character lacks the profession to gather these materials."
+L.GUIDE_GATHER_NONE_CONTINENT = "No spot recorded on this continent : %s"
+L.GUIDE_OBJ_GATHER_TAB = "Gathering, %s tab"
+L.GUIDE_OBJ_GATHER_GOAL = "Gathering for %s"
+L.GUIDE_OBJ_GATHER_ALL = "Gathering what is missing"
