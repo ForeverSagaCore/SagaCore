@@ -599,8 +599,8 @@ local function RendreDefis(contenu, index, y)
         local estMoi = c.meilleur and c.meilleur.cle == NS.ClePersonnage()
         local api = _G.QuestCoreAPI
         if prochain and c.meilleur then
-            if estMoi and api and api.CreerProgression then
-                detail = detail .. "   |cffffd100" .. L.CHALLENGE_CLICK_ROUTE .. "|r"
+            if estMoi and api and api.GuiderNiveau then
+                detail = detail .. "   |cffffd100" .. string.format(L.CHALLENGE_CLICK_ROUTE, prochain) .. "|r"
             elseif not estMoi then
                 detail = detail .. "   " .. string.format(L.CHALLENGE_LOG_ON, NS.NomCourt(c.meilleur.cle))
             end
@@ -614,11 +614,13 @@ local function RendreDefis(contenu, index, y)
         local l = contenu.lignes[index]
         local coords = _G.CLASS_ICON_TCOORDS and _G.CLASS_ICON_TCOORDS[c.classe]
         if coords then l.icone:SetTexCoord(coords[1], coords[2], coords[3], coords[4]) end
-        if prochain and estMoi and api and api.CreerProgression then
+        if prochain and estMoi and api and api.GuiderNiveau then
+            local palier = prochain
             l:EnableMouse(true)
             l:SetScript("OnClick", function()
-                local ok, pc = pcall(api.CreerProgression)
-                if ok and not pc then NS.Dire(L.CHALLENGE_ROUTE_NONE) end
+                -- Le guidage de QuestCore vers ce palier (objectif "niveau").
+                local ok, lance = pcall(api.GuiderNiveau, palier)
+                if ok and not lance then NS.Dire(L.CHALLENGE_ROUTE_NONE) end
             end)
         end
     end

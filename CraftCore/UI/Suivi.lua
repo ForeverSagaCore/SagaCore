@@ -320,6 +320,7 @@ local function ObjectifsDeProjets(liste)
                 pourQui = string.format(L.TRACK_ORDER_FOR, table.concat(noms, ", "))
             end
             table.insert(liste, { groupe = deProg and "progression" or "projets", commande = commande or nil, pourQui = pourQui,
+                ligneMetier = deProg and tonumber(projet.progression) or nil,
                 cle = commande and ("commande" .. table.concat((function() local t = {} for _, l in ipairs(lignes) do table.insert(t, tostring(l.recette)) end table.sort(t) return t end)(), ",")) or ("projet" .. tostring(projet.id)),
                 genre = "projet", rapides = projet.rapides,
                 titreAnnonce = nomBloc, fabriquer = fabriquer, nLignes = #lignes, lignes = lignes,
@@ -402,6 +403,9 @@ local function Vue()
     if g.vueRecolte == "progressions" or g.vueRecolte == "commandes" then return g.vueRecolte end
     return "fabrications"
 end
+suivi.Vue = Vue
+-- L'objectif de recolte de l'onglet affiche (bouton Guider du bas).
+function suivi.ParamsOnglet() return { onglet = Vue() } end
 
 -- Memes polices et memes tailles que le suivi des quetes de QuestCore :
 -- titres un cran au-dessus, lignes a la taille du suivi.
@@ -575,7 +579,7 @@ local function Construire()
     local guider = CreateFrame("Button", nil, cadre, "UIPanelButtonTemplate")
     guider:SetSize(110, 20)
     guider:SetPoint("BOTTOMRIGHT", cadre.zone, "BOTTOMRIGHT", 0, 0)
-    guider:SetScript("OnClick", function() suivi.Guider() end)
+    guider:SetScript("OnClick", function() NS.guidage.Basculer(suivi.ParamsOnglet()) end)
     guider:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText(self:GetText() or "", 1, 0.82, 0)
@@ -640,6 +644,7 @@ local function DeLOnglet(objectifs, vue)
     end
     return rendu
 end
+suivi.DeLOnglet = DeLOnglet
 
 -- Tout ouvrir (oui) ou tout fermer les objectifs de l'onglet affiche.
 function suivi.ToutOuvrir(oui)
@@ -1063,8 +1068,9 @@ local function DessinerObjectifs(y, objectifs, vue)
                 end
                 -- Des matieres manquent et leurs lieux sont connus : la petite
                 -- carte du suivi des quetes lance le guidage de recolte.
-                local lieux = (not recettePrete) and suivi.LieuxManquants({ o }) or {}
+                local lieux = (not recettePrete) and suivi.LieuxRecoltables({ o }) or {}
                 if #lieux > 0 then
+                    local paramsPion = { objectifs = { o.cle } }
                     if not b.pion then
                         b.pion = CreateFrame("Button", nil, b)
                         b.pion:SetSize(18, 18)
@@ -1081,10 +1087,10 @@ local function DessinerObjectifs(y, objectifs, vue)
                         b.pion.anneau:SetSize(31, 31)
                         b.pion.anneau:SetPoint("TOPLEFT", b.pion, "TOPLEFT", 0, 0)
                         b.pion.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-                        b.pion:SetScript("OnClick", function() suivi.Guider() end)
+                        b.pion:SetScript("OnClick", function(self) if self.params then NS.guidage.Basculer(self.params) end end)
                         b.pion:SetScript("OnEnter", function(self)
                             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                            GameTooltip:SetText(suivi.EnGuidage() and L.GUIDE_GOALS_STOP or L.GUIDE_GOALS, 1, 0.82, 0)
+                            GameTooltip:SetText(suivi.EnGuidage(self.params) and L.GUIDE_GOALS_STOP or L.GUIDE_GOALS, 1, 0.82, 0)
                             GameTooltip:AddLine(L.GUIDE_GOALS_HELP, 1, 1, 1, true)
                             GameTooltip:Show()
                         end)
@@ -1093,7 +1099,8 @@ local function DessinerObjectifs(y, objectifs, vue)
                     b.pion:ClearAllPoints()
                     b.pion:SetPoint("RIGHT", b.droite, "LEFT", -4, 0)
                     b.pion:SetFrameLevel(b:GetFrameLevel() + 3)
-                    local actif = suivi.EnGuidage()
+                    b.pion.params = paramsPion
+                    local actif = suivi.EnGuidage(paramsPion)
                     b.pion.t:SetDesaturated(not actif)
                     b.pion.anneau:SetDesaturated(not actif)
                     b.pion:Show()
@@ -1289,10 +1296,12 @@ function suivi.Dessiner()
     cadreSuivi.tout.ouvrir = not tousOuverts
     cadreSuivi.tout:SetText(tousOuverts and L.TRACK_CLOSE_ALL or L.TRACK_OPEN_ALL)
     cadreSuivi.tout:SetShown(#deLOnglet > 1)
-    -- Guidage possible si une matiere qui manque a un lieu connu.
-    local guidable = suivi.EnGuidage() or #suivi.LieuxManquants(objectifs) > 0
+    -- Guidage possible si une matiere qui manque aux objectifs de l'onglet,
+    -- et que le personnage sait recolter, a un lieu connu.
+    local enGuidage = suivi.EnGuidage(suivi.ParamsOnglet())
+    local guidable = enGuidage or #suivi.LieuxRecoltables(deLOnglet) > 0
     cadreSuivi.guider:SetShown(guidable)
-    cadreSuivi.guider:SetText(suivi.EnGuidage() and L.GUIDE_GOALS_STOP or L.GUIDE_GOALS)
+    cadreSuivi.guider:SetText(enGuidage and L.GUIDE_GOALS_STOP or L.GUIDE_GOALS)
     if guidable or #deLOnglet > 1 then y = y + 26 end
     cadreSuivi:SetHeight(24 + NS.charte.MARGE + y + NS.charte.MARGE + 4)
 end
@@ -1401,6 +1410,7 @@ local function MetierDeMatiere(objet)
     if (classe == 7 and sousClasse == 7) or classe == 3 then return "minerais" end
     return nil
 end
+suivi.MetierDeMatiere = MetierDeMatiere
 
 -- Dernier sort de recolte lance : Cueillette (herboristerie) ou Minage, par
 -- leur nom dans la langue du jeu, tous rangs confondus.
@@ -1627,27 +1637,15 @@ _G.CraftCoreAPI.Objet = function(objet)
 end
 
 -- ---------------------------------------------------------------------------
--- Guidage vers ce qui manque : parmi les matieres qui manquent encore aux
--- objectifs suivis, les lieux ou on les a deja recoltees (tous personnages) ;
--- la fleche de la suite mene au plus proche, puis au plus proche suivant.
--- Un lieu atteint est compte comme visite pour la session ; tous visites,
--- on recommence (les noeuds repoussent).
+-- Lieux de recolte des matieres qui manquent : la ou on les a deja recoltees
+-- (tous personnages), et les noeuds reperes sans pouvoir les recolter. Le
+-- guidage lui-meme est un objectif de la suite (UI/Guidage.lua).
 -- ---------------------------------------------------------------------------
 
-local visites = {}
-local cacheManques = { quand = -100 }
-
--- Lieux { carte, x, y, objet, cle } des matieres qui manquent.
-function suivi.LieuxManquants(objectifs)
-    local manques = {}
-    for _, o in ipairs(objectifs or {}) do
-        for _, m in ipairs(o.matieres or {}) do
-            if (m.manque or 0) > 0 then manques[m.objet] = true end
-        end
-    end
+-- Lieux { carte, x, y, objet, cle } des objets de l'ensemble { [objet] = n }.
+function suivi.LieuxDe(ensemble)
     local liste = {}
     local d = CraftCoreDB
-    suivi.matieresManquantes = manques
     -- Les noeuds vus sans pouvoir les recolter ("Minage requis", ou deja pris)
     -- comptent aussi, par leur nom : "Filon de cuivre" donne du "Minerai de
     -- cuivre" (meme fin de nom), une plante porte le nom de l'herbe.
@@ -1662,7 +1660,7 @@ function suivi.LieuxManquants(objectifs)
         local a, b = string.lower(nomNoeud), string.lower(nomObjet)
         return a == b or Fin(a) == Fin(b)
     end
-    for objet in pairs(manques) do
+    for objet in pairs(ensemble or {}) do
         local metier = MetierDeMatiere(objet)
         for carte, noeuds in pairs(metier and type(d) == "table" and d.noeuds or {}) do
             for _, l in ipairs(noeuds) do
@@ -1673,7 +1671,7 @@ function suivi.LieuxManquants(objectifs)
             end
         end
     end
-    for objet in pairs(manques) do
+    for objet in pairs(ensemble or {}) do
         for carte, lieux in pairs(type(d) == "table" and d.lieux and d.lieux[objet] or {}) do
             for _, l in ipairs(lieux) do
                 table.insert(liste, { carte = carte, x = l[1], y = l[2], objet = objet,
@@ -1684,76 +1682,33 @@ function suivi.LieuxManquants(objectifs)
     return liste
 end
 
-local function Monde(carte, x, y)
-    local f, V = NS.Lecture("C_Map.GetWorldPosFromMapPos"), _G.CreateVector2D
-    if not (f and V) then return nil end
-    local ok, continent, p = pcall(f, carte, V(x, y))
-    if ok and p and p.GetXY then
-        local a, b = p:GetXY()
-        return a, b, continent
+local function ManquesDe(objectifs)
+    local manques = {}
+    for _, o in ipairs(objectifs or {}) do
+        for _, m in ipairs(o.matieres or {}) do
+            if (m.manque or 0) > 0 then manques[m.objet] = (manques[m.objet] or 0) + m.manque end
+        end
     end
-    return nil
+    return manques
 end
 
--- La fleche demande sa cible vingt fois par seconde : le lieu vise n'est
--- recherche que toutes les 4 secondes (ou des qu'il est atteint).
-local cibleRecolte, cibleRecolteQuand = nil, -100
-local fournisseurRecolte
-local function ChercherCible()
-        local maintenant = NS.Appeler(GetTime) or 0
-        -- Les objectifs se recalculent toutes les 5 secondes, pas plus.
-        if maintenant - cacheManques.quand > 5 then
-            cacheManques.quand = maintenant
-            cacheManques.lieux = suivi.LieuxManquants(suivi.Objectifs())
-        end
-        local lieux = cacheManques.lieux or {}
-        if #lieux == 0 then
-            -- Des matieres manquent mais aucun lieu n'est connu : ce n'est pas fini.
-            if next(suivi.matieresManquantes or {}) then return nil, "inconnu" end
-            return nil, "fini"
-        end
-        local carteJ = NS.Appeler(NS.Lecture("C_Map.GetBestMapForUnit"), "player")
-        local pos = carteJ and NS.Appeler(NS.Lecture("C_Map.GetPlayerMapPosition"), carteJ, "player")
-        local jx, jy, jc
-        if type(pos) == "table" and pos.GetXY then jx, jy, jc = Monde(carteJ, pos:GetXY()) end
-        local function Chercher()
-            local meilleur, cible
-            for _, l in ipairs(lieux) do
-                if not visites[l.cle] then
-                    local x, y, c = Monde(l.carte, l.x, l.y)
-                    if x and jx and c == jc then
-                        local dist = (x - jx) ^ 2 + (y - jy) ^ 2
-                        if not meilleur or dist < meilleur then meilleur, cible = dist, l end
-                    end
-                end
-            end
-            return cible
-        end
-        local cible = Chercher()
-        if not cible then
-            visites = {}
-            cible = Chercher()
-        end
-        if not cible then return nil end
-        local nom = NS.inventaire.NomDObjet(cible.objet)
-        return { carte = cible.carte, x = cible.x, y = cible.y, qui = nom, cle = cible.cle,
-            titre = NS.L.GUIDE_GOALS_TITLE }
+-- Lieux des matieres qui manquent a ces objectifs.
+function suivi.LieuxManquants(objectifs)
+    local manques = ManquesDe(objectifs)
+    suivi.matieresManquantes = manques
+    return suivi.LieuxDe(manques)
 end
-fournisseurRecolte = {
-    Cible = function()
-        local maintenant = NS.Appeler(GetTime) or 0
-        if maintenant - cibleRecolteQuand < 4 then return cibleRecolte end
-        local c, raison = ChercherCible()
-        if raison then return nil, raison end
-        cibleRecolte, cibleRecolteQuand = c, maintenant
-        return c
-    end,
-    Arrivee = function(cible)
-        if cible.cle and not visites[cible.cle] then visites[cible.cle] = true end
-        cibleRecolteQuand = -100
-    end,
-    Fin = function() if suivi.Dessiner then pcall(suivi.Dessiner) end end,
-}
+
+-- Les memes, seulement pour ce que le personnage sait recolter.
+function suivi.LieuxRecoltables(objectifs)
+    local voulus = {}
+    local api = _G.CraftCoreAPI
+    for objet, n in pairs(ManquesDe(objectifs)) do
+        local metier = MetierDeMatiere(objet)
+        if metier and api and api.ARecolte and api.ARecolte(metier) then voulus[objet] = n end
+    end
+    return suivi.LieuxDe(voulus)
+end
 
 -- Pour la vue d'ensemble de MapCore : le circuit de recolte (lieux connus
 -- des matieres qui manquent), et son guidage.
@@ -1766,54 +1721,14 @@ _G.CraftCoreAPI.CircuitRecolte = function()
     for _, l in ipairs(lieux) do matieres[l.objet] = true end
     local n = 0
     for _ in pairs(matieres) do n = n + 1 end
-    return { lieux = #lieux, matieres = n, guide = suivi.EnGuidage() }
-end
-_G.CraftCoreAPI.GuiderRecolte = function(oui) return suivi.Guider(oui) end
-
-function suivi.EnGuidage()
     local S = NS.suite or _G.CoreSuite
-    return S and S.GuidageActif and S.GuidageActif("CraftCore") or false
+    return { lieux = #lieux, matieres = n, guide = S and S.GuidageActif and S.GuidageActif("CraftCore") or false }
 end
 
-function suivi.Guider(oui)
-    if NS.Trace then NS.Trace("guidage recolte : " .. tostring(oui)) end
-    local S = NS.suite or _G.CoreSuite
-    if not (S and S.Guider) then return end
-    if oui == nil then oui = not suivi.EnGuidage() end
-    if oui then
-        visites = {}
-        cacheManques.quand = -100
-        cibleRecolteQuand = -100
-        if NS.marchands and NS.marchands.OterDrapeau then pcall(NS.marchands.OterDrapeau) end
-        -- On dit ou mene la fleche, sinon le clic semble ne rien faire. Sans
-        -- lieu a viser, pas de fleche (elle restait figee sur hors de portee).
-        local okC, cible, raison = pcall(ChercherCible)
-        if okC and cible then S.Guider("CraftCore", fournisseurRecolte) else S.ArreterGuidage("CraftCore") end
-        local L = NS.L
-        local texte
-        if okC and cible then
-            local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), cible.carte)
-            local zone = type(info) == "table" and info.name or "?"
-            texte = string.format(L.GUIDE_GATHER_TO, cible.qui or "?", zone,
-                math.floor((cible.x or 0) * 100 + 0.5), math.floor((cible.y or 0) * 100 + 0.5))
-        elseif okC and raison == "fini" then
-            texte = L.GUIDE_GATHER_NOTHING
-        elseif okC and raison == "inconnu" then
-            local noms = {}
-            for objet in pairs(suivi.matieresManquantes or {}) do table.insert(noms, NS.inventaire.NomDObjet(objet)) end
-            table.sort(noms)
-            texte = string.format(L.GUIDE_GATHER_UNKNOWN, table.concat(noms, ", "))
-        else
-            texte = L.GUIDE_GATHER_NOWHERE
-        end
-        NS.Dire(texte)
-        if _G.UIErrorsFrame then pcall(_G.UIErrorsFrame.AddMessage, _G.UIErrorsFrame, texte, 1, 0.82, 0) end
-    else
-        S.ArreterGuidage("CraftCore")
-    end
-    pcall(suivi.Dessiner)
+-- Ce guidage de recolte precis (par defaut : celui de l'onglet affiche).
+function suivi.EnGuidage(params)
+    return NS.guidage and NS.guidage.EstActif and NS.guidage.EstActif(params or suivi.ParamsOnglet()) or false
 end
-
 
 -- ---------------------------------------------------------------------------
 -- Annonce : un projet (ou un rang vise) arrive a 100 %. Le meme bandeau que

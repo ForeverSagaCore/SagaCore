@@ -117,6 +117,10 @@ local function CarteDeZone(zone)
     return (c and c > 0) and c or nil
 end
 
+-- Pour les noeuds de recolte de la base du jeu (NoeudsJeu.lua).
+marchands.Lire = Lire
+marchands.CarteDeZone = CarteDeZone
+
 local function MonCamp()
     local camp = NS.Appeler(NS.Lecture("UnitFactionGroup"), "player")
     return camp == "Horde" and "H" or "A"
@@ -332,36 +336,14 @@ end
 
 marchands.OterDrapeau = OterDrapeau
 
+marchands.PoserDrapeau = PoserDrapeau
+
 -- La fleche de la suite jusqu'au marchand le plus proche, et le drapeau sur
--- la carte. Arrive : le guidage s'arrete et le drapeau s'en va.
+-- la carte : l'objectif "marchand" de CraftCore (UI/Guidage.lua). Arrive,
+-- l'objectif est atteint et le drapeau s'en va.
 function marchands.Guider(objet)
-    local L = NS.L
-    local S = NS.suite or _G.CoreSuite
-    local cible = marchands.PlusProche(objet)
-    if not cible then
-        NS.Dire(string.format(L.VENDOR_NONE_HERE, NS.inventaire.NomDObjet(objet)))
-        return false
-    end
-    if not (S and S.Guider) then return false end
     if NS.Trace then NS.Trace("guidage marchand : " .. tostring(objet)) end
-    local point = { carte = cible.carte, x = cible.x, y = cible.y, titre = L.VENDOR_GUIDE_TITLE,
-        guidage = string.format(L.VENDOR_GUIDE_WHAT, NS.inventaire.NomDObjet(objet)),
-        qui = tostring(cible.nom or "?") .. "\n|cffb3b3b3" .. string.format(L.VENDOR_GUIDE_WHAT, NS.inventaire.NomDObjet(objet)) .. "|r" }
-    S.Guider("CraftCore", {
-        icone = "Interface\\Minimap\\Tracking\\Reagents",
-        Cible = function() return point end,
-        Arrivee = function()
-            local apres = _G.C_Timer and _G.C_Timer.After
-            if apres then apres(0, function() if S.ArreterGuidage then S.ArreterGuidage("CraftCore") end end) end
-        end,
-        Fin = function()
-            OterDrapeau()
-            if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
-        end,
-    })
-    PoserDrapeau(cible)
-    NS.Dire(string.format(L.VENDOR_GUIDING, tostring(cible.nom or "?"), NS.inventaire.NomDObjet(objet)))
-    return true
+    return NS.guidage and NS.guidage.Marchand and NS.guidage.Marchand(objet) or false
 end
 
 -- ---------------------------------------------------------------------------

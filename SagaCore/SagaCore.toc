@@ -1,0 +1,9 @@
+## Interface: 16001
+## Title: SagaCore |cffaaaaaa(bascule)|r
+## Notes: Passer d'une suite a l'autre : la tienne, la Live (version publiee) ou la Dev.
+## Author: Forever SagaCore
+## Version: 0.1.0
+## IconTexture: Interface\Icons\INV_Misc_Book_11
+## SavedVariables: SagaCoreBasculeDB
+
+SagaCore.lua

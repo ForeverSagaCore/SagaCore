@@ -24,6 +24,9 @@ local function Definir()
           valeurs = { "perso" }, exemples = { perso = "Elo" }, delai = 3600 },
         { cle = "arret", libelle = T("Guidage arrêté", "Guidance stopped"),
           texte = T("Guidage arrêté.", "Guidance stopped."), delai = 5, ou = "rien" },
+        { cle = "atteint", libelle = T("Objectif atteint", "Goal reached"),
+          texte = T("Objectif atteint : {quoi}.", "Goal reached : {quoi}."),
+          valeurs = { "quoi" }, exemples = { quoi = "Vers le niveau 25" }, delai = 5 },
     })
 end
 Definir()

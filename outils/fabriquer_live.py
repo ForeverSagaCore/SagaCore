@@ -110,6 +110,9 @@ for a in PUBLIES:
     toc = re.sub(r"^(## (?:RequiredDeps|Dependencies|OptionalDeps): )(.*)$", deps, toc, flags=re.M)
     if "## DefaultState:" not in toc:
         toc = toc.replace("## Title:", "## DefaultState: disabled\n## Title:", 1)
+    # Le numero de la version publiee, lisible sans charger l'add-on.
+    toc = re.sub(r"^## X-SagaCore-Version:.*\n", "", toc, flags=re.M)
+    toc = toc.replace("## Title:", "## X-SagaCore-Version: " + version + "\n## Title:", 1)
     # La bascule, chargee en dernier.
     toc = toc.rstrip("\n") + "\nSagaLive.lua\n"
     open(os.path.join(dst, live(a) + ".toc"), "w", encoding="utf-8").write(toc)

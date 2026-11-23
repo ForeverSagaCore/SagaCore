@@ -3315,8 +3315,10 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
             for _, e in ipairs(Trie(plan.manques)) do
                 index, y = LigneSimple(contenu, index, y, Icone(e.objet), "x" .. e.n .. "  " .. Nom(e.objet), ParRang("manques", e.objet))
             end
+            local metierVise = cleObjectif
             BoutonDEtape("progRecolte", L.GUIDE_GATHER_GO, function()
-                if NS.suivi and NS.suivi.Guider then NS.suivi.Guider(true) end
+                -- Les matieres des rangs vises de ce metier, rien d'autre.
+                if NS.guidage and NS.guidage.Lancer then NS.guidage.Lancer({ metier = tonumber(metierVise) or metierVise }) end
                 ecran.Montrer(ecran.page)
             end)
         end

@@ -33,6 +33,7 @@ Projects\Projects.lua
 Caisses\Caisses.lua
 Procurement\Procurement.lua
 Procurement\Marchands.lua
+Procurement\NoeudsJeu.lua
 UI\Charte.lua
 UI\Actions.lua
 UI\Equipement.lua
@@ -42,6 +43,7 @@ UI\Aide.lua
 UI\Manette.lua
 UI\Infobulles.lua
 UI\Suivi.lua
+UI\Guidage.lua
 UI\Courrier.lua
 UI\Annonces.lua
 

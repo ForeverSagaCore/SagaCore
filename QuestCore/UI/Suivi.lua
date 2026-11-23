@@ -54,10 +54,51 @@ local function Reglages()
     -- Quete terminee : par defaut, elle quitte l'onglet Quetes pour ne plus
     -- etre que dans A rendre ; au choix, elle reste aussi dans Quetes.
     if s.termineesDansQuetes ~= true then s.termineesDansQuetes = false end
-    -- Quetes a rendre choisies pour l'itineraire (petite carte sur leur ligne).
-    s.aRendreChoisies = type(s.aRendreChoisies) == "table" and s.aRendreChoisies or {}
+    -- L'ancienne selection, commune au compte : remplacee par la selection de
+    -- chaque onglet, propre au personnage (Selection).
+    s.aRendreChoisies = nil
     return s
 end
+
+-- Quetes cochees (petite carte sur leur ligne), propres au personnage et a
+-- l'onglet : "quetes" ou "favoris". Le bouton Guider de l'onglet guide
+-- exactement celles-la.
+local function Selection(onglet)
+    local cle = NS.ClePersonnage()
+    local d = QuestCoreDB
+    if not cle or type(d) ~= "table" then return {} end
+    d.choix = type(d.choix) == "table" and d.choix or {}
+    local c = type(d.choix[cle]) == "table" and d.choix[cle] or {}
+    d.choix[cle] = c
+    c[onglet] = type(c[onglet]) == "table" and c[onglet] or {}
+    return c[onglet]
+end
+suivi.Selection = Selection
+
+-- L'onglet dont on coche les quetes : Quetes ou Favoris (ni A rendre, ni
+-- Itineraire, ni JcJ, ni un membre du groupe).
+local function OngletDeSelection()
+    local s = Reglages()
+    if s.vuePerso then return nil end
+    if s.vue == "favoris" then return "favoris" end
+    if s.vue == "quetes" and not NS.base.FiltreARendre() then return "quetes" end
+    return nil
+end
+suivi.OngletDeSelection = OngletDeSelection
+
+-- L'objectif du bouton Guider de l'onglet affiche : le type et ses
+-- parametres, ou nil (rien a guider ici).
+local function ObjectifDeLOnglet()
+    local s = Reglages()
+    if s.vuePerso or s.vue == "parcours" or s.vue == "pvp" then return nil end
+    if s.vue ~= "favoris" and NS.base.FiltreARendre() then return "rendus", {} end
+    local ids = {}
+    for id in pairs(Selection(OngletDeSelection() or "quetes")) do table.insert(ids, id) end
+    table.sort(ids)
+    if #ids == 0 then return nil end
+    return "quetes", { ids = ids }
+end
+suivi.ObjectifDeLOnglet = ObjectifDeLOnglet
 
 local RendreVueParcours
 local TRIS, Difficulte
@@ -590,7 +631,8 @@ function suivi.Favori(id) return Favoris()[id] == true end
 local rafraichirPrevu = false
 local function RafraichirTrajet()
     if NS.carte then NS.carte.Invalider() end
-    if suivi.OublierCible then suivi.OublierCible() end
+    local S = NS.suite or _G.CoreSuite
+    if S and S.Invalider then S.Invalider() end
     if rafraichirPrevu then return end
     rafraichirPrevu = true
     local function Faire()
@@ -686,141 +728,6 @@ local function Demander(texte, oui)
 end
 suivi.Demander = Demander
 
--- Apres chaque releve du journal, pendant le guidage d'un trajet de niveau :
--- une quete terminee en route (parler a un PNJ, une suite toute proche...)
--- peut changer le meilleur trajet. On le recalcule avec toutes les quetes a
--- rendre du moment ; un lieu lointain peut ne plus etre necessaire.
-function suivi.AdapterTrajetNiveau()
-    local cle = NS.ClePersonnage()
-    local moi = cle and NS.base.Perso(cle)
-    if not moi or not NS.parcours or not NS.disponibles or not NS.disponibles.QuetesPourNiveau then return end
-    local pc
-    for _, x in ipairs(NS.parcours.Liste(cle)) do if x.genre == "rendu" and x.niveauVise then pc = x end end
-    if not pc then return end
-    local ids = NS.disponibles.QuetesPourNiveau(moi)
-    if not ids or #ids == 0 then return end
-    -- Les etapes passees a la main n'y reviennent pas.
-    if pc.ignorees then
-        local gardees = {}
-        for _, id in ipairs(ids) do if not pc.ignorees[id] then table.insert(gardees, id) end end
-        ids = gardees
-        if #ids == 0 then return end
-    end
-    local avant = table.concat(pc.etapes, ",")
-    local faites = {}
-    for _, id in ipairs(pc.etapes) do if moi.faites and moi.faites[id] then table.insert(faites, id) end end
-    local etapes = {}
-    for _, id in ipairs(faites) do table.insert(etapes, id) end
-    for _, id in ipairs(ids) do table.insert(etapes, id) end
-    -- Les etapes en cours ajoutees en route (objectif a faire) restent.
-    local pris = {}
-    for _, id in ipairs(etapes) do pris[id] = true end
-    for _, id in ipairs(pc.etapes) do
-        local q = moi.quetes[id]
-        if not pris[id] and q and q.complete ~= true and q.complete ~= -1 then table.insert(etapes, id) end
-    end
-    local signature = table.concat(etapes, ",")
-    if signature == avant then return end
-    local function Appliquer()
-        if NS.Trace then NS.Trace("trajet niveau : " .. table.concat(etapes, ",")) end
-        pc.etapes = etapes
-        local s = Reglages()
-        s.aRendreChoisies = {}
-        for _, id in ipairs(ids) do s.aRendreChoisies[id] = true end
-        RafraichirTrajet()
-    end
-    -- Reglage : ajustement automatique (par defaut), ou une question.
-    if NS.base.ReglagesGeneraux().ajustementAuto ~= false then
-        Appliquer()
-        return
-    end
-    -- Une seule question par proposition.
-    if suivi.derniereProposition == signature then return end
-    suivi.derniereProposition = signature
-    -- Les quetes nouvelles dans le trajet propose, pour la question.
-    local dans, nouvelles = {}, {}
-    for _, id in ipairs(pc.etapes) do dans[id] = true end
-    for _, id in ipairs(ids) do
-        if not dans[id] then table.insert(nouvelles, (moi.quetes[id] and moi.quetes[id].titre) or ("#" .. id)) end
-    end
-    Demander(string.format(L.ADJUST_ASK, #nouvelles > 0 and table.concat(nouvelles, ", ") or L.ADJUST_SHORTER), Appliquer)
-end
-
--- Trajet le plus court pour monter de niveau : les quetes choisies, tracees
--- sur la carte.
--- Un nouveau trajet de quetes lance la fleche, sans question : il remplace
--- le guidage en cours (recolte de CraftCore, tournee de MapCore, ancien
--- trajet). Le dernier trajet demande est celui qu'on suit.
-local function PrendreGuidage()
-    if NS.guidage then
-        if NS.Trace then NS.Trace("guidage : trajet de quetes") end
-        pcall(NS.guidage.Basculer, true)
-    end
-end
-
-function suivi.TrajetNiveau()
-    if NS.Trace then NS.Trace("trajet niveau demande") end
-    local moi = NS.base.Perso(NS.ClePersonnage())
-    if not moi or not NS.disponibles or not NS.disponibles.QuetesPourNiveau then return end
-    local ok, ids = pcall(NS.disponibles.QuetesPourNiveau, moi)
-    if not ok then NS.base.NoterIncident("trajet de niveau", ids) return end
-    if not ids or #ids == 0 then NS.Dire(L.TRACK_LEVEL_NONE) return end
-    local s = Reglages()
-    s.aRendreChoisies = {}
-    for _, id in ipairs(ids) do s.aRendreChoisies[id] = true end
-    local okT, pc = pcall(NS.disponibles.CreerTournee, moi.cle, moi, ids)
-    if not okT then NS.base.NoterIncident("trajet de niveau", pc)
-    elseif pc then
-        -- Trajet de niveau : il s'adapte aux quetes qui se terminent en route,
-        -- et s'efface une fois le niveau atteint.
-        pc.niveauVise = (tonumber(NS.Appeler(UnitLevel, "player")) or 0) + 1
-        PrendreGuidage()
-        if NS.pageCarte and NS.pageCarte.ModeTrajet then NS.pageCarte.ModeTrajet(true) end
-    end
-    if NS.carte then NS.carte.Invalider() end
-    suivi.Rendre()
-end
-
--- Le seul bouton de guidage : il trace le trajet sur la carte et lance la
--- fleche. Ce qu'il guide se decide tout seul, dans cet ordre : les quetes
--- cochees ; sinon le trajet le plus court pour monter de niveau ; sinon le
--- trajet deja trace ; sinon toutes les quetes a rendre.
-function suivi.CeQueGuider(moi)
-    moi = moi or NS.base.Perso(NS.ClePersonnage())
-    if not moi then return nil end
-    local choisies = {}
-    for id in pairs(Reglages().aRendreChoisies or {}) do
-        if moi.quetes and moi.quetes[id] and moi.quetes[id].complete ~= -1 then table.insert(choisies, id) end
-    end
-    if #choisies > 0 then return "choisies", choisies end
-    if NS.disponibles and NS.disponibles.QuetesPourNiveau then
-        local ok, ids = pcall(NS.disponibles.QuetesPourNiveau, moi)
-        if ok and ids and #ids > 0 then return "niveau", ids end
-    end
-    for _, pc in ipairs(NS.parcours and NS.parcours.Liste(moi.cle) or {}) do
-        if pc.genre == "rendu" then return "trace" end
-    end
-    local aRendre = {}
-    for id, q in pairs(moi.quetes or {}) do if q.complete == true then table.insert(aRendre, id) end end
-    if #aRendre > 0 then return "rendre", aRendre end
-    return nil
-end
-
-function suivi.Guider()
-    local moi = NS.base.Perso(NS.ClePersonnage())
-    local genre, ids = suivi.CeQueGuider(moi)
-    if not genre then return end
-    if genre == "niveau" then suivi.TrajetNiveau() return end
-    if ids and NS.disponibles and NS.disponibles.CreerTournee then
-        local ok, souci = pcall(NS.disponibles.CreerTournee, moi.cle, moi, ids)
-        if not ok then NS.base.NoterIncident("trajet de quetes", souci) return end
-    end
-    PrendreGuidage()
-    if NS.pageCarte and NS.pageCarte.ModeTrajet then NS.pageCarte.ModeTrajet(true) end
-    if NS.carte then NS.carte.Invalider() end
-    suivi.Rendre()
-end
-
 function suivi.PoserFavori(id, oui)
     Favoris()[id] = oui and true or nil
     if NS.groupe and NS.groupe.EnvoyerFavoris then pcall(NS.groupe.EnvoyerFavoris) end
@@ -886,8 +793,9 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
         -- toujours sur la premiere ligne sous le titre, a droite, pour
         -- toutes les quetes.
         local icones = moi.cle == NS.ClePersonnage() and q.complete ~= -1
-        local choisiesQ = Reglages().aRendreChoisies
-        local pionQ = icones and { actif = choisiesQ[idQuete] == true, afaire = q.complete ~= true, auClic = function()
+        local ongletSel = icones and OngletDeSelection()
+        local choisiesQ = ongletSel and Selection(ongletSel)
+        local pionQ = choisiesQ and { actif = choisiesQ[idQuete] == true, afaire = q.complete ~= true, auClic = function()
             choisiesQ[idQuete] = not choisiesQ[idQuete] or nil
             suivi.Rendre()
         end } or nil
@@ -1662,7 +1570,6 @@ RendreVueParcours = function(moi, index, y)
     -- Les parcours termines s'en vont d'eux-memes (et leur guidage avec).
     if moi and NS.parcours and NS.parcours.Nettoyer then
         for _, idR in ipairs(NS.parcours.Nettoyer(cle, moi)) do
-            if NS.guidage and NS.guidage.Actif() and NS.guidage.ParcoursGuide() == idR then NS.guidage.Basculer(false) end
             if type(s.parcoursOuverts) == "table" then s.parcoursOuverts[idR] = nil end
             if NS.carte and NS.carte.Invalider then NS.carte.Invalider() end
         end
@@ -1976,11 +1883,13 @@ function suivi.Rendre()
             for id in pairs(Favoris()) do n = n + 1 xp = xp + XPDe(id) end
             if n > 0 then Titre(L.TRACK_COL_FAV .. " : " .. Quetes(n), XP(xp)) end
         end
-        -- Ce qu'il y a a rendre, puis la selection du trajet.
+        -- Ce qu'il y a a rendre, puis la selection de l'onglet (cochees,
+        -- terminees ou en cours).
         local nSel, xpSel, orSel = 0, 0, 0
-        for idSel in pairs(s.aRendreChoisies) do
+        local ongletSel = OngletDeSelection()
+        for idSel in pairs(ongletSel and Selection(ongletSel) or {}) do
             local qs = quetes[idSel]
-            if qs and qs.complete == true then
+            if qs and qs.complete ~= -1 then
                 nSel = nSel + 1
                 xpSel = xpSel + (tonumber(qs.recompenses and qs.recompenses.xp) or 0)
                 orSel = orSel + (tonumber(qs.recompenses and qs.recompenses.argent) or 0)
@@ -2013,11 +1922,6 @@ function suivi.Rendre()
         local boutons = {}
         -- Trajet niveau : dans la vue des quetes, pas dans celle d'un parcours
         -- (son propre trajet y a deja ses boutons).
-
-        local avecTrajet = false
-        for _, pc in ipairs(NS.parcours and NS.parcours.Liste(NS.ClePersonnage()) or {}) do
-            if pc.genre == "rendu" then avecTrajet = true end
-        end
         -- Onglet Parcours : le bouton guide le parcours affiche.
         local pcVue
         local categorie = s.routeCategorie or "divers"
@@ -2036,7 +1940,7 @@ function suivi.Rendre()
             local api = _G.MapCoreAPI
             if t and api then
                 table.insert(boutons, { t.guide and L.GUIDE_STOP or L.GUIDE_START, function()
-                    if api.GuiderTournee then pcall(api.GuiderTournee, not t.guide) end
+                    if api.BasculerTournee then pcall(api.BasculerTournee) end
                     suivi.Rendre()
                 end, L.GUIDE_HELP })
                 table.insert(boutons, { L.TRACK_FARM_CLEAR, function()
@@ -2045,9 +1949,7 @@ function suivi.Rendre()
                 end })
             end
         end
-        local actif = NS.guidage and NS.guidage.Actif()
-        -- Passerelle : un add-on de trajet installe (Shortest Path Forever)
-        -- donne le chemin detaille jusqu'a la prochaine etape. Sans lui, rien.
+        local S = NS.suite or _G.CoreSuite
         -- Le parcours affiche entierement fait : Supprimer (il disparait), a
         -- la place de Guider et de l'itineraire, qui n'ont plus rien a faire.
         -- Seulement celui qu'on regarde, jamais un autre.
@@ -2058,9 +1960,9 @@ function suivi.Rendre()
         end
 
         if fini then
-            local idF, nomF = fini.id, fini.nom
+            local idF, nomF, uidF = fini.id, fini.nom, fini.uid
             table.insert(boutons, { L.ROUTE_DELETE, function()
-                if NS.guidage and NS.guidage.Actif() and NS.guidage.ParcoursGuide() == idF then NS.guidage.Basculer(false) end
+                if NS.guidage.EstActif("parcours", { uid = uidF }) then S.Arreter("joueur") end
                 NS.parcours.Supprimer(NS.ClePersonnage(), idF)
                 if type(s.parcoursOuverts) == "table" then s.parcoursOuverts[idF] = nil end
                 if NS.carte then NS.carte.Invalider() end
@@ -2069,35 +1971,30 @@ function suivi.Rendre()
             pcVue = nil
         end
         if pcVue then
-            local guide = NS.guidage.ParcoursGuide()
-            local ici = actif and (guide == pcVue.id or (guide == nil and pcVue.genre == "rendu"))
-            local idV = pcVue.id
+            local pUid = { uid = pcVue.uid }
+            local ici = NS.guidage.EstActif("parcours", pUid)
             table.insert(boutons, { ici and L.GUIDE_STOP or L.GUIDE_START,
-                function() if NS.guidage then NS.guidage.Basculer(not ici, idV) end end, L.GUIDE_HELP })
-            local S = NS.suite or _G.CoreSuite
+                function() NS.guidage.Basculer("parcours", pUid) end, L.GUIDE_HELP })
             if ici and S and S.PeutChangerDeGuide and S.PeutChangerDeGuide() then
                 table.insert(boutons, { L.GUIDE_SWITCH, function() S.ChangerDeGuide() end, L.GUIDE_SWITCH_HELP })
             end
         elseif s.vue ~= "parcours" then
-            -- Un seul bouton : Guider (ce qu'il guide est dit au survol), ou
-            -- Arreter quand la fleche tourne.
-            if actif then
-                table.insert(boutons, { L.GUIDE_STOP, function() if NS.guidage then NS.guidage.Basculer(false) end end, L.GUIDE_HELP })
-                -- Un add-on de trajet installe : on peut changer de guide en route.
-                local S = NS.suite or _G.CoreSuite
+            -- Le bouton de l'onglet guide un objectif precis : A rendre, toutes
+            -- les quetes terminees ; Quetes et Favoris, exactement les quetes
+            -- cochees dans l'onglet (aucun bouton sans quete cochee). Arreter
+            -- seulement quand c'est ce meme objectif qui est guide.
+            local t, params = ObjectifDeLOnglet()
+            if t and NS.guidage.EstActif(t, params) then
+                table.insert(boutons, { L.GUIDE_STOP, function() NS.guidage.Basculer(false) end, L.GUIDE_HELP })
                 if S and S.PeutChangerDeGuide and S.PeutChangerDeGuide() then
                     table.insert(boutons, { L.GUIDE_SWITCH, function() S.ChangerDeGuide() end, L.GUIDE_SWITCH_HELP })
                 end
-            else
-                -- Meme ordre que suivi.CeQueGuider, sans calculer le trajet ici.
-                local aide
-                if nSel > 0 then aide = string.format(L.GUIDE_WHAT_SEL, nSel)
-                elseif nRendre > 0 and manque > 0 and xpRendre >= manque then aide = L.GUIDE_WHAT_LEVEL
-                elseif avecTrajet then aide = L.GUIDE_WHAT_ROUTE
-                elseif nRendre > 0 then aide = string.format(L.GUIDE_WHAT_TURNIN, nRendre) end
-                if aide then
-                    table.insert(boutons, { L.GUIDE_START, function() suivi.Guider() end, aide .. "\n\n" .. L.GUIDE_HELP })
-                end
+            elseif t == "rendus" and nRendre > 0 then
+                table.insert(boutons, { L.GUIDE_START, function() NS.guidage.Lancer("rendus", {}) end,
+                    string.format(L.GUIDE_WHAT_TURNIN, nRendre) .. "\n\n" .. L.GUIDE_HELP })
+            elseif t == "quetes" then
+                table.insert(boutons, { L.GUIDE_START, function() NS.guidage.Lancer("quetes", params) end,
+                    string.format(L.GUIDE_WHAT_SEL, #params.ids) .. "\n\n" .. L.GUIDE_HELP })
             end
         end
         if #boutons > 0 then table.insert(rangs, { genre = "boutons", boutons = boutons }) end
@@ -2244,16 +2141,17 @@ function suivi.Rendre()
         tout:SetShown(#ids > 0)
         cadre.trier:SetText(L["TRACK_SORT_" .. (TRIS[s.tri] and s.tri or "difficulte")])
         cadre.trier:SetShown(#ids > 1)
-        -- Filtre a rendre : un bouton pour voir les receveurs sur la carte.
-        -- Choix nettoyes (quete rendue ou abandonnee), puis le libelle du
-        -- bouton : quetes a faire et a rendre vont dans le meme trajet.
-        local nChoisies = 0
-        for id in pairs(s.aRendreChoisies) do
-            if quetes[id] and quetes[id].complete ~= -1 then nChoisies = nChoisies + 1 else s.aRendreChoisies[id] = nil end
+        -- Selections nettoyees : une quete rendue, abandonnee ou echouee n'y
+        -- reste pas.
+        for _, onglet in ipairs({ "quetes", "favoris" }) do
+            local sel = Selection(onglet)
+            for id in pairs(sel) do
+                if not (quetes[id] and quetes[id].complete ~= -1) then sel[id] = nil end
+            end
         end
         -- Plus de bouton Carte / Trajet ici : le bouton Guider du bilan fait tout.
         cadre.voirCarte:SetShown(false)
-        cadre.voirCarte:SetText(nChoisies > 0 and string.format(L.ROUTE_TURNIN_BUTTON, nChoisies) or L.TRACK_MAP_SHORT)
+        cadre.voirCarte:SetText(L.TRACK_MAP_SHORT)
         cadre.voirCarte:SetWidth((cadre.voirCarte.GetTextWidth and cadre.voirCarte:GetTextWidth() or 80) + 24)
         -- Rangee du bas alignee sur toute la largeur : "Tout replier" et le
         -- bouton de carte a leur taille, le tri prend la place entre les deux.
@@ -2866,21 +2764,8 @@ local function Construire()
     voirCarte:SetPoint("LEFT", trier, "RIGHT", 4, 0)
     voirCarte:SetText(L.TRACK_MAP_SHORT)
     voirCarte:SetWidth((voirCarte.GetTextWidth and voirCarte:GetTextWidth() or 80) + 24)
-    -- Avec des quetes choisies (petite carte sur leur ligne) : l'itineraire
-    -- pour aller les rendre, dans le meilleur ordre, trace sur la carte.
+    -- La carte de QuestCore (le bouton reste cache : Guider fait tout).
     voirCarte:SetScript("OnClick", function()
-        local choisies = {}
-        local moi = NS.base.Perso(NS.ClePersonnage())
-        for id in pairs(Reglages().aRendreChoisies) do
-            if moi and moi.quetes[id] and moi.quetes[id].complete ~= -1 then table.insert(choisies, id) end
-        end
-        if #choisies > 0 and NS.disponibles and NS.disponibles.CreerTournee then
-            local ok, souci = pcall(NS.disponibles.CreerTournee, moi.cle, moi, choisies)
-            if not ok then NS.base.NoterIncident("itineraire de rendu", souci) else PrendreGuidage() end
-            if NS.carte then NS.carte.Invalider() end
-        end
-        -- Avec un trajet : la carte ne montre que lui. Sans : la carte complete.
-        if NS.pageCarte and NS.pageCarte.ModeTrajet then NS.pageCarte.ModeTrajet(#choisies > 0) end
         if NS.fenetre and NS.fenetre.OuvrirCarte then NS.fenetre.OuvrirCarte() end
     end)
     voirCarte:Hide()
@@ -3618,499 +3503,16 @@ do
 end
 
 -- ---------------------------------------------------------------------------
--- Passerelle vers un add-on de trajet : Shortest Path Forever, s'il est
--- installe, recoit la destination de la prochaine etape et prend la main avec
--- sa propre interface (vols, bateaux, portails, chemin a pied). QuestCore ne
--- reprend rien de son code ni de ses donnees : il lui passe un point, comme le
--- ferait le joueur avec sa commande /way.
--- ---------------------------------------------------------------------------
-
--- La commande de l'add-on de trajet, ou nil s'il n'est pas la. FriendsCore,
--- s'il est installe, choisit l'add-on (reglages) ; sinon, Shortest Path
--- Forever directement.
-function suivi.Passerelle()
-    local hub = _G.FriendsCoreAPI
-    if hub and hub.Disponible then return hub.Disponible() and hub or nil end
-    local h = _G.hash_SlashCmdList
-    local f = type(h) == "table" and h["/PATH"] or nil
-    if type(f) ~= "function" and type(_G.SlashCmdList) == "table" then
-        for cle, fn in pairs(_G.SlashCmdList) do
-            if _G["SLASH_" .. cle .. "1"] == "/path" then f = fn break end
-        end
-    end
-    return type(f) == "function" and f or nil
-end
-
--- Envoie la prochaine etape faisable du parcours : chez le donneur s'il
--- faut la prendre, sinon la ou se fait l'objectif, ou chez le receveur.
-function suivi.EnvoyerEtape(idParcours)
-    local commande = suivi.Passerelle()
-    local cle = NS.ClePersonnage()
-    local moi = cle and NS.base.Perso(cle)
-    local pc = moi and NS.parcours.Trouver(cle, idParcours)
-    if not (commande and pc) then return end
-    local hub = type(commande) == "table" and commande or nil
-    for _, id in ipairs(pc.etapes) do
-        local e = NS.parcours.EtatEtape(moi, id)
-        if e ~= "faite" and e ~= "attente" then
-            local ok, points = pcall(NS.carte.PointsPour, id, moi)
-            local pt = ok and points and points[1]
-            if pt and pt.carte and pt.x and pt.y then
-                local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), pt.carte)
-                local zone = type(info) == "table" and info.name or nil
-                local titre = string.gsub(NS.ref.NomDeQuete(id, moi) or "", "[\r\n]", " ")
-                local texte = string.format("way %s%.1f %.1f %s", zone and (zone .. " ") or "", pt.x * 100, pt.y * 100, titre)
-                if NS.Trace then NS.Trace("passerelle : " .. texte) end
-                if hub then
-                    pcall(hub.Trajet, { carte = pt.carte, x = pt.x, y = pt.y, titre = titre })
-                else
-                    pcall(commande, texte)
-                end
-                NS.Dire(string.format(L.ROUTE_DETAILED_SENT, (hub and hub.NomTrajet and hub.NomTrajet()) or "Shortest Path Forever", titre))
-                return
-            end
-        end
-    end
-    NS.Dire(L.ROUTE_DETAILED_NONE)
-end
-
--- ---------------------------------------------------------------------------
--- Guidage : une fleche, en haut de l'ecran, qui montre la
--- direction de la prochaine quete a rendre du trajet ("Tournee de rendu"),
--- avec la distance. Lancee par le bouton "Guider" du bilan ; s'arrete toute
--- seule quand le trajet est fini. Glisser pour la deplacer, clic droit pour
--- l'arreter.
--- ---------------------------------------------------------------------------
-
-local guidage = {}
-NS.guidage = guidage
-local cadreG
-
-local function ReglagesGuidage()
-    local g = NS.base.ReglagesGeneraux()
-    g.guidage = type(g.guidage) == "table" and g.guidage or {}
-    return g.guidage
-end
-
-function guidage.Actif() return ReglagesGuidage().actif == true end
-
--- Parcours guide : celui choisi (kit de donjon, suite, selection...), ou a
--- defaut la tournee de rendu.
-function guidage.ParcoursGuide() return ReglagesGuidage().parcours end
-
-local function Continent()
-    local carte = NS.Appeler(NS.Lecture("C_Map.GetBestMapForUnit"), "player")
-    for _ = 1, 6 do
-        local info = carte and NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), carte)
-        if type(info) ~= "table" then return nil end
-        if info.mapType == 2 then return carte end
-        carte = info.parentMapID
-    end
-    return nil
-end
-
--- Position dans le monde (en yards) d'un point d'une carte.
-local function Monde(carte, x, y)
-    local f, V = NS.Lecture("C_Map.GetWorldPosFromMapPos"), _G.CreateVector2D
-    if not (f and V) then return nil end
-    local ok, _, p = pcall(f, carte, V(x, y))
-    if ok and p and p.GetXY then return p:GetXY() end
-    return nil
-end
-
--- Prochaine etape du trajet de rendu : la quete restante la plus proche du
--- personnage. Si ce n'est pas celle que le trajet mettait en premier, le
--- trajet est remis dans l'ordre depuis la position actuelle (le plus proche
--- d'abord) : la fleche, les numeros et les pointilles de la carte restent
--- d'accord.
-local dernierReordre = 0
-
--- Prochaine etape hors de portee de la fleche (autre continent) : sa quete,
--- puis la zone et le continent ou aller, sous "hors de portee".
-local function OuAller(moi, trajet)
-    local info = NS.Lecture("C_Map.GetMapInfo")
-    for _, id in ipairs(trajet.etapes or {}) do
-        local e = NS.parcours.EtatEtape(moi, id)
-        if e ~= "faite" and e ~= "attente" then
-            local ok, points = pcall(NS.carte.PointsPour, id, moi)
-            local pt = ok and points and points[1]
-            local titre = NS.ref.NomDeQuete(id, moi)
-            if not (pt and pt.carte and info) then return titre end
-            local zone = NS.Appeler(info, pt.carte)
-            local nomZone = type(zone) == "table" and zone.name or nil
-            local continent
-            local parent = type(zone) == "table" and zone.parentMapID
-            for _ = 1, 4 do
-                local z = parent and NS.Appeler(info, parent)
-                if type(z) ~= "table" then break end
-                if z.mapType == 2 then continent = z.name break end
-                parent = z.parentMapID
-            end
-            local ou = nomZone and (continent and string.format("%s (%s)", nomZone, continent) or nomZone)
-            return ou and (titre .. "\n|cffb3b3b3" .. string.format(L.GUIDE_GO_TO, ou) .. "|r") or titre
-        end
-    end
-    return nil
-end
-
-local function Cible()
-    local cle = NS.ClePersonnage()
-    local moi = cle and NS.base.Perso(cle)
-    if not moi or not NS.parcours then return nil end
-    local trajet
-    local idGuide = ReglagesGuidage().parcours
-    if idGuide then trajet = NS.parcours.Trouver(cle, idGuide) end
-    if not trajet then
-        for _, pc in ipairs(NS.parcours.Liste(cle)) do if pc.genre == "rendu" then trajet = pc end end
-    end
-    if not trajet then return nil, "fini" end
-    -- Hors tournee de rendu, l'ordre du parcours est garde : seules les
-    -- etapes faisables maintenant (a prendre, en cours, a rendre) sont visees.
-    local tournee = trajet.genre == "rendu"
-    local continent = Continent()
-    if not continent then return nil, "loin", OuAller(moi, trajet) end
-    local pos = NS.Appeler(NS.Lecture("C_Map.GetPlayerMapPosition"), continent, "player")
-    if type(pos) ~= "table" or not pos.GetXY then return nil, "loin", OuAller(moi, trajet) end
-    local jx, jy = pos:GetXY()
-    local faites, restantes, enAttente, horsTournee, hors = {}, {}, 0, 0, {}
-    for _, id in ipairs(trajet.etapes) do
-        local etatE = NS.parcours.EtatEtape(moi, id)
-        -- Tournee de rendu : une quete sortie du journal n'a plus a etre
-        -- rendue (rendue, meme si le jeu ne l'a pas encore notee, ou
-        -- abandonnee). Elle compte comme faite : la tournee passe a la suite.
-        if tournee and etatE ~= "faite" and not (moi.quetes and moi.quetes[id]) then etatE = "faite" end
-        -- Tournee pour rendre (sans niveau vise) : une quete pas encore
-        -- terminee n'a rien a faire dans la tournee, elle n'est ni visee ni
-        -- comptee.
-        if tournee and not trajet.niveauVise and etatE == "cours" then
-            horsTournee = horsTournee + 1
-            table.insert(hors, id)
-        elseif etatE == "faite" then
-            table.insert(faites, id)
-        elseif etatE == "attente" and not tournee then
-            enAttente = enAttente + 1
-        else
-            local meilleur, lieu
-            local ok, points = pcall(NS.carte.PointsPour, id, moi)
-            -- A rendre : chez le receveur ; en cours : la ou se fait l'objectif.
-            local q = moi.quetes[id]
-            local voulu = (q and q.complete == true) and "rendre" or (q and "objectif") or "prendre"
-            -- Sans point de ce genre (objectif sans lieu connu), le plus
-            -- proche de ses autres points.
-            for passe = 1, 2 do
-                for _, pt in ipairs(ok and points or {}) do
-                    if (passe == 1 and pt.genre == voulu) or (passe == 2 and pt.genre ~= "prendre") then
-                        local x, y = NS.carte.Reporter(pt, continent)
-                        if x then
-                            local d = (x - jx) ^ 2 + (y - jy) ^ 2
-                            if not meilleur or d < meilleur then meilleur, lieu = d, { x = x, y = y, qui = pt.quoi } end
-                        end
-                    end
-                end
-                if lieu then break end
-            end
-            -- Une quete qui se fait (ou se prend) dans un donjon, vue de dehors :
-            -- la fleche mene a l'entree du donjon, et le dit.
-            if not lieu and NS.donjons and NS.donjons.DeQuete then
-                local d = NS.donjons.DeQuete(id)
-                for _, e in ipairs(d and d.entrees or {}) do
-                    local x, y = NS.carte.Reporter({ carte = e.carte, x = e.x, y = e.y }, continent)
-                    if x then
-                        local dd = (x - jx) ^ 2 + (y - jy) ^ 2
-                        if not meilleur or dd < meilleur then
-                            meilleur, lieu = dd, { x = x, y = y, qui = d.nom, entree = d.nom }
-                        end
-                    end
-                end
-            end
-            table.insert(restantes, { id = id, lieu = lieu })
-        end
-    end
-    if #restantes == 0 then return nil, (enAttente > 0) and "loin" or "fini", OuAller(moi, trajet) end
-    -- Ordre depuis ici : le plus proche, puis le plus proche du precedent...
-    local ordre, ici, reste = {}, { x = jx, y = jy }, {}
-    for _, r in ipairs(restantes) do table.insert(reste, r) end
-    while #reste > 0 do
-        local meilleur, rang
-        for k, r in ipairs(reste) do
-            local d = r.lieu and ((r.lieu.x - ici.x) ^ 2 + (r.lieu.y - ici.y) ^ 2) or math.huge
-            if not meilleur or d < meilleur then meilleur, rang = d, k end
-        end
-        local r = table.remove(reste, rang)
-        table.insert(ordre, r)
-        if r.lieu then ici = r.lieu end
-    end
-    local maintenant = NS.Appeler(GetTime) or 0
-    if tournee and ordre[1].id ~= restantes[1].id and maintenant - dernierReordre > 3 then
-        dernierReordre = maintenant
-        local etapes = {}
-        for _, id in ipairs(faites) do table.insert(etapes, id) end
-        for _, r in ipairs(ordre) do table.insert(etapes, r.id) end
-        for _, id in ipairs(hors) do table.insert(etapes, id) end
-        trajet.etapes = etapes
-        RafraichirTrajet()
-    end
-    local cible = ordre[1].lieu
-    if not cible then return nil, "loin", OuAller(moi, trajet) end
-    -- Sous la fleche : "1/4", la quete, puis quoi y faire. L'etape visee est
-    -- toujours la plus proche de ce qui reste (numero 1 sur la carte).
-    local idV = ordre[1].id
-    local qV = moi.quetes[idV]
-    local titreV = (qV and qV.titre) or (NS.ref.Lire and NS.ref.Lire("QuestDB", idV, "name")) or ("#" .. idV)
-    local quoi
-    if cible.entree then
-        quoi = string.format(L.GUIDE_ENTER_DUNGEON, cible.entree)
-    elseif qV and qV.complete == true then
-        quoi = string.format(L.GUIDE_DO_TURNIN, cible.qui or "?")
-    elseif qV then
-        for _, o in ipairs(qV.objectifs or {}) do
-            if not o.fait then quoi = tostring(o.texte or "") break end
-        end
-    else
-        quoi = string.format(L.GUIDE_DO_PICKUP, cible.qui or "?")
-    end
-    cible.qui = titreV .. (quoi and quoi ~= "" and ("\n|cffb3b3b3" .. quoi .. "|r") or "")
-    -- Le compte suit tout le parcours : "Etape 2 sur 10" apres la premiere.
-    local total = #trajet.etapes - horsTournee
-    cible.rang, cible.total, cible.titre = math.max(1, total - #restantes - enAttente + 1), total, titreV
-    cible.id, cible.idParcours = idV, trajet.id
-    -- Ce que guide QuestCore (le nom du parcours), sous la fleche d'un add-on
-    -- d'itineraire : "QuestCore : Vers le niveau 25".
-    cible.guidage = trajet.nom
-    cible.continent, cible.jx, cible.jy = continent, jx, jy
-    return cible
-end
-
--- La fleche elle-meme est celle de la suite (Core/Suite.lua) : un seul
--- guidage a l'ecran, que ce soit pour QuestCore ou MapCore.
--- Pendant le guidage : une quete du journal (prise avant ou en route, a
--- faire ou a rendre) dont l'etape est plus proche que la prochaine du trajet
--- (parler a un PNJ, un objet a ramasser tout pres...) entre dans le trajet ;
--- et un trajet de niveau est recalcule. Automatique, ou une question
--- (Parametres).
-local function Distance(continent, x1, y1, x2, y2)
-    local ax, ay = Monde(continent, x1, y1)
-    local bx, by = Monde(continent, x2, y2)
-    if not (ax and bx) then return nil end
-    return math.sqrt((ax - bx) ^ 2 + (ay - by) ^ 2)
-end
-
-local enAdaptation = false
-local AdapterTrajet
-function suivi.AdapterTrajet()
-    -- Pas de reentree (un rendu peut relancer un releve).
-    if enAdaptation then return end
-    enAdaptation = true
-    local ok, souci = pcall(AdapterTrajet)
-    enAdaptation = false
-    if not ok and NS.base.NoterIncident then NS.base.NoterIncident("adapter trajet", souci) end
-end
-
-AdapterTrajet = function()
-    local cle = NS.ClePersonnage()
-    local moi = cle and NS.base.Perso(cle)
-    if not moi or not NS.parcours then return end
-    local pc
-    for _, x in ipairs(NS.parcours.Liste(cle)) do if x.genre == "rendu" then pc = x end end
-    if not pc then return end
-    -- Chaque quete n'est proposee qu'une fois par guidage.
-    if not pc.vus then
-        pc.vus = {}
-        for _, id in ipairs(pc.etapes) do pc.vus[id] = true end
-    end
-    local cible = Cible()
-    local nouvelles = {}
-    -- Une tournee de rendu (sans niveau vise) ne sert qu'a rendre : une quete
-    -- prise en route n'y entre pas, seulement une quete terminee en route.
-    local rendreSeulement = not pc.niveauVise
-    for id, q in pairs(moi.quetes or {}) do
-        if rendreSeulement and q.complete ~= true then
-            -- Pas encore terminee : elle pourra entrer une fois terminee.
-        elseif not pc.vus[id] and q.complete ~= -1 then
-            pc.vus[id] = true
-            local proche = true
-            if cible and cible.continent then
-                local dCible = Distance(cible.continent, cible.jx, cible.jy, cible.x, cible.y)
-                local voulu = q.complete == true and "rendre" or "objectif"
-                local meilleur
-                local ok, points = pcall(NS.carte.PointsPour, id, moi)
-                for _, pt in ipairs(ok and points or {}) do
-                    if pt.genre == voulu then
-                        local x, y = NS.carte.Reporter(pt, cible.continent)
-                        local d = x and Distance(cible.continent, cible.jx, cible.jy, x, y)
-                        if d and (not meilleur or d < meilleur) then meilleur = d end
-                    end
-                end
-                proche = meilleur ~= nil and dCible ~= nil and meilleur < dCible
-            end
-            if proche then table.insert(nouvelles, id) end
-        end
-    end
-    if #nouvelles == 0 then return end
-    -- Ce qui reste a faire pour une quete : 0 si elle est a rendre ; sinon
-    -- la somme de ce qui manque a ses objectifs (25 creatures a tuer : 25).
-    local function Reste(id)
-        local q = moi.quetes[id]
-        if not q or q.complete == true then return 0 end
-        local n = 0
-        for _, o in ipairs(q.objectifs or {}) do
-            if not o.fait then n = n + math.max(1, (tonumber(o.requis) or 0) - (tonumber(o.n) or 0)) end
-        end
-        return n
-    end
-    -- Rapide (a rendre, ou un ou deux gestes) : selon le reglage. Plus long :
-    -- toujours une question, la reponse "non" laisse le trajet tel quel.
-    local rapides, longues = {}, {}
-    for _, id in ipairs(nouvelles) do
-        if Reste(id) <= 2 then table.insert(rapides, id) else table.insert(longues, id) end
-    end
-    local function Appliquer(ids)
-        if NS.Trace then NS.Trace("trajet : ajout " .. table.concat(ids, ",")) end
-        local dans = {}
-        for _, id in ipairs(pc.etapes) do dans[id] = true end
-        for _, id in ipairs(ids) do if not dans[id] then table.insert(pc.etapes, id) end end
-        RafraichirTrajet()
-    end
-    local function Titres(ids, avecReste)
-        local t = {}
-        for _, id in ipairs(ids) do
-            local titre = (moi.quetes[id] and moi.quetes[id].titre) or ("#" .. id)
-            if avecReste then titre = string.format(L.ADJUST_LEFT, titre, Reste(id)) end
-            table.insert(t, titre)
-        end
-        return table.concat(t, ", ")
-    end
-    -- Une seule question par passage : les rapides (si le reglage demande)
-    -- et les longues ensemble ; les rapides seules en automatique.
-    local auto = NS.base.ReglagesGeneraux().ajustementAuto ~= false
-    if auto and #rapides > 0 then Appliquer(rapides) end
-    local aDemander = {}
-    if not auto then for _, id in ipairs(rapides) do table.insert(aDemander, id) end end
-    for _, id in ipairs(longues) do table.insert(aDemander, id) end
-    if #aDemander == 0 then return end
-    local texte = #longues > 0 and string.format(L.ADJUST_LONG_ASK, Titres(aDemander, true))
-        or string.format(L.ADJUST_ADD_ASK, Titres(aDemander))
-    Demander(texte, function() Appliquer(aDemander) end)
-end
-
--- La fleche demande sa cible vingt fois par seconde (elle suit l'orientation
--- du personnage) ; l'etape visee n'est recalculee que toutes les 4 secondes,
--- ou tout de suite quand le trajet change.
-local cibleCache, raisonCache, detailCache, cibleQuand = nil, nil, nil, -1
-function suivi.OublierCible() cibleQuand = -1 end
-
--- Passer une etape d'un trajet (clic droit sur son numero, ou "Passer
--- l'etape" pendant le guidage : celle que vise la fleche).
+-- Passer une etape d'un parcours (clic droit sur son numero) : elle sort du
+-- parcours et de la selection.
 function suivi.PasserEtape(idParcours, quete)
     local cle = NS.ClePersonnage()
     if not (cle and NS.parcours and NS.parcours.PasserEtape) then return end
     if NS.parcours.PasserEtape(cle, idParcours, quete) then
-        local s = Reglages()
-        if s.aRendreChoisies then s.aRendreChoisies[quete] = nil end
+        Selection("quetes")[quete] = nil
+        Selection("favoris")[quete] = nil
         RafraichirTrajet()
     end
-end
-function suivi.PasserEtapeVisee()
-    local c = Cible()
-    if c and c.id and c.idParcours then suivi.PasserEtape(c.idParcours, c.id) end
-end
-local fournisseur = {
-    Cible = function()
-        local maintenant = NS.Appeler(GetTime) or 0
-        if maintenant - cibleQuand < 4 then return cibleCache, raisonCache, detailCache end
-        local c, raison, detail = Cible()
-        if c then c.carte = c.continent end
-        cibleCache, raisonCache, detailCache, cibleQuand = c, raison, detail, maintenant
-        return c, raison, detail
-    end,
-    Clic = function()
-        if NS.pageCarte and NS.pageCarte.Filigrane then pcall(NS.pageCarte.Filigrane) end
-    end,
-    AideClic = L.GUIDE_CLICK,
-    Fin = function()
-        ReglagesGuidage().actif = nil
-        ReglagesGuidage().parcours = nil
-        if NS.carte then NS.carte.Invalider() end
-        if NS.pageCarte and NS.pageCarte.EnFiligrane and NS.pageCarte.EnFiligrane() then
-            pcall(NS.pageCarte.Filigrane, false)
-        end
-        if NS.fenetre and NS.fenetre.Visible() and NS.fenetre.Page() == "carte" then pcall(NS.fenetre.Rendre) end
-        if suivi.Rendre then pcall(suivi.Rendre) end
-    end,
-}
-
-function guidage.Actif()
-    local S = NS.suite or _G.CoreSuite
-    return ReglagesGuidage().actif == true and S ~= nil and S.GuidageActif and S.GuidageActif("QuestCore")
-end
-
--- Carte de QuestCore sur la premiere etape faisable du parcours guide.
-function guidage.MontrerItineraire(idParcours)
-    local cle = NS.ClePersonnage()
-    local moi = cle and NS.base.Perso(cle)
-    local pc = moi and NS.parcours.Trouver(cle, idParcours)
-    if not pc then return end
-    for _, id in ipairs(pc.etapes) do
-        local e = NS.parcours.EtatEtape(moi, id)
-        if e ~= "faite" and e ~= "attente" then
-            local ok, points = pcall(NS.carte.PointsPour, id, moi)
-            local pt = ok and points and points[1]
-            if pt and pt.carte and NS.pageCarte and NS.pageCarte.MontrerQuete then
-                NS.pageCarte.MontrerQuete(id, pt.carte, pt.x, pt.y, NS.ref.NomDeQuete(id, moi), pt.quoi, true)
-            end
-            break
-        end
-    end
-    if NS.fenetre and NS.fenetre.OuvrirCarte then NS.fenetre.OuvrirCarte() end
-end
-
-function guidage.Basculer(oui, idParcours)
-    if NS.Trace then NS.Trace("guidage quetes : " .. tostring(oui)) end
-    local S = NS.suite or _G.CoreSuite
-    if not (S and S.Guider) then return end
-    if oui == nil then oui = not guidage.Actif() end
-    if oui then
-        ReglagesGuidage().actif = true
-        ReglagesGuidage().parcours = idParcours
-        cibleQuand = -1
-        -- Point de depart des quetes "nouvelles" pour l'ajustement en route.
-        -- Les quetes deja au journal sont "vues" : seules celles prises ou
-        -- terminees en route seront proposees (pas celles qu'on a laissees de
-        -- cote en choisissant le trajet).
-        local moi = NS.base.Perso(NS.ClePersonnage())
-        for _, pc in ipairs(NS.parcours and NS.parcours.Liste(NS.ClePersonnage()) or {}) do
-            if pc.genre == "rendu" then
-                pc.vus = {}
-                for _, id in ipairs(pc.etapes) do pc.vus[id] = true end
-                for id in pairs(moi and moi.quetes or {}) do pc.vus[id] = true end
-            end
-        end
-        pcall(suivi.AdapterTrajet)
-        -- Un parcours precis (kit de donjon, suite...) : la carte de QuestCore
-        -- s'ouvre sur sa premiere etape, avec tout l'itineraire numerote.
-        fournisseur.carte = idParcours and false or nil
-        S.Guider("QuestCore", fournisseur)
-        -- Guider ne fait qu'une chose : la fleche de la suite a l'ecran. Ni
-        -- carte qui s'ouvre, ni autre add-on de trajet : la carte reste a sa
-        -- place (longue-vue, fenetre de QuestCore ou de MapCore).
-        -- La carte ne montre plus que le trajet guide.
-        if NS.carte then NS.carte.Invalider() end
-        if NS.pageCarte and NS.pageCarte.EnFiligrane and NS.pageCarte.EnFiligrane() then pcall(NS.pageCarte.Rendre)
-        elseif NS.fenetre and NS.fenetre.Visible() and NS.fenetre.Page() == "carte" then pcall(NS.fenetre.Rendre) end
-        if suivi.Rendre then pcall(suivi.Rendre) end
-    else
-        S.ArreterGuidage("QuestCore")
-        fournisseur.Fin()
-    end
-end
-
--- Au chargement : reprend si le guidage etait lance.
-do
-    local f = CreateFrame("Frame")
-    f:RegisterEvent("PLAYER_ENTERING_WORLD")
-    f:SetScript("OnEvent", function()
-        if ReglagesGuidage().actif then pcall(guidage.Basculer, true) end
-    end)
 end
 
 -- ---------------------------------------------------------------------------

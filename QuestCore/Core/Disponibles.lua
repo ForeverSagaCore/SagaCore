@@ -190,7 +190,10 @@ local function Decroiser(trajet, depart)
     end
 end
 
-function dispo.CreerProgression(cle, p)
+-- Le calcul de la progression vers le niveau suivant, sans rien enregistrer :
+-- rend les etapes (quetes, dans l'ordre), l'XP prevue, le besoin et le temps
+-- estime, ou nil et la raison ("rien", "aucune").
+function dispo.CalculerProgression(p)
     local besoin = dispo.XPManquante()
     if besoin <= 0 then return nil, "rien" end
     local continent = Continent()
@@ -312,6 +315,14 @@ function dispo.CreerProgression(cle, p)
     local etapes = {}
     for _, c in ipairs(trajet) do table.insert(etapes, c.id) end
     for _, c in ipairs(sansPosition) do table.insert(etapes, c.id) end
+    return etapes, total, besoin, tempsPrevu
+end
+
+-- Cree le parcours de progression (genre "progression") vers le niveau
+-- suivant.
+function dispo.CreerProgression(cle, p)
+    local etapes, total, besoin, tempsPrevu = dispo.CalculerProgression(p)
+    if not etapes then return nil, total end
     local liste = NS.parcours.Liste(cle)
     local maxi = 0
     for _, pc in ipairs(liste) do maxi = math.max(maxi, pc.id or 0) end
@@ -319,46 +330,18 @@ function dispo.CreerProgression(cle, p)
         nom = string.format(NS.L.ROUTE_LEVEL_NAME, (p.niveau or 0) + 1),
         objectifXP = besoin, xpPrevue = total, tempsPrevu = tempsPrevu, niveauVise = (p.niveau or 0) + 1 }
     table.insert(liste, pc)
+    pcall(NS.parcours.Liste, cle)
     return pc
 end
 
--- Itineraire pour rendre des quetes terminees : depuis la position du
--- personnage, le plus proche d'abord, puis sans croisement. Un seul
--- itineraire de rendu a la fois : le nouveau remplace l'ancien.
-function dispo.CreerTournee(cle, p, ids)
-    local continent = Continent()
-    local px, py
-    if continent then
-        local pos = NS.Appeler(NS.Lecture("C_Map.GetPlayerMapPosition"), continent, "player")
-        if type(pos) == "table" and pos.GetXY then px, py = pos:GetXY() end
-    end
-    local depart = { x = px or 0.5, y = py or 0.5 }
-    local restants, sansLieu = {}, {}
-    for _, id in ipairs(ids) do
-        local x, y = Position(id, p, continent)
-        if x then table.insert(restants, { id = id, x = x, y = y }) else table.insert(sansLieu, id) end
-    end
-    local trajet, ici = {}, depart
-    while #restants > 0 do
-        local meilleur, rang = nil, nil
-        for i, c in ipairs(restants) do
-            local d = Distance(ici, c)
-            if not meilleur or d < meilleur then meilleur, rang = d, i end
-        end
-        ici = table.remove(restants, rang)
-        table.insert(trajet, ici)
-    end
-    Decroiser(trajet, depart)
-    local etapes = {}
-    for _, c in ipairs(trajet) do table.insert(etapes, c.id) end
-    for _, id in ipairs(sansLieu) do table.insert(etapes, id) end
-    local liste = NS.parcours.Liste(cle)
-    for i = #liste, 1, -1 do if liste[i].genre == "rendu" then table.remove(liste, i) end end
-    local maxi = 0
-    for _, pc in ipairs(liste) do maxi = math.max(maxi, pc.id or 0) end
-    local pc = { id = maxi + 1, genre = "rendu", carte = true, etapes = etapes, nom = NS.L.ROUTE_TURNIN_NAME }
-    table.insert(liste, pc)
-    return pc
+-- Les quetes d'un trajet vers le niveau suivant : les terminees si leur XP
+-- suffit (le plus court), sinon le calcul de la progression.
+function dispo.EtapesPourNiveau(p)
+    local ok, ids = pcall(dispo.QuetesPourNiveau, p)
+    if ok and type(ids) == "table" and #ids > 0 then return ids end
+    local ok2, etapes = pcall(dispo.CalculerProgression, p)
+    if ok2 and type(etapes) == "table" and #etapes > 0 then return etapes end
+    return nil
 end
 
 -- Trajet le plus court pour monter de niveau en rendant des quetes

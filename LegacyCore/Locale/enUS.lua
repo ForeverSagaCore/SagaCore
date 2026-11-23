@@ -57,9 +57,9 @@ L.ADVICE = {
         { "Respec at your class trainer", "Points are shared by the account but spent per character: reset at 60 to move from leveling to your end game build." } },
 }
 L.PAD_SUITE = "Add-ons"
-L.CHALLENGE_CLICK_ROUTE = "Click: route to the next level (QuestCore)"
+L.CHALLENGE_CLICK_ROUTE = "Click : guide to level %d (QuestCore)"
 L.CHALLENGE_LOG_ON = "(log on %s for a route)"
-L.CHALLENGE_ROUTE_NONE = "No quest found for a leveling route."
+L.CHALLENGE_ROUTE_NONE = "No quest found to guide toward this level."
 L.NAV_TIMELINE = "Timeline"
 L.TREES_TITLE = "My trees"
 L.RANK_OF = "Rank %d / %d"

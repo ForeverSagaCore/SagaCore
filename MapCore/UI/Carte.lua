@@ -127,21 +127,52 @@ end
 -- ---------------------------------------------------------------------------
 -- Tournee de recolte : des lieux de recolte choisis sur la carte (clic droit
 -- sur un lieu ; Maj + clic droit : tous ceux de la meme matiere), parcourus
--- du plus proche au suivant, puis guides par la fleche de la suite. Une
--- tournee tourne en boucle : une fois tous les lieux visites, on recommence
--- (les noeuds repoussent).
+-- du plus proche au suivant, puis guides par la fleche de la suite (objectif
+-- "tournee", UI/Guidage.lua). Une tournee tourne en boucle : une fois tous
+-- les lieux visites, on recommence (les noeuds repoussent). Chaque
+-- personnage a la sienne.
 -- ---------------------------------------------------------------------------
 
+local tourneeVide = { points = {} }
 local function Tournee()
+    local cle = NS.ClePersonnage and NS.ClePersonnage()
+    local d = MapCoreDB
+    if not cle or type(d) ~= "table" then return tourneeVide end
+    d.persos = type(d.persos) == "table" and d.persos or {}
+    local p = type(d.persos[cle]) == "table" and d.persos[cle] or {}
+    d.persos[cle] = p
+    -- Une fois : l'ancienne tournee, commune au compte, va au premier
+    -- personnage qui se connecte.
     local r = Reglages()
-    r.tournee = type(r.tournee) == "table" and r.tournee or { points = {}, faits = {} }
-    r.tournee.points = r.tournee.points or {}
-    r.tournee.faits = r.tournee.faits or {}
-    return r.tournee
+    if not d.tourneeParPerso then
+        d.tourneeParPerso = true
+        if type(r.tournee) == "table" and type(p.tournee) ~= "table" then
+            p.tournee = { carte = r.tournee.carte, points = r.tournee.points }
+        end
+    end
+    r.tournee = nil
+    p.tournee = type(p.tournee) == "table" and p.tournee or { points = {} }
+    p.tournee.points = type(p.tournee.points) == "table" and p.tournee.points or {}
+    p.tournee.faits = nil
+    return p.tournee
 end
 page.Tournee = Tournee
 
+-- Les lieux deja visites ce tour-ci (memoire de l'objectif guide).
+local aucunFait = {}
+local function Faits()
+    local S = NS.suite or _G.CoreSuite
+    local a = S and S.ObjectifActif and S.ObjectifActif()
+    if a and a.proprietaire == "MapCore" and a.type == "tournee" and type(a.etat) == "table" then
+        a.etat.faits = type(a.etat.faits) == "table" and a.etat.faits or {}
+        return a.etat.faits
+    end
+    return aucunFait
+end
+page.FaitsTournee = Faits
+
 local function CleLieu(l) return tostring(l.objet) .. ":" .. tostring(l.x) .. ":" .. tostring(l.y) end
+page.CleLieu = CleLieu
 
 local function RangDansTournee(l)
     local t = Tournee()
@@ -175,7 +206,7 @@ end
 function page.ChoisirLieu(l, toute)
     local t = Tournee()
     -- Une autre carte : on repart d'une tournee neuve.
-    if t.carte ~= vue.idCarte then t.carte, t.points, t.faits = vue.idCarte, {}, {} end
+    if t.carte ~= vue.idCarte then t.carte, t.points = vue.idCarte, {} end
     local deja = RangDansTournee(l)
     if toute then
         local cc = _G.CraftCoreAPI
@@ -192,16 +223,20 @@ function page.ChoisirLieu(l, toute)
     else
         table.insert(t.points, { objet = l.objet, x = l.x, y = l.y })
     end
-    t.faits = {}
+    -- La tournee change : un nouveau tour commence.
+    local faits = Faits()
+    for k in pairs(faits) do faits[k] = nil end
     Ordonner()
+    local S = NS.suite or _G.CoreSuite
+    if S and S.Invalider then S.Invalider() end
     page.Rendre()
 end
 
 function page.EffacerTournee()
     local S = NS.suite or _G.CoreSuite
-    if S and S.ArreterGuidage then S.ArreterGuidage("MapCore") end
-    local r = Reglages()
-    r.tournee = nil
+    if S and S.EstActif and S.EstActif("MapCore", "tournee", {}) then S.Arreter("joueur") end
+    local t = Tournee()
+    t.carte, t.points = nil, {}
     page.Rendre()
 end
 
@@ -218,8 +253,9 @@ local function DessinerTrajet()
         -- personnage jusqu'a lui, pour le retrouver meme quand il ne
         -- clignote plus.
         local S = NS.suite or _G.CoreSuite
-        local c = page.cibleGuidee
-        if c and c.carte == vue.idCarte and c.x and c.y and S and S.GuidageActif and S.GuidageActif() then
+        local a = S and S.ObjectifActif and S.ObjectifActif()
+        local c = a and a.proprietaire == "MapCore" and a.type == "service" and a.params or nil
+        if c and c.carte == vue.idCarte and c.x and c.y then
             local jx, jy = PositionJoueur(vue.idCarte)
             if jx then
                 local ax, ay = VersCalque(jx, jy)
@@ -233,7 +269,7 @@ local function DessinerTrajet()
     local jx, jy = PositionJoueur(vue.idCarte)
     if jx then table.insert(chemin, { jx, jy }) end
     for _, p in ipairs(t.points) do
-        if not t.faits[CleLieu(p)] then table.insert(chemin, { p.x, p.y }) end
+        if not Faits()[CleLieu(p)] then table.insert(chemin, { p.x, p.y }) end
     end
     local rang = 0
     for i = 2, #chemin do
@@ -243,62 +279,17 @@ local function DessinerTrajet()
     end
 end
 
--- Guidage : le lieu non visite le plus proche ; arrive a moins de 12 m, il
--- est visite. Tous visites : la tournee recommence.
-local fournisseur = {
-    Cible = function()
-        local t = Tournee()
-        if not t.carte or #t.points == 0 then return nil, "fini" end
-        local x, y = PositionJoueur(t.carte)
-        local meilleur, cible
-        local restants = 0
-        for _, p in ipairs(t.points) do
-            if not t.faits[CleLieu(p)] then
-                restants = restants + 1
-                local d = x and ((p.x - x) ^ 2 + (p.y - y) ^ 2) or 0
-                if not meilleur or d < meilleur then meilleur, cible = d, p end
-            end
-        end
-        if not cible then
-            t.faits = {}
-            return nil
-        end
-        local cc = _G.CraftCoreAPI
-        local nom = cc and cc.Objet and cc.Objet(cible.objet)
-        return { carte = t.carte, x = cible.x, y = cible.y, qui = nom, cle = CleLieu(cible),
-            rang = #t.points - restants + 1, total = #t.points, titre = NS.L.FARM_TITLE }
-    end,
-    Arrivee = function(cible)
-        local t = Tournee()
-        if cible.cle and not t.faits[cible.cle] then
-            t.faits[cible.cle] = true
-            pcall(page.Rendre)
-        end
-    end,
-    Clic = function() if NS.fenetre and NS.fenetre.Basculer then NS.fenetre.Basculer() end end,
-    AideClic = NS.L.FARM_CLICK,
-    Fin = function() pcall(page.Rendre) end,
-}
-
-function page.Guider(oui)
-    if NS.Trace then NS.Trace("guidage tournee : " .. tostring(oui)) end
-    local S = NS.suite or _G.CoreSuite
-    if not (S and S.Guider) then return end
-    if oui == nil then oui = not S.GuidageActif("MapCore") end
-    if oui then
-        Tournee().faits = {}
-        Ordonner()
-        fournisseur.carte = false
-        S.Guider("MapCore", fournisseur)
-    else
-        S.ArreterGuidage("MapCore")
-    end
-    pcall(page.Rendre)
-end
-
+-- Le guidage de la tournee : un objectif de la suite (UI/Guidage.lua).
 function page.EnGuidage()
     local S = NS.suite or _G.CoreSuite
-    return S and S.GuidageActif and S.GuidageActif("MapCore") or false
+    return S and S.EstActif and S.EstActif("MapCore", "tournee", {}) or false
+end
+function page.BasculerTournee()
+    local S = NS.suite or _G.CoreSuite
+    if not (S and S.BasculerObjectif) then return end
+    if NS.Trace then NS.Trace("guidage tournee") end
+    S.BasculerObjectif("MapCore", "tournee", {})
+    pcall(page.Rendre)
 end
 
 function page.PlacerJoueur()
@@ -1199,7 +1190,7 @@ local function PoserReperes(idCarte)
             end
             b:Poser(l)
             local rangT = RangDansTournee(l)
-            local fait = rangT and Tournee().faits[CleLieu(l)]
+            local fait = rangT and Faits()[CleLieu(l)]
             if rangT then b.cercle:SetVertexColor(COULEUR_TOURNEE[1], COULEUR_TOURNEE[2], COULEUR_TOURNEE[3], 1)
             else b.cercle:SetVertexColor(0.75, 0.6, 0.35, 1) end
             b.numero:SetText(rangT and tostring(rangT) or "")
@@ -1502,24 +1493,15 @@ function page.Destinations(idCarte)
     return liste
 end
 
--- La fleche de la suite vers une destination ; arrive, elle s'arrete.
+-- La fleche de la suite vers une destination (objectif "service") ; arrive,
+-- l'objectif est atteint. L'icone continue de clignoter jusqu'au prochain
+-- choix ou a la fermeture de la fenetre.
 function page.GuiderVers(dst)
     local S = NS.suite or _G.CoreSuite
-    if not (S and S.Guider and dst) then return end
-    local point = { carte = dst.carte, x = dst.x, y = dst.y, titre = NS.L.GO_TITLE, qui = dst.nom, guidage = dst.nom }
-    page.cibleGuidee = dst
-    S.Guider("MapCore", {
-        carte = false,
-        Cible = function() return point end,
-        Arrivee = function()
-            local plusTard = NS.Lecture("C_Timer.After")
-            if plusTard then plusTard(0, function() S.ArreterGuidage("MapCore") end) end
-        end,
-        Clic = function() if NS.fenetre and NS.fenetre.Basculer then NS.fenetre.Basculer() end end,
-        -- Arrive ou arrete : la fleche s'en va, l'icone continue de clignoter
-        -- jusqu'au prochain choix ou a la fermeture de la fenetre.
-        Fin = function() end,
-    })
+    if not (S and S.LancerObjectif and dst) then return end
+    if S.LancerObjectif("MapCore", "service", { carte = dst.carte, x = dst.x, y = dst.y, nom = dst.nom }) then
+        page.cibleGuidee = dst
+    end
     pcall(page.Rendre)
 end
 
@@ -1596,36 +1578,6 @@ local function RendreMenu(idCarte)
     -- quetes, la recolte, ses reperes), puis les destinations les plus
     -- proches ; un clic lance la fleche.
     local L0 = NS.L
-    -- (Ou aller : retire du menu, jugé confus. Gardé ici, désactivé.)
-    if false then
-    Titre(L0.GO_TITLE)
-    local actuel = page.ModeAffiche()
-    for _, m in ipairs(page.MODES) do
-        local mode = m
-        Ligne(L0[m.libelle], actuel == m.cle, false, function()
-            page.PoserMode(mode.cle)
-            page.Rendre()
-        end)
-    end
-    y = y + 4
-    local destinations = page.Destinations(idCarte)
-    if #destinations == 0 then
-        Ligne(L0.GO_NONE, nil, false, nil, { 0.6, 0.6, 0.6 })
-    end
-    for k, dst in ipairs(destinations) do
-        if k > 7 then break end
-        local cible = dst
-        local texte = "|T" .. tostring(dst.icone) .. ":14|t " .. tostring(dst.nom)
-        if dst.distance then texte = texte .. "  |cff8c8c8c" .. string.format(L0.GO_YARDS, dst.distance) .. "|r" end
-        Ligne(texte, nil, false, function() page.GuiderVers(cible) end, { 0.9, 0.9, 0.9 }, function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(tostring(cible.nom), 1, 0.82, 0)
-            if cible.detail then GameTooltip:AddLine(cible.detail, 1, 1, 1, true) end
-            GameTooltip:AddLine(L0.GO_CLICK, 0.6, 0.6, 0.6)
-            GameTooltip:Show()
-        end)
-    end
-    end
     -- Les services affiches sur la carte, les plus proches d'abord.
     local proches = page.ServicesVisibles(idCarte or 0)
     if #proches > 0 then
@@ -1661,61 +1613,6 @@ local function RendreMenu(idCarte)
         end
     end
     y = y + 8
-    -- Itineraires de toute la suite, en un coup d'oeil : le trajet de quetes
-    -- (QuestCore), le circuit de recolte de ce qui manque (CraftCore) et la
-    -- tournee de recolte (MapCore). Chacun garde son add-on ; ici on les voit,
-    -- on lance ou arrete leur guidage, on ouvre l'add-on concerne.
-    local Suite = NS.suite or _G.CoreSuite
-    local L = NS.L
-    -- (Itineraires : retire du menu, juge hors de propos ici. Garde, desactive.)
-    if false then
-    Titre(L.ROUTES_TITLE)
-    local GRIS, BLANC = { 0.6, 0.6, 0.6 }, { 0.9, 0.9, 0.9 }
-    local function Guidage(actif, basculer)
-        Ligne(actif and L.ROUTES_STOP or L.ROUTES_GUIDE, nil, false, function()
-            pcall(basculer)
-            page.Rendre()
-        end, COULEUR_TOURNEE)
-    end
-    local function Ouvrir(cle)
-        Ligne(string.format(L.ROUTES_OPEN, cle), nil, false, function()
-            if Suite and Suite.Ouvrir then pcall(Suite.Ouvrir, cle) end
-        end, GRIS)
-    end
-    local aucun = true
-    local qc = _G.QuestCoreAPI
-    local okQ, cq = false, nil
-    if qc and qc.Circuit then okQ, cq = pcall(qc.Circuit) end
-    if okQ and cq then
-        aucun = false
-        Ligne(string.format(L.ROUTES_QUESTS, cq.reste, cq.total), nil, cq.guide == true, nil, BLANC)
-        Guidage(cq.guide, function() qc.Guider(not cq.guide) end)
-        Ouvrir("QuestCore")
-        y = y + 4
-    end
-    local cc = _G.CraftCoreAPI
-    local okC, cr = false, nil
-    if cc and cc.CircuitRecolte then okC, cr = pcall(cc.CircuitRecolte) end
-    if okC and cr then
-        aucun = false
-        Ligne(string.format(L.ROUTES_GATHER, cr.matieres, cr.lieux), nil, cr.guide == true, nil, BLANC)
-        Guidage(cr.guide, function() cc.GuiderRecolte(not cr.guide) end)
-        Ouvrir("CraftCore")
-        y = y + 4
-    end
-    local t = Tournee()
-    local nT = (t.carte == idCarte) and #t.points or 0
-    if nT > 0 then
-        aucun = false
-        Ligne(string.format(L.ROUTES_FARM, nT), nil, page.EnGuidage(), nil, BLANC)
-        Guidage(page.EnGuidage(), function() page.Guider() end)
-        Ligne(L.FARM_CLEAR, nil, false, function() page.EffacerTournee() end, GRIS)
-        y = y + 4
-    end
-    if aucun then Ligne(L.ROUTES_NONE, nil, false, nil, GRIS) end
-    if nT == 0 then Ligne(L.FARM_HELP, nil, false, nil, GRIS) end
-    y = y + 8
-    end
     -- Recherche : toutes les zones de tous les continents dont le nom
     -- contient le texte tape.
     local function LigneZone(z)

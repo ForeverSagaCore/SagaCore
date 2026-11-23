@@ -93,7 +93,7 @@ local function Objectifs(avecRecolte)
                     if next(plan.manques or {}) then
                         if avecRecolte then
                             Dire("recolte", { metier = nom },
-                                { { T("Guider la récolte", "Guide the gathering"), function() if NS.suivi then NS.suivi.Guider(true) end end } }, ligne)
+                                { { T("Guider la récolte", "Guide the gathering"), function() if NS.guidage and NS.guidage.Lancer then NS.guidage.Lancer({ metier = ligne }) end end } }, ligne)
                         end
                     elseif plan.atteint >= rangVise then
                         local tout = true
