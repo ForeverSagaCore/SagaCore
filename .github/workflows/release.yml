@@ -9,6 +9,8 @@ on:
   push:
     branches:
       - main
+      # Correctif d'une version publiee, fait a part de main (ex. hotfix-1.7.1).
+      - 'hotfix-*'
   # Lancement a la main (Actions > Publier une version > Run workflow) :
   # renvoie la version en cours sur CurseForge, meme si la release existe.
   workflow_dispatch:
