@@ -9378,6 +9378,27 @@ Suite.FENETRES_FONDU = { "CraftCoreWindow", "QuestCoreFenetre", "MapCoreFenetre"
 local ALPHA_MARCHE = 0.1
 
 -- En vol : trajet de maitre de vol ou monture volante.
+-- Dans un donjon, le plan du donjon (salles, boss, entree, etages) : celui
+-- du Donjon Journal de Forever, quand il en a un pour ce donjon. Vrai si le
+-- plan s'est ouvert ; sinon chaque carte de la suite garde son affichage.
+function Suite.PlanDuDonjon()
+    if type(_G.IsInInstance) ~= "function" then return false end
+    local okI, dedans, genre = pcall(_G.IsInInstance)
+    if not (okI and dedans) or genre == "pvp" or genre == "arena" then return false end
+    local FDJ = _G.ForeverDungeonJournal_NS
+    if type(FDJ) ~= "table" or type(FDJ.DUNGEON_MAPS) ~= "table" or type(FDJ.CurrentDungeon) ~= "function" then return false end
+    local ok, donjon = pcall(FDJ.CurrentDungeon)
+    if not ok or not donjon or not FDJ.DUNGEON_MAPS[donjon] then return false end
+    -- Le journal n'est construit qu'a sa premiere ouverture.
+    if type(FDJ.OpenDungeonMap) ~= "function" and _G.SlashCmdList and _G.SlashCmdList.FOREVERDUNGEONJOURNAL then
+        pcall(_G.SlashCmdList.FOREVERDUNGEONJOURNAL, "")
+    end
+    if type(FDJ.OpenDungeonMap) ~= "function" then return false end
+    local journal = _G.ForeverDungeonJournalFrame
+    if journal and not journal:IsShown() then pcall(journal.Show, journal) end
+    return (pcall(FDJ.OpenDungeonMap, donjon))
+end
+
 -- La vitesse du personnage, ou nil quand le jeu la cache (valeur secrete en
 -- champ de bataille ou en combat : on ne la compare jamais).
 function Suite.VitesseJoueur()
