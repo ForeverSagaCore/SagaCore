@@ -130,7 +130,9 @@ local function EtapesDeQuetes(ids, moi, etat, compte)
     local pos = NS.Appeler(NS.Lecture("C_Map.GetPlayerMapPosition"), continent, "player")
     if type(pos) ~= "table" or not pos.GetXY then return nil, "loin", OuAller(moi, ids) end
     local jx, jy = pos:GetXY()
-    if not jx then return nil, "loin", OuAller(moi, ids) end
+    -- Position cachee par le jeu (valeur secrete) : jamais comparee.
+    local secret = _G.issecretvalue
+    if not jx or (secret and (secret(jx) or secret(jy))) then return nil, "loin", OuAller(moi, ids) end
     local points = {}
     for _, id in ipairs(ids) do
         local lieu = PointDeQuete(id, moi, continent, jx, jy)
