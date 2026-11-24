@@ -795,25 +795,22 @@ function suivi.FeuilleDeRoute(o)
     end
     for _, f in ipairs(candidats) do f.vu = nil end
     table.sort(visites, function(a, b) return Cout(a.fiche) < Cout(b.fiche) end)
-    -- Les etapes, dans l'ordre. Chacune : un titre, puis ses details, un
-    -- objet par ligne (l'infobulle les espace ; Mon atelier les met bout a bout).
-    local function Objets(liste)
-        local t = {}
-        for _, x in ipairs(liste) do table.insert(t, x.n .. " " .. NS.inventaire.NomDObjet(x.objet)) end
-        return t
-    end
-    local function Etape(titre, blocs, guide)
-        -- blocs : { { sous-titre, { lignes } }, ... }
+    -- Les etapes, dans l'ordre. Chacune : un titre, un lieu, puis des blocs
+    -- (une action et ses objets). L'infobulle les met en page ; Mon atelier
+    -- les resume sur une ligne.
+    local function Etape(titre, lieu, blocs, guide)
         local resume = {}
         for _, b in ipairs(blocs or {}) do
-            local liste = table.concat(b[2] or {}, ", ")
-            table.insert(resume, (b[1] ~= "" and liste ~= "") and (b[1] .. " " .. liste) or (b[1] .. liste))
+            local noms = {}
+            for _, x in ipairs(b.objets or {}) do table.insert(noms, x.n .. " " .. NS.inventaire.NomDObjet(x.objet)) end
+            local liste = table.concat(noms, ", ")
+            table.insert(resume, (b.action and liste ~= "") and (b.action .. " " .. liste) or ((b.action or "") .. liste))
         end
-        table.insert(etapes, { titre = titre, blocs = blocs or {}, guide = guide,
-            texte = titre .. (#resume > 0 and (" : " .. table.concat(resume, " ; ")) or "") })
+        table.insert(etapes, { titre = titre, lieu = lieu, blocs = blocs or {}, guide = guide,
+            texte = titre .. (lieu and (" (" .. lieu .. ")") or "") .. (#resume > 0 and (" : " .. table.concat(resume, " ; ")) or "") })
     end
-    if #monCourrier > 0 then Etape(string.format(L.ROUTE_T_MAILBOX, nomMoi), { { L.ROUTE_D_COLLECT, Objets(monCourrier) } }, { service = "courrier" }) end
-    if #maBanque > 0 then Etape(string.format(L.ROUTE_T_BANK, nomMoi), { { L.ROUTE_D_TAKE, Objets(maBanque) } }, { service = "banque" }) end
+    if #monCourrier > 0 then Etape(string.format(L.ROUTE_T_MAILBOX, nomMoi), nil, { { action = L.ROUTE_D_COLLECT, objets = monCourrier } }, { service = "courrier" }) end
+    if #maBanque > 0 then Etape(string.format(L.ROUTE_T_BANK, nomMoi), nil, { { action = L.ROUTE_D_TAKE, objets = maBanque } }, { service = "banque" }) end
     for _, v in ipairs(visites) do
         local nom = inv.NomCourt(v.fiche.cle)
         if NS.banquiers and NS.banquiers.Est(v.fiche.cle) then nom = nom .. " (" .. L.ROUTE_BANKER .. ")" end
@@ -821,11 +818,11 @@ function suivi.FeuilleDeRoute(o)
         for _, x in ipairs(v.prise.sacs) do table.insert(tout, x) end
         for _, x in ipairs(v.prise.banque) do table.insert(tout, x) end
         local blocs = {}
-        if #v.prise.banque > 0 then table.insert(blocs, { L.ROUTE_D_TAKE, Objets(v.prise.banque) }) end
-        table.insert(blocs, { string.format(L.ROUTE_D_SEND, nomMoi), Objets(tout) })
-        Etape(string.format(L.ROUTE_T_LOGIN, nom, TexteLieu(LieuDe(v.fiche))), blocs)
+        if #v.prise.banque > 0 then table.insert(blocs, { action = L.ROUTE_D_TAKE, objets = v.prise.banque }) end
+        table.insert(blocs, { action = string.format(L.ROUTE_D_SEND, nomMoi), objets = tout })
+        Etape(string.format(L.ROUTE_T_LOGIN, nom), TexteLieu(LieuDe(v.fiche)), blocs)
     end
-    if #visites > 0 then Etape(string.format(L.ROUTE_T_BACK, nomMoi), { { L.ROUTE_D_MAIL, {} } }, { service = "courrier" }) end
+    if #visites > 0 then Etape(string.format(L.ROUTE_T_BACK, nomMoi), nil, { { action = L.ROUTE_D_MAIL } }, { service = "courrier" }) end
     -- A acheter (ce qui manque encore dans les sacs).
     local achats = {}
     for objet, n in pairs(o.achats or {}) do
@@ -845,32 +842,43 @@ function suivi.FeuilleDeRoute(o)
             end
         end
     end
-    if #achats > 0 then Etape(L.ROUTE_T_BUY, { { "", Objets(achats) } }, { marchand = achats[1].objet }) end
-    if #introuvables > 0 then Etape(L.ROUTE_T_GATHER, { { "", Objets(introuvables) } }, { recolte = { objectifs = { o.cle } } }) end
+    if #achats > 0 then Etape(L.ROUTE_T_BUY, nil, { { objets = achats } }, { marchand = achats[1].objet }) end
+    if #introuvables > 0 then Etape(L.ROUTE_T_GATHER, nil, { { objets = introuvables } }, { recolte = { objectifs = { o.cle } } }) end
     -- Les fabrications, dans l'ordre.
     for _, e in ipairs(EtapesDeFabrication(o.lignes)) do
         if not e.faite and e.recette then
-            local nomR = e.recette.nom or e.recette.name or inv.NomDObjet(e.objet)
-            Etape(string.format(L.ROUTE_CRAFT, nomR, e.fois or 1))
+            Etape(L.ROUTE_T_CRAFT, nil, { { objets = { { objet = e.objet, n = e.fois or 1, fois = true } } } })
         end
     end
     return etapes
 end
 
--- La feuille de route dans une infobulle, numerotee.
+-- La feuille de route dans une infobulle, a la maniere de celles des quetes
+-- de QuestCore : un titre en or par etape, son lieu en gris, l'action en
+-- clair, puis chaque objet avec son icone, a la couleur de sa qualite, et
+-- son nombre en blanc.
+local function LigneDObjet(tt, objet, n, fois)
+    local icone = NS.Appeler(NS.jeu.iconeObjet, objet) or "Interface\\Icons\\INV_Misc_QuestionMark"
+    local r, g, b = 1, 1, 1
+    if NS.objets and NS.objets.CouleurDuNom then
+        local ok, rr, gg, bb = pcall(NS.objets.CouleurDuNom, objet)
+        if ok and rr then r, g, b = rr, gg, bb end
+    end
+    local nombre = fois and ("  |cffffffffx" .. n .. "|r") or ("  |cffffffff" .. n .. "|r")
+    tt:AddLine(string.format("      |T%s:16|t %s%s", tostring(icone), NS.inventaire.NomDObjet(objet), nombre), r, g, b)
+end
 function suivi.FeuilleDansLInfobulle(tt, o)
     local etapes = suivi.FeuilleDeRoute(o)
     if #etapes == 0 then return end
     tt:AddLine(" ")
-    tt:AddLine(NS.L.ROUTE_TITLE, 1, 0.82, 0)
-    -- Une ligne vide entre deux etapes ; le titre en blanc, puis chaque
-    -- objet sur sa ligne, en retrait.
+    tt:AddLine(NS.L.ROUTE_TITLE, 0.6, 0.6, 0.6)
     for i, t in ipairs(etapes) do
         tt:AddLine(" ")
-        tt:AddLine(i .. ". " .. t.titre, 1, 1, 1)
+        tt:AddLine(i .. ". " .. t.titre, 1, 0.82, 0)
+        if t.lieu then tt:AddLine("   " .. t.lieu, 0.6, 0.6, 0.6) end
         for _, b in ipairs(t.blocs) do
-            if b[1] ~= "" then tt:AddLine("     " .. b[1], 0.82, 0.82, 0.82) end
-            for _, ligne in ipairs(b[2] or {}) do tt:AddLine("          " .. ligne, 0.82, 0.82, 0.82) end
+            if b.action then tt:AddLine("   " .. b.action, 0.9, 0.9, 0.9) end
+            for _, x in ipairs(b.objets or {}) do LigneDObjet(tt, x.objet, x.n, x.fois) end
         end
     end
 end
