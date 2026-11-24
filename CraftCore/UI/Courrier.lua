@@ -1520,6 +1520,8 @@ local function EnvoiReussi()
     -- Compte dans les stocks du destinataire, au courrier, jusqu'a ce qu'il
     -- ouvre sa boite.
     if NS.inventaire.NoterEnvoi then pcall(NS.inventaire.NoterEnvoi, enAttente.cle, enAttente.objets) end
+    -- Feuille de route : la part de ce reroll est-elle faite ? Qui ensuite ?
+    if NS.suivi and NS.suivi.EnvoiFait then pcall(NS.suivi.EnvoiFait, enAttente.cle, enAttente.objets) end
     enAttente = nil
     statut = nil
     courrier.Actualiser()
