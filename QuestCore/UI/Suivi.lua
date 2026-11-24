@@ -1658,7 +1658,9 @@ RendreVueParcours = function(moi, index, y)
                     local function Dedans(id) return NS.donjons.DeQuete(id) ~= nil end
                     for _, t in ipairs(enCours) do table.insert(Dedans(t.id) and dedans or avant, t) end
                     for _, t in ipairs(aFaire) do table.insert(avant, t) end
-                    for _, t in ipairs(aRendre) do table.insert(retour, t) end
+                    -- Au retour : seulement les quetes du donjon ; un maillon
+                    -- de suite a rendre se rend avant d'entrer.
+                    for _, t in ipairs(aRendre) do table.insert(Dedans(t.id) and retour or avant, t) end
                     table.sort(avant, function(a2, b2) return a2.rang < b2.rang end)
                     local function Etape(t)
                         if dejaRendues[t.id] then return end

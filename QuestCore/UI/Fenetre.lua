@@ -1079,13 +1079,15 @@ local function LigneDeRecompenses(p, id)
     return string.format(L.DUNGEON_REWARDS, table.concat(morceaux, "   "))
 end
 
--- Un donjon deplie : son entree, puis le kit (les quetes a avoir en poche
--- avant d'y aller : celles du journal et celles a prendre maintenant), puis
--- celles d'apres (prerequis ou niveau), chacune avec ses recompenses.
+-- Un donjon deplie : son entree, puis ses rubriques, dans l'ordre ou les
+-- faire (NS.donjons.Preparation) : les suites de quetes d'abord, les quetes
+-- a prendre avant d'y aller, celles qui se prennent dedans, puis plus tard
+-- (niveau) et deja faites. Une quete par ligne, son etat a droite.
 RendreDonjonOuvert = function(contenu, p, d, index, y)
     if NS.ref.ConstruireIndexRecompenses then NS.ref.ConstruireIndexRecompenses() end
     local prep = NS.donjons.Preparation(p, d)
-    local kit, plusTard, aPrendre, enPoche = prep.kit, prep.plusTard, prep.trajet, prep.enPoche
+    local suites, avant, dedans, plusTard = prep.suites, prep.avant, prep.dedans, prep.plusTard
+    local aPrendre, enPoche = prep.trajet, prep.enPoche
     -- Un trajet deja cree pour ce donjon suit tout seul.
     pcall(NS.donjons.MettreAJourKit, p, d)
 
@@ -1175,10 +1177,13 @@ RendreDonjonOuvert = function(contenu, p, d, index, y)
             droite, couleurDroite = L.STORY_TURN_IN, { 0.31, 0.82, 0.41 }
         elseif q.etat == "cours" then
             droite, couleurDroite = L.DUNGEON_IN_LOG, { 0.31, 0.82, 0.41 }
+        elseif q.dedans then
+            -- Se prend dans l'instance : seulement indiquee.
+            droite, couleurDroite = L.DUNGEON_INSIDE, { 0.4, 0.75, 1 }
         elseif q.etat == "prendre" then
             droite, couleurDroite = L.STORY_TO_TAKE, { 1, 0.82, 0 }
         else
-            local requis = tonumber(NS.ref.Lire("QuestDB", id, "requiredLevel")) or 0
+            local requis = q.niveau or tonumber(NS.ref.Lire("QuestDB", id, "requiredLevel")) or 0
             if p.niveau and requis > p.niveau then
                 droite, couleurDroite = string.format(L.ROUTE_LEVEL, requis), { 0.6, 0.6, 0.6 }
             else
@@ -1192,7 +1197,7 @@ RendreDonjonOuvert = function(contenu, p, d, index, y)
         index = index + 1
         y = Poser(contenu, index, y, { retrait = retrait,
             etatQuete = (q.etat == "rendre" or q.etat == "faite") and true or ((q.etat == "cours") and false or nil),
-            icone = (q.etat == "prendre") and "Interface\\GossipFrame\\AvailableQuestIcon" or nil,
+            icone = (q.etat == "prendre" and not q.dedans) and "Interface\\GossipFrame\\AvailableQuestIcon" or nil,
             texte = string.format("[%d] %s", niveau, NS.ref.NomDeQuete(id, p)),
             couleur = { rr, gg, bb },
             droite = droite, couleurDroite = couleurDroite, decalageDroite = 28,
@@ -1203,6 +1208,12 @@ RendreDonjonOuvert = function(contenu, p, d, index, y)
             end })
         if not ouverte then return end
         local sous = retrait + RETRAIT + 18
+        -- Maillon d'une suite : la quete du donjon qu'il debloque.
+        if q.pour then
+            index = index + 1
+            y = Poser(contenu, index, y, { retrait = sous, texte = string.format(L.DUNGEON_FOR, NS.ref.NomDeQuete(q.pour, p)),
+                couleur = { 0.85, 0.85, 0.85 } })
+        end
         if q.etat == "prendre" or q.etat == "attente" then
             local donneurs = NS.ref.Donneurs(id)
             if donneurs[1] then
@@ -1248,14 +1259,27 @@ RendreDonjonOuvert = function(contenu, p, d, index, y)
         y = Poser(contenu, index, y + 6, { retrait = RETRAIT * 2, police = "GameFontNormalSmall", couleur = { 1, 0.82, 0 },
             texte = texte }) + 2
     end
-    -- Avant d'y aller.
-    Rubrique(#kit > 0 and string.format(L.DUNGEON_KIT, enPoche, #kit) or L.DUNGEON_KIT_TITLE)
-    if #kit == 0 then
+    -- 1. Les suites de quetes qui se font avant (le plus long, en premier).
+    if #suites > 0 then
+        Rubrique(string.format(L.DUNGEON_CHAINS, #suites))
+        for _, q in ipairs(suites) do Quete(q, RETRAIT * 2) end
+    end
+    -- 2. Les quetes du donjon a prendre avant d'y aller.
+    Rubrique(#avant > 0 and string.format(L.DUNGEON_KIT, enPoche, #avant) or L.DUNGEON_KIT_TITLE)
+    if #avant == 0 then
         index = index + 1
         y = Poser(contenu, index, y, { retrait = RETRAIT * 2, texte = L.DUNGEON_KIT_EMPTY,
             couleur = { 0.6, 0.6, 0.6 }, police = "GameFontDisableSmall" })
     end
-    for _, q in ipairs(kit) do Quete(q, RETRAIT * 2) end
+    for _, q in ipairs(avant) do Quete(q, RETRAIT * 2) end
+    -- 3. Celles qui se prennent dans l'instance : indiquees, pas guidees.
+    if #dedans > 0 then
+        Rubrique(string.format(L.DUNGEON_INSIDE_LIST, #dedans))
+        for _, q in ipairs(dedans) do
+            local pasPrise = q.etat ~= "cours" and q.etat ~= "rendre"
+            Quete({ id = q.id, etat = q.etat, dedans = pasPrise }, RETRAIT * 2)
+        end
+    end
     if #plusTard > 0 then
         Rubrique(string.format(L.DUNGEON_LATER, #plusTard))
         for _, q in ipairs(plusTard) do Quete(q, RETRAIT * 2) end

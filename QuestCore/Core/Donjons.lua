@@ -153,10 +153,14 @@ end
 
 -- Quete qui se prend dans le donjon : un objet ramasse qui la donne, ou
 -- un donneur qu'on ne trouve que dans l'instance.
+-- Garde la reponse (donnees fixes de la base) : appelee a chaque calcul du
+-- guidage d'un trajet de donjon.
+local dedansConnu = {}
 function donjons.SePrendDedans(id)
+    if dedansConnu[id] ~= nil then return dedansConnu[id] end
     local debut = Lire("QuestDB", id, "startedBy")
     if type(debut) ~= "table" then return false end
-    if type(debut[3]) == "table" and #debut[3] > 0 then return true end
+    if type(debut[3]) == "table" and #debut[3] > 0 then dedansConnu[id] = true return true end
     local dehors, dedans = false, false
     for _, source in ipairs({ { 1, "NpcDB" }, { 2, "ObjectDB" } }) do
         for _, ent in ipairs(type(debut[source[1]]) == "table" and debut[source[1]] or {}) do
@@ -166,36 +170,47 @@ function donjons.SePrendDedans(id)
             end
         end
     end
+    -- Rien trouve (cartes pas encore connues) : pas garde, on relira.
+    if dedans or dehors then dedansConnu[id] = dedans and not dehors end
     return dedans and not dehors
 end
+
+-- Pour un personnage, un donjon de l'index : ses quetes admises (race,
+-- classe, faction), celles qui restent (par niveau) et le compte des faites.
+-- nil s'il n'a aucune quete pour lui.
+local function PourLePerso(p, d, avecRetirees)
+    local restantes, faites, total, faitesIds = {}, 0, 0, {}
+    for _, id in ipairs(d.ids) do
+        local admise = not NS.histoire or NS.histoire.Admise(p, id)
+        local faite = p.faites and p.faites[id]
+        local retiree = NS.histoire and NS.histoire.Retiree and NS.histoire.Retiree(id)
+        if admise and (faite or avecRetirees or not retiree) then
+            total = total + 1
+            if faite then faites = faites + 1 table.insert(faitesIds, id) else table.insert(restantes, id) end
+        end
+    end
+    if total == 0 then return nil end
+    table.sort(restantes, function(a, b)
+        local na = tonumber(Lire("QuestDB", a, "questLevel")) or 0
+        local nb = tonumber(Lire("QuestDB", b, "questLevel")) or 0
+        if na ~= nb then return na < nb end
+        return a < b
+    end)
+    return { zone = d.zone, nom = d.nom, nomBase = d.nomBase, ids = d.ids, raid = d.raid, mini = d.mini, maxi = d.maxi,
+        entrees = d.entrees, restantes = restantes, faites = faites, faitesIds = faitesIds, total = total }
+end
+
+local function AvecRetirees() return NS.histoire and NS.histoire.AvecRetirees and NS.histoire.AvecRetirees() end
 
 -- Pour un personnage : chaque donjon, ses quetes admises (race, classe,
 -- faction), celles qui restent (par niveau) et le compte des faites.
 function donjons.Liste(p)
     local rendu = {}
     if not p then return rendu end
-    local avecRetirees = NS.histoire and NS.histoire.AvecRetirees and NS.histoire.AvecRetirees()
+    local avecRetirees = AvecRetirees()
     for _, d in ipairs(Index()) do
-        local restantes, faites, total, faitesIds = {}, 0, 0, {}
-        for _, id in ipairs(d.ids) do
-            local admise = not NS.histoire or NS.histoire.Admise(p, id)
-            local faite = p.faites and p.faites[id]
-            local retiree = NS.histoire and NS.histoire.Retiree and NS.histoire.Retiree(id)
-            if admise and (faite or avecRetirees or not retiree) then
-                total = total + 1
-                if faite then faites = faites + 1 table.insert(faitesIds, id) else table.insert(restantes, id) end
-            end
-        end
-        if total > 0 then
-            table.sort(restantes, function(a, b)
-                local na = tonumber(Lire("QuestDB", a, "questLevel")) or 0
-                local nb = tonumber(Lire("QuestDB", b, "questLevel")) or 0
-                if na ~= nb then return na < nb end
-                return a < b
-            end)
-            table.insert(rendu, { zone = d.zone, nom = d.nom, nomBase = d.nomBase, ids = d.ids, raid = d.raid, mini = d.mini, maxi = d.maxi,
-                entrees = d.entrees, restantes = restantes, faites = faites, faitesIds = faitesIds, total = total })
-        end
+        local r = PourLePerso(p, d, avecRetirees)
+        if r then table.insert(rendu, r) end
     end
     return rendu
 end
@@ -215,69 +230,167 @@ function donjons.PrealablesManquants(p, id)
     return manque
 end
 
--- Ce qu'il faut faire avant d'aller dans un donjon, pour un personnage.
---   kit      : les quetes "Avant d'y aller", dans l'ordre ou les faire :
---              chaque quete du donjon, precedee de toute sa chaine de
---              prerequis faisable des maintenant (ou qu'ils se prennent) ;
---   plusTard : les quetes du donjon qui demandent un niveau plus haut ;
---   trajet   : les quetes du trajet guide (tout le kit sauf ce qui se prend
---              dans l'instance) ;
---   enPoche  : les quetes du kit deja dans le journal.
+-- ---------------------------------------------------------------------------
+-- Preparation d'un donjon : le meme modele pour la fenetre, le trajet et le
+-- guidage, pour tous les donjons et toutes les quetes.
+--   suites   : les suites de quetes prerequis qui se font avant le donjon
+--              (hors instance, ou qu'elles se trouvent), chaque suite dans
+--              son ordre : c'est le plus long, donc en premier ;
+--   avant    : les quetes du donjon a prendre avant d'y aller (donneur
+--              dehors), faisables des maintenant ou au bout de leur suite ;
+--   dedans   : les quetes qui se prennent dans l'instance : seulement
+--              indiquees, jamais guidees avant ;
+--   plusTard : ce qui ne se fera pas cette fois : un niveau plus haut (la
+--              quete ou un maillon de sa suite), ou une quete qui attend une
+--              autre quete de donjon (elle se fait dedans, on la rendra
+--              d'abord) ;
+--   trajet   : les quetes du trajet, dans l'ordre : suites, avant, puis
+--              celles de "dedans" deja dans le journal ;
+--   kit      : suites + avant + dedans (compatibilite) ;
+--   enPoche  : les quetes de "avant" deja dans le journal.
+-- Chaque entree : { id, etat } (etat de parcours.EtatEtape) ; une suite
+-- porte aussi `pour` (la quete du donjon qu'elle debloque), une quete de
+-- "plus tard" `niveau` (le niveau a atteindre, s'il manque).
+-- ---------------------------------------------------------------------------
+
+local function Requis(id) return tonumber(Lire("QuestDB", id, "requiredLevel")) or 0 end
+
 function donjons.Preparation(p, d)
     local P = NS.parcours
-    local res = { kit = {}, plusTard = {}, trajet = {}, enPoche = 0 }
-    local dansKit, dansTrajet = {}, {}
-    local function Kit(id)
-        if dansKit[id] then return end
-        dansKit[id] = true
-        local e = P.EtatEtape(p, id)
-        table.insert(res.kit, { id = id, etat = e })
-        if e == "cours" or e == "rendre" then res.enPoche = res.enPoche + 1 end
-    end
-    local function Trajet(id)
-        if dansTrajet[id] then return end
-        dansTrajet[id] = true
-        table.insert(res.trajet, id)
-    end
+    local res = { suites = {}, avant = {}, dedans = {}, plusTard = {}, kit = {}, trajet = {}, enPoche = 0 }
+    if not (p and d) then return res end
+    local dansSuites = {}
     for _, id in ipairs(d.restantes or {}) do
-        local chemin = P.CheminVers and P.CheminVers(p, id)
-        if chemin and #chemin > 0 then
-            local dedans = donjons.SePrendDedans(id)
-            for _, q in ipairs(chemin) do
-                Kit(q)
-                -- Ce qui se prend dans l'instance n'a pas d'etape avant.
-                if not (q == id and dedans and P.EtatEtape(p, q) ~= "cours" and P.EtatEtape(p, q) ~= "rendre") then Trajet(q) end
+        local e = P.EtatEtape(p, id)
+        if e ~= "faite" then
+            local chemin = P.CheminVers(p, id)
+            -- Un maillon qui est lui-meme une quete de donjon (pas encore a
+            -- rendre) se fait dans une instance : la quete attendra.
+            local attendDonjon = false
+            for _, q in ipairs(chemin or {}) do
+                if q ~= id and donjons.DeQuete(q) and P.EtatEtape(p, q) ~= "rendre" then attendDonjon = true break end
             end
-        else
-            table.insert(res.plusTard, { id = id, etat = P.EtatEtape(p, id) })
+            if not chemin or attendDonjon then
+                -- Le niveau a atteindre : le plus haut de la quete et de sa suite.
+                local niveau = 0
+                for _, q in ipairs(P.CheminVers(p, id, true) or { id }) do
+                    if not (p.quetes and p.quetes[q]) then niveau = math.max(niveau, Requis(q)) end
+                end
+                table.insert(res.plusTard, { id = id, etat = e,
+                    niveau = (p.niveau and niveau > p.niveau) and niveau or nil })
+            else
+                for _, q in ipairs(chemin) do
+                    if q ~= id and not dansSuites[q] then
+                        dansSuites[q] = true
+                        table.insert(res.suites, { id = q, etat = P.EtatEtape(p, q), pour = id })
+                    end
+                end
+                local entree = { id = id, etat = e }
+                if donjons.SePrendDedans(id) then
+                    table.insert(res.dedans, entree)
+                else
+                    table.insert(res.avant, entree)
+                    if e == "cours" or e == "rendre" then res.enPoche = res.enPoche + 1 end
+                end
+            end
         end
+    end
+    for _, q in ipairs(res.suites) do table.insert(res.trajet, q.id) table.insert(res.kit, q) end
+    for _, q in ipairs(res.avant) do table.insert(res.trajet, q.id) table.insert(res.kit, q) end
+    for _, q in ipairs(res.dedans) do
+        if q.etat == "cours" or q.etat == "rendre" then table.insert(res.trajet, q.id) end
+        table.insert(res.kit, q)
     end
     return res
 end
 
--- Le trajet deja cree pour ce donjon suit : ce qui s'y est ajoute depuis
--- (une quete prise ou rendue debloque la suivante) va a la fin. Une etape
--- retiree a la main n'y revient pas.
+-- Ce que guide le trajet du donjon maintenant, dans l'ordre des rubriques :
+--   1. "suites"  : les maillons faisables des suites (a prendre, a faire, a
+--                  rendre ; la suivante vient quand la precedente est rendue) ;
+--   2. "avant"   : les quetes du donjon a prendre dehors (et celles deja
+--                  terminees, a rendre) ;
+--   3. "donjon"  : tout est pris : les quetes du donjon dans le journal (leurs
+--                  objectifs hors de l'instance, sinon l'entree du donjon).
+-- Jamais un donneur pour une quete deja prise, jamais une etape faite ni une
+-- etape retiree a la main (pc.ignorees). Rend ids, phase ; {} si rien.
+function donjons.AGuider(p, d, pc)
+    local prep = donjons.Preparation(p, d)
+    local ignorees = pc and pc.ignorees or {}
+    local function Garder(listes, etats)
+        local ids = {}
+        for _, liste in ipairs(listes) do
+            for _, q in ipairs(liste) do
+                if etats[q.etat] and not ignorees[q.id] then table.insert(ids, q.id) end
+            end
+        end
+        return ids
+    end
+    local ids = Garder({ prep.suites }, { prendre = true, cours = true, rendre = true })
+    if #ids > 0 then return ids, "suites", prep end
+    ids = Garder({ prep.avant, prep.dedans }, { rendre = true })
+    for _, id in ipairs(Garder({ prep.avant }, { prendre = true })) do table.insert(ids, id) end
+    if #ids > 0 then return ids, "avant", prep end
+    ids = Garder({ prep.avant, prep.dedans }, { cours = true })
+    if #ids > 0 then return ids, "donjon", prep end
+    return {}, nil, prep
+end
+
+-- Le trajet deja cree pour ce donjon suit tout seul : ses etapes sont
+-- refaites dans l'ordre des rubriques (suites, avant, dedans), ce qui s'est
+-- debloque depuis y entre a sa place. Les etapes faites restent en tete
+-- (l'avancement les compte) et ne reviennent jamais ; une etape retiree a la
+-- main n'y revient pas.
 function donjons.MettreAJourKit(p, d, pc)
-    if not (p and d) then return end
+    -- Sans la liste des quetes du donjon (base pas encore lue), rien ne bouge.
+    if not (p and d and type(d.restantes) == "table") then return end
     local nomKit = string.format(NS.L.DUNGEON_KIT_NAME, d.nom)
     local prep
-    for _, x in ipairs(NS.parcours.Liste(p.cle)) do
-        if x.genre == "kit" and (x == pc or (not pc and (x.nom == nomKit or x.donjon == d.zone))) then
+    for _, x in ipairs(pc and { pc } or NS.parcours.Liste(p.cle)) do
+        if x.genre == "kit" and type(x.etapes) == "table" and (pc or x.donjon == d.zone or x.nom == nomKit) then
             prep = prep or donjons.Preparation(p, d)
-            local deja, ignorees = {}, x.ignorees or {}
-            for _, id in ipairs(x.etapes) do deja[id] = true end
-            for _, id in ipairs(prep.trajet) do
-                if not deja[id] and not ignorees[id] then table.insert(x.etapes, id) deja[id] = true end
+            local ignorees = x.ignorees or {}
+            local etapes, deja = {}, {}
+            for _, id in ipairs(x.etapes) do
+                if not deja[id] and NS.parcours.EtatEtape(p, id) == "faite" then
+                    table.insert(etapes, id)
+                    deja[id] = true
+                end
             end
+            for _, id in ipairs(prep.trajet) do
+                if not deja[id] and not ignorees[id] then
+                    table.insert(etapes, id)
+                    deja[id] = true
+                end
+            end
+            -- Sur place : la table des etapes peut etre tenue ailleurs.
+            for i = #x.etapes, 1, -1 do x.etapes[i] = nil end
+            for i, id in ipairs(etapes) do x.etapes[i] = id end
+            x.donjon = x.donjon or d.zone
         end
     end
 end
 
--- Le donjon d'un trajet (kit), pour le personnage.
+-- Le donjon d'un trajet (kit), pour le personnage : celui qu'il a retenu a
+-- sa creation, sinon (anciens trajets) celui de la plupart de ses etapes.
 function donjons.DuKit(p, pc)
-    if not (pc and pc.donjon) then return nil end
-    for _, d in ipairs(donjons.Liste(p)) do if d.zone == pc.donjon then return d end end
+    if not (p and pc and pc.genre == "kit") then return nil end
+    Index()
+    local zone = pc.donjon
+    if not zone then
+        local compte, meilleur = {}, 0
+        for _, id in ipairs(pc.etapes or {}) do
+            local d = queteVersDonjon[id]
+            if d then
+                compte[d.zone] = (compte[d.zone] or 0) + 1
+                if compte[d.zone] > meilleur then meilleur, zone = compte[d.zone], d.zone end
+            end
+        end
+        if not zone then return nil end
+        pc.donjon = zone
+    end
+    for _, d in ipairs(Index()) do
+        if d.zone == zone then return PourLePerso(p, d, AvecRetirees()) end
+    end
     return nil
 end
 

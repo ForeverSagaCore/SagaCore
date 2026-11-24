@@ -206,7 +206,7 @@ end
 -- Liste de points : { carte, x, y, genre = "rendre"|"objectif", quete, titre, quoi }.
 local function PointsDeQuete(id, q)
     local points = {}
-    local function Collecteur(genre, quoi, icone)
+    local function Collecteur(genre, quoi, icone, parReceveur)
         local vus, n = {}, 0
         return function(idCarte, x, y, nom)
             if n >= MAX_PAR_OBJECTIF then return end
@@ -215,7 +215,7 @@ local function PointsDeQuete(id, q)
             vus[cle] = true
             n = n + 1
             table.insert(points, { carte = idCarte, x = x / 100, y = y / 100, genre = genre,
-                quete = id, titre = q.titre, quoi = quoi or nom, icone = icone })
+                quete = id, titre = q.titre, quoi = quoi or nom, icone = icone, parReceveur = parReceveur })
         end
     end
 
@@ -261,11 +261,13 @@ local function PointsDeQuete(id, q)
         end
     end
     -- Objectif sans lieu connu (parler a quelqu'un, livrer...) : celui qui
-    -- reprend la quete, la ou il faut aller.
+    -- reprend la quete, la ou il faut aller. Marque (parReceveur) : pour une
+    -- quete de donjon, ce n'est pas la qu'elle se fait (le guidage vise
+    -- alors l'entree du donjon).
     if #points == 0 then
         local fin = Lire("QuestDB", id, "finishedBy")
         if type(fin) == "table" then
-            local c = Collecteur("objectif")
+            local c = Collecteur("objectif", nil, nil, true)
             for _, pnj in ipairs(fin[1] or {}) do Apparitions("NpcDB", pnj, c) end
             for _, objet in ipairs(fin[2] or {}) do Apparitions("ObjectDB", objet, c) end
         end
