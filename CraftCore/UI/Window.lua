@@ -4179,29 +4179,50 @@ local function RendreBanquiers(contenu)
             -- des personnages.
             -- Un portrait rond dans l'anneau d'or du jeu ; le choisi
             -- s'eclaire, les autres restent un peu sombres.
+            -- Deux images : l'icone ronde de la classe (sans masque, pour
+            -- garder son decoupage) et le portrait depose (masque en rond).
             o = CreateFrame("Button", nil, z)
             o:SetSize(44, 44)
-            o.visage = o:CreateTexture(nil, "ARTWORK")
-            o.visage:SetPoint("TOPLEFT", 4, -4)
-            o.visage:SetPoint("BOTTOMRIGHT", -4, 4)
-            if o.visage.SetMask then pcall(o.visage.SetMask, o.visage, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+            o.classe = o:CreateTexture(nil, "ARTWORK")
+            o.classe:SetPoint("TOPLEFT", 4, -4)
+            o.classe:SetPoint("BOTTOMRIGHT", -4, 4)
+            o.portrait = o:CreateTexture(nil, "ARTWORK")
+            o.portrait:SetAllPoints(o.classe)
+            if o.portrait.SetMask then pcall(o.portrait.SetMask, o.portrait, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
             o.anneau = o:CreateTexture(nil, "OVERLAY")
-            o.anneau:SetPoint("TOPLEFT", o.visage, "TOPLEFT", -7, 7)
-            o.anneau:SetPoint("BOTTOMRIGHT", o.visage, "BOTTOMRIGHT", 7, -7)
+            o.anneau:SetPoint("TOPLEFT", o.classe, "TOPLEFT", -7, 7)
+            o.anneau:SetPoint("BOTTOMRIGHT", o.classe, "BOTTOMRIGHT", 7, -7)
             o.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
             o.anneau:SetTexCoord(0, 0.6, 0, 0.6)
-            o.halo = o:CreateTexture(nil, "BACKGROUND")
-            o.halo:SetAllPoints()
-            o.halo:SetTexture("Interface\\Buttons\\CheckButtonHilight")
-            o.halo:SetBlendMode("ADD")
+            o.nom = o:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            o.nom:SetPoint("TOP", o, "BOTTOM", 0, -2)
+            o.nom:SetWidth(60)
+            o.nom:SetWordWrap(false)
             o:SetScript("OnLeave", function() GameTooltip:Hide() end)
             z.onglets[i] = o
         end
         o:ClearAllPoints()
         o:SetPoint("TOPLEFT", contenu, "TOPLEFT", x, -y)
-        PoserVisage(o.visage, b.fiche, b.cle == NS.ClePersonnage())
-        o.halo:SetShown(b == choisi)
-        o.visage:SetVertexColor(b == choisi and 1 or 0.6, b == choisi and 1 or 0.6, b == choisi and 1 or 0.6)
+        -- Le portrait depose s'il existe ; sinon l'icone ronde de sa classe.
+        if NS.PortraitDepose(o.portrait, b.fiche) then
+            o.portrait:Show() o.classe:Hide()
+        else
+            o.portrait:Hide()
+            PoserVisage(o.classe, b.fiche, false)
+            local coords = CLASS_ICON_TCOORDS and b.fiche.jetonClasse and CLASS_ICON_TCOORDS[b.fiche.jetonClasse]
+            if coords then
+                o.classe:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
+                pcall(o.classe.SetTexCoord, o.classe, coords[1], coords[2], coords[3], coords[4])
+            end
+            o.classe:Show()
+        end
+        -- Le choisi en pleine lumiere, les autres un peu sombres.
+        local v = b == choisi and 1 or 0.55
+        o.classe:SetVertexColor(v, v, v)
+        o.portrait:SetVertexColor(v, v, v)
+        local cc = CouleurDeClasseDe(b.fiche)
+        o.nom:SetText(NS.inventaire.NomCourt(b.cle))
+        if cc then o.nom:SetTextColor(cc.r * v, cc.g * v, cc.b * v) else o.nom:SetTextColor(v, v, v) end
         local cle = b.cle
         o:SetScript("OnClick", function() ecran.banquierChoisi = cle ecran.Montrer("banquiers") end)
         o:SetScript("OnEnter", function(self)
@@ -4210,9 +4231,9 @@ local function RendreBanquiers(contenu)
             GameTooltip:Show()
         end)
         o:Show()
-        x = x + 52
+        x = x + 64
     end
-    y = y + 54
+    y = y + 68
 
     -- Ou deposer son portrait rond (jeu ferme).
     y = Paragraphe(contenu, y - 4, string.format(L.BK_PORTRAIT_HELP, NS.inventaire.NomCourt(choisi.cle)), "GameFontDisableSmall")
