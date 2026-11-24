@@ -4204,6 +4204,7 @@ local function RendreBanquiers(contenu)
         contenu.zoneBq = z
     end
     for _, w in ipairs(z.onglets) do w:Hide() end
+    if z.nouveau then z.nouveau:Hide() end
     for _, w in ipairs(z.cases) do w:Hide() w.libelle:Hide() w.icone:Hide() end
     for _, w in ipairs(z.cellules) do w:Hide() w.objet = nil end
     if z.retirer then z.retirer:Hide() end
@@ -4216,8 +4217,9 @@ local function RendreBanquiers(contenu)
     y = Paragraphe(contenu, y, L.BK_HELP, "GameFontDisableSmall")
 
     -- Nommer un banquier : la liste de mes personnages qui ne le sont pas.
+    -- Sans banquier, elle est la seule chose a faire ; ensuite, elle s'ouvre
+    -- depuis l'onglet Nouveau, a cote des portraits.
     if not z.nommer and S and S.ListeDeroulante then
-        z.libelleNommer = z:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         z.nommer = S.ListeDeroulante(z, function()
             local o = {}
             for _, f in ipairs(NS.base.TousLesPersonnages()) do
@@ -4229,20 +4231,26 @@ local function RendreBanquiers(contenu)
             if v and v ~= "" then bq.Nommer(v) ecran.banquierChoisi = v end
         end, function() ecran.Montrer("banquiers") end)
     end
-    if z.nommer then
-        z.libelleNommer:ClearAllPoints()
-        z.libelleNommer:SetPoint("TOPLEFT", contenu, "TOPLEFT", gauche, -(y + 6))
-        z.libelleNommer:SetText(L.BK_NAME)
-        z.libelleNommer:Show()
-        z.nommer:ClearAllPoints()
-        z.nommer:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -y)
-        z.nommer:Show()
-        if z.nommer.Rendre then z.nommer.Rendre() end
-        y = y + 32
-    end
-
     local liste = bq.Liste()
+    local restants = 0
+    for _, f in ipairs(NS.base.TousLesPersonnages()) do if not bq.Est(f.cle) then restants = restants + 1 end end
+    if z.nommer then
+        z.nommer:Hide()
+        z.nommer:SetAlpha(1)
+        z.nommer.bouton:EnableMouse(true)
+    end
     if #liste == 0 then
+        -- Le premier banquier : une liste bien visible, sous l'explication.
+        if z.nommer then
+            z.nommer:SetWidth(320)
+            z.nommer.bouton:SetWidth(320)
+            z.nommer:ClearAllPoints()
+            z.nommer:SetPoint("TOPLEFT", contenu, "TOPLEFT", gauche, -(y + 4))
+            z.nommer:Show()
+            if z.nommer.Rendre then z.nommer.Rendre() end
+            z.nommer.bouton.libelle:SetText(L.BK_FIRST)
+            y = y + 38
+        end
         y = Paragraphe(contenu, y, L.BK_EMPTY, "GameFontDisableSmall")
         contenu:SetHeight(math.max(y, 1))
         return
@@ -4314,6 +4322,59 @@ local function RendreBanquiers(contenu)
         end)
         o:Show()
         x = x + 64
+    end
+    -- L'onglet Nouveau : un anneau vide et un plus ; il ouvre la liste des
+    -- personnages qui ne sont pas encore banquiers.
+    if restants > 0 and z.nommer then
+        local n = z.nouveau
+        if not n then
+            n = CreateFrame("Button", nil, z)
+            n:SetSize(44, 44)
+            n.fond = n:CreateTexture(nil, "BACKGROUND")
+            n.fond:SetPoint("TOPLEFT", 4, -4)
+            n.fond:SetPoint("BOTTOMRIGHT", -4, 4)
+            n.fond:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
+            n.fond:SetVertexColor(0, 0, 0, 0.6)
+            n.plus = n:CreateTexture(nil, "ARTWORK")
+            n.plus:SetSize(18, 18)
+            n.plus:SetPoint("CENTER")
+            n.plus:SetTexture("Interface\\Buttons\\UI-PlusButton-Up")
+            n.anneau = n:CreateTexture(nil, "OVERLAY")
+            n.anneau:SetPoint("TOPLEFT", n.fond, "TOPLEFT", -7, 7)
+            n.anneau:SetPoint("BOTTOMRIGHT", n.fond, "BOTTOMRIGHT", 7, -7)
+            n.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+            n.anneau:SetTexCoord(0, 0.6, 0, 0.6)
+            n.nom = n:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            n.nom:SetPoint("TOP", n, "BOTTOM", 0, -2)
+            n.nom:SetWidth(60)
+            n.nom:SetWordWrap(false)
+            n.nom:SetTextColor(0.6, 0.6, 0.6)
+            n:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(L.BK_NEW_TIP, 1, 1, 1)
+                GameTooltip:Show()
+            end)
+            n:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            n:SetScript("OnClick", function()
+                local d = z.nommer and z.nommer.bouton
+                if d and d:GetScript("OnClick") then d:GetScript("OnClick")(d) end
+            end)
+            z.nouveau = n
+        end
+        n.nom:SetText(L.BK_NEW)
+        n:ClearAllPoints()
+        n:SetPoint("TOPLEFT", contenu, "TOPLEFT", x, -y)
+        n:Show()
+        -- La liste, invisible, sert d'ancre : elle s'ouvre sous l'onglet.
+        z.nommer:SetWidth(220)
+        z.nommer.bouton:SetWidth(220)
+        z.nommer:ClearAllPoints()
+        z.nommer:SetPoint("TOPLEFT", n, "BOTTOMLEFT", 0, -14)
+        z.nommer:SetAlpha(0)
+        z.nommer.bouton:EnableMouse(false)
+        z.nommer:Show()
+    elseif z.nouveau then
+        z.nouveau:Hide()
     end
     y = y + 68
 
@@ -5985,6 +6046,14 @@ function ecran.Cible(nom)
         -- Le premier bouton d'action dont la cle commence ainsi.
         for cleAction, bouton in pairs(win.contenu.actions or {}) do
             if string.sub(cleAction, 1, #cle) == cle and bouton:IsShown() then cible = bouton break end
+        end
+    elseif genre == "bq" then
+        -- Mes banquiers : la liste du premier, ou l'onglet Nouveau.
+        local z = win.contenu.zoneBq
+        if z and cle == "liste" then
+            cible = (z.nommer and z.nommer:GetAlpha() > 0 and z.nommer) or z.nouveau or (z.onglets and z.onglets[1])
+        elseif z and cle == "nouveau" then
+            cible = (z.nouveau and z.nouveau:IsShown() and z.nouveau) or (z.nommer and z.nommer:GetAlpha() > 0 and z.nommer)
         end
     elseif genre == "ligne" then
         cible = win.contenu.lignes and win.contenu.lignes[tonumber(cle) or 0]
