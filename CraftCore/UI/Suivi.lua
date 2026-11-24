@@ -846,7 +846,7 @@ function suivi.FeuilleDeRoute(o)
         end
     end
     if #achats > 0 then Etape("achats", 4, nil, L.ROUTE_T_BUY, nil, { { objets = achats } }, { marchand = achats[1].objet }) end
-    if #introuvables > 0 then Etape("recolte", 5, nil, L.ROUTE_T_GATHER, nil, { { objets = introuvables } }, { recolte = { objectifs = { o.cle } } }) end
+    if #introuvables > 0 then Etape("recolte", 0, nil, L.ROUTE_T_GATHER, nil, { { objets = introuvables } }, { recolte = { objectifs = { o.cle } } }) end
     -- Les fabrications, dans l'ordre.
     for _, e in ipairs(EtapesDeFabrication(o.lignes)) do
         if not e.faite and e.recette then
@@ -897,17 +897,24 @@ function suivi.Feuille(o)
     local neuves = {}
     for _, e in ipairs(calcul) do neuves[e.cle] = e end
     local liste, vus = {}, {}
+    local nomMoi = NS.inventaire.NomCourt(moi.cle)
     if type(avant) == "table" then
         for k, e in ipairs(avant.etapes or {}) do
+            -- Jamais une etape pour moi-meme (ancienne fiche a mon nom).
+            local fantome = e.qui and NS.inventaire.NomCourt(e.qui) == nomMoi
             if neuves[e.cle] then
                 local n = neuves[e.cle]
                 n.rang = k
                 table.insert(liste, n)
-            else
+                vus[e.cle] = true
+            elseif not fantome and (e.faite or not e.qui) then
+                -- Disparue du calcul : faite (le courrier releve, l'achat
+                -- fait...). Un autre personnage ne compte comme fait que
+                -- s'il a vraiment poste son envoi.
                 e.faite, e.rang = true, k
                 table.insert(liste, e)
+                vus[e.cle] = true
             end
-            vus[e.cle] = true
         end
     end
     for _, e in ipairs(calcul) do
