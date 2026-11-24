@@ -507,7 +507,7 @@ L.HELP_EQUIPEMENT_TEXT = "What the selected character wears, slot by slot, as of
     .. "CraftCore does not decide what is better: it gathers, you compare."
 
 L.HELP_BANQUIERS_TITLE = "My bankers"
-L.HELP_BANQUIERS_TEXT = "A banker is one of your characters who keeps the reagents of the whole family, each with a speciality : herbs, metals, cloth and leather, cooking, enchanting, patterns.\n\nAt the mailbox, your other characters prepare the mail to the right banker on their own. At the bank, the banker stores what is his. When a craft needs his reagents, the route sheet tells you to log in on him and what to send.\n\nTo begin, choose your first banker in the list : he keeps everything. The next ones, added with the New tab, take a speciality.\n\n"
+L.HELP_BANQUIERS_TEXT = "A banker is one of your characters who keeps the reagents of the whole family, each with a speciality : herbs, metals, cloth and leather, cooking, enchanting, patterns.\n\nAt the mailbox, your other characters prepare the mail to the right banker on their own. At the bank, the banker stores what is his. When a craft needs his reagents, the route sheet tells you to log in on him and what to send.\n\nTo begin, click the New tab and choose your first banker : he keeps everything. The next ones, added with the New tab, take a speciality.\n\n"
 L.HELP_CAISSES_TITLE = "My crates"
 L.HELP_CAISSES_TEXT = "The crates in your bags and bank whose tooltip lists the packs they accept.\n\n"
     .. T .. "Reading a crate" .. F .. "\n"
@@ -559,8 +559,8 @@ L.TUTO_EQUIPEMENT_3 = "Choose one or two items to compare them with what is worn
 
 L.TUTO_BANQUIERS_TITLE = "My bankers"
 L.TUTO_BANQUIERS_1 = "Open My bankers in the menu."
-L.TUTO_BANQUIERS_2 = "Choose your first banker in the list : he keeps everything."
-L.TUTO_BANQUIERS_3 = "The New tab, next to the portraits, adds another one ; tick his specialities."
+L.TUTO_BANQUIERS_2 = "Click the New tab and choose your first banker : he keeps everything."
+L.TUTO_BANQUIERS_3 = "Each banker has his tab ; New, at the end, adds another one. Tick his specialities."
 L.TUTO_BANQUIERS_4 = "Everything he has shows by family, with quantities ; the ledger keeps his operations."
 L.TUTO_CAISSES_TITLE = "Filling your crates"
 L.TUTO_CAISSES_1 = "Open My crates, below My gear on the right."

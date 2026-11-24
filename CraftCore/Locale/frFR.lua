@@ -506,7 +506,7 @@ L.HELP_EQUIPEMENT_TEXT = "Ce que porte le personnage sélectionné, emplacement 
     .. "CraftCore ne décide pas ce qui est meilleur : il rassemble, vous comparez."
 
 L.HELP_BANQUIERS_TITLE = "Mes banquiers"
-L.HELP_BANQUIERS_TEXT = "Un banquier est un de vos personnages qui garde les composants de toute la famille, chacun sa spécialité : herbes, métaux, étoffes et cuirs, cuisine, enchantement, patrons.\n\nÀ la boîte aux lettres, vos autres personnages préparent tout seuls l'envoi au bon banquier. À la banque, le banquier range ce qui est à lui. Quand une fabrication demande ses composants, la feuille de route vous dit de vous connecter sur lui et quoi envoyer.\n\nPour commencer, choisissez votre premier banquier dans la liste : il garde tout. Les suivants, ajoutés avec l'onglet Nouveau, prennent une spécialité.\n\n"
+L.HELP_BANQUIERS_TEXT = "Un banquier est un de vos personnages qui garde les composants de toute la famille, chacun sa spécialité : herbes, métaux, étoffes et cuirs, cuisine, enchantement, patrons.\n\nÀ la boîte aux lettres, vos autres personnages préparent tout seuls l'envoi au bon banquier. À la banque, le banquier range ce qui est à lui. Quand une fabrication demande ses composants, la feuille de route vous dit de vous connecter sur lui et quoi envoyer.\n\nPour commencer, cliquez sur l'onglet Nouveau et choisissez votre premier banquier : il garde tout. Les suivants, ajoutés avec l'onglet Nouveau, prennent une spécialité.\n\n"
 L.HELP_CAISSES_TITLE = "Mes caisses"
 L.HELP_CAISSES_TEXT = "Les caisses de vos sacs et de votre banque dont l'infobulle liste les lots acceptés.\n\n"
     .. T .. "Lire une caisse" .. F .. "\n"
@@ -558,8 +558,8 @@ L.TUTO_EQUIPEMENT_3 = "Choisissez un ou deux objets pour les comparer à ce qui 
 
 L.TUTO_BANQUIERS_TITLE = "Mes banquiers"
 L.TUTO_BANQUIERS_1 = "Ouvrez Mes banquiers dans le menu."
-L.TUTO_BANQUIERS_2 = "Choisissez votre premier banquier dans la liste : il garde tout."
-L.TUTO_BANQUIERS_3 = "L'onglet Nouveau, à côté des portraits, en ajoute un autre ; cochez ses spécialités."
+L.TUTO_BANQUIERS_2 = "Cliquez sur l'onglet Nouveau et choisissez votre premier banquier : il garde tout."
+L.TUTO_BANQUIERS_3 = "Chaque banquier a son onglet ; Nouveau, au bout, en ajoute un autre. Cochez ses spécialités."
 L.TUTO_BANQUIERS_4 = "Tout ce qu'il a s'affiche par famille, avec les quantités ; le registre garde ses opérations."
 L.TUTO_CAISSES_TITLE = "Remplir ses caisses"
 L.TUTO_CAISSES_1 = "Ouvrez Mes caisses, sous l'équipement à droite."
