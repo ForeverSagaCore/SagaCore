@@ -4222,8 +4222,21 @@ local function RendreBanquiers(contenu)
     if not z.nommer and S and S.ListeDeroulante then
         z.nommer = S.ListeDeroulante(z, function()
             local o = {}
+            -- Une seule fois chaque nom : une ancienne fiche au meme nom
+            -- (royaume vide ou provisoire) ne s'y ajoute pas.
+            local moi = NS.ClePersonnage and NS.ClePersonnage() or ""
+            local royaume = moi:match(" %- (.+)$")
+            local vus, autres = {}, {}
             for _, f in ipairs(NS.base.TousLesPersonnages()) do
-                if not bq.Est(f.cle) then table.insert(o, { f.cle, NS.inventaire.NomCourt(f.cle) }) end
+                if not bq.Est(f.cle) then
+                    local nom = NS.inventaire.NomCourt(f.cle)
+                    if royaume and f.cle:match(" %- (.+)$") == royaume then
+                        if not vus[nom] then vus[nom] = true table.insert(o, { f.cle, nom }) end
+                    else table.insert(autres, { f.cle, nom }) end
+                end
+            end
+            for _, x in ipairs(autres) do
+                if not vus[x[2]] then vus[x[2]] = true table.insert(o, x) end
             end
             if #o == 0 then table.insert(o, { "", L.BK_NONE_LEFT }) end
             return o
@@ -4265,10 +4278,16 @@ local function RendreBanquiers(contenu)
             o:SetHeight(28)
             -- L'icone ronde de la classe (sans masque) ou le portrait depose
             -- (masque en rond), devant le nom.
-            o.classe = o:CreateTexture(nil, "OVERLAY")
-            o.classe:SetSize(16, 16)
-            o.portrait = o:CreateTexture(nil, "OVERLAY")
-            o.portrait:SetSize(16, 16)
+            -- Un fin cercle a la couleur de la classe, sous l'icone.
+            o.cercle = o:CreateTexture(nil, "OVERLAY", nil, 1)
+            o.cercle:SetSize(20, 20)
+            o.cercle:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
+            o.classe = o:CreateTexture(nil, "OVERLAY", nil, 2)
+            o.classe:SetSize(17, 17)
+            o.classe:SetPoint("CENTER", o.cercle, "CENTER", 0, 0)
+            o.portrait = o:CreateTexture(nil, "OVERLAY", nil, 2)
+            o.portrait:SetSize(17, 17)
+            o.portrait:SetPoint("CENTER", o.cercle, "CENTER", 0, 0)
             if o.portrait.SetMask then pcall(o.portrait.SetMask, o.portrait, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
             o:HookScript("OnLeave", function() GameTooltip:Hide() end)
             z.onglets[i] = o
@@ -4299,7 +4318,7 @@ local function RendreBanquiers(contenu)
                 if cc then fs:SetTextColor(cc.r, cc.g, cc.b) else fs:SetTextColor(1, 1, 1) end
             end
         end
-        o.classe:Hide() o.portrait:Hide()
+        o.classe:Hide() o.portrait:Hide() o.cercle:Hide()
         if t.banquier then
             local b = t.banquier
             local tex = o.classe
@@ -4313,11 +4332,18 @@ local function RendreBanquiers(contenu)
                     PoserVisage(o.classe, b.fiche, false)
                 end
             end
-            tex:ClearAllPoints()
+            -- L'icone et le nom, centres ensemble dans l'onglet, a la hauteur
+            -- du texte.
+            o.cercle:ClearAllPoints()
             if fs then
-                local largeurT = math.min(fs:GetStringWidth() or 40, largeurO - 34)
-                tex:SetPoint("RIGHT", fs, "CENTER", -largeurT / 2 - 3, 0)
-            else tex:SetPoint("LEFT", o, "LEFT", 10, 0) end
+                local largeurT = math.min(fs:GetStringWidth() or 40, largeurO - 40)
+                fs:ClearAllPoints()
+                fs:SetPoint("CENTER", o, "BOTTOM", 12, actif and 15 or 11)
+                o.cercle:SetPoint("RIGHT", fs, "CENTER", -largeurT / 2 - 5, 0)
+            else o.cercle:SetPoint("LEFT", o, "LEFT", 10, 0) end
+            local cc = CouleurDeClasseDe(b.fiche)
+            if cc then o.cercle:SetVertexColor(cc.r, cc.g, cc.b, 0.9) else o.cercle:SetVertexColor(0.8, 0.8, 0.8, 0.9) end
+            o.cercle:Show()
             tex:Show()
             local cle = b.cle
             o:SetScript("OnClick", function() ecran.banquierChoisi = cle ecran.Montrer("banquiers") end)
@@ -4385,6 +4411,7 @@ local function RendreBanquiers(contenu)
             cs.icone:SetPoint("LEFT", cs, "RIGHT", 2, 0)
             cs.libelle = z:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             cs.libelle:SetPoint("LEFT", cs.icone, "RIGHT", 6, 0)
+            cs.libelle:SetJustifyH("LEFT")
             cs.libelle:SetWordWrap(false)
             z.cases[i] = cs
         end

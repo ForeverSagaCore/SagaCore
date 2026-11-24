@@ -763,7 +763,9 @@ function suivi.FeuilleDeRoute(o)
     -- moins de deplacement), jusqu'a ce que tout soit trouve.
     local candidats = {}
     for _, f in ipairs(NS.base.TousLesPersonnages()) do
-        if f.cle ~= moi.cle and inv.MemeCamp(f) then table.insert(candidats, f) end
+        -- Jamais moi-meme, ni une ancienne fiche a mon nom (royaume vide ou
+        -- provisoire, d'avant la correction du royaume).
+        if f.cle ~= moi.cle and inv.NomCourt(f.cle) ~= nomMoi and inv.MemeCamp(f) then table.insert(candidats, f) end
     end
     local visites = {}
     while next(reste) do

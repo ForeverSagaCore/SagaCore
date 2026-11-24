@@ -511,7 +511,8 @@ local function SacsOrdinaires()
     local libres = Conteneur("GetContainerNumFreeSlots")
     for _, id in ipairs(TousLesSacs()) do
         local _, famille = NS.Appeler(libres, id)
-        if famille == nil or famille == 0 then table.insert(liste, id) end
+        local reactif = id > (tonumber(_G.NUM_BAG_SLOTS) or 4)
+        if not reactif and (famille == nil or famille == 0) then table.insert(liste, id) end
     end
     return liste
 end
@@ -576,7 +577,43 @@ function bq.EstAMoi(objet)
     return moi and bq.Est(moi.cle) and bq.Pour(objet) == moi.cle or false
 end
 
-local function CaseLibre(reservees)
+-- Un sac specialise (composants, herbes, minerais...) qui accepte cet
+-- objet : par la famille de l'objet, ou, pour le sac de composants, parce
+-- que c'est un composant d'artisanat.
+local function Accepte(id, objet)
+    local _, famille = NS.Appeler(Conteneur("GetContainerNumFreeSlots"), id)
+    famille = tonumber(famille) or 0
+    local reactif = id > (tonumber(_G.NUM_BAG_SLOTS) or 4) and id <= (tonumber(_G.NUM_BAG_SLOTS) or 4) + (tonumber(_G.NUM_REAGENTBAG_SLOTS) or 0)
+    if reactif then
+        local info = { NS.Appeler(Lire("C_Item.GetItemInfo") or Lire("GetItemInfo"), objet) }
+        return info[17] == true
+    end
+    if famille == 0 then return false end
+    local f = tonumber(NS.Appeler(Lire("C_Item.GetItemFamily") or Lire("GetItemFamily"), objet)) or 0
+    local et = Lire("bit.band")
+    return f > 0 and et and NS.Appeler(et, f, famille) ~= 0 or false
+end
+local function SacsSpecialises(objet)
+    local liste = {}
+    if not objet then return liste end
+    for _, id in ipairs(TousLesSacs()) do
+        if NombreDEmplacements(id) > 0 and Accepte(id, objet) then table.insert(liste, id) end
+    end
+    return liste
+end
+
+-- Une case libre : d'abord dans un sac specialise qui accepte l'objet,
+-- sinon dans un sac ordinaire.
+local function CaseLibre(reservees, objet)
+    for _, id in ipairs(SacsSpecialises(objet)) do
+        for emplacement = 1, NombreDEmplacements(id) do
+            local cle = id .. ":" .. emplacement
+            if not reservees[cle] and not ContenuDe(id, emplacement) then
+                reservees[cle] = true
+                return id, emplacement
+            end
+        end
+    end
     for _, id in ipairs(SacsOrdinaires()) do
         for emplacement = 1, NombreDEmplacements(id) do
             local cle = id .. ":" .. emplacement
@@ -664,7 +701,7 @@ local function ToutSortir()
         for _ = 1, 40 do
             table.insert(etapes, function()
                 if reste <= 0 then return "vite" end
-                local bac, case = CaseLibre(reservees)
+                local bac, case = CaseLibre(reservees, ligne.objet)
                 if not bac then NS.Dire(L().ASSIST_NO_ROOM) return false end
                 local part = Prendre(banque, ligne.objet, reste)
                 if part == 0 then reste = 0 return "vite" end
@@ -1542,6 +1579,51 @@ end
 function courrier.Statut(texte)
     statut = texte
     courrier.Actualiser()
+end
+
+-- Ce qui sort de la banque ou arrive du courrier va dans le sac specialise
+-- ad hoc (composants, herbes...) s'il y a de la place : une pile a la fois,
+-- hors combat, seulement banque ou boite aux lettres ouverte.
+local rangement
+local refuses = {}
+local function RangerDansSacsSpecialises()
+    rangement = nil
+    if enCours or not lieu or EnCombat() or CurseurPlein() then return end
+    local specialises = {}
+    for _, id in ipairs(TousLesSacs()) do
+        local _, famille = NS.Appeler(Conteneur("GetContainerNumFreeSlots"), id)
+        local reactif = id > (tonumber(_G.NUM_BAG_SLOTS) or 4)
+        if (reactif or (tonumber(famille) or 0) ~= 0) and NombreDEmplacements(id) > 0 then specialises[id] = true end
+    end
+    if not next(specialises) then return end
+    for _, id in ipairs(SacsOrdinaires()) do
+        if not specialises[id] then
+            for emplacement = 1, NombreDEmplacements(id) do
+                local objet, _, verrou = ContenuDe(id, emplacement)
+                if objet and not verrou and not refuses[objet] and #SacsSpecialises(objet) > 0 then
+                    local bac, case = CaseLibre({}, objet)
+                    if bac and specialises[bac] then
+                        NS.Appeler(Conteneur("PickupContainerItem"), id, emplacement)
+                        NS.Appeler(Conteneur("PickupContainerItem"), bac, case)
+                        if CurseurPlein() then refuses[objet] = true Lacher() return end
+                        -- La suivante, quand la case est deverrouillee.
+                        local plusTard = Lire("C_Timer.After")
+                        if plusTard then rangement = true NS.Appeler(plusTard, PAUSE, RangerDansSacsSpecialises) end
+                        return
+                    end
+                end
+            end
+        end
+    end
+end
+do
+    local f = CreateFrame("Frame")
+    pcall(f.RegisterEvent, f, "BAG_UPDATE_DELAYED")
+    f:SetScript("OnEvent", function()
+        if rangement or not lieu then return end
+        local plusTard = Lire("C_Timer.After")
+        if plusTard then rangement = true NS.Appeler(plusTard, PAUSE, function() pcall(RangerDansSacsSpecialises) end) end
+    end)
 end
 
 function courrier.Ouvert(nouveauLieu)
