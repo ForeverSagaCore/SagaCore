@@ -4177,19 +4177,23 @@ local function RendreBanquiers(contenu)
         if not o then
             -- Le portrait dans un cadre d'emplacement du jeu, comme la bande
             -- des personnages.
+            -- Un portrait rond dans l'anneau d'or du jeu ; le choisi
+            -- s'eclaire, les autres restent un peu sombres.
             o = CreateFrame("Button", nil, z)
-            o:SetSize(40, 40)
-            o.cadre = o:CreateTexture(nil, "BACKGROUND")
-            o.cadre:SetAllPoints()
-            o.cadre:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
+            o:SetSize(44, 44)
             o.visage = o:CreateTexture(nil, "ARTWORK")
-            o.visage:SetPoint("TOPLEFT", 5, -5)
-            o.visage:SetPoint("BOTTOMRIGHT", -5, 5)
-            o.halo = o:CreateTexture(nil, "OVERLAY")
+            o.visage:SetPoint("TOPLEFT", 4, -4)
+            o.visage:SetPoint("BOTTOMRIGHT", -4, 4)
+            if o.visage.SetMask then pcall(o.visage.SetMask, o.visage, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+            o.anneau = o:CreateTexture(nil, "OVERLAY")
+            o.anneau:SetPoint("TOPLEFT", o.visage, "TOPLEFT", -7, 7)
+            o.anneau:SetPoint("BOTTOMRIGHT", o.visage, "BOTTOMRIGHT", 7, -7)
+            o.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+            o.anneau:SetTexCoord(0, 0.6, 0, 0.6)
+            o.halo = o:CreateTexture(nil, "BACKGROUND")
             o.halo:SetAllPoints()
             o.halo:SetTexture("Interface\\Buttons\\CheckButtonHilight")
             o.halo:SetBlendMode("ADD")
-            o:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
             o:SetScript("OnLeave", function() GameTooltip:Hide() end)
             z.onglets[i] = o
         end
@@ -4197,6 +4201,7 @@ local function RendreBanquiers(contenu)
         o:SetPoint("TOPLEFT", contenu, "TOPLEFT", x, -y)
         PoserVisage(o.visage, b.fiche, b.cle == NS.ClePersonnage())
         o.halo:SetShown(b == choisi)
+        o.visage:SetVertexColor(b == choisi and 1 or 0.6, b == choisi and 1 or 0.6, b == choisi and 1 or 0.6)
         local cle = b.cle
         o:SetScript("OnClick", function() ecran.banquierChoisi = cle ecran.Montrer("banquiers") end)
         o:SetScript("OnEnter", function(self)
@@ -4205,9 +4210,12 @@ local function RendreBanquiers(contenu)
             GameTooltip:Show()
         end)
         o:Show()
-        x = x + 46
+        x = x + 52
     end
-    y = y + 50
+    y = y + 54
+
+    -- Ou deposer son portrait rond (jeu ferme).
+    y = Paragraphe(contenu, y - 4, string.format(L.BK_PORTRAIT_HELP, NS.inventaire.NomCourt(choisi.cle)), "GameFontDisableSmall")
 
     -- La fiche : le nom et son nom de famille, a la couleur de sa classe.
     local fiche = choisi.fiche
@@ -4754,7 +4762,32 @@ end
 -- jeu donne la forme, comme sur la page de l'equipement.
 local TAILLE_PORTRAIT = 30
 
+-- Portrait depose par le joueur, jeu ferme : Interface/AddOns/SagaCorePortraits/
+-- <Nom du personnage>.tga (128 x 128, voir le LISEZMOI du dossier). Un
+-- dossier a part : une mise a jour de l'add-on ne l'efface pas. Rend vrai
+-- si l'image existe.
+local DOSSIER_PORTRAITS = "Interface\\AddOns\\SagaCorePortraits\\"
+local function PortraitDepose(texture, fiche)
+    local nom = type(fiche) == "table" and fiche.cle and NS.inventaire.NomCourt(fiche.cle)
+    if type(nom) ~= "string" or nom == "" then return false end
+    local ok, reussi = pcall(texture.SetTexture, texture, DOSSIER_PORTRAITS .. nom)
+    if not ok or reussi == false then return false end
+    -- Fichier absent : le jeu ne trouve pas d'identifiant de fichier.
+    if texture.GetTextureFileID then
+        local okI, id = pcall(texture.GetTextureFileID, texture)
+        if okI and (id == nil or id == 0) then
+            local okC, chemin = pcall(texture.GetTextureFilePath, texture)
+            if not (okC and type(chemin) == "string" and chemin ~= "") then return false end
+        end
+    end
+    pcall(texture.SetTexCoord, texture, 0, 1, 0, 1)
+    return true
+end
+NS.PortraitDepose = PortraitDepose
+
 PoserVisage = function(texture, fiche, estConnecte)
+    -- Le portrait depose par le joueur passe avant tout.
+    if PortraitDepose(texture, fiche) then return end
     -- Le vrai portrait pour le personnage connecte, quand le client le donne.
     if estConnecte and SetPortraitTexture then
         local ok = pcall(SetPortraitTexture, texture, "player")
