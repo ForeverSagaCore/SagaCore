@@ -21,47 +21,20 @@ local MAX_ETAPES = 40
 -- connecte seulement) : un parcours vers un niveau deja atteint. Les
 -- anciennes tournees de rendu (genre "rendu") disparaissent : rendre les
 -- quetes terminees est un objectif de guidage, sans parcours enregistre.
--- Kit de donjon : il se complete tout seul. Une quete du donjon qui devient
--- prenable (son prerequis fait, comme Boissons fortes apres les cornes de
--- raptors) ou qu'on prend s'y ajoute, a la suite. Au plus toutes les 5 s.
+-- Trajet de donjon : il suit tout seul (NS.donjons.MettreAJourKit, le meme
+-- modele que la fenetre du donjon) : ce qui se debloque s'y ajoute a sa
+-- place, une etape retiree a la main n'y revient pas. Au plus toutes les 5 s.
 local derniereCompletion = 0
 local function CompleterKits(p, liste)
     local maintenant = (GetTime and GetTime()) or 0
-    if maintenant - derniereCompletion < 5 then return end
+    if maintenant - derniereCompletion < 5 and maintenant >= derniereCompletion then return end
     derniereCompletion = maintenant
-    if not (NS.donjons and NS.donjons.Liste and NS.donjons.DeQuete) then return end
-    local donjons
+    local D = NS.donjons
+    if not (D and D.DuKit and D.MettreAJourKit) then return end
     for _, pc in ipairs(liste) do
         if pc.genre == "kit" and type(pc.etapes) == "table" then
-            -- Son donjon : celui de la plupart de ses etapes.
-            local zone = pc.donjon
-            if not zone then
-                local compte, meilleur = {}, 0
-                for _, id in ipairs(pc.etapes) do
-                    local d = NS.donjons.DeQuete(id)
-                    if d then
-                        compte[d.zone] = (compte[d.zone] or 0) + 1
-                        if compte[d.zone] > meilleur then meilleur, zone = compte[d.zone], d.zone end
-                    end
-                end
-                pc.donjon = zone
-            end
-            if zone then
-                donjons = donjons or NS.donjons.Liste(p)
-                for _, d in ipairs(donjons) do
-                    if d.zone == zone then
-                        local deja = {}
-                        for _, id in ipairs(pc.etapes) do deja[id] = true end
-                        for _, id in ipairs(d.restantes or {}) do
-                            local e = parcours.EtatEtape(p, id)
-                            if not deja[id] and (e == "cours" or e == "rendre" or e == "prendre") then
-                                table.insert(pc.etapes, id)
-                                deja[id] = true
-                            end
-                        end
-                    end
-                end
-            end
+            local d = D.DuKit(p, pc)
+            if d then D.MettreAJourKit(p, d, pc) end
         end
     end
 end
@@ -183,6 +156,10 @@ function parcours.Nettoyer(cle, p)
     local liste = parcours.Liste(cle)
     for i = #liste, 1, -1 do
         local pc = liste[i]
+        -- Trajet de donjon : ce qui vient de se debloquer y entre d'abord.
+        if pc.genre == "kit" and NS.donjons and NS.donjons.DuKit and cle == (NS.ClePersonnage and NS.ClePersonnage()) then
+            pcall(function() NS.donjons.MettreAJourKit(p, NS.donjons.DuKit(p, pc), pc) end)
+        end
         local total = type(pc.etapes) == "table" and #pc.etapes or 0
         if total > 0 then
             local faites = parcours.Avancement(p, pc)
@@ -275,16 +252,19 @@ end
 
 -- Le chemin faisable des maintenant jusqu'a une quete : ses prerequis pas
 -- encore faits (a prendre, en cours ou a rendre), dans l'ordre, puis elle.
--- nil si un maillon demande un niveau plus haut ou n'est pas pour sa race.
-function parcours.CheminVers(p, id)
+-- nil si un maillon demande un niveau plus haut ou n'est pas pour sa race,
+-- sauf avec `tout` : le chemin entier, faisable ou non.
+function parcours.CheminVers(p, id, tout)
     local liste, vus = {}, {}
     Avant(p, id, liste, vus, 0)
     local res = {}
     for _, q in ipairs(liste) do
         if not Faite(p, q) then
-            if not RaceAdmise(p, q) then return nil end
-            local niveau = tonumber(Lire("QuestDB", q, "requiredLevel")) or 0
-            if p and p.niveau and niveau > p.niveau and not EnCours(p, q) then return nil end
+            if not tout then
+                if not RaceAdmise(p, q) then return nil end
+                local niveau = tonumber(Lire("QuestDB", q, "requiredLevel")) or 0
+                if p and p.niveau and niveau > p.niveau and not EnCours(p, q) then return nil end
+            end
             table.insert(res, q)
         end
     end
@@ -310,13 +290,15 @@ function parcours.CreerSelection(cle, p, premiere)
     return pc
 end
 
--- Kit de donjon : les quetes a prendre avant d'y aller, dans l'ordre donne.
--- Un kit du meme nom deja la est remplace.
+-- Trajet de donjon : ses quetes dans l'ordre donne (celui de
+-- NS.donjons.Preparation). Un trajet du meme donjon (ou du meme nom) deja la
+-- est remplace : un seul trajet par donjon.
 function parcours.CreerKit(cle, ids, nom, zone)
     if type(ids) ~= "table" or #ids == 0 then return nil end
     local liste = parcours.Liste(cle)
     for i = #liste, 1, -1 do
-        if liste[i].genre == "kit" and liste[i].nom == nom then table.remove(liste, i) end
+        local x = liste[i]
+        if x.genre == "kit" and (x.nom == nom or (zone and x.donjon == zone)) then table.remove(liste, i) end
     end
     local etapes = {}
     for _, id in ipairs(ids) do table.insert(etapes, id) end

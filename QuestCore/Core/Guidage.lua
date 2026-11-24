@@ -71,44 +71,55 @@ end
 
 -- Le lieu ou aller pour une quete, en coordonnees du continent : chez le
 -- receveur si elle est terminee, la ou se fait l'objectif si elle est en
--- cours, chez le donneur sinon ; a defaut, ses autres points, puis l'entree
--- du donjon ou elle se fait.
+-- cours, chez le donneur sinon. Une quete prise et pas finie ne renvoie
+-- jamais chez son donneur ni chez son receveur : pour une quete de donjon,
+-- pas meme quand ses objectifs sans lieu connu renvoient au receveur. Un
+-- point dans une instance n'est jamais vise : a la place, l'entree du donjon
+-- (celui de la quete, ou celui de l'instance ou tombe le point).
 local function PointDeQuete(id, moi, continent, jx, jy)
     local meilleur, lieu
     local ok, points = pcall(NS.carte.PointsPour, id, moi)
     local q = moi.quetes and moi.quetes[id]
     local voulu = (q and q.complete == true) and "rendre" or (q and "objectif") or "prendre"
-    -- Une quete prise et pas finie ne renvoie jamais chez son donneur ni
-    -- chez son receveur : ses objectifs, sinon l'entree de son donjon.
-    local enCours = q and q.complete ~= true
-    local donjon = enCours and NS.donjons and NS.donjons.DeQuete and NS.donjons.DeQuete(id)
-    for passe = 1, 2 do
-        if passe == 2 and donjon then break end
-        for _, pt in ipairs(ok and points or {}) do
-            if (passe == 1 and pt.genre == voulu)
-                or (passe == 2 and pt.genre ~= "prendre" and not (enCours and pt.genre == "rendre")) then
-                local x, y = NS.carte.Reporter(pt, continent)
-                if x then
-                    local d = (x - jx) ^ 2 + (y - jy) ^ 2
-                    if not meilleur or d < meilleur then meilleur, lieu = d, { x = x, y = y, qui = pt.quoi } end
-                end
+    local enCours = q ~= nil and q.complete ~= true
+    local D = NS.donjons
+    local donjon = D and D.DeQuete and D.DeQuete(id)
+    local EstInstance = NS.carte.EstInstance
+    local entreesVues, entrees = {}, {}
+    for _, pt in ipairs(ok and points or {}) do
+        if EstInstance and pt.carte and EstInstance(pt.carte) then
+            local e = NS.carte.EntreeDInstance and NS.carte.EntreeDInstance(pt.carte)
+            if e and not entreesVues[e] then entreesVues[e] = true table.insert(entrees, e) end
+        elseif pt.genre == voulu and not (enCours and donjon and pt.parReceveur) then
+            local x, y = NS.carte.Reporter(pt, continent)
+            if x then
+                local d = (x - jx) ^ 2 + (y - jy) ^ 2
+                if not meilleur or d < meilleur then meilleur, lieu = d, { x = x, y = y, qui = pt.quoi } end
             end
         end
-        if lieu then break end
     end
-    if not lieu and NS.donjons and NS.donjons.DeQuete then
-        local d = NS.donjons.DeQuete(id)
-        for _, e in ipairs(d and d.entrees or {}) do
-            local x, y = NS.carte.Reporter({ carte = e.carte, x = e.x, y = e.y }, continent)
-            -- Entree sur la carte d'une ville ou d'une grotte : par sa zone.
-            if not x and S() and S().Lieux and S().Lieux.VersZone then
-                local zc, zx, zy = S().Lieux.VersZone(e.carte, e.x, e.y)
-                if zc and zc ~= e.carte then x, y = NS.carte.Reporter({ carte = zc, x = zx, y = zy }, continent) end
-            end
-            if x then
-                local dd = (x - jx) ^ 2 + (y - jy) ^ 2
-                if not meilleur or dd < meilleur then meilleur, lieu = dd, { x = x, y = y, qui = d.nom, entree = d.nom } end
-            end
+    if lieu then return lieu end
+    -- A defaut : l'entree du donjon. Celui de la quete quand elle est prise
+    -- et pas finie (ses objectifs sont dedans) ; sinon celui de l'instance ou
+    -- tombent ses points (donneur ou receveur dedans), jamais une entree au
+    -- hasard pour un receveur simplement loin.
+    local cibles = {}
+    if enCours and donjon then
+        for _, e in ipairs(donjon.entrees or {}) do table.insert(cibles, { carte = e.carte, x = e.x, y = e.y, nom = donjon.nom }) end
+    end
+    for _, e in ipairs(entrees) do
+        table.insert(cibles, { carte = e.carte, x = e.x, y = e.y, nom = (donjon and donjon.nom) or e.nom })
+    end
+    for _, e in ipairs(cibles) do
+        local x, y = NS.carte.Reporter({ carte = e.carte, x = e.x, y = e.y }, continent)
+        -- Entree sur la carte d'une ville ou d'une grotte : par sa zone.
+        if not x and S() and S().Lieux and S().Lieux.VersZone then
+            local zc, zx, zy = S().Lieux.VersZone(e.carte, e.x, e.y)
+            if zc and zc ~= e.carte then x, y = NS.carte.Reporter({ carte = zc, x = zx, y = zy }, continent) end
+        end
+        if x then
+            local dd = (x - jx) ^ 2 + (y - jy) ^ 2
+            if not meilleur or dd < meilleur then meilleur, lieu = dd, { x = x, y = y, qui = e.nom, entree = e.nom or "?" } end
         end
     end
     return lieu
@@ -159,6 +170,10 @@ Ailleurs = function(ids, moi)
         for _, pt in ipairs(ok and points or {}) do if pt.carte then table.insert(cartes, pt.carte) end end
         local d = NS.donjons and NS.donjons.DeQuete and NS.donjons.DeQuete(id)
         for _, e in ipairs(d and d.entrees or {}) do table.insert(cartes, e.carte) end
+        for _, pt in ipairs(ok and points or {}) do
+            local e = pt.carte and NS.carte.EntreeDInstance and NS.carte.EntreeDInstance(pt.carte)
+            if e then table.insert(cartes, e.carte) end
+        end
         for _, carte in ipairs(cartes) do
             local continent = ContinentDe(carte)
             local lieu = continent and PointDeQuete(id, moi, continent, 0.5, 0.5)
@@ -185,10 +200,17 @@ local function EtapesDeQuetes(ids, moi, etat, compte)
     -- Position cachee par le jeu (valeur secrete) : jamais comparee.
     local secret = _G.issecretvalue
     if not jx or (secret and (secret(jx) or secret(jy))) then return nil, "loin", OuAller(moi, ids) end
-    local points = {}
+    local points, entrees = {}, {}
     for _, id in ipairs(ids) do
         local lieu = PointDeQuete(id, moi, continent, jx, jy)
-        if lieu then
+        if lieu and lieu.entree then
+            -- Plusieurs quetes du meme donjon : une seule etape, son entree.
+            if not entrees[lieu.entree] then
+                entrees[lieu.entree] = true
+                table.insert(points, { carte = continent, x = lieu.x, y = lieu.y, cle = "entree:" .. lieu.entree, id = id,
+                    titre = lieu.entree, qui = string.format(L.GUIDE_ENTER_DUNGEON, lieu.entree), entree = lieu.entree })
+            end
+        elseif lieu then
             table.insert(points, { carte = continent, x = lieu.x, y = lieu.y, cle = "q" .. id, id = id,
                 titre = Titre(id, moi), qui = Qui(id, moi, lieu) })
         end
@@ -366,6 +388,23 @@ TYPES.niveau = Commun({
 
 -- Un parcours enregistre : seules les etapes faisables maintenant (a
 -- prendre, en cours, a rendre) sont visees, la plus proche d'abord.
+-- Trajet de donjon : il suit tout seul (ce qui se debloque s'y ajoute) et
+-- se guide rubrique par rubrique (NS.donjons.AGuider) : les suites de
+-- quetes, puis les quetes a prendre dehors, puis, tout etant pris, l'entree
+-- du donjon ; jamais une etape faite ni un donneur de quete deja prise.
+local function EtapesDuKit(moi, pc, etat)
+    local D = NS.donjons
+    local d = D and D.DuKit and D.DuKit(moi, pc)
+    if not d then return false end
+    D.MettreAJourKit(moi, d, pc)
+    local ids, phase = D.AGuider(moi, d, pc)
+    local faites, total = NS.parcours.Avancement(moi, pc)
+    if #ids == 0 then return true, nil, "atteint" end
+    -- Nouvelle rubrique : la cible d'avant ne compte plus.
+    if etat.phase ~= phase then etat.phase, etat.chaine = phase, {} end
+    return true, EtapesDeQuetes(ids, moi, etat, { fait = faites, total = math.max(total, faites + 1) })
+end
+
 TYPES.parcours = Commun({
     Cle = function(p) return tostring(p.uid) end,
     Libelle = function(p)
@@ -386,17 +425,16 @@ TYPES.parcours = Commun({
         if not moi then return nil, "loin" end
         local pc = NS.parcours.TrouverUid(cle, p.uid)
         if not pc then return nil, "atteint" end
-        -- Un trajet de donjon suit : la chaine debloquee s'y ajoute.
-        if pc.genre == "kit" and NS.donjons and NS.donjons.DuKit then
-            pcall(function() NS.donjons.MettreAJourKit(moi, NS.donjons.DuKit(moi, pc), pc) end)
+        if pc.genre == "kit" then
+            local retour = { EtapesDuKit(moi, pc, etat) }
+            if retour[1] then return unpack(retour, 2, 5) end
         end
         local faites, total = NS.parcours.Avancement(moi, pc)
         if total > 0 and faites >= total then return nil, "atteint" end
-        local ids, enAttente = {}, 0
+        local ids = {}
         for _, id in ipairs(pc.etapes or {}) do
             local e = NS.parcours.EtatEtape(moi, id)
-            if e == "attente" then enAttente = enAttente + 1
-            elseif e ~= "faite" then table.insert(ids, id) end
+            if e ~= "attente" and e ~= "faite" then table.insert(ids, id) end
         end
         if #ids == 0 then return nil, "loin", OuAller(moi, pc.etapes) end
         return EtapesDeQuetes(ids, moi, etat, { fait = faites, total = total })
