@@ -4362,7 +4362,8 @@ local function RendreBanquiers(contenu)
     local largeurCol = math.floor(((tonumber(contenu:GetWidth()) or 600) - gauche - 20) / 2)
     local nr = 0
     for _, t in ipairs(bq.TYPES) do
-        local liste = familles[t.cle]
+        -- Ce qu'il garde apparait toujours, meme vide ; le reste s'il en a.
+        local liste = familles[t.cle] or (choisi.types[t.cle] == true and {} or nil)
         if liste then
             table.sort(liste, function(a, b) return a.n > b.n end)
             -- La famille : son icone et son nom.
@@ -4387,17 +4388,19 @@ local function RendreBanquiers(contenu)
             end
             entete:ClearAllPoints()
             entete:SetPoint("TOPLEFT", contenu, "TOPLEFT", gauche, -y)
-            entete:SetWidth(largeurCol * 2)
+            entete:SetWidth(math.min(largeurCol * 2 - 22, 340) + 22 - 12)
             entete.objet = nil
             entete.icone:SetTexture(t.icone)
             entete.nom:SetFontObject("GameFontNormal")
             entete.nom:SetText(L["BK_T_" .. t.cle] or t.cle)
             entete.nom:SetTextColor(1, 0.82, 0)
-            entete.n:SetText("")
+            entete.n:SetText(#liste == 0 and L.BK_KEEPS_NONE or "")
+            entete.n:SetTextColor(0.55, 0.55, 0.55)
             entete:EnableMouse(false)
             entete:Show()
             y = y + 22
-            -- Ses objets, sur deux colonnes : icone, nom, nombre.
+            -- Ses objets, l'un sous l'autre, juste a droite de l'icone de la
+            -- famille : icone, nom, nombre.
             for k, e in ipairs(liste) do
                 nr = nr + 1
                 local r = z.cellules[nr]
@@ -4419,11 +4422,11 @@ local function RendreBanquiers(contenu)
                     r:SetScript("OnLeave", function() GameTooltip:Hide() end)
                     z.cellules[nr] = r
                 end
-                local col, rang = (k - 1) % 2, math.floor((k - 1) / 2)
+                local LARGEUR_R = math.min(largeurCol * 2 - 22, 340)
                 r:ClearAllPoints()
-                r:SetPoint("TOPLEFT", contenu, "TOPLEFT", gauche + 22 + col * largeurCol, -(y + rang * 18))
-                r:SetWidth(largeurCol - 22)
-                r.nom:SetWidth(largeurCol - 22 - 22 - 60)
+                r:SetPoint("TOPLEFT", contenu, "TOPLEFT", gauche + 22, -(y + (k - 1) * 18))
+                r:SetWidth(LARGEUR_R)
+                r.nom:SetWidth(LARGEUR_R - 22 - 60)
                 r.nom:SetFontObject("GameFontHighlightSmall")
                 r.objet, r.sacs, r.banque, r.courrier = e.objet, e.sacs, e.banque, e.courrier
                 local dest = bq.Pour(e.objet)
@@ -4436,7 +4439,7 @@ local function RendreBanquiers(contenu)
                 r:EnableMouse(true)
                 r:Show()
             end
-            y = y + math.ceil(#liste / 2) * 18 + 6
+            y = y + #liste * 18 + 6
         end
     end
 
