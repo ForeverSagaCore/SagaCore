@@ -386,6 +386,10 @@ TYPES.parcours = Commun({
         if not moi then return nil, "loin" end
         local pc = NS.parcours.TrouverUid(cle, p.uid)
         if not pc then return nil, "atteint" end
+        -- Un trajet de donjon suit : la chaine debloquee s'y ajoute.
+        if pc.genre == "kit" and NS.donjons and NS.donjons.DuKit then
+            pcall(function() NS.donjons.MettreAJourKit(moi, NS.donjons.DuKit(moi, pc), pc) end)
+        end
         local faites, total = NS.parcours.Avancement(moi, pc)
         if total > 0 and faites >= total then return nil, "atteint" end
         local ids, enAttente = {}, 0

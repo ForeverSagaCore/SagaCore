@@ -1084,57 +1084,10 @@ end
 -- celles d'apres (prerequis ou niveau), chacune avec ses recompenses.
 RendreDonjonOuvert = function(contenu, p, d, index, y)
     if NS.ref.ConstruireIndexRecompenses then NS.ref.ConstruireIndexRecompenses() end
-    local kit, plusTard, aPrendre, enPoche = {}, {}, {}, 0
-    for _, id in ipairs(d.restantes) do
-        local e = NS.parcours.EtatEtape(p, id)
-        if e == "cours" or e == "rendre" then
-            table.insert(kit, { id = id, etat = e })
-            enPoche = enPoche + 1
-        elseif e == "prendre" then
-            table.insert(kit, { id = id, etat = e })
-            table.insert(aPrendre, id)
-        else
-            table.insert(plusTard, { id = id, etat = e })
-        end
-    end
-    -- Le trajet d'avant le donjon : les quetes a prendre maintenant, puis,
-    -- pour chaque quete d'apres, toute sa chaine faisable des maintenant
-    -- (prerequis a prendre, a finir, a rendre, ou qu'ils se trouvent) et
-    -- elle-meme. Ces quetes passent dans "Avant d'y aller" ; ne restent
-    -- "Plus tard" que celles qui demandent un niveau plus haut.
-    local vusPre = {}
-    for _, id in ipairs(aPrendre) do vusPre[id] = true end
-    local restePlusTard = {}
-    for _, q in ipairs(plusTard) do
-        local chemin = NS.parcours.CheminVers and NS.parcours.CheminVers(p, q.id)
-        if chemin and #chemin > 0 then
-            local dedans = NS.donjons.SePrendDedans and NS.donjons.SePrendDedans(q.id)
-            for _, pre in ipairs(chemin) do
-                if not vusPre[pre] and not (pre == q.id and dedans) then
-                    vusPre[pre] = true
-                    table.insert(aPrendre, pre)
-                end
-            end
-            table.insert(kit, q)
-        else
-            table.insert(restePlusTard, q)
-        end
-    end
-    plusTard = restePlusTard
-    -- Un trajet deja cree pour ce donjon suit : ce qui s'est ajoute depuis
-    -- (une quete prise debloque la suivante) s'y ajoute a la fin.
-    if #aPrendre > 0 and NS.parcours.Liste then
-        local nomKit = string.format(L.DUNGEON_KIT_NAME, d.nom)
-        for _, pc in ipairs(NS.parcours.Liste(p.cle)) do
-            if pc.genre == "kit" and pc.nom == nomKit then
-                local deja, passees = {}, pc.passees or {}
-                for _, x in ipairs(pc.etapes) do deja[x] = true end
-                for _, id in ipairs(aPrendre) do
-                    if not deja[id] and not passees[id] then table.insert(pc.etapes, id) end
-                end
-            end
-        end
-    end
+    local prep = NS.donjons.Preparation(p, d)
+    local kit, plusTard, aPrendre, enPoche = prep.kit, prep.plusTard, prep.trajet, prep.enPoche
+    -- Un trajet deja cree pour ce donjon suit tout seul.
+    pcall(NS.donjons.MettreAJourKit, p, d)
 
     -- L'entree, puis une rangee : nos deux actions a gauche, le journal de
     -- donjons (DungeonJournal) seul a droite.
