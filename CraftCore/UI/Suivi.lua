@@ -795,24 +795,37 @@ function suivi.FeuilleDeRoute(o)
     end
     for _, f in ipairs(candidats) do f.vu = nil end
     table.sort(visites, function(a, b) return Cout(a.fiche) < Cout(b.fiche) end)
-    -- Les etapes, dans l'ordre.
-    if #monCourrier > 0 or #maBanque > 0 then
-        if #monCourrier > 0 then table.insert(etapes, { texte = string.format(L.ROUTE_MY_MAIL, nomMoi, Liste(monCourrier)), guide = { service = "courrier" } }) end
-        if #maBanque > 0 then table.insert(etapes, { texte = string.format(L.ROUTE_MY_BANK, nomMoi, Liste(maBanque)), guide = { service = "banque" } }) end
+    -- Les etapes, dans l'ordre. Chacune : un titre, puis ses details, un
+    -- objet par ligne (l'infobulle les espace ; Mon atelier les met bout a bout).
+    local function Objets(liste)
+        local t = {}
+        for _, x in ipairs(liste) do table.insert(t, x.n .. " " .. NS.inventaire.NomDObjet(x.objet)) end
+        return t
     end
+    local function Etape(titre, blocs, guide)
+        -- blocs : { { sous-titre, { lignes } }, ... }
+        local resume = {}
+        for _, b in ipairs(blocs or {}) do
+            local liste = table.concat(b[2] or {}, ", ")
+            table.insert(resume, (b[1] ~= "" and liste ~= "") and (b[1] .. " " .. liste) or (b[1] .. liste))
+        end
+        table.insert(etapes, { titre = titre, blocs = blocs or {}, guide = guide,
+            texte = titre .. (#resume > 0 and (" : " .. table.concat(resume, " ; ")) or "") })
+    end
+    if #monCourrier > 0 then Etape(string.format(L.ROUTE_T_MAILBOX, nomMoi), { { L.ROUTE_D_COLLECT, Objets(monCourrier) } }, { service = "courrier" }) end
+    if #maBanque > 0 then Etape(string.format(L.ROUTE_T_BANK, nomMoi), { { L.ROUTE_D_TAKE, Objets(maBanque) } }, { service = "banque" }) end
     for _, v in ipairs(visites) do
         local nom = inv.NomCourt(v.fiche.cle)
         if NS.banquiers and NS.banquiers.Est(v.fiche.cle) then nom = nom .. " (" .. L.ROUTE_BANKER .. ")" end
         local tout = {}
         for _, x in ipairs(v.prise.sacs) do table.insert(tout, x) end
         for _, x in ipairs(v.prise.banque) do table.insert(tout, x) end
-        if #v.prise.banque > 0 then
-            table.insert(etapes, { texte = string.format(L.ROUTE_OTHER_BANK, nom, TexteLieu(LieuDe(v.fiche)), Liste(v.prise.banque), nomMoi, Liste(tout)) })
-        else
-            table.insert(etapes, { texte = string.format(L.ROUTE_OTHER_BAGS, nom, TexteLieu(LieuDe(v.fiche)), nomMoi, Liste(tout)) })
-        end
+        local blocs = {}
+        if #v.prise.banque > 0 then table.insert(blocs, { L.ROUTE_D_TAKE, Objets(v.prise.banque) }) end
+        table.insert(blocs, { string.format(L.ROUTE_D_SEND, nomMoi), Objets(tout) })
+        Etape(string.format(L.ROUTE_T_LOGIN, nom, TexteLieu(LieuDe(v.fiche))), blocs)
     end
-    if #visites > 0 then table.insert(etapes, { texte = string.format(L.ROUTE_BACK, nomMoi), guide = { service = "courrier" } }) end
+    if #visites > 0 then Etape(string.format(L.ROUTE_T_BACK, nomMoi), { { L.ROUTE_D_MAIL, {} } }, { service = "courrier" }) end
     -- A acheter (ce qui manque encore dans les sacs).
     local achats = {}
     for objet, n in pairs(o.achats or {}) do
@@ -832,13 +845,13 @@ function suivi.FeuilleDeRoute(o)
             end
         end
     end
-    if #achats > 0 then table.insert(etapes, { texte = string.format(L.ROUTE_BUY, Liste(achats)), guide = { marchand = achats[1].objet } }) end
-    if #introuvables > 0 then table.insert(etapes, { texte = string.format(L.ROUTE_GATHER, Liste(introuvables)), guide = { recolte = { objectifs = { o.cle } } } }) end
+    if #achats > 0 then Etape(L.ROUTE_T_BUY, { { "", Objets(achats) } }, { marchand = achats[1].objet }) end
+    if #introuvables > 0 then Etape(L.ROUTE_T_GATHER, { { "", Objets(introuvables) } }, { recolte = { objectifs = { o.cle } } }) end
     -- Les fabrications, dans l'ordre.
     for _, e in ipairs(EtapesDeFabrication(o.lignes)) do
         if not e.faite and e.recette then
             local nomR = e.recette.nom or e.recette.name or inv.NomDObjet(e.objet)
-            table.insert(etapes, { texte = string.format(L.ROUTE_CRAFT, nomR, e.fois or 1) })
+            Etape(string.format(L.ROUTE_CRAFT, nomR, e.fois or 1))
         end
     end
     return etapes
@@ -850,7 +863,16 @@ function suivi.FeuilleDansLInfobulle(tt, o)
     if #etapes == 0 then return end
     tt:AddLine(" ")
     tt:AddLine(NS.L.ROUTE_TITLE, 1, 0.82, 0)
-    for i, t in ipairs(etapes) do tt:AddLine(i .. ". " .. t.texte, 1, 1, 1, true) end
+    -- Une ligne vide entre deux etapes ; le titre en blanc, puis chaque
+    -- objet sur sa ligne, en retrait.
+    for i, t in ipairs(etapes) do
+        tt:AddLine(" ")
+        tt:AddLine(i .. ". " .. t.titre, 1, 1, 1)
+        for _, b in ipairs(t.blocs) do
+            if b[1] ~= "" then tt:AddLine("     " .. b[1], 0.82, 0.82, 0.82) end
+            for _, ligne in ipairs(b[2] or {}) do tt:AddLine("          " .. ligne, 0.82, 0.82, 0.82) end
+        end
+    end
 end
 
 -- La prochaine etape : la premiere pas faite. Rend l'etape, son rang, et
@@ -974,30 +996,6 @@ local function DessinerObjectifs(y, objectifs, vue)
         icone:Show()
         return icone
     end
-    -- Une zone de survol par matiere : son infobulle dit ou elle est.
-    local ns = 0
-    local function Survol()
-        ns = ns + 1
-        cadreSuivi.survols = cadreSuivi.survols or {}
-        local z = cadreSuivi.survols[ns]
-        if not z then
-            z = CreateFrame("Frame", nil, cadreSuivi)
-            z:EnableMouse(true)
-            z:SetScript("OnEnter", function(self)
-                if not self.matiere then return end
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(NS.inventaire.NomDObjet(self.matiere.objet), 1, 0.82, 0)
-                NS.inventaire.MatieresDansLInfobulle(GameTooltip, { self.matiere })
-                GameTooltip:Show()
-            end)
-            z:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            cadreSuivi.survols[ns] = z
-        end
-        z:ClearAllPoints()
-        z:SetFrameLevel(cadreSuivi:GetFrameLevel() + 5)
-        z:Show()
-        return z
-    end
     local function Filet(yF)
         nf = nf + 1
         cadreSuivi.filets = cadreSuivi.filets or {}
@@ -1116,7 +1114,7 @@ local function DessinerObjectifs(y, objectifs, vue)
                 -- 100 % en vert quand tout est dans les sacs ; en or quand tout
                 -- est reuni mais qu'il faut encore aller chercher (banque...).
                 if pct >= 100 and not o.atteint and NS.inventaire.HorsDesSacs(o.matieres) then
-                    b.droite:SetTextColor(1, 0.82, 0)
+                    b.droite:SetTextColor(0.9, 0.62, 0.12)
                 elseif pct >= 100 then b.droite:SetTextColor(0.31, 0.82, 0.41)
                 else b.droite:SetTextColor(0.8, 0.8, 0.8) end
                 b.nom:SetPoint("RIGHT", b.droite, "LEFT", -8, 0)
@@ -1404,14 +1402,10 @@ local function DessinerObjectifs(y, objectifs, vue)
                         compte:SetWidth(60)
                         compte:SetJustifyH("RIGHT")
                         compte:SetText(math.min(m.possede, m.requis) .. " / " .. m.requis)
-                        local z = Survol()
-                        z:SetPoint("TOPLEFT", zone, "TOPLEFT", 28, -y + 1)
-                        z:SetSize(largeur - 28, 18)
-                        z.matiere = m
                         if m.manque == 0 and (NS.inventaire.DisponibleDansLesSacs(m.objet) or 0) < m.requis then
                             -- Reunie, mais pas toute dans les sacs : en or.
                             nom:SetTextColor(0.85, 0.85, 0.85)
-                            compte:SetTextColor(1, 0.82, 0)
+                            compte:SetTextColor(0.9, 0.62, 0.12)
                         elseif m.manque == 0 then
                             nom:SetTextColor(0.5, 0.5, 0.5)
                             compte:SetTextColor(0.31, 0.82, 0.41)
@@ -1437,7 +1431,6 @@ function suivi.Dessiner()
     local L = NS.L
     for _, t in ipairs(cadreSuivi.textes) do t:Hide() end
     for _, i in ipairs(cadreSuivi.icones) do i:Hide() end
-    for _, z in ipairs(cadreSuivi.survols or {}) do z:Hide() z.matiere = nil end
     for _, b in ipairs(cadreSuivi.barres) do b:Hide() end
     for _, b in ipairs(cadreSuivi.boutons) do b:Hide() end
     for _, b in ipairs(cadreSuivi.entetes or {}) do b:Hide() end
