@@ -4137,11 +4137,11 @@ local function RendreBanquiers(contenu)
         contenu.zoneBq = z
     end
     for _, w in ipairs(z.onglets) do w:Hide() end
-    if z.nouveau then z.nouveau:Hide() end
     for _, w in ipairs(z.cases) do w:Hide() w.libelle:Hide() w.icone:Hide() end
     for _, w in ipairs(z.cellules) do w:Hide() w.objet = nil end
     if z.retirer then z.retirer:Hide() end
     if z.voirRegistre then z.voirRegistre:Hide() end
+    if z.nommer then z.nommer:Hide() end
     z:Show()
     local S = _G.CoreSuite
     local index, y = 0, 0
@@ -4151,7 +4151,7 @@ local function RendreBanquiers(contenu)
 
     -- Nommer un banquier : la liste de mes personnages qui ne le sont pas.
     -- Sans banquier, elle est la seule chose a faire ; ensuite, elle s'ouvre
-    -- depuis l'onglet Nouveau, a cote des portraits.
+    -- depuis l'onglet Nouveau, au bout des onglets.
     if not z.nommer and S and S.ListeDeroulante then
         z.nommer = S.ListeDeroulante(z, function()
             local o = {}
@@ -4167,149 +4167,131 @@ local function RendreBanquiers(contenu)
     local liste = bq.Liste()
     local restants = 0
     for _, f in ipairs(NS.base.TousLesPersonnages()) do if not bq.Est(f.cle) then restants = restants + 1 end end
-    if z.nommer then
-        z.nommer:Hide()
-        z.nommer:SetAlpha(1)
-        z.nommer.bouton:EnableMouse(true)
-    end
-    if #liste == 0 then
-        -- Le premier banquier : une liste bien visible, sous l'explication.
-        if z.nommer then
-            z.nommer:SetWidth(320)
-            z.nommer.bouton:SetWidth(320)
-            z.nommer:ClearAllPoints()
-            z.nommer:SetPoint("TOPLEFT", contenu, "TOPLEFT", gauche, -(y + 4))
-            z.nommer:Show()
-            if z.nommer.Rendre then z.nommer.Rendre() end
-            z.nommer.bouton.libelle:SetText(L.BK_FIRST)
-            y = y + 38
-        end
-        y = Paragraphe(contenu, y, L.BK_EMPTY, "GameFontDisableSmall")
-        contenu:SetHeight(math.max(y, 1))
-        return
-    end
     local choisi
     for _, b in ipairs(liste) do if b.cle == ecran.banquierChoisi then choisi = b end end
     choisi = choisi or liste[1]
-    ecran.banquierChoisi = choisi.cle
+    ecran.banquierChoisi = choisi and choisi.cle or nil
 
-    -- Les onglets : un portrait par banquier, le choisi eclaire.
-    local x = gauche
-    for i, b in ipairs(liste) do
+    -- Les onglets, comme ceux de StuffCore : un par banquier (sa classe ou
+    -- son portrait depose, son nom a la couleur de sa classe), puis Nouveau,
+    -- qui ouvre la liste des personnages qui ne le sont pas encore.
+    local onglets = {}
+    for _, b in ipairs(liste) do table.insert(onglets, { banquier = b }) end
+    if restants > 0 then table.insert(onglets, { nouveau = true }) end
+    local mesure = z.mesure or z:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    z.mesure = mesure
+    mesure:Hide()
+    local largeurO = 0
+    for _, t in ipairs(onglets) do
+        mesure:SetText(t.nouveau and L.BK_NEW or NS.inventaire.NomCourt(t.banquier.cle))
+        largeurO = math.max(largeurO, mesure:GetStringWidth() or 60)
+    end
+    largeurO = math.floor(largeurO + 44 + 18)
+    local precedent
+    for i, t in ipairs(onglets) do
         local o = z.onglets[i]
         if not o then
-            -- Le portrait dans un cadre d'emplacement du jeu, comme la bande
-            -- des personnages.
-            -- Un portrait rond dans l'anneau d'or du jeu ; le choisi
-            -- s'eclaire, les autres restent un peu sombres.
-            -- Deux images : l'icone ronde de la classe (sans masque, pour
-            -- garder son decoupage) et le portrait depose (masque en rond).
-            o = CreateFrame("Button", nil, z)
-            o:SetSize(44, 44)
-            o.classe = o:CreateTexture(nil, "ARTWORK")
-            o.classe:SetPoint("TOPLEFT", 4, -4)
-            o.classe:SetPoint("BOTTOMRIGHT", -4, 4)
-            o.portrait = o:CreateTexture(nil, "ARTWORK")
-            o.portrait:SetAllPoints(o.classe)
+            local ok, cree = pcall(CreateFrame, "Button", nil, z, "PanelTopTabButtonTemplate")
+            if not ok or not cree then ok, cree = pcall(CreateFrame, "Button", nil, z, "PanelTabButtonTemplate") end
+            if not ok or not cree then cree = CreateFrame("Button", nil, z, "UIPanelButtonTemplate") end
+            o = cree
+            o:SetHeight(28)
+            -- L'icone ronde de la classe (sans masque) ou le portrait depose
+            -- (masque en rond), devant le nom.
+            o.classe = o:CreateTexture(nil, "OVERLAY")
+            o.classe:SetSize(16, 16)
+            o.portrait = o:CreateTexture(nil, "OVERLAY")
+            o.portrait:SetSize(16, 16)
             if o.portrait.SetMask then pcall(o.portrait.SetMask, o.portrait, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
-            o.anneau = o:CreateTexture(nil, "OVERLAY")
-            o.anneau:SetPoint("TOPLEFT", o.classe, "TOPLEFT", -7, 7)
-            o.anneau:SetPoint("BOTTOMRIGHT", o.classe, "BOTTOMRIGHT", 7, -7)
-            o.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-            o.anneau:SetTexCoord(0, 0.6, 0, 0.6)
-            o.nom = o:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            o.nom:SetPoint("TOP", o, "BOTTOM", 0, -2)
-            o.nom:SetWidth(60)
-            o.nom:SetWordWrap(false)
-            o:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            o:HookScript("OnLeave", function() GameTooltip:Hide() end)
             z.onglets[i] = o
         end
+        local actif = t.banquier ~= nil and t.banquier == choisi
+        o:SetText(t.nouveau and L.BK_NEW or NS.inventaire.NomCourt(t.banquier.cle))
         o:ClearAllPoints()
-        o:SetPoint("TOPLEFT", contenu, "TOPLEFT", x, -y)
-        -- Le portrait depose s'il existe ; sinon l'icone ronde de sa classe.
-        if NS.PortraitDepose(o.portrait, b.fiche) then
-            o.portrait:Show() o.classe:Hide()
+        if precedent then o:SetPoint("LEFT", precedent, "RIGHT", 2, 0)
+        else o:SetPoint("TOPLEFT", contenu, "TOPLEFT", gauche, -y) end
+        precedent = o
+        if actif then
+            if _G.PanelTemplates_SelectTab then pcall(_G.PanelTemplates_SelectTab, o) end
+            o:SetAlpha(1)
         else
-            o.portrait:Hide()
-            PoserVisage(o.classe, b.fiche, false)
-            local coords = CLASS_ICON_TCOORDS and b.fiche.jetonClasse and CLASS_ICON_TCOORDS[b.fiche.jetonClasse]
-            if coords then
-                o.classe:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
-                pcall(o.classe.SetTexCoord, o.classe, coords[1], coords[2], coords[3], coords[4])
-            end
-            o.classe:Show()
+            if _G.PanelTemplates_DeselectTab then pcall(_G.PanelTemplates_DeselectTab, o) end
+            o:SetAlpha(0.75)
         end
-        -- Le choisi en pleine lumiere, les autres un peu sombres.
-        local v = b == choisi and 1 or 0.55
-        o.classe:SetVertexColor(v, v, v)
-        o.portrait:SetVertexColor(v, v, v)
-        local cc = CouleurDeClasseDe(b.fiche)
-        o.nom:SetText(NS.inventaire.NomCourt(b.cle))
-        if cc then o.nom:SetTextColor(cc.r * v, cc.g * v, cc.b * v) else o.nom:SetTextColor(v, v, v) end
-        local cle = b.cle
-        o:SetScript("OnClick", function() ecran.banquierChoisi = cle ecran.Montrer("banquiers") end)
-        o:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(NS.inventaire.NomCourt(cle) .. " " .. bq.Famille(), 1, 0.82, 0)
-            GameTooltip:Show()
-        end)
-        o:Show()
-        x = x + 64
-    end
-    -- L'onglet Nouveau : un anneau vide et un plus ; il ouvre la liste des
-    -- personnages qui ne sont pas encore banquiers.
-    if restants > 0 and z.nommer then
-        local n = z.nouveau
-        if not n then
-            n = CreateFrame("Button", nil, z)
-            n:SetSize(44, 44)
-            n.fond = n:CreateTexture(nil, "BACKGROUND")
-            n.fond:SetPoint("TOPLEFT", 4, -4)
-            n.fond:SetPoint("BOTTOMRIGHT", -4, 4)
-            n.fond:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
-            n.fond:SetVertexColor(0, 0, 0, 0.6)
-            n.plus = n:CreateTexture(nil, "ARTWORK")
-            n.plus:SetSize(18, 18)
-            n.plus:SetPoint("CENTER")
-            n.plus:SetTexture("Interface\\Buttons\\UI-PlusButton-Up")
-            n.anneau = n:CreateTexture(nil, "OVERLAY")
-            n.anneau:SetPoint("TOPLEFT", n.fond, "TOPLEFT", -7, 7)
-            n.anneau:SetPoint("BOTTOMRIGHT", n.fond, "BOTTOMRIGHT", 7, -7)
-            n.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-            n.anneau:SetTexCoord(0, 0.6, 0, 0.6)
-            n.nom = n:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            n.nom:SetPoint("TOP", n, "BOTTOM", 0, -2)
-            n.nom:SetWidth(60)
-            n.nom:SetWordWrap(false)
-            n.nom:SetTextColor(0.6, 0.6, 0.6)
-            n:SetScript("OnEnter", function(self)
+        o:SetWidth(largeurO)
+        local fs = o.GetFontString and o:GetFontString()
+        local decal = t.nouveau and 0 or 9
+        if fs then
+            fs:SetWidth(largeurO - 16 - 18) fs:SetWordWrap(false)
+            fs:ClearAllPoints()
+            fs:SetPoint("CENTER", o, "BOTTOM", decal, actif and 15 or 11)
+            if t.nouveau then fs:SetTextColor(0.6, 0.6, 0.6)
+            else
+                local cc = CouleurDeClasseDe(t.banquier.fiche)
+                if cc then fs:SetTextColor(cc.r, cc.g, cc.b) else fs:SetTextColor(1, 1, 1) end
+            end
+        end
+        o.classe:Hide() o.portrait:Hide()
+        if t.banquier then
+            local b = t.banquier
+            local tex = o.classe
+            if NS.PortraitDepose(o.portrait, b.fiche) then tex = o.portrait
+            else
+                local coords = CLASS_ICON_TCOORDS and b.fiche.jetonClasse and CLASS_ICON_TCOORDS[b.fiche.jetonClasse]
+                if coords then
+                    o.classe:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
+                    pcall(o.classe.SetTexCoord, o.classe, coords[1], coords[2], coords[3], coords[4])
+                else
+                    PoserVisage(o.classe, b.fiche, false)
+                end
+            end
+            tex:ClearAllPoints()
+            if fs then
+                local largeurT = math.min(fs:GetStringWidth() or 40, largeurO - 34)
+                tex:SetPoint("RIGHT", fs, "CENTER", -largeurT / 2 - 3, 0)
+            else tex:SetPoint("LEFT", o, "LEFT", 10, 0) end
+            tex:Show()
+            local cle = b.cle
+            o:SetScript("OnClick", function() ecran.banquierChoisi = cle ecran.Montrer("banquiers") end)
+            o:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(L.BK_NEW_TIP, 1, 1, 1)
+                GameTooltip:SetText(NS.inventaire.NomCourt(cle) .. " " .. bq.Famille(), 1, 1, 1)
                 GameTooltip:Show()
             end)
-            n:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            n:SetScript("OnClick", function()
+        else
+            o:SetScript("OnClick", function()
                 local d = z.nommer and z.nommer.bouton
                 if d and d:GetScript("OnClick") then d:GetScript("OnClick")(d) end
             end)
-            z.nouveau = n
+            o:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(#liste == 0 and L.BK_FIRST or L.BK_NEW_TIP, 1, 1, 1)
+                GameTooltip:Show()
+            end)
+            z.nouveau = o
+            -- La liste, invisible, sert d'ancre : elle s'ouvre sous l'onglet.
+            if z.nommer then
+                z.nommer:SetWidth(220)
+                z.nommer.bouton:SetWidth(220)
+                z.nommer:ClearAllPoints()
+                z.nommer:SetPoint("TOPLEFT", o, "BOTTOMLEFT", 0, 24)
+                z.nommer:SetAlpha(0)
+                z.nommer.bouton:EnableMouse(false)
+                z.nommer:Show()
+            end
         end
-        n.nom:SetText(L.BK_NEW)
-        n:ClearAllPoints()
-        n:SetPoint("TOPLEFT", contenu, "TOPLEFT", x, -y)
-        n:Show()
-        -- La liste, invisible, sert d'ancre : elle s'ouvre sous l'onglet.
-        z.nommer:SetWidth(220)
-        z.nommer.bouton:SetWidth(220)
-        z.nommer:ClearAllPoints()
-        z.nommer:SetPoint("TOPLEFT", n, "BOTTOMLEFT", 0, -14)
-        z.nommer:SetAlpha(0)
-        z.nommer.bouton:EnableMouse(false)
-        z.nommer:Show()
-    elseif z.nouveau then
-        z.nouveau:Hide()
+        o:Show()
     end
-    y = y + 68
+    if restants == 0 then z.nouveau = nil end
+    y = y + 36
+
+    if not choisi then
+        y = Paragraphe(contenu, y, L.BK_EMPTY, "GameFontDisableSmall")
+        CacherLignesAuDela(contenu, index + 1)
+        contenu:SetHeight(math.max(y, 1))
+        return
+    end
 
     -- Ou deposer son portrait rond (jeu ferme).
     y = Paragraphe(contenu, y - 4, string.format(L.BK_PORTRAIT_HELP, NS.inventaire.NomCourt(choisi.cle)), "GameFontDisableSmall")
@@ -4478,6 +4460,17 @@ local function RendreBanquiers(contenu)
         ecran.Montrer("banquiers")
     end)
     z.voirRegistre:Show()
+    -- Ne plus etre banquier : en face, a droite, sur la meme ligne.
+    if not z.retirer then
+        z.retirer = CreateFrame("Button", nil, z, "UIPanelButtonTemplate")
+        z.retirer:SetSize(180, 22)
+    end
+    z.retirer:SetText(L.BK_REMOVE)
+    z.retirer:ClearAllPoints()
+    z.retirer:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -y)
+    local cleR = choisi.cle
+    z.retirer:SetScript("OnClick", function() bq.Retirer(cleR) ecran.banquierChoisi = nil ecran.Montrer("banquiers") end)
+    z.retirer:Show()
     y = y + 30
     if ouvert then
         for i = 1, #registre do
@@ -4489,19 +4482,6 @@ local function RendreBanquiers(contenu)
         end
     end
 
-    -- Ne plus etre banquier.
-    y = y + 10
-    if not z.retirer then
-        z.retirer = CreateFrame("Button", nil, z, "UIPanelButtonTemplate")
-        z.retirer:SetSize(180, 24)
-    end
-    z.retirer:SetText(L.BK_REMOVE)
-    z.retirer:ClearAllPoints()
-    z.retirer:SetPoint("TOPLEFT", contenu, "TOPLEFT", gauche, -y)
-    local cleR = choisi.cle
-    z.retirer:SetScript("OnClick", function() bq.Retirer(cleR) ecran.banquierChoisi = nil ecran.Montrer("banquiers") end)
-    z.retirer:Show()
-    y = y + 34
     CacherLignesAuDela(contenu, index + 1)
     contenu:SetHeight(math.max(y, 1))
 end
@@ -5983,9 +5963,9 @@ function ecran.Cible(nom)
         -- Mes banquiers : la liste du premier, ou l'onglet Nouveau.
         local z = win.contenu.zoneBq
         if z and cle == "liste" then
-            cible = (z.nommer and z.nommer:GetAlpha() > 0 and z.nommer) or z.nouveau or (z.onglets and z.onglets[1])
+            cible = z.nouveau or (z.onglets and z.onglets[1])
         elseif z and cle == "nouveau" then
-            cible = (z.nouveau and z.nouveau:IsShown() and z.nouveau) or (z.nommer and z.nommer:GetAlpha() > 0 and z.nommer)
+            cible = z.nouveau and z.nouveau:IsShown() and z.nouveau or nil
         end
     elseif genre == "ligne" then
         cible = win.contenu.lignes and win.contenu.lignes[tonumber(cle) or 0]
