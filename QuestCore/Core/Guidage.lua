@@ -78,9 +78,15 @@ local function PointDeQuete(id, moi, continent, jx, jy)
     local ok, points = pcall(NS.carte.PointsPour, id, moi)
     local q = moi.quetes and moi.quetes[id]
     local voulu = (q and q.complete == true) and "rendre" or (q and "objectif") or "prendre"
+    -- Une quete prise et pas finie ne renvoie jamais chez son donneur ni
+    -- chez son receveur : ses objectifs, sinon l'entree de son donjon.
+    local enCours = q and q.complete ~= true
+    local donjon = enCours and NS.donjons and NS.donjons.DeQuete and NS.donjons.DeQuete(id)
     for passe = 1, 2 do
+        if passe == 2 and donjon then break end
         for _, pt in ipairs(ok and points or {}) do
-            if (passe == 1 and pt.genre == voulu) or (passe == 2 and pt.genre ~= "prendre") then
+            if (passe == 1 and pt.genre == voulu)
+                or (passe == 2 and pt.genre ~= "prendre" and not (enCours and pt.genre == "rendre")) then
                 local x, y = NS.carte.Reporter(pt, continent)
                 if x then
                     local d = (x - jx) ^ 2 + (y - jy) ^ 2
