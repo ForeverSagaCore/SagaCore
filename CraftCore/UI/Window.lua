@@ -853,7 +853,7 @@ local function RendreAtelier(contenu)
         local okO, objectifs = pcall(NS.suivi.Objectifs)
         local titre = false
         for _, o in ipairs(okO and objectifs or {}) do
-            local okF, etapes = pcall(NS.suivi.FeuilleDeRoute, o)
+            local okF, etapes = pcall(NS.suivi.Feuille or NS.suivi.FeuilleDeRoute, o)
             if not o.atteint and okF and #etapes > 0 then
                 if not titre then index, y = TitreDeSection(contenu, index, y, L.ROUTE_DASH) titre = true end
                 index, y = LigneSimple(contenu, index, y, nil, o.nom or "?",
@@ -862,13 +862,17 @@ local function RendreAtelier(contenu)
                 -- guident d'un clic (banque, boite aux lettres, marchand,
                 -- recolte), avec le guide choisi.
                 for i, t in ipairs(etapes) do
-                    local g = t.guide
+                    local g = not t.faite and t.guide or nil
                     local ligne
-                    index, y, ligne = LigneSimple(contenu, index, y, nil, i .. ". " .. t.texte,
+                    local tete = t.faite and "|TInterface\\RaidFrame\\ReadyCheck-Ready:12|t " or (i .. ". ")
+                    index, y, ligne = LigneSimple(contenu, index, y, nil, tete .. (t.texte or t.titre or ""),
                         g and L.ROUTE_GUIDE or "", g and function()
                             if NS.guidage and NS.guidage.Etape then NS.guidage.Etape(g) end
                         end or nil)
-                    if ligne then ligne.nom:SetWordWrap(false) end
+                    if ligne then
+                        ligne.nom:SetWordWrap(false)
+                        if t.faite then ligne.nom:SetTextColor(0.31, 0.82, 0.41) end
+                    end
                 end
                 y = y + 4
             end

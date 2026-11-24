@@ -792,7 +792,7 @@ function suivi.FeuilleDeRoute(o)
     -- Les etapes, dans l'ordre. Chacune : un titre, un lieu, puis des blocs
     -- (une action et ses objets). L'infobulle les met en page ; Mon atelier
     -- les resume sur une ligne.
-    local function Etape(titre, lieu, blocs, guide)
+    local function Etape(cle, phase, qui, titre, lieu, blocs, guide)
         local resume = {}
         for _, b in ipairs(blocs or {}) do
             local noms = {}
@@ -800,11 +800,11 @@ function suivi.FeuilleDeRoute(o)
             local liste = table.concat(noms, ", ")
             table.insert(resume, (b.action and liste ~= "") and (b.action .. " " .. liste) or ((b.action or "") .. liste))
         end
-        table.insert(etapes, { titre = titre, lieu = lieu, blocs = blocs or {}, guide = guide,
+        table.insert(etapes, { cle = cle, phase = phase, qui = qui, titre = titre, lieu = lieu, blocs = blocs or {}, guide = guide,
             texte = titre .. (lieu and (" (" .. lieu .. ")") or "") .. (#resume > 0 and (" : " .. table.concat(resume, " ; ")) or "") })
     end
-    if #monCourrier > 0 then Etape(string.format(L.ROUTE_T_MAILBOX, nomMoi), nil, { { action = L.ROUTE_D_COLLECT, objets = monCourrier } }, { service = "courrier" }) end
-    if #maBanque > 0 then Etape(string.format(L.ROUTE_T_BANK, nomMoi), nil, { { action = L.ROUTE_D_TAKE, objets = maBanque } }, { service = "banque" }) end
+    if #monCourrier > 0 then Etape("courrier", 1, nil, string.format(L.ROUTE_T_MAILBOX, nomMoi), nil, { { action = L.ROUTE_D_COLLECT, objets = monCourrier } }, { service = "courrier" }) end
+    if #maBanque > 0 then Etape("banque", 1, nil, string.format(L.ROUTE_T_BANK, nomMoi), nil, { { action = L.ROUTE_D_TAKE, objets = maBanque } }, { service = "banque" }) end
     for _, v in ipairs(visites) do
         local nom = inv.NomCourt(v.fiche.cle)
         if NS.banquiers and NS.banquiers.Est(v.fiche.cle) then nom = nom .. " (" .. L.ROUTE_BANKER .. ")" end
@@ -814,9 +814,10 @@ function suivi.FeuilleDeRoute(o)
         local blocs = {}
         if #v.prise.banque > 0 then table.insert(blocs, { action = L.ROUTE_D_TAKE, objets = v.prise.banque }) end
         table.insert(blocs, { action = string.format(L.ROUTE_D_SEND, nomMoi), objets = tout })
-        Etape(string.format(L.ROUTE_T_LOGIN, nom), TexteLieu(LieuDe(v.fiche)), blocs)
+        Etape("perso:" .. v.fiche.cle, 2, v.fiche.cle, string.format(L.ROUTE_T_LOGIN, nom), TexteLieu(LieuDe(v.fiche)), blocs,
+            #v.prise.banque > 0 and { service = "banque" } or { service = "courrier" })
     end
-    if #visites > 0 then Etape(string.format(L.ROUTE_T_BACK, nomMoi), nil, { { action = L.ROUTE_D_MAIL } }, { service = "courrier" }) end
+    if #visites > 0 then Etape("retour", 3, nil, string.format(L.ROUTE_T_BACK, nomMoi), nil, { { action = L.ROUTE_D_MAIL } }, { service = "courrier" }) end
     -- A acheter (ce qui manque encore dans les sacs).
     local achats = {}
     for objet, n in pairs(o.achats or {}) do
@@ -836,12 +837,12 @@ function suivi.FeuilleDeRoute(o)
             end
         end
     end
-    if #achats > 0 then Etape(L.ROUTE_T_BUY, nil, { { objets = achats } }, { marchand = achats[1].objet }) end
-    if #introuvables > 0 then Etape(L.ROUTE_T_GATHER, nil, { { objets = introuvables } }, { recolte = { objectifs = { o.cle } } }) end
+    if #achats > 0 then Etape("achats", 4, nil, L.ROUTE_T_BUY, nil, { { objets = achats } }, { marchand = achats[1].objet }) end
+    if #introuvables > 0 then Etape("recolte", 5, nil, L.ROUTE_T_GATHER, nil, { { objets = introuvables } }, { recolte = { objectifs = { o.cle } } }) end
     -- Les fabrications, dans l'ordre.
     for _, e in ipairs(EtapesDeFabrication(o.lignes)) do
         if not e.faite and e.recette then
-            Etape(L.ROUTE_T_CRAFT, nil, { { objets = { { objet = e.objet, n = e.fois or 1, fois = true } } } })
+            Etape("fab:" .. tostring(e.objet), 6, nil, L.ROUTE_T_CRAFT, nil, { { objets = { { objet = e.objet, n = e.fois or 1, fois = true } } } })
         end
     end
     return etapes
@@ -861,20 +862,308 @@ local function LigneDObjet(tt, objet, n, fois)
     local nombre = fois and ("  |cffffffffx" .. n .. "|r") or ("  |cffffffff" .. n .. "|r")
     tt:AddLine(string.format("      |T%s:16|t %s%s", tostring(icone), NS.inventaire.NomDObjet(objet), nombre), r, g, b)
 end
-function suivi.FeuilleDansLInfobulle(tt, o)
-    local etapes = suivi.FeuilleDeRoute(o)
-    if #etapes == 0 then return end
-    tt:AddLine(" ")
-    tt:AddLine(NS.L.ROUTE_TITLE, 0.6, 0.6, 0.6)
-    for i, t in ipairs(etapes) do
-        tt:AddLine(" ")
-        tt:AddLine(i .. ". " .. t.titre, 1, 0.82, 0)
-        if t.lieu then tt:AddLine("   " .. t.lieu, 0.6, 0.6, 0.6) end
-        for _, b in ipairs(t.blocs) do
-            if b.action then tt:AddLine("   " .. b.action, 0.9, 0.9, 0.9) end
-            for _, x in ipairs(b.objets or {}) do LigneDObjet(tt, x.objet, x.n, x.fois) end
+-- ---------------------------------------------------------------------------
+-- La feuille de route gardee en memoire, par personnage et par objectif :
+-- une etape qui disparait du calcul (le reroll a poste, le courrier est
+-- releve, les fioles sont achetees) reste a sa place, faite, en vert. Les
+-- autres personnages la lisent : a la connexion d'un reroll, une consigne
+-- lui dit ce qu'il a a faire, et apres son envoi, qui est le suivant.
+-- ---------------------------------------------------------------------------
+local function Feuilles()
+    local d = CraftCoreDB
+    if type(d) ~= "table" then return {} end
+    d.feuilles = type(d.feuilles) == "table" and d.feuilles or {}
+    return d.feuilles
+end
+local function CleObjectif(o) return tostring(o.cle or o.nom or "?") end
+
+-- Les etapes d'un objectif du personnage connecte, faites comprises.
+function suivi.Feuille(o)
+    local moi = NS.base.Personnage()
+    local calcul = suivi.FeuilleDeRoute(o)
+    if not moi then return calcul end
+    local F = Feuilles()
+    F[moi.cle] = type(F[moi.cle]) == "table" and F[moi.cle] or {}
+    local cle = CleObjectif(o)
+    local avant = F[moi.cle][cle]
+    local neuves = {}
+    for _, e in ipairs(calcul) do neuves[e.cle] = e end
+    local liste, vus = {}, {}
+    if type(avant) == "table" then
+        for k, e in ipairs(avant.etapes or {}) do
+            if neuves[e.cle] then
+                local n = neuves[e.cle]
+                n.rang = k
+                table.insert(liste, n)
+            else
+                e.faite, e.rang = true, k
+                table.insert(liste, e)
+            end
+            vus[e.cle] = true
         end
     end
+    for _, e in ipairs(calcul) do
+        if not vus[e.cle] then e.rang = 1000 + #liste table.insert(liste, e) end
+    end
+    -- Tout est fait sauf les fabrications : les etapes faites gardent leur
+    -- ordre ; une etape faite peut redevenir a faire (nouveau courrier).
+    table.sort(liste, function(a, b)
+        if (a.phase or 9) ~= (b.phase or 9) then return (a.phase or 9) < (b.phase or 9) end
+        return (a.rang or 0) < (b.rang or 0)
+    end)
+    for _, e in ipairs(liste) do if neuves[e.cle] then e.faite = nil end end
+    -- Gardee pour les autres personnages (sans les fonctions ni le guide).
+    local garde = {}
+    for _, e in ipairs(liste) do
+        table.insert(garde, { cle = e.cle, phase = e.phase, qui = e.qui, titre = e.titre, lieu = e.lieu,
+            blocs = e.blocs, faite = e.faite, texte = e.texte })
+    end
+    F[moi.cle][cle] = { nom = o.nom, etapes = garde, quand = NS.Appeler(_G.time) or 0 }
+    return liste
+end
+
+-- Un objectif disparu (fait ou retire) : sa feuille s'efface.
+function suivi.NettoyerFeuilles(objectifs)
+    local moi = NS.base.Personnage()
+    local F = Feuilles()
+    if not (moi and type(F[moi.cle]) == "table") then return end
+    local vivants = {}
+    for _, o in ipairs(objectifs or {}) do vivants[CleObjectif(o)] = true end
+    for cle in pairs(F[moi.cle]) do if not vivants[cle] then F[moi.cle][cle] = nil end end
+end
+
+-- Toutes les feuilles du personnage connecte, gardees pour les autres
+-- (a l'arrivee, apres un releve, a la deconnexion).
+function suivi.MemoriserFeuilles()
+    local ok, objectifs = pcall(suivi.Objectifs)
+    if not ok or type(objectifs) ~= "table" then return end
+    for _, o in ipairs(objectifs) do pcall(suivi.Feuille, o) end
+    suivi.NettoyerFeuilles(objectifs)
+end
+
+-- La feuille de route dans une infobulle, comme une suite de quetes : le
+-- titre de chaque etape, puis ses objectifs en plus petit ; une etape faite
+-- passe en vert, coche du jeu a la place du numero.
+local VERT = { 0.31, 0.82, 0.41 }
+local COCHE = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14|t"
+local function Petite(tt)
+    local n = tt.NumLines and tt:NumLines() or 0
+    local fs = _G[(tt.GetName and tt:GetName() or "GameTooltip") .. "TextLeft" .. n]
+    if fs and fs.SetFontObject then pcall(fs.SetFontObject, fs, "GameTooltipTextSmall") end
+end
+local function LigneDObjet(tt, objet, n, fois, faite)
+    local icone = NS.Appeler(NS.jeu.iconeObjet, objet) or "Interface\\Icons\\INV_Misc_QuestionMark"
+    local r, g, b = 1, 1, 1
+    if faite then r, g, b = VERT[1], VERT[2], VERT[3]
+    elseif NS.objets and NS.objets.CouleurDuNom then
+        local ok, rr, gg, bb = pcall(NS.objets.CouleurDuNom, objet)
+        if ok and rr then r, g, b = rr, gg, bb end
+    end
+    local nombre = (faite and "  " or "  |cffffffff") .. (fois and "x" or "") .. n .. (faite and "" or "|r")
+    tt:AddLine(string.format("        |T%s:14|t %s%s", tostring(icone), NS.inventaire.NomDObjet(objet), nombre), r, g, b)
+    Petite(tt)
+end
+function suivi.FeuilleDansLInfobulle(tt, o)
+    local L = NS.L
+    local etapes = suivi.Feuille(o)
+    if #etapes == 0 then return end
+    -- 100 % mais pas tout dans les sacs : le dire.
+    if (o.pct or 0) >= 1 and not suivi.Pret(o) then
+        tt:AddLine(L.ROUTE_THEORETICAL, 0.7, 0.7, 0.7, true)
+    end
+    for i, t in ipairs(etapes) do
+        tt:AddLine(" ")
+        local tete = t.faite and (COCHE .. " ") or (i .. ". ")
+        if t.faite then tt:AddLine(tete .. t.titre, VERT[1], VERT[2], VERT[3]) else tt:AddLine(tete .. t.titre, 1, 0.82, 0) end
+        if t.lieu then
+            tt:AddLine("     " .. t.lieu, 0.6, 0.6, 0.6)
+            Petite(tt)
+        end
+        for _, b in ipairs(t.blocs or {}) do
+            if b.action then
+                if t.faite then tt:AddLine("     " .. b.action, VERT[1], VERT[2], VERT[3]) else tt:AddLine("     " .. b.action, 0.9, 0.9, 0.9) end
+                Petite(tt)
+            end
+            for _, x in ipairs(b.objets or {}) do LigneDObjet(tt, x.objet, x.n, x.fois, t.faite) end
+        end
+    end
+end
+
+-- Tout est-il dans les sacs (de quoi tout fabriquer tout de suite) ?
+function suivi.Pret(o)
+    return not NS.inventaire.HorsDesSacs(o and o.matieres)
+end
+
+-- ---------------------------------------------------------------------------
+-- Consigne : une petite fenetre au milieu de l'ecran, pour le reroll qui a
+-- quelque chose a faire pour l'objectif d'un autre personnage (a sa
+-- connexion), et apres son envoi (qui est le suivant).
+-- ---------------------------------------------------------------------------
+local consigne
+local function Consigne()
+    if consigne then return consigne end
+    local f = NS.charte.Fenetre("CraftCoreConsigne", 380, 200, { portrait = false, strate = "DIALOG" })
+    f:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+    if f.titre then f.titre:SetText("CraftCore") end
+    f.lignes = {}
+    f.ok = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    f.ok:SetSize(120, 24)
+    f.ok:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 12)
+    f.ok:SetScript("OnClick", function() f:Hide() end)
+    f.guider = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    f.guider:SetSize(150, 24)
+    f.guider:SetPoint("RIGHT", f.ok, "LEFT", -8, 0)
+    -- Manette : A ferme, Y guide.
+    if f.EnableGamePadButton then
+        pcall(f.EnableGamePadButton, f, true)
+        f:SetScript("OnGamePadButtonDown", function(self, bouton)
+            if bouton == "PAD1" or bouton == "PAD2" then self:Hide()
+            elseif bouton == "PAD4" and self.guider:IsShown() then self.guider:Click() end
+        end)
+    end
+    table.insert(UISpecialFrames, "CraftCoreConsigne")
+    f:Hide()
+    consigne = f
+    return f
+end
+local function Montrer(titre, lignes, guide)
+    local L = NS.L
+    local f = Consigne()
+    for _, l in ipairs(f.lignes) do l:Hide() end
+    local y = 40
+    local function Ligne(texte, police, r, g, b)
+        local n = #f.lignes + 1
+        local fs = f.lignes[n]
+        for k, l in ipairs(f.lignes) do if not l:IsShown() then fs, n = l, k break end end
+        if not fs or fs:IsShown() then
+            fs = f:CreateFontString(nil, "OVERLAY", police)
+            fs:SetJustifyH("LEFT")
+            table.insert(f.lignes, fs)
+        end
+        fs:SetFontObject(police)
+        fs:ClearAllPoints()
+        fs:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -y)
+        fs:SetWidth(344)
+        fs:SetWordWrap(true)
+        fs:SetText(texte)
+        fs:SetTextColor(r or 1, g or 1, b or 1)
+        fs:Show()
+        y = y + (fs:GetStringHeight() or 14) + 4
+    end
+    Ligne(titre, "GameFontNormal", 1, 0.82, 0)
+    y = y + 4
+    for _, l in ipairs(lignes) do Ligne(l[1], l[2] or "GameFontHighlightSmall", l[3], l[4], l[5]) end
+    f.ok:SetText(L.ROUTE_OK)
+    f.guider:SetShown(guide ~= nil)
+    if guide then
+        f.guider:SetText((guide.service == "banque") and L.ROUTE_GUIDE_BANK_SHORT or L.ROUTE_GUIDE_MAIL_SHORT)
+        f.guider:SetScript("OnClick", function()
+            if NS.guidage and NS.guidage.Etape then NS.guidage.Etape(guide) end
+            f:Hide()
+        end)
+    end
+    f:SetHeight(y + 48)
+    f:Show()
+end
+
+-- Les etapes que le personnage connecte doit faire pour les autres.
+local function MesEtapes()
+    local moi = NS.base.Personnage()
+    local res = {}
+    if not moi then return res end
+    for proprio, objectifs in pairs(Feuilles()) do
+        if proprio ~= moi.cle and type(objectifs) == "table" then
+            for _, f in pairs(objectifs) do
+                for _, e in ipairs(type(f) == "table" and f.etapes or {}) do
+                    if e.qui == moi.cle and not e.faite then table.insert(res, { proprio = proprio, feuille = f, etape = e }) end
+                end
+            end
+        end
+    end
+    return res
+end
+local function TexteObjets(objets)
+    local t = {}
+    for _, x in ipairs(objets or {}) do
+        local icone = NS.Appeler(NS.jeu.iconeObjet, x.objet) or "Interface\\Icons\\INV_Misc_QuestionMark"
+        table.insert(t, string.format("|T%s:14|t %d %s", tostring(icone), x.n, NS.inventaire.NomDObjet(x.objet)))
+    end
+    return t
+end
+
+-- A la connexion : ce que ce reroll a a faire, s'il a quelque chose.
+function suivi.ConsigneConnexion()
+    local L = NS.L
+    local a = MesEtapes()
+    if #a == 0 then return end
+    local lignes, banque = {}, false
+    for _, x in ipairs(a) do
+        table.insert(lignes, { string.format(L.ROUTE_FOR, NS.inventaire.NomCourt(x.proprio), x.feuille.nom or "?"), "GameFontHighlight", 1, 1, 1 })
+        for _, b in ipairs(x.etape.blocs or {}) do
+            if b.action then table.insert(lignes, { "   " .. b.action, "GameFontHighlightSmall", 0.9, 0.9, 0.9 }) end
+            if b.action == L.ROUTE_D_TAKE then banque = true end
+            for _, t in ipairs(TexteObjets(b.objets)) do table.insert(lignes, { "      " .. t, "GameFontHighlightSmall" }) end
+        end
+    end
+    table.insert(lignes, { banque and L.ROUTE_HINT_BANK or L.ROUTE_HINT_MAIL, "GameFontDisableSmall" })
+    Montrer(L.ROUTE_YOUR_PART, lignes, { service = banque and "banque" or "courrier" })
+end
+
+-- Apres un envoi reussi : l'etape du reroll vers ce destinataire est faite
+-- quand il n'a plus rien a lui envoyer ; puis, qui est le suivant.
+function suivi.EnvoiFait(dest, objets)
+    local L = NS.L
+    local moi = NS.base.Personnage()
+    local F = Feuilles()
+    if not (moi and dest and type(F[dest]) == "table") then return end
+    local fini = {}
+    for _, f in pairs(F[dest]) do
+        for _, e in ipairs(type(f) == "table" and f.etapes or {}) do
+            if e.qui == moi.cle and not e.faite then
+                -- Ce qui reste a envoyer, d'apres le dernier bloc (Envoyer a).
+                e.envoye = e.envoye or {}
+                for objet, n in pairs(objets or {}) do e.envoye[objet] = (e.envoye[objet] or 0) + n end
+                local tout = true
+                local blocs = e.blocs or {}
+                local envoi = blocs[#blocs]
+                for _, x in ipairs(envoi and envoi.objets or {}) do
+                    if (e.envoye[x.objet] or 0) < x.n then tout = false end
+                end
+                if tout then e.faite = true table.insert(fini, f) end
+            end
+        end
+    end
+    if #fini == 0 then return end
+    -- La suite : un autre reroll a connecter, sinon le retour au demandeur.
+    local f = fini[1]
+    local suivant
+    for _, e in ipairs(f.etapes or {}) do
+        if not e.faite and e.qui and e.qui ~= moi.cle then suivant = e.qui break end
+    end
+    local lignes = { { string.format(L.ROUTE_DONE_FOR, NS.inventaire.NomCourt(dest), f.nom or "?"), "GameFontHighlight", VERT[1], VERT[2], VERT[3] } }
+    if suivant then
+        table.insert(lignes, { string.format(L.ROUTE_NEXT_LOGIN, NS.inventaire.NomCourt(suivant)), "GameFontHighlight", 1, 1, 1 })
+    else
+        table.insert(lignes, { string.format(L.ROUTE_NEXT_BACK, NS.inventaire.NomCourt(dest)), "GameFontHighlight", 1, 1, 1 })
+    end
+    Montrer(L.ROUTE_PART_DONE, lignes, nil)
+end
+
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:RegisterEvent("PLAYER_LOGOUT")
+    f:SetScript("OnEvent", function(self, evenement, premiere, recharge)
+        if evenement == "PLAYER_LOGOUT" then pcall(suivi.MemoriserFeuilles) return end
+        if not (premiere or recharge) then return end
+        -- Un peu apres l'arrivee, quand les sacs sont releves.
+        if _G.C_Timer and _G.C_Timer.After then
+            _G.C_Timer.After(4, function()
+                pcall(suivi.MemoriserFeuilles)
+                pcall(suivi.ConsigneConnexion)
+            end)
+        end
+    end)
 end
 
 -- La prochaine etape : la premiere pas faite. Rend l'etape, son rang, et
@@ -1107,18 +1396,18 @@ local function DessinerObjectifs(y, objectifs, vue)
                 b.nom:SetFontObject(TITRE)
                 Taille(b.nom, TAILLE_LIGNE + 1)
                 b.nom:SetText(o.nom)
-                if o.atteint then b.nom:SetTextColor(0.31, 0.82, 0.41) else b.nom:SetTextColor(1, 0.82, 0) end
+                -- Vert : tout est dans les sacs, on peut fabriquer. Sinon gris.
+                local pretO = (o.pct or 0) >= 1 and suivi.Pret(o)
+                if pretO then b.nom:SetTextColor(0.31, 0.82, 0.41) else b.nom:SetTextColor(0.85, 0.85, 0.85) end
                 -- Le pourcentage, comme celui des quetes.
                 local pct = math.floor((o.pct or 0) * 100 + 0.5)
                 b.droite:SetFontObject(TITRE)
                 Taille(b.droite, TAILLE_LIGNE)
                 b.droite:SetText(pct .. " %")
-                -- 100 % en vert quand tout est dans les sacs ; en or quand tout
-                -- est reuni mais qu'il faut encore aller chercher (banque...).
-                if pct >= 100 and not o.atteint and NS.inventaire.HorsDesSacs(o.matieres) then
-                    b.droite:SetTextColor(0.9, 0.62, 0.12)
-                elseif pct >= 100 then b.droite:SetTextColor(0.31, 0.82, 0.41)
-                else b.droite:SetTextColor(0.8, 0.8, 0.8) end
+                -- 100 % en vert seulement quand tout est dans les sacs ; sinon
+                -- gris (l'infobulle dit "100 % theorique").
+                if pretO then b.droite:SetTextColor(0.31, 0.82, 0.41)
+                else b.droite:SetTextColor(0.7, 0.7, 0.7) end
                 b.nom:SetPoint("RIGHT", b.droite, "LEFT", -8, 0)
                 -- Etoile de favori, a droite, comme pour les quetes.
                 if not b.etoile then
@@ -1167,7 +1456,7 @@ local function DessinerObjectifs(y, objectifs, vue)
                     -- Toujours au meme endroit : contre le haut du suivi, du
                     -- cote choisi (la suite place l'infobulle).
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:SetText(objectif.nom or "", 1, 0.82, 0)
+                    GameTooltip:SetText(objectif.nom or "", 1, 1, 1)
                     if e then
                         local pret = NS.actions and NS.actions.EtatPourFabriquer and NS.actions.EtatPourFabriquer(e.recette)
                         if pret == nil then
@@ -1331,7 +1620,7 @@ local function DessinerObjectifs(y, objectifs, vue)
                         elseif rangE == rangP then
                             t:SetTextColor(1, 1, 1)
                             etat:SetText(L.CRAFT_STEP_NOW)
-                            etat:SetTextColor(1, 0.82, 0)
+                            etat:SetTextColor(1, 1, 1)
                         else
                             t:SetTextColor(1, 1, 1)
                             etat:SetText("")
@@ -1405,9 +1694,9 @@ local function DessinerObjectifs(y, objectifs, vue)
                         compte:SetJustifyH("RIGHT")
                         compte:SetText(math.min(m.possede, m.requis) .. " / " .. m.requis)
                         if m.manque == 0 and (NS.inventaire.DisponibleDansLesSacs(m.objet) or 0) < m.requis then
-                            -- Reunie, mais pas toute dans les sacs : en or.
+                            -- Reunie, mais pas toute dans les sacs : en gris.
                             nom:SetTextColor(0.85, 0.85, 0.85)
-                            compte:SetTextColor(0.9, 0.62, 0.12)
+                            compte:SetTextColor(0.7, 0.7, 0.7)
                         elseif m.manque == 0 then
                             nom:SetTextColor(0.5, 0.5, 0.5)
                             compte:SetTextColor(0.31, 0.82, 0.41)
