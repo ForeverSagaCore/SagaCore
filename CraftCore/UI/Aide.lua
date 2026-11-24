@@ -150,7 +150,7 @@ end
 local DIDACTICIEL_DE = {
     accueil = "premiers", atelier = "premiers", stocks = "stocks", recettes = "recettes",
     projets = "projets", equipement = "equipement",
-    caisses = "caisses", reglages = "manette",
+    caisses = "caisses", reglages = "manette", banquiers = "banquiers",
 }
 
 -- Cles de traduction d'une aide : HELP_<CLE>_TITLE et HELP_<CLE>_TEXT.
@@ -300,6 +300,12 @@ local PARCOURS = {
         { cible = "onglet:equipement" },
         { page = "equipement", cible = "contenu" },
         { page = "equipement", cible = "contenu" },
+    } },
+    { cle = "banquiers", etapes = {
+        { cible = "menu:banquiers" },
+        { page = "banquiers", cible = "bq:liste" },
+        { page = "banquiers", cible = "bq:nouveau" },
+        { page = "banquiers", cible = "contenu" },
     } },
     { cle = "caisses", etapes = {
         { cible = "onglet:caisses" },
