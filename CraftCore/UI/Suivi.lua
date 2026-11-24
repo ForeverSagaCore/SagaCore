@@ -1363,14 +1363,6 @@ local function DessinerObjectifs(y, objectifs, vue)
         end
         table.insert(groupes[cleG].liste, o)
     end
-    -- Les favoris en tete de leur groupe.
-    local fav = Favoris()
-    for _, gr in pairs(groupes) do
-        local avant, apres = {}, {}
-        for _, o in ipairs(gr.liste) do if fav[o.cle] then table.insert(avant, o) else table.insert(apres, o) end end
-        for _, o in ipairs(apres) do table.insert(avant, o) end
-        gr.liste = avant
-    end
     local ouverts, replies = Ouverts(), GroupesReplies()
     for rangG, cleG in ipairs(ordre) do
         local gr = groupes[cleG]
@@ -1424,38 +1416,10 @@ local function DessinerObjectifs(y, objectifs, vue)
                 if pretO then b.droite:SetTextColor(0.31, 0.82, 0.41)
                 else b.droite:SetTextColor(0.7, 0.7, 0.7) end
                 b.nom:SetPoint("RIGHT", b.droite, "LEFT", -8, 0)
-                -- Etoile de favori, a droite, comme pour les quetes.
-                if not b.etoile then
-                    b.etoile = CreateFrame("Button", nil, b)
-                    b.etoile:SetSize(12, 12)
-                    b.etoile.t = b.etoile:CreateTexture(nil, "ARTWORK")
-                    b.etoile.t:SetAllPoints()
-                    b.etoile:SetScript("OnLeave", function() GameTooltip:Hide() end)
-                end
-                local estFavori = Favoris()[o.cle] == true
-                local te = b.etoile.t
-                local atlas = estFavori and "auctionhouse-icon-favorite" or "auctionhouse-icon-favorite-off"
-                if not (te.SetAtlas and pcall(te.SetAtlas, te, atlas) and te:GetAtlas()) then
-                    te:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_1")
-                    te:SetDesaturated(not estFavori)
-                end
-                b.etoile:SetAlpha(estFavori and 1 or 0.6)
-                b.etoile:ClearAllPoints()
-                b.etoile:SetPoint("RIGHT", b, "RIGHT", 0, 1)
-                b.etoile:SetFrameLevel(b:GetFrameLevel() + 3)
-                local cleF = o.cle
-                b.etoile:SetScript("OnClick", function()
-                    Favoris()[cleF] = not Favoris()[cleF] or nil
-                    suivi.Dessiner()
-                end)
-                b.etoile:SetScript("OnEnter", function(self)
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:SetText(estFavori and L.TRACK_FAV_REMOVE or L.TRACK_FAV_ADD, 1, 0.82, 0)
-                    GameTooltip:Show()
-                end)
-                b.etoile:Show()
+                -- Plus d'etoile de favori : le pourcentage au bord droit.
+                if b.etoile then b.etoile:Hide() end
                 b.droite:ClearAllPoints()
-                b.droite:SetPoint("RIGHT", b.etoile, "LEFT", -6, 0)
+                b.droite:SetPoint("RIGHT", b, "RIGHT", 0, 0)
                 local cle = o.cle
                 b:SetScript("OnClick", function()
                     ouverts[cle] = not ouverts[cle] or nil

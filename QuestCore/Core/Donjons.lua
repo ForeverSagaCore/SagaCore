@@ -215,6 +215,72 @@ function donjons.PrealablesManquants(p, id)
     return manque
 end
 
+-- Ce qu'il faut faire avant d'aller dans un donjon, pour un personnage.
+--   kit      : les quetes "Avant d'y aller", dans l'ordre ou les faire :
+--              chaque quete du donjon, precedee de toute sa chaine de
+--              prerequis faisable des maintenant (ou qu'ils se prennent) ;
+--   plusTard : les quetes du donjon qui demandent un niveau plus haut ;
+--   trajet   : les quetes du trajet guide (tout le kit sauf ce qui se prend
+--              dans l'instance) ;
+--   enPoche  : les quetes du kit deja dans le journal.
+function donjons.Preparation(p, d)
+    local P = NS.parcours
+    local res = { kit = {}, plusTard = {}, trajet = {}, enPoche = 0 }
+    local dansKit, dansTrajet = {}, {}
+    local function Kit(id)
+        if dansKit[id] then return end
+        dansKit[id] = true
+        local e = P.EtatEtape(p, id)
+        table.insert(res.kit, { id = id, etat = e })
+        if e == "cours" or e == "rendre" then res.enPoche = res.enPoche + 1 end
+    end
+    local function Trajet(id)
+        if dansTrajet[id] then return end
+        dansTrajet[id] = true
+        table.insert(res.trajet, id)
+    end
+    for _, id in ipairs(d.restantes or {}) do
+        local chemin = P.CheminVers and P.CheminVers(p, id)
+        if chemin and #chemin > 0 then
+            local dedans = donjons.SePrendDedans(id)
+            for _, q in ipairs(chemin) do
+                Kit(q)
+                -- Ce qui se prend dans l'instance n'a pas d'etape avant.
+                if not (q == id and dedans and P.EtatEtape(p, q) ~= "cours" and P.EtatEtape(p, q) ~= "rendre") then Trajet(q) end
+            end
+        else
+            table.insert(res.plusTard, { id = id, etat = P.EtatEtape(p, id) })
+        end
+    end
+    return res
+end
+
+-- Le trajet deja cree pour ce donjon suit : ce qui s'y est ajoute depuis
+-- (une quete prise ou rendue debloque la suivante) va a la fin. Une etape
+-- retiree a la main n'y revient pas.
+function donjons.MettreAJourKit(p, d, pc)
+    if not (p and d) then return end
+    local nomKit = string.format(NS.L.DUNGEON_KIT_NAME, d.nom)
+    local prep
+    for _, x in ipairs(NS.parcours.Liste(p.cle)) do
+        if x.genre == "kit" and (x == pc or (not pc and (x.nom == nomKit or x.donjon == d.zone))) then
+            prep = prep or donjons.Preparation(p, d)
+            local deja, ignorees = {}, x.ignorees or {}
+            for _, id in ipairs(x.etapes) do deja[id] = true end
+            for _, id in ipairs(prep.trajet) do
+                if not deja[id] and not ignorees[id] then table.insert(x.etapes, id) deja[id] = true end
+            end
+        end
+    end
+end
+
+-- Le donjon d'un trajet (kit), pour le personnage.
+function donjons.DuKit(p, pc)
+    if not (pc and pc.donjon) then return nil end
+    for _, d in ipairs(donjons.Liste(p)) do if d.zone == pc.donjon then return d end end
+    return nil
+end
+
 -- Le journal de donjons (add-on DungeonJournal, s'il est installe) : son nom
 -- pour ce donjon, trouve par les quetes en commun, sinon par le nom anglais.
 local journal = {}

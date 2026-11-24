@@ -48,7 +48,9 @@ local function Reglages()
     if s.souder ~= true then s.souder = false end
     -- Soudes, les quetes sont toujours en haut et la recolte dessous.
     s.ordre = "quetes"
-    if s.vue ~= "parcours" and s.vue ~= "favoris" and s.vue ~= "pvp" then s.vue = "quetes" end
+    -- Plus de favoris : l'ancien onglet revient aux quetes.
+    if s.vue ~= "parcours" and s.vue ~= "pvp" then s.vue = "quetes" end
+    if s.vueAvantItineraire == "favoris" then s.vueAvantItineraire = "quetes" end
     if s.memeOpacite == nil then s.memeOpacite = true end
     if s.masquerNatif ~= true then s.masquerNatif = false end
     -- Quete terminee : par defaut, elle quitte l'onglet Quetes pour ne plus
@@ -776,8 +778,6 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
         marque = (q.complete == true) and true or (q.complete == -1 and -1 or false), idQuete = id,
         droite = pourcent and (pourcent .. " %") or nil,
         survol = function(tt) NS.ref.InfobulleDeQuete(tt, q, idQuete, moi) end,
-        etoile = moi.cle == NS.ClePersonnage() and { actif = suivi.Favori(idQuete),
-            auClic = function() suivi.PoserFavori(idQuete, not suivi.Favori(idQuete)) end } or nil,
         couleurDroite = pourcent and (pourcent >= 100 and { 0.31, 0.82, 0.41 } or { 0.8, 0.8, 0.8 }) or nil,
         auClic = function(_, bouton)
             if bouton == "RightButton" then
@@ -1816,7 +1816,6 @@ function suivi.Rendre()
         local nParcours = NS.parcours and #NS.parcours.Liste(NS.ClePersonnage()) or 0
         cadre.vues.quetes:Compter(nCours)
         cadre.vues.rendre:Compter(nRendre)
-        cadre.vues.favoris:Compter(nFavoris)
         -- Onglet Itineraire : ses trois onglets a la place de ceux des quetes.
         local enItineraire = s.vue == "parcours" and not s.vuePerso
         for _, b in pairs(cadre.vues) do b:SetShown(not s.replie and not enItineraire and s.vue ~= "pvp") end
@@ -2824,8 +2823,7 @@ local function Construire()
     end
     for rang, v in ipairs({
         { "quetes", L.TRACK_TAB_QUESTS, "QuestNormal", "Interface\\GossipFrame\\AvailableQuestIcon" },
-        { "rendre", L.TRACK_TAB_TURNIN, "QuestTurnin", "Interface\\GossipFrame\\ActiveQuestIcon" },
-        { "favoris", L.TRACK_TAB_FAV, nil, "Interface\\TargetingFrame\\UI-RaidTargetingIcon_1" } }) do
+        { "rendre", L.TRACK_TAB_TURNIN, "QuestTurnin", "Interface\\GossipFrame\\ActiveQuestIcon" } }) do
         local b = OngletRond(rang, v)
         local cle = v[1]
         b:SetScript("OnClick", function()
