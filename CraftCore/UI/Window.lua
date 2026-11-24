@@ -4278,16 +4278,19 @@ local function RendreBanquiers(contenu)
             o:SetHeight(28)
             -- L'icone ronde de la classe (sans masque) ou le portrait depose
             -- (masque en rond), devant le nom.
-            -- Un fin cercle a la couleur de la classe, sous l'icone.
-            o.cercle = o:CreateTexture(nil, "OVERLAY", nil, 1)
-            o.cercle:SetSize(20, 20)
-            o.cercle:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask")
-            o.classe = o:CreateTexture(nil, "OVERLAY", nil, 2)
-            o.classe:SetSize(17, 17)
-            o.classe:SetPoint("CENTER", o.cercle, "CENTER", 0, 0)
-            o.portrait = o:CreateTexture(nil, "OVERLAY", nil, 2)
-            o.portrait:SetSize(17, 17)
-            o.portrait:SetPoint("CENTER", o.cercle, "CENTER", 0, 0)
+            -- L'icone dans l'anneau d'or du jeu, comme toutes les icones
+            -- rondes de la suite.
+            o.cercle = CreateFrame("Frame", nil, o)
+            o.cercle:SetSize(18, 18)
+            o.classe = o:CreateTexture(nil, "OVERLAY", nil, 1)
+            o.classe:SetAllPoints(o.cercle)
+            o.portrait = o:CreateTexture(nil, "OVERLAY", nil, 1)
+            o.portrait:SetAllPoints(o.cercle)
+            o.anneau = o:CreateTexture(nil, "OVERLAY", nil, 2)
+            o.anneau:SetPoint("TOPLEFT", o.cercle, "TOPLEFT", -4, 4)
+            o.anneau:SetPoint("BOTTOMRIGHT", o.cercle, "BOTTOMRIGHT", 4, -4)
+            o.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+            o.anneau:SetTexCoord(0, 0.6, 0, 0.6)
             if o.portrait.SetMask then pcall(o.portrait.SetMask, o.portrait, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
             o:HookScript("OnLeave", function() GameTooltip:Hide() end)
             z.onglets[i] = o
@@ -4318,7 +4321,7 @@ local function RendreBanquiers(contenu)
                 if cc then fs:SetTextColor(cc.r, cc.g, cc.b) else fs:SetTextColor(1, 1, 1) end
             end
         end
-        o.classe:Hide() o.portrait:Hide() o.cercle:Hide()
+        o.classe:Hide() o.portrait:Hide() o.anneau:Hide()
         if t.banquier then
             local b = t.banquier
             local tex = o.classe
@@ -4339,11 +4342,9 @@ local function RendreBanquiers(contenu)
                 local largeurT = math.min(fs:GetStringWidth() or 40, largeurO - 40)
                 fs:ClearAllPoints()
                 fs:SetPoint("CENTER", o, "BOTTOM", 12, actif and 15 or 11)
-                o.cercle:SetPoint("RIGHT", fs, "CENTER", -largeurT / 2 - 5, 0)
+                o.cercle:SetPoint("RIGHT", fs, "CENTER", -largeurT / 2 - 9, 0)
             else o.cercle:SetPoint("LEFT", o, "LEFT", 10, 0) end
-            local cc = CouleurDeClasseDe(b.fiche)
-            if cc then o.cercle:SetVertexColor(cc.r, cc.g, cc.b, 0.9) else o.cercle:SetVertexColor(0.8, 0.8, 0.8, 0.9) end
-            o.cercle:Show()
+            o.anneau:Show()
             tex:Show()
             local cle = b.cle
             o:SetScript("OnClick", function() ecran.banquierChoisi = cle ecran.Montrer("banquiers") end)

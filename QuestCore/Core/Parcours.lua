@@ -273,6 +273,24 @@ function parcours.Suite(p, id)
     return liste
 end
 
+-- Le chemin faisable des maintenant jusqu'a une quete : ses prerequis pas
+-- encore faits (a prendre, en cours ou a rendre), dans l'ordre, puis elle.
+-- nil si un maillon demande un niveau plus haut ou n'est pas pour sa race.
+function parcours.CheminVers(p, id)
+    local liste, vus = {}, {}
+    Avant(p, id, liste, vus, 0)
+    local res = {}
+    for _, q in ipairs(liste) do
+        if not Faite(p, q) then
+            if not RaceAdmise(p, q) then return nil end
+            local niveau = tonumber(Lire("QuestDB", q, "requiredLevel")) or 0
+            if p and p.niveau and niveau > p.niveau and not EnCours(p, q) then return nil end
+            table.insert(res, q)
+        end
+    end
+    return res
+end
+
 function parcours.CreerSuite(cle, p, id)
     local etapes = parcours.Suite(p, id)
     if #etapes == 0 then return nil end
