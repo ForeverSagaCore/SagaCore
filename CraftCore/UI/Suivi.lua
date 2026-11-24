@@ -823,6 +823,30 @@ local function DessinerObjectifs(y, objectifs, vue)
         icone:Show()
         return icone
     end
+    -- Une zone de survol par matiere : son infobulle dit ou elle est.
+    local ns = 0
+    local function Survol()
+        ns = ns + 1
+        cadreSuivi.survols = cadreSuivi.survols or {}
+        local z = cadreSuivi.survols[ns]
+        if not z then
+            z = CreateFrame("Frame", nil, cadreSuivi)
+            z:EnableMouse(true)
+            z:SetScript("OnEnter", function(self)
+                if not self.matiere then return end
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(NS.inventaire.NomDObjet(self.matiere.objet), 1, 0.82, 0)
+                NS.inventaire.MatieresDansLInfobulle(GameTooltip, { self.matiere })
+                GameTooltip:Show()
+            end)
+            z:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            cadreSuivi.survols[ns] = z
+        end
+        z:ClearAllPoints()
+        z:SetFrameLevel(cadreSuivi:GetFrameLevel() + 5)
+        z:Show()
+        return z
+    end
     local function Filet(yF)
         nf = nf + 1
         cadreSuivi.filets = cadreSuivi.filets or {}
@@ -1228,6 +1252,10 @@ local function DessinerObjectifs(y, objectifs, vue)
                         compte:SetWidth(60)
                         compte:SetJustifyH("RIGHT")
                         compte:SetText(math.min(m.possede, m.requis) .. " / " .. m.requis)
+                        local z = Survol()
+                        z:SetPoint("TOPLEFT", zone, "TOPLEFT", 28, -y + 1)
+                        z:SetSize(largeur - 28, 18)
+                        z.matiere = m
                         if m.manque == 0 and (NS.inventaire.DisponibleDansLesSacs(m.objet) or 0) < m.requis then
                             -- Reunie, mais pas toute dans les sacs : en or.
                             nom:SetTextColor(0.85, 0.85, 0.85)
@@ -1257,6 +1285,7 @@ function suivi.Dessiner()
     local L = NS.L
     for _, t in ipairs(cadreSuivi.textes) do t:Hide() end
     for _, i in ipairs(cadreSuivi.icones) do i:Hide() end
+    for _, z in ipairs(cadreSuivi.survols or {}) do z:Hide() z.matiere = nil end
     for _, b in ipairs(cadreSuivi.barres) do b:Hide() end
     for _, b in ipairs(cadreSuivi.boutons) do b:Hide() end
     for _, b in ipairs(cadreSuivi.entetes or {}) do b:Hide() end
