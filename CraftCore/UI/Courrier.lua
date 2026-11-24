@@ -808,7 +808,11 @@ function courrier.PilesACompleter(plan)
     return liste
 end
 function courrier.PileChoisie(objet) return pilesChoisies[objet] ~= false end
-function courrier.ChoisirPile(objet, oui) pilesChoisies[objet] = oui and nil or false end
+-- (Coche : retirer la marque ; decoche : la poser. "oui and nil or false"
+-- donnait toujours false : une case decochee ne se recochait plus.)
+function courrier.ChoisirPile(objet, oui)
+    if oui then pilesChoisies[objet] = nil else pilesChoisies[objet] = false end
+end
 
 -- Range en banque, case par case, ce qui est choisi : le jeu complete les
 -- piles deja en banque (comme un clic droit sur l'objet, banque ouverte).
@@ -1016,21 +1020,8 @@ local function LierManette(actif)
         -- Y, pas A : A reste au jeu pour prendre et poser les objets de la
         -- banque et des sacs.
         pcall(_G.SetOverrideBindingClick, panneau, true, "PAD4", "CraftCoreAssistantManette", "LeftButton")
-        -- Plusieurs boutons ou cases : LB / RB choisit lequel.
-        if #panneau.elements > 1 then
-            for _, sens in ipairs({ { "PADLSHOULDER", -1 }, { "PADRSHOULDER", 1 } }) do
-                local nomB = "CraftCoreAssistantEnvoi" .. (sens[2] < 0 and "Avant" or "Apres")
-                local b = _G[nomB]
-                if not b then
-                    b = CreateFrame("Button", nomB, UIParent)
-                    b:Hide()
-                    pcall(b.RegisterForClicks, b, "AnyDown")
-                    local pas = sens[2]
-                    b:SetScript("OnClick", function() courrier.Deplacer(pas) end)
-                end
-                pcall(_G.SetOverrideBindingClick, panneau, true, sens[1], nomB, "LeftButton")
-            end
-        end
+        -- Plus de LB / RB : Y fait l'action principale (le premier bouton du
+        -- panneau) ; les cases et les autres boutons se touchent au curseur.
 
     end
 end
@@ -1104,7 +1095,12 @@ local function Remplir(plan)
     -- Ce qui se choisit a la manette (LB / RB) et se declenche par Y : les
     -- boutons et les cases, dans l'ordre du panneau.
     local elements = {}
-    local function Choisissable(cadre, cle) table.insert(elements, { cadre = cadre, cle = cle }) end
+    -- Y ne vise que les boutons d'action, jamais les cases : la premiere
+    -- action du panneau (Tout sortir, Ranger, Preparer l'envoi).
+    local function Choisissable(cadre, cle)
+        if cadre:IsObjectType("CheckButton") then return end
+        table.insert(elements, { cadre = cadre, cle = cle })
+    end
 
     local function Action(libelle, auClic, cle)
         nb = nb + 1
@@ -1333,12 +1329,7 @@ local function Remplir(plan)
     local actifs = {}
     for _, e in ipairs(elements) do if e.cadre:IsEnabled() then table.insert(actifs, e) end end
     panneau.elements = actifs
-    local choix
-    for _, e in ipairs(actifs) do if e.cle == courrier.focusCle then choix = e end end
-    if not choix and courrier.envoiChoisi then
-        for _, e in ipairs(actifs) do if e.envoi == courrier.envoiChoisi then choix = e end end
-    end
-    choix = choix or actifs[1]
+    local choix = actifs[1]
     panneau.choix = choix
     courrier.focusCle = choix and choix.cle or nil
     if choix and courrier.ToucheManette() then
@@ -1346,15 +1337,6 @@ local function Remplir(plan)
         if choix.cadre.libelle then
             local ok, g = pcall(NS.manette.Glyphe, "PAD4", 14)
             if ok and g then choix.cadre:SetText(g .. " " .. choix.cadre.libelle) end
-        end
-        if #actifs > 1 then
-            nt = nt + 1
-            local t = Texte(nt, "GameFontDisableSmall")
-            t:ClearAllPoints()
-            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 0, -(y + 2))
-            t:SetWidth(largeur)
-            t:SetText(L().ASSIST_PICK)
-            y = y + 18
         end
     end
 
