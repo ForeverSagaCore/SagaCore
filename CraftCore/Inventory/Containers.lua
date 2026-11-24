@@ -68,9 +68,27 @@ function inventaire.ReleverBoite()
         end
     end
     local b = Boite(cle)
+    -- Ce que mes personnages lui avaient envoye est desormais dans le releve :
+    -- on retient quelle part de la boite vient d'eux (bornee a ce qui y est
+    -- encore), pour la feuille de route (revenir relever ce qu'ils ont envoye).
+    local attendus = {}
+    for id, n in pairs(type(b.arrives) == "table" and b.arrives or {}) do
+        id = tonumber(id)
+        if id then attendus[id] = (attendus[id] or 0) + (tonumber(n) or 0) end
+    end
+    for _, e in ipairs(b.envois) do
+        for id, n in pairs(type(e) == "table" and type(e.objets) == "table" and e.objets or {}) do
+            id = tonumber(id)
+            if id then attendus[id] = (attendus[id] or 0) + (tonumber(n) or 0) end
+        end
+    end
+    b.arrives = {}
+    for id, n in pairs(attendus) do
+        local m = math.min(n, objets[id] or 0)
+        if m > 0 then b.arrives[id] = m end
+    end
     b.objets = objets
     b.releve = NS.Appeler(_G.time) or 0
-    -- Tout ce qui lui avait ete envoye est desormais dans le releve.
     b.envois = {}
 end
 
@@ -97,6 +115,21 @@ function inventaire.Courrier(fiche, objet)
         end
     end
     return total
+end
+
+-- Le meme courrier en deux parts : ce qui etait dans sa boite a son dernier
+-- releve sans venir de mes personnages, et ce que mes personnages lui ont
+-- envoye (en route, ou arrive et pas encore pris). La somme vaut Courrier.
+function inventaire.CourrierEnDeux(fiche, objet)
+    local total = inventaire.Courrier(fiche, objet)
+    local cle = type(fiche) == "table" and fiche.cle or fiche
+    local b = cle and Boites()[cle]
+    local id = tonumber(objet)
+    if type(b) ~= "table" or not id then return total, 0 end
+    local dansLaBoite = tonumber(type(b.objets) == "table" and b.objets[id]) or 0
+    local arrive = math.min(dansLaBoite, tonumber(type(b.arrives) == "table" and b.arrives[id]) or 0)
+    local attendu = math.max(0, total - dansLaBoite) + arrive
+    return math.max(0, total - attendu), attendu
 end
 
 -- Objets qui attendent dans la boite d'un personnage : { ["id"] = true }.

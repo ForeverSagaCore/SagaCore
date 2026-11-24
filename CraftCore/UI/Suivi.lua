@@ -703,14 +703,36 @@ local function EtapesDeFabrication(lignes)
 end
 
 -- ---------------------------------------------------------------------------
--- Feuille de route d'un objectif : les etapes dans l'ordre le plus rapide.
--- Ce qui est deja dans les sacs ne coute rien ; puis le courrier et la banque
--- du personnage connecte ; puis les autres personnages, en preferant ceux qui
--- se sont deconnectes en ville (banque et boite aux lettres sur place), puis
--- a l'auberge (boite aux lettres), puis en campagne ; enfin les achats, la
--- recolte, et les fabrications. Les memes etapes au survol et dans
--- l'interface principale.
+-- Feuille de route d'un objectif.
+--
+-- Les etapes sont toujours tirees de l'etat reel du moment (sacs, courrier,
+-- banque, envois en route, autres personnages), jamais de la memoire :
+--   1 recolter ou trouver ce que personne n'a ;
+--   2 relever mon courrier (ce qui y etait deja) ;
+--   3 sortir de ma banque ;
+--   4 connecter mes autres personnages, au plus rapide (jamais moi, jamais
+--     une ancienne fiche a mon nom) ;
+--   5 revenir relever le courrier, seulement si du courrier est en route ou
+--     attendu (envoye par un autre personnage, ou une etape 4 a faire) ;
+--   6 acheter (ce qui se vend chez tous les marchands) ;
+--   7 fabriquer.
+-- Les memes etapes au survol, dans Mon atelier et dans la consigne.
 -- ---------------------------------------------------------------------------
+local PHASES = { recolte = 1, courrier = 2, banque = 3, perso = 4, retour = 5, achats = 6, fab = 7 }
+local function PhaseDe(cle)
+    return PHASES[string.match(tostring(cle or ""), "^([^:]+)") or ""] or 8
+end
+
+-- Le personnage `cle` est-il `moi`, ou une ancienne fiche a mon nom (royaume
+-- vide ou provisoire, d'avant la correction du royaume) ? On ne se connecte
+-- jamais sur soi et on ne s'envoie jamais rien.
+local function EstMoiOuFantome(cle, moi)
+    if not (cle and moi) then return false end
+    if cle == moi then return true end
+    return NS.inventaire.NomCourt(cle) == NS.inventaire.NomCourt(moi)
+end
+suivi.EstMoiOuFantome = EstMoiOuFantome
+
 local COUT_LIEU = { ville = 1, auberge = 1.5, campagne = 3 }
 -- Un banquier attend toujours en ville, a cote de sa banque : il passe
 -- avant les autres personnages.
@@ -732,206 +754,329 @@ local function TexteLieu(l)
     if l.genre == "auberge" then return string.format(L.ROUTE_WHERE_INN, zone) end
     return string.format(L.ROUTE_WHERE_FIELD, zone)
 end
-local function Liste(objets)
-    local t = {}
-    for _, x in ipairs(objets) do table.insert(t, x.n .. " " .. NS.inventaire.NomDObjet(x.objet)) end
-    return table.concat(t, ", ")
+
+-- Mes autres personnages qui peuvent aider : meme camp que moi, jamais moi
+-- ni une fiche a mon nom.
+local function Autres(moi)
+    local liste = {}
+    for _, f in ipairs(NS.base.TousLesPersonnages()) do
+        if type(f) == "table" and f.cle and not EstMoiOuFantome(f.cle, moi.cle)
+            and ((not moi.faction) or (not f.faction) or f.faction == moi.faction) then
+            table.insert(liste, f)
+        end
+    end
+    -- Ordre stable : le meme calcul donne toujours les memes etapes.
+    table.sort(liste, function(a, b) return tostring(a.cle) < tostring(b.cle) end)
+    return liste
 end
+
+-- Ajoute n objets a une liste { {objet, n} } en gardant un seul exemplaire
+-- par objet.
+local function Ajouter(liste, objet, n)
+    if not n or n <= 0 then return end
+    for _, x in ipairs(liste) do if x.objet == objet then x.n = x.n + n return end end
+    table.insert(liste, { objet = objet, n = n })
+end
+
 function suivi.FeuilleDeRoute(o)
     local L = NS.L
     local inv = NS.inventaire
+    local cat = NS.recettes
     local moi = NS.base.Personnage()
     local etapes = {}
-    if not (o and moi) then return etapes end
+    if not (o and moi and not moi.temporaire) then return etapes end
     local nomMoi = inv.NomCourt(moi.cle)
-    -- Ce qui manque dans mes sacs, matiere par matiere.
-    local reste, ordre = {}, {}
-    local monCourrier, maBanque = {}, {}
+
+    -- Ce qu'il faut avoir dans les sacs, matiere par matiere. Ce qui
+    -- s'achete et n'est pas parmi les matieres compte aussi.
+    local requis, ordre = {}, {}
     for _, m in ipairs(o.matieres or {}) do
-        local requis = tonumber(m.requis) or 0
-        local sacs, banque, cour = inv.SacsEtBanque(moi, m.objet)
-        local r = requis - sacs
+        local n = tonumber(m.requis) or 0
+        if m.objet and n > 0 and not requis[m.objet] then requis[m.objet] = n table.insert(ordre, m.objet) end
+    end
+    for objet, n in pairs(o.achats or {}) do
+        n = tonumber(n) or 0
+        if n > 0 and not requis[objet] then requis[objet] = n table.insert(ordre, objet) end
+    end
+    local function Achetable(objet)
+        return (o.achats and o.achats[objet]) or (cat and cat.EstVenduPartout and cat.EstVenduPartout(objet)) or false
+    end
+
+    -- Mes propres sources d'abord : mon courrier (deja la, puis envoye par
+    -- mes personnages), ma banque. `sacs` : ce que j'ai sur moi, en direct.
+    local sacs, reste = {}, {}
+    local monCourrier, attendu, maBanque = {}, {}, {}
+    for _, objet in ipairs(ordre) do
+        sacs[objet] = SurSoi(objet)
+        local r = requis[objet] - sacs[objet]
         if r > 0 then
-            local c = math.min(r, cour or 0)
-            if c > 0 then table.insert(monCourrier, { objet = m.objet, n = c }) r = r - c end
+            local _, banque = inv.SacsEtBanque(moi, objet)
+            local boite, enRoute = inv.CourrierEnDeux(moi, objet)
+            local c = math.min(r, boite or 0)
+            if c > 0 then Ajouter(monCourrier, objet, c) r = r - c end
+            local a = math.min(r, enRoute or 0)
+            if a > 0 then Ajouter(attendu, objet, a) r = r - a end
             local b = math.min(r, banque or 0)
-            if b > 0 then table.insert(maBanque, { objet = m.objet, n = b }) r = r - b end
-            if r > 0 then reste[m.objet] = r table.insert(ordre, m.objet) end
+            if b > 0 then Ajouter(maBanque, objet, b) r = r - b end
+            if r > 0 then reste[objet] = r end
         end
     end
-    -- Les autres personnages : au plus rapide (le plus couvert pour le
-    -- moins de deplacement), jusqu'a ce que tout soit trouve.
-    local candidats = {}
-    for _, f in ipairs(NS.base.TousLesPersonnages()) do
-        -- Jamais moi-meme, ni une ancienne fiche a mon nom (royaume vide ou
-        -- provisoire, d'avant la correction du royaume).
-        if f.cle ~= moi.cle and inv.NomCourt(f.cle) ~= nomMoi and inv.MemeCamp(f) then table.insert(candidats, f) end
+
+    -- Les autres personnages, au plus rapide (le plus couvert pour le moins
+    -- de deplacement), jusqu'a ce que tout soit trouve. Ce qui s'achete
+    -- partout ne vaut pas une connexion : il n'est pris que chez un
+    -- personnage qu'on visite deja pour autre chose.
+    local candidats = Autres(moi)
+    local function Prise(f, achatsSeuls)
+        local p, couvert = { courrier = {}, sacs = {}, banque = {} }, 0
+        for _, objet in ipairs(ordre) do
+            local r = reste[objet]
+            if r and r > 0 and (Achetable(objet) and true or false) == (achatsSeuls and true or false) then
+                local s, b, c = inv.SacsEtBanque(f, objet)
+                local ds = math.min(r, s or 0)
+                local dc = math.min(r - ds, c or 0)
+                local db = math.min(r - ds - dc, b or 0)
+                Ajouter(p.sacs, objet, ds)
+                Ajouter(p.courrier, objet, dc)
+                Ajouter(p.banque, objet, db)
+                couvert = couvert + ds + dc + db
+            end
+        end
+        return p, couvert
     end
-    local visites = {}
+    local function Retirer(p)
+        for _, part in pairs(p) do
+            for _, x in ipairs(part) do
+                reste[x.objet] = reste[x.objet] - x.n
+                if reste[x.objet] <= 0 then reste[x.objet] = nil end
+            end
+        end
+    end
+    local visites, vus = {}, {}
     while next(reste) do
         local meilleur, score, prise
         for _, f in ipairs(candidats) do
-            if not f.vu then
-                local cout = Cout(f)
-                local couvert, p = 0, { sacs = {}, banque = {} }
-                for _, objet in ipairs(ordre) do
-                    local r = reste[objet]
-                    if r and r > 0 then
-                        local s, b, c = inv.SacsEtBanque(f, objet)
-                        s = s + (c or 0)
-                        local ds = math.min(r, s)
-                        local db = math.min(r - ds, b)
-                        if ds > 0 then table.insert(p.sacs, { objet = objet, n = ds }) end
-                        if db > 0 then table.insert(p.banque, { objet = objet, n = db }) end
-                        couvert = couvert + ds + db
-                    end
-                end
-                if couvert > 0 and (not score or couvert / cout > score) then meilleur, score, prise = f, couvert / cout, p end
+            if not vus[f.cle] then
+                local p, couvert = Prise(f, false)
+                local s = couvert / Cout(f)
+                if couvert > 0 and (not score or s > score) then meilleur, score, prise = f, s, p end
             end
         end
         if not meilleur then break end
-        meilleur.vu = true
-        for _, x in ipairs(prise.sacs) do reste[x.objet] = reste[x.objet] - x.n if reste[x.objet] <= 0 then reste[x.objet] = nil end end
-        for _, x in ipairs(prise.banque) do reste[x.objet] = reste[x.objet] - x.n if reste[x.objet] <= 0 then reste[x.objet] = nil end end
+        vus[meilleur.cle] = true
+        Retirer(prise)
         table.insert(visites, { fiche = meilleur, prise = prise })
     end
-    for _, f in ipairs(candidats) do f.vu = nil end
-    table.sort(visites, function(a, b) return Cout(a.fiche) < Cout(b.fiche) end)
-    -- Les etapes, dans l'ordre. Chacune : un titre, un lieu, puis des blocs
-    -- (une action et ses objets). L'infobulle les met en page ; Mon atelier
-    -- les resume sur une ligne.
-    local function Etape(cle, phase, qui, titre, lieu, blocs, guide)
+    -- Ce qui s'achete, chez ceux qu'on visite de toute facon.
+    for _, v in ipairs(visites) do
+        local p = Prise(v.fiche, true)
+        Retirer(p)
+        for nom, part in pairs(p) do for _, x in ipairs(part) do Ajouter(v.prise[nom], x.objet, x.n) end end
+    end
+    table.sort(visites, function(a, b)
+        local ca, cb = Cout(a.fiche), Cout(b.fiche)
+        if ca ~= cb then return ca < cb end
+        return tostring(a.fiche.cle) < tostring(b.fiche.cle)
+    end)
+
+    -- Chaque etape : un titre, un lieu, des blocs (une action et ses
+    -- objets), le guide, et sa cible : ce que les sacs contiendront une fois
+    -- l'etape faite (sa preuve, voir suivi.Feuille).
+    local function Etape(cle, qui, titre, lieu, blocs, guide, cible)
         local resume = {}
         for _, b in ipairs(blocs or {}) do
             local noms = {}
-            for _, x in ipairs(b.objets or {}) do table.insert(noms, x.n .. " " .. NS.inventaire.NomDObjet(x.objet)) end
+            for _, x in ipairs(b.objets or {}) do table.insert(noms, x.n .. " " .. inv.NomDObjet(x.objet)) end
             local liste = table.concat(noms, ", ")
             table.insert(resume, (b.action and liste ~= "") and (b.action .. " " .. liste) or ((b.action or "") .. liste))
         end
-        table.insert(etapes, { cle = cle, phase = phase, qui = qui, titre = titre, lieu = lieu, blocs = blocs or {}, guide = guide,
-            texte = titre .. (lieu and (" (" .. lieu .. ")") or "") .. (#resume > 0 and (" : " .. table.concat(resume, " ; ")) or "") })
+        table.insert(etapes, { cle = cle, phase = PhaseDe(cle), qui = qui, titre = titre, lieu = lieu, blocs = blocs or {}, guide = guide,
+            cible = cible, texte = titre .. (lieu and (" (" .. lieu .. ")") or "") .. (#resume > 0 and (" : " .. table.concat(resume, " ; ")) or "") })
     end
-    if #monCourrier > 0 then Etape("courrier", 1, nil, string.format(L.ROUTE_T_MAILBOX, nomMoi), nil, { { action = L.ROUTE_D_COLLECT, objets = monCourrier } }, { service = "courrier" }) end
-    if #maBanque > 0 then Etape("banque", 1, nil, string.format(L.ROUTE_T_BANK, nomMoi), nil, { { action = L.ROUTE_D_TAKE, objets = maBanque } }, { service = "banque" }) end
+    local function Cible(objets)
+        local c = {}
+        for _, x in ipairs(objets) do c[x.objet] = (c[x.objet] or sacs[x.objet] or SurSoi(x.objet)) + x.n end
+        return c
+    end
+
+    -- 1. Ce que personne n'a : a recolter ou a trouver ; ce qui se vend
+    -- partout s'achete (etape 6).
+    local introuvables, achats = {}, {}
+    for _, objet in ipairs(ordre) do
+        if reste[objet] then
+            if Achetable(objet) then Ajouter(achats, objet, reste[objet]) else Ajouter(introuvables, objet, reste[objet]) end
+        end
+    end
+    if #introuvables > 0 then
+        Etape("recolte", nil, L.ROUTE_T_GATHER, nil, { { objets = introuvables } },
+            { recolte = { objectifs = { o.cle } } }, Cible(introuvables))
+    end
+    -- 2 et 3. Mon courrier, ma banque.
+    if #monCourrier > 0 then
+        Etape("courrier", nil, string.format(L.ROUTE_T_MAILBOX, nomMoi), nil,
+            { { action = L.ROUTE_D_COLLECT, objets = monCourrier } }, { service = "courrier" }, Cible(monCourrier))
+    end
+    if #maBanque > 0 then
+        Etape("banque", nil, string.format(L.ROUTE_T_BANK, nomMoi), nil,
+            { { action = L.ROUTE_D_TAKE, objets = maBanque } }, { service = "banque" }, Cible(maBanque))
+    end
+    -- 4. Les visites : relever son courrier, sortir de sa banque, m'envoyer.
     for _, v in ipairs(visites) do
         local nom = inv.NomCourt(v.fiche.cle)
         if NS.banquiers and NS.banquiers.Est(v.fiche.cle) then nom = nom .. " (" .. L.ROUTE_BANKER .. ")" end
-        local tout = {}
-        for _, x in ipairs(v.prise.sacs) do table.insert(tout, x) end
-        for _, x in ipairs(v.prise.banque) do table.insert(tout, x) end
-        local blocs = {}
+        local tout, blocs = {}, {}
+        for _, part in ipairs({ v.prise.sacs, v.prise.courrier, v.prise.banque }) do
+            for _, x in ipairs(part) do Ajouter(tout, x.objet, x.n) Ajouter(attendu, x.objet, x.n) end
+        end
+        if #v.prise.courrier > 0 then table.insert(blocs, { action = L.ROUTE_D_COLLECT, objets = v.prise.courrier }) end
         if #v.prise.banque > 0 then table.insert(blocs, { action = L.ROUTE_D_TAKE, objets = v.prise.banque }) end
         table.insert(blocs, { action = string.format(L.ROUTE_D_SEND, nomMoi), objets = tout })
-        Etape("perso:" .. v.fiche.cle, 2, v.fiche.cle, string.format(L.ROUTE_T_LOGIN, nom), TexteLieu(LieuDe(v.fiche)), blocs,
+        Etape("perso:" .. v.fiche.cle, v.fiche.cle, string.format(L.ROUTE_T_LOGIN, nom), TexteLieu(LieuDe(v.fiche)), blocs,
             #v.prise.banque > 0 and { service = "banque" } or { service = "courrier" })
     end
-    if #visites > 0 then Etape("retour", 3, nil, string.format(L.ROUTE_T_BACK, nomMoi), nil, { { action = L.ROUTE_D_MAIL } }, { service = "courrier" }) end
-    -- A acheter (ce qui manque encore dans les sacs).
-    local achats = {}
-    for objet, n in pairs(o.achats or {}) do
-        local manque = (tonumber(n) or 0) - (inv.DisponibleDansLesSacs(objet) or 0)
-        if manque > 0 then table.insert(achats, { objet = objet, n = manque }) end
+    -- 5. Revenir relever : seulement le courrier en route ou attendu.
+    if #attendu > 0 then
+        Etape("retour", nil, string.format(L.ROUTE_T_BACK, nomMoi), nil,
+            { { action = L.ROUTE_D_COLLECT, objets = attendu } }, { service = "courrier" }, Cible(attendu))
     end
-    -- Ce que personne n'a : a recolter ou a trouver.
-    -- Ce qui se vend chez tous les marchands (fioles, fils...) s'achete.
-    local introuvables = {}
-    local cat = NS.recettes
-    for _, objet in ipairs(ordre) do
-        if reste[objet] and (not o.achats or not o.achats[objet]) then
-            if cat and cat.EstVenduPartout and cat.EstVenduPartout(objet) then
-                table.insert(achats, { objet = objet, n = reste[objet] })
-            else
-                table.insert(introuvables, { objet = objet, n = reste[objet] })
-            end
-        end
+    -- 6. Acheter.
+    if #achats > 0 then
+        Etape("achats", nil, L.ROUTE_T_BUY, nil, { { objets = achats } }, { marchand = achats[1].objet }, Cible(achats))
     end
-    if #achats > 0 then Etape("achats", 4, nil, L.ROUTE_T_BUY, nil, { { objets = achats } }, { marchand = achats[1].objet }) end
-    if #introuvables > 0 then Etape("recolte", 0, nil, L.ROUTE_T_GATHER, nil, { { objets = introuvables } }, { recolte = { objectifs = { o.cle } } }) end
-    -- Les fabrications, dans l'ordre.
+    -- 7. Les fabrications, dans l'ordre. Une fabrication en route est faite
+    -- quand ses objets sont dans les sacs ; la derniere, quand l'objectif est
+    -- atteint (il quitte alors le suivi).
     for _, e in ipairs(EtapesDeFabrication(o.lignes)) do
         if not e.faite and e.recette then
-            Etape("fab:" .. tostring(e.objet), 6, nil, L.ROUTE_T_CRAFT, nil, { { objets = { { objet = e.objet, n = e.fois or 1, fois = true } } } })
+            Etape("fab:" .. tostring(e.objet), nil, L.ROUTE_T_CRAFT, nil,
+                { { objets = { { objet = e.objet, n = e.fois or 1, fois = true } } } }, nil,
+                (not e.finale) and { [e.objet] = e.besoin } or nil)
         end
     end
     return etapes
 end
 
--- La feuille de route dans une infobulle, a la maniere de celles des quetes
--- de QuestCore : un titre en or par etape, son lieu en gris, l'action en
--- clair, puis chaque objet avec son icone, a la couleur de sa qualite, et
--- son nombre en blanc.
-local function LigneDObjet(tt, objet, n, fois)
-    local icone = NS.Appeler(NS.jeu.iconeObjet, objet) or "Interface\\Icons\\INV_Misc_QuestionMark"
-    local r, g, b = 1, 1, 1
-    if NS.objets and NS.objets.CouleurDuNom then
-        local ok, rr, gg, bb = pcall(NS.objets.CouleurDuNom, objet)
-        if ok and rr then r, g, b = rr, gg, bb end
-    end
-    local nombre = fois and ("  |cffffffffx" .. n .. "|r") or ("  |cffffffff" .. n .. "|r")
-    tt:AddLine(string.format("      |T%s:16|t %s%s", tostring(icone), NS.inventaire.NomDObjet(objet), nombre), r, g, b)
+-- ---------------------------------------------------------------------------
+-- Memoire des feuilles de route, par personnage et par objectif. Elle ne
+-- cree jamais d'etape : elle sert a garder en vert, a sa place, une etape
+-- vraiment accomplie, et aux autres personnages (consigne a leur connexion).
+-- Une etape est faite seulement avec une preuve :
+--   "sacs"   ses objets sont arrives dans mes sacs (sa cible est atteinte) ;
+--   "envoi"  l'autre personnage a poste tout son envoi (suivi.EnvoiFait).
+-- Une etape qui disparait du calcul sans preuve est simplement oubliee.
+-- ---------------------------------------------------------------------------
+local feuillesPropres
+local function EnvoiDe(e)
+    local blocs = type(e) == "table" and type(e.blocs) == "table" and e.blocs or {}
+    return blocs[#blocs]
 end
--- ---------------------------------------------------------------------------
--- La feuille de route gardee en memoire, par personnage et par objectif :
--- une etape qui disparait du calcul (le reroll a poste, le courrier est
--- releve, les fioles sont achetees) reste a sa place, faite, en vert. Les
--- autres personnages la lisent : a la connexion d'un reroll, une consigne
--- lui dit ce qu'il a a faire, et apres son envoi, qui est le suivant.
--- ---------------------------------------------------------------------------
+local function EnvoiCouvert(e)
+    local envoi = EnvoiDe(e)
+    if not (envoi and type(envoi.objets) == "table" and #envoi.objets > 0 and type(e.envoye) == "table") then return false end
+    for _, x in ipairs(envoi.objets) do
+        if (tonumber(e.envoye[x.objet]) or 0) < (tonumber(x.n) or 0) then return false end
+    end
+    return true
+end
+-- Remet d'aplomb, une fois par session, ce que d'anciennes versions ont
+-- garde : etapes pour soi-meme ou une fiche au meme nom, etapes faites sans
+-- preuve, phases d'avant.
+local function NettoyerMemoire(F)
+    for proprio, objectifs in pairs(F) do
+        if type(objectifs) ~= "table" then
+            F[proprio] = nil
+        else
+            for k, f in pairs(objectifs) do
+                if type(f) ~= "table" or type(f.etapes) ~= "table" then
+                    objectifs[k] = nil
+                else
+                    local garde = {}
+                    for _, e in ipairs(f.etapes) do
+                        if type(e) == "table" and e.cle and not (e.qui and EstMoiOuFantome(e.qui, proprio)) then
+                            if e.faite and not e.preuve then
+                                if e.qui and EnvoiCouvert(e) then e.preuve = "envoi" else e.faite = nil end
+                            end
+                            e.phase = PhaseDe(e.cle)
+                            table.insert(garde, e)
+                        end
+                    end
+                    f.etapes = garde
+                end
+            end
+        end
+    end
+end
 local function Feuilles()
     local d = CraftCoreDB
     if type(d) ~= "table" then return {} end
     d.feuilles = type(d.feuilles) == "table" and d.feuilles or {}
+    if feuillesPropres ~= d.feuilles then
+        NettoyerMemoire(d.feuilles)
+        feuillesPropres = d.feuilles
+    end
     return d.feuilles
 end
 local function CleObjectif(o) return tostring(o.cle or o.nom or "?") end
+
+-- Preuve d'une de mes etapes disparue du calcul : tout ce qu'elle apportait
+-- est dans mes sacs.
+local function CibleAtteinte(e)
+    if type(e.cible) ~= "table" or not next(e.cible) then return false end
+    for objet, n in pairs(e.cible) do
+        if SurSoi(objet) < (tonumber(n) or 0) then return false end
+    end
+    return true
+end
 
 -- Les etapes d'un objectif du personnage connecte, faites comprises.
 function suivi.Feuille(o)
     local moi = NS.base.Personnage()
     local calcul = suivi.FeuilleDeRoute(o)
-    if not moi then return calcul end
+    if not moi or moi.temporaire then return calcul end
     local F = Feuilles()
     F[moi.cle] = type(F[moi.cle]) == "table" and F[moi.cle] or {}
+    -- Les feuilles d'une ancienne fiche a mon nom sont perimees : c'est moi
+    -- qui les tiens a jour maintenant.
+    for proprio in pairs(F) do
+        if proprio ~= moi.cle and EstMoiOuFantome(proprio, moi.cle) then F[proprio] = nil end
+    end
     local cle = CleObjectif(o)
     local avant = F[moi.cle][cle]
     local neuves = {}
     for _, e in ipairs(calcul) do neuves[e.cle] = e end
     local liste, vus = {}, {}
-    local nomMoi = NS.inventaire.NomCourt(moi.cle)
-    if type(avant) == "table" then
-        for k, e in ipairs(avant.etapes or {}) do
-            -- Jamais une etape pour moi-meme (ancienne fiche a mon nom).
-            local fantome = e.qui and NS.inventaire.NomCourt(e.qui) == nomMoi
-            if neuves[e.cle] then
-                local n = neuves[e.cle]
+    for k, e in ipairs(type(avant) == "table" and type(avant.etapes) == "table" and avant.etapes or {}) do
+        if type(e) == "table" and e.cle and not vus[e.cle] and not (e.qui and EstMoiOuFantome(e.qui, moi.cle)) then
+            local n = neuves[e.cle]
+            if n then
+                -- Encore a faire d'apres l'etat reel : a sa place d'avant.
                 n.rang = k
                 table.insert(liste, n)
                 vus[e.cle] = true
-            elseif not fantome and (e.faite or not e.qui) then
-                -- Disparue du calcul : faite (le courrier releve, l'achat
-                -- fait...). Un autre personnage ne compte comme fait que
-                -- s'il a vraiment poste son envoi.
-                e.faite, e.rang = true, k
+            elseif e.faite and e.preuve then
+                e.rang = k
+                table.insert(liste, e)
+                vus[e.cle] = true
+            elseif not e.qui and CibleAtteinte(e) then
+                e.faite, e.preuve, e.rang = true, "sacs", k
                 table.insert(liste, e)
                 vus[e.cle] = true
             end
         end
     end
-    for _, e in ipairs(calcul) do
-        if not vus[e.cle] then e.rang = 1000 + #liste table.insert(liste, e) end
+    for i, e in ipairs(calcul) do
+        if not vus[e.cle] then e.rang = 1000 + i table.insert(liste, e) vus[e.cle] = true end
     end
-    -- Tout est fait sauf les fabrications : les etapes faites gardent leur
-    -- ordre ; une etape faite peut redevenir a faire (nouveau courrier).
+    for _, e in ipairs(liste) do e.phase = PhaseDe(e.cle) end
     table.sort(liste, function(a, b)
-        if (a.phase or 9) ~= (b.phase or 9) then return (a.phase or 9) < (b.phase or 9) end
+        if a.phase ~= b.phase then return a.phase < b.phase end
         return (a.rang or 0) < (b.rang or 0)
     end)
-    for _, e in ipairs(liste) do if neuves[e.cle] then e.faite = nil end end
-    -- Gardee pour les autres personnages (sans les fonctions ni le guide).
+    -- Gardee pour les autres personnages (sans le guide).
     local garde = {}
     for _, e in ipairs(liste) do
         table.insert(garde, { cle = e.cle, phase = e.phase, qui = e.qui, titre = e.titre, lieu = e.lieu,
-            blocs = e.blocs, faite = e.faite, texte = e.texte })
+            blocs = e.blocs, faite = e.faite, preuve = e.preuve, cible = e.cible, envoye = e.envoye, texte = e.texte })
     end
     F[moi.cle][cle] = { nom = o.nom, etapes = garde, quand = NS.Appeler(_G.time) or 0 }
     return liste
@@ -1081,16 +1226,38 @@ local function Montrer(titre, lignes, guide)
     f:Show()
 end
 
--- Les etapes que le personnage connecte doit faire pour les autres.
+-- Ce que le personnage connecte detient encore d'un objet (sacs, banque,
+-- courrier) : une consigne pour des objets qu'il n'a plus est perimee.
+local function JaiEncore(moi, e)
+    local envoi = EnvoiDe(e)
+    for _, x in ipairs(envoi and envoi.objets or {}) do
+        local s, b, c = NS.inventaire.SacsEtBanque(moi, x.objet)
+        if (s or 0) + (b or 0) + (c or 0) > 0 then return true end
+    end
+    return false
+end
+
+-- Les etapes que le personnage connecte doit faire pour les autres (jamais
+-- pour lui-meme ni pour une ancienne fiche a son nom).
 local function MesEtapes()
     local moi = NS.base.Personnage()
     local res = {}
-    if not moi then return res end
-    for proprio, objectifs in pairs(Feuilles()) do
-        if proprio ~= moi.cle and type(objectifs) == "table" then
-            for _, f in pairs(objectifs) do
-                for _, e in ipairs(type(f) == "table" and f.etapes or {}) do
-                    if e.qui == moi.cle and not e.faite then table.insert(res, { proprio = proprio, feuille = f, etape = e }) end
+    if not moi or moi.temporaire then return res end
+    local F = Feuilles()
+    local proprios = {}
+    for proprio, objectifs in pairs(F) do
+        if type(objectifs) == "table" and not EstMoiOuFantome(proprio, moi.cle) then table.insert(proprios, proprio) end
+    end
+    table.sort(proprios)
+    for _, proprio in ipairs(proprios) do
+        local cles = {}
+        for k in pairs(F[proprio]) do table.insert(cles, k) end
+        table.sort(cles)
+        for _, k in ipairs(cles) do
+            local f = F[proprio][k]
+            for _, e in ipairs(type(f) == "table" and type(f.etapes) == "table" and f.etapes or {}) do
+                if e.qui == moi.cle and not e.faite and JaiEncore(moi, e) then
+                    table.insert(res, { proprio = proprio, feuille = f, etape = e })
                 end
             end
         end
@@ -1124,27 +1291,43 @@ function suivi.ConsigneConnexion()
     Montrer(L.ROUTE_YOUR_PART, lignes, { service = banque and "banque" or "courrier" })
 end
 
--- Apres un envoi reussi : l'etape du reroll vers ce destinataire est faite
--- quand il n'a plus rien a lui envoyer ; puis, qui est le suivant.
+-- Apres un envoi reussi a `dest` : ce qui est parti est reparti entre mes
+-- etapes pour lui (chaque objet compte une seule fois) ; une etape est
+-- faite, preuve a l'appui, quand tout son envoi est parti. Puis, qui est le
+-- suivant.
 function suivi.EnvoiFait(dest, objets)
     local L = NS.L
     local moi = NS.base.Personnage()
     local F = Feuilles()
-    if not (moi and dest and type(F[dest]) == "table") then return end
+    if not (moi and dest and not EstMoiOuFantome(dest, moi.cle) and type(F[dest]) == "table") then return end
+    local parti = {}
+    for objet, n in pairs(objets or {}) do
+        local id = tonumber(objet)
+        if id then parti[id] = (parti[id] or 0) + (tonumber(n) or 0) end
+    end
+    local cles = {}
+    for k in pairs(F[dest]) do table.insert(cles, k) end
+    table.sort(cles)
     local fini = {}
-    for _, f in pairs(F[dest]) do
-        for _, e in ipairs(type(f) == "table" and f.etapes or {}) do
+    for _, k in ipairs(cles) do
+        local f = F[dest][k]
+        for _, e in ipairs(type(f) == "table" and type(f.etapes) == "table" and f.etapes or {}) do
             if e.qui == moi.cle and not e.faite then
-                -- Ce qui reste a envoyer, d'apres le dernier bloc (Envoyer a).
-                e.envoye = e.envoye or {}
-                for objet, n in pairs(objets or {}) do e.envoye[objet] = (e.envoye[objet] or 0) + n end
-                local tout = true
-                local blocs = e.blocs or {}
-                local envoi = blocs[#blocs]
+                local envoi = EnvoiDe(e)
+                e.envoye = type(e.envoye) == "table" and e.envoye or {}
                 for _, x in ipairs(envoi and envoi.objets or {}) do
-                    if (e.envoye[x.objet] or 0) < x.n then tout = false end
+                    local id = tonumber(x.objet)
+                    local manque = (tonumber(x.n) or 0) - (tonumber(e.envoye[x.objet]) or 0)
+                    local d = id and math.min(manque, parti[id] or 0) or 0
+                    if d > 0 then
+                        e.envoye[x.objet] = (tonumber(e.envoye[x.objet]) or 0) + d
+                        parti[id] = parti[id] - d
+                    end
                 end
-                if tout then e.faite = true table.insert(fini, f) end
+                if EnvoiCouvert(e) then
+                    e.faite, e.preuve = true, "envoi"
+                    table.insert(fini, f)
+                end
             end
         end
     end
@@ -1153,7 +1336,7 @@ function suivi.EnvoiFait(dest, objets)
     local f = fini[1]
     local suivant
     for _, e in ipairs(f.etapes or {}) do
-        if not e.faite and e.qui and e.qui ~= moi.cle then suivant = e.qui break end
+        if not e.faite and e.qui and e.qui ~= moi.cle and not EstMoiOuFantome(e.qui, dest) then suivant = e.qui break end
     end
     local lignes = { { string.format(L.ROUTE_DONE_FOR, NS.inventaire.NomCourt(dest), f.nom or "?"), "GameFontHighlight", VERT[1], VERT[2], VERT[3] } }
     if suivant then
