@@ -1,0 +1,31 @@
+Portraits de vos personnages, pour Forever SagaCore
+====================================================
+
+Déposez ici, jeu fermé, une image par personnage. Au lancement suivant,
+la suite l'affiche à la place de l'icône de classe (banquiers, bandeau
+des personnages, listes).
+
+Le fichier
+----------
+- Nom : exactement le nom du personnage, majuscule comprise, sans accent
+  à retirer ni ajouter. Exemple : Fleuralas.tga
+- Format : TGA, 32 bits (avec transparence), non compressé.
+- Taille : 128 x 128 pixels (une puissance de 2 obligatoire : 64, 128 ou 256).
+- Cadrage : le visage au centre. Le portrait est affiché en rond : tout ce
+  qui sort du cercle de Modele.tga ne se verra pas.
+
+Faire l'image sur un Mac
+------------------------
+1. En jeu, approchez la caméra du visage, puis Cmd + Maj + 4 et cadrez un
+   carré autour de la tête.
+2. Ouvrez la capture dans Aperçu : Outils, Ajuster la taille, 128 x 128.
+3. Fichier, Exporter, format TGA (cochez Alpha si proposé).
+4. Renommez le fichier au nom du personnage et déposez-le ici.
+
+Ensuite
+-------
+Relancez complètement le jeu : un /reload ne suffit pas pour une nouvelle
+image. Sans image, ou si le fichier est mal nommé, l'icône de classe reste.
+
+Ce dossier n'appartient à aucun add-on : les mises à jour de la suite ne
+l'effacent jamais.
