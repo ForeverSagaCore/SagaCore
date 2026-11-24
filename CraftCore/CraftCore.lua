@@ -52,6 +52,8 @@ end
 -- Apres chaque releve : les infobulles et l'assistant de banque et de
 -- courrier se recalculent sur les nouveaux stocks.
 local function ApresReleve()
+    -- Banquier connecte, banque ouverte : ses mouvements vont au registre.
+    if NS.banquiers and NS.banquiers.ApresReleve then pcall(NS.banquiers.ApresReleve, BanqueOuverte()) end
     if NS.infobulles then NS.infobulles.Invalider() end
     if NS.courrier then NS.courrier.Actualiser() end
     -- Le suivi (Mes fabrications, pourcentages) suit les sacs a chaque
@@ -323,6 +325,7 @@ cadre:SetScript("OnEvent", function(_, evenement, argument1)
     elseif evenement == "BANKFRAME_OPENED" then
         BanqueOuverte(true)
         local resultat = inventaire.Relever(true)
+        if NS.banquiers and NS.banquiers.ApresReleve then pcall(NS.banquiers.ApresReleve, true) end
         if resultat then
             if resultat.nouveauxDeBanque > 0 then
                 NS.Dire(string.format(L.MSG_BANK_FOUND, resultat.nouveauxDeBanque))
