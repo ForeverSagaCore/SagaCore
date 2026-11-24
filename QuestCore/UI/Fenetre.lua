@@ -1097,15 +1097,41 @@ RendreDonjonOuvert = function(contenu, p, d, index, y)
             table.insert(plusTard, { id = id, etat = e })
         end
     end
-    -- Le trajet des prerequis : les quetes a prendre maintenant, et celles
-    -- qu'il faut faire avant les autres (prerequis prenables).
+    -- Le trajet d'avant le donjon : les quetes a prendre maintenant, puis,
+    -- pour chaque quete d'apres, toute sa chaine faisable des maintenant
+    -- (prerequis a prendre, a finir, a rendre, ou qu'ils se trouvent) et
+    -- elle-meme. Ces quetes passent dans "Avant d'y aller" ; ne restent
+    -- "Plus tard" que celles qui demandent un niveau plus haut.
     local vusPre = {}
     for _, id in ipairs(aPrendre) do vusPre[id] = true end
+    local restePlusTard = {}
     for _, q in ipairs(plusTard) do
-        for _, pre in ipairs(NS.donjons.PrealablesManquants(p, q.id)) do
-            if not vusPre[pre] and NS.parcours.EtatEtape(p, pre) == "prendre" then
-                vusPre[pre] = true
-                table.insert(aPrendre, pre)
+        local chemin = NS.parcours.CheminVers and NS.parcours.CheminVers(p, q.id)
+        if chemin and #chemin > 0 then
+            local dedans = NS.donjons.SePrendDedans and NS.donjons.SePrendDedans(q.id)
+            for _, pre in ipairs(chemin) do
+                if not vusPre[pre] and not (pre == q.id and dedans) then
+                    vusPre[pre] = true
+                    table.insert(aPrendre, pre)
+                end
+            end
+            table.insert(kit, q)
+        else
+            table.insert(restePlusTard, q)
+        end
+    end
+    plusTard = restePlusTard
+    -- Un trajet deja cree pour ce donjon suit : ce qui s'est ajoute depuis
+    -- (une quete prise debloque la suivante) s'y ajoute a la fin.
+    if #aPrendre > 0 and NS.parcours.Liste then
+        local nomKit = string.format(L.DUNGEON_KIT_NAME, d.nom)
+        for _, pc in ipairs(NS.parcours.Liste(p.cle)) do
+            if pc.genre == "kit" and pc.nom == nomKit then
+                local deja, passees = {}, pc.passees or {}
+                for _, x in ipairs(pc.etapes) do deja[x] = true end
+                for _, id in ipairs(aPrendre) do
+                    if not deja[id] and not passees[id] then table.insert(pc.etapes, id) end
+                end
             end
         end
     end
