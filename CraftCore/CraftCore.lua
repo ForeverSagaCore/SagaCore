@@ -62,6 +62,34 @@ local function ApresReleve()
     end
 end
 
+-- Ou est le personnage : a sa deconnexion, ses autres personnages savent
+-- s'il est en ville (banque et boite aux lettres), a l'auberge (boite aux
+-- lettres) ou en campagne, pour la feuille de route la plus rapide.
+local CAPITALES = { [1453] = true, [1454] = true, [1455] = true, [1456] = true, [1457] = true,
+    [1458] = true, [1947] = true, [1954] = true, [1955] = true }
+local function NoterLieu()
+    local fiche = NS.base.Personnage()
+    if not fiche then return end
+    local secret = _G.issecretvalue
+    local carte
+    if _G.C_Map and _G.C_Map.GetBestMapForUnit then
+        local ok, m = pcall(_G.C_Map.GetBestMapForUnit, "player")
+        if ok and m and not (secret and secret(m)) then carte = tonumber(m) end
+    end
+    local zone
+    if _G.GetRealZoneText then
+        local ok, z = pcall(_G.GetRealZoneText)
+        if ok and type(z) == "string" and z ~= "" and not (secret and secret(z)) then zone = z end
+    end
+    local repos = false
+    if _G.IsResting then
+        local ok, r = pcall(_G.IsResting)
+        if ok and not (secret and secret(r)) then repos = r and true or false end
+    end
+    local genre = (carte and CAPITALES[carte]) and "ville" or (repos and "auberge" or "campagne")
+    fiche.lieu = { carte = carte, zone = zone, genre = genre, quand = NS.Appeler(_G.time) }
+end
+
 local function ReleverBientot()
     if releveEnAttente then return end
     releveEnAttente = true
@@ -342,6 +370,12 @@ cadre:SetScript("OnEvent", function(_, evenement, argument1)
             ecran.Actualiser()
         end
         ReleverRecettesBientot()
+    elseif evenement == "PLAYER_ENTERING_WORLD" or evenement == "ZONE_CHANGED_NEW_AREA" or evenement == "PLAYER_UPDATE_RESTING" then
+        pcall(NoterLieu)
+    elseif evenement == "PLAYER_LOGOUT" then
+        -- A la deconnexion : ou il est, et un dernier releve de ses sacs.
+        pcall(NoterLieu)
+        pcall(inventaire.Relever, BanqueOuverte())
     elseif evenement == "PLAYER_EQUIPMENT_CHANGED" then
         inventaire.ReleverEquipement()
         ecran.Actualiser()
@@ -357,6 +391,10 @@ Brancher("PLAYER_LOGIN")
 Brancher("BAG_UPDATE_DELAYED")
 Brancher("BANKFRAME_OPENED")
 Brancher("PLAYERBANKSLOTS_CHANGED")
+Brancher("PLAYER_ENTERING_WORLD")
+Brancher("ZONE_CHANGED_NEW_AREA")
+Brancher("PLAYER_UPDATE_RESTING")
+Brancher("PLAYER_LOGOUT")
 Brancher("PLAYERREAGENTBANKSLOTS_CHANGED")
 Brancher("PLAYER_ACCOUNT_BANK_TAB_SLOTS_CHANGED")
 Brancher("BANKFRAME_CLOSED")

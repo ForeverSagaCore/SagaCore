@@ -855,6 +855,25 @@ local function RendreAtelier(contenu)
         end
     end
 
+    -- Feuilles de route : pour chaque objectif en cours, les etapes dans
+    -- l'ordre le plus rapide (les memes qu'au survol dans Mes fabrications).
+    if cle == NS.ClePersonnage() and NS.suivi and NS.suivi.Objectifs and NS.suivi.FeuilleDeRoute then
+        local okO, objectifs = pcall(NS.suivi.Objectifs)
+        local titre = false
+        for _, o in ipairs(okO and objectifs or {}) do
+            local okF, etapes = pcall(NS.suivi.FeuilleDeRoute, o)
+            if not o.atteint and okF and #etapes > 0 then
+                if not titre then index, y = TitreDeSection(contenu, index, y, L.ROUTE_DASH) titre = true end
+                index, y = LigneSimple(contenu, index, y, nil, o.nom or "?",
+                    math.floor((o.pct or 0) * 100 + 0.5) .. " %", function() ecran.Montrer("projets") end)
+                for i, t in ipairs(etapes) do
+                    y = Paragraphe(contenu, y - 6, i .. ". " .. t, "GameFontHighlightSmall", nil, RETRAIT_PAR_NIVEAU + 24)
+                end
+                y = y + 4
+            end
+        end
+    end
+
     -- A faire a la banque et a la boite aux lettres, pour le personnage connecte.
     if cle == NS.ClePersonnage() and NS.courrier and NS.courrier.Plan then
         local ok, plan = pcall(NS.courrier.Plan)

@@ -702,6 +702,154 @@ local function EtapesDeFabrication(lignes)
     return etapes
 end
 
+-- ---------------------------------------------------------------------------
+-- Feuille de route d'un objectif : les etapes dans l'ordre le plus rapide.
+-- Ce qui est deja dans les sacs ne coute rien ; puis le courrier et la banque
+-- du personnage connecte ; puis les autres personnages, en preferant ceux qui
+-- se sont deconnectes en ville (banque et boite aux lettres sur place), puis
+-- a l'auberge (boite aux lettres), puis en campagne ; enfin les achats, la
+-- recolte, et les fabrications. Les memes etapes au survol et dans
+-- l'interface principale.
+-- ---------------------------------------------------------------------------
+local COUT_LIEU = { ville = 1, auberge = 1.5, campagne = 3 }
+local function LieuDe(fiche)
+    local l = type(fiche) == "table" and fiche.lieu
+    if type(l) ~= "table" then return nil end
+    return l
+end
+local function TexteLieu(l)
+    local L = NS.L
+    if not l then return L.ROUTE_WHERE_UNKNOWN end
+    local zone = l.zone or "?"
+    if l.genre == "ville" then return string.format(L.ROUTE_WHERE_CITY, zone) end
+    if l.genre == "auberge" then return string.format(L.ROUTE_WHERE_INN, zone) end
+    return string.format(L.ROUTE_WHERE_FIELD, zone)
+end
+local function Liste(objets)
+    local t = {}
+    for _, x in ipairs(objets) do table.insert(t, x.n .. " " .. NS.inventaire.NomDObjet(x.objet)) end
+    return table.concat(t, ", ")
+end
+function suivi.FeuilleDeRoute(o)
+    local L = NS.L
+    local inv = NS.inventaire
+    local moi = NS.base.Personnage()
+    local etapes = {}
+    if not (o and moi) then return etapes end
+    local nomMoi = inv.NomCourt(moi.cle)
+    -- Ce qui manque dans mes sacs, matiere par matiere.
+    local reste, ordre = {}, {}
+    local monCourrier, maBanque = {}, {}
+    for _, m in ipairs(o.matieres or {}) do
+        local requis = tonumber(m.requis) or 0
+        local sacs, banque, cour = inv.SacsEtBanque(moi, m.objet)
+        local r = requis - sacs
+        if r > 0 then
+            local c = math.min(r, cour or 0)
+            if c > 0 then table.insert(monCourrier, { objet = m.objet, n = c }) r = r - c end
+            local b = math.min(r, banque or 0)
+            if b > 0 then table.insert(maBanque, { objet = m.objet, n = b }) r = r - b end
+            if r > 0 then reste[m.objet] = r table.insert(ordre, m.objet) end
+        end
+    end
+    -- Les autres personnages : au plus rapide (le plus couvert pour le
+    -- moins de deplacement), jusqu'a ce que tout soit trouve.
+    local candidats = {}
+    for _, f in ipairs(NS.base.TousLesPersonnages()) do
+        if f.cle ~= moi.cle and inv.MemeCamp(f) then table.insert(candidats, f) end
+    end
+    local visites = {}
+    while next(reste) do
+        local meilleur, score, prise
+        for _, f in ipairs(candidats) do
+            if not f.vu then
+                local l = LieuDe(f)
+                local cout = COUT_LIEU[l and l.genre or "campagne"] or 3
+                local couvert, p = 0, { sacs = {}, banque = {} }
+                for _, objet in ipairs(ordre) do
+                    local r = reste[objet]
+                    if r and r > 0 then
+                        local s, b, c = inv.SacsEtBanque(f, objet)
+                        s = s + (c or 0)
+                        local ds = math.min(r, s)
+                        local db = math.min(r - ds, b)
+                        if ds > 0 then table.insert(p.sacs, { objet = objet, n = ds }) end
+                        if db > 0 then table.insert(p.banque, { objet = objet, n = db }) end
+                        couvert = couvert + ds + db
+                    end
+                end
+                if couvert > 0 and (not score or couvert / cout > score) then meilleur, score, prise = f, couvert / cout, p end
+            end
+        end
+        if not meilleur then break end
+        meilleur.vu = true
+        for _, x in ipairs(prise.sacs) do reste[x.objet] = reste[x.objet] - x.n if reste[x.objet] <= 0 then reste[x.objet] = nil end end
+        for _, x in ipairs(prise.banque) do reste[x.objet] = reste[x.objet] - x.n if reste[x.objet] <= 0 then reste[x.objet] = nil end end
+        table.insert(visites, { fiche = meilleur, prise = prise })
+    end
+    for _, f in ipairs(candidats) do f.vu = nil end
+    table.sort(visites, function(a, b)
+        local ca = COUT_LIEU[(LieuDe(a.fiche) or {}).genre or "campagne"] or 3
+        local cb = COUT_LIEU[(LieuDe(b.fiche) or {}).genre or "campagne"] or 3
+        return ca < cb
+    end)
+    -- Les etapes, dans l'ordre.
+    if #monCourrier > 0 or #maBanque > 0 then
+        if #monCourrier > 0 then table.insert(etapes, string.format(L.ROUTE_MY_MAIL, nomMoi, Liste(monCourrier))) end
+        if #maBanque > 0 then table.insert(etapes, string.format(L.ROUTE_MY_BANK, nomMoi, Liste(maBanque))) end
+    end
+    for _, v in ipairs(visites) do
+        local nom = inv.NomCourt(v.fiche.cle)
+        local tout = {}
+        for _, x in ipairs(v.prise.sacs) do table.insert(tout, x) end
+        for _, x in ipairs(v.prise.banque) do table.insert(tout, x) end
+        if #v.prise.banque > 0 then
+            table.insert(etapes, string.format(L.ROUTE_OTHER_BANK, nom, TexteLieu(LieuDe(v.fiche)), Liste(v.prise.banque), nomMoi, Liste(tout)))
+        else
+            table.insert(etapes, string.format(L.ROUTE_OTHER_BAGS, nom, TexteLieu(LieuDe(v.fiche)), nomMoi, Liste(tout)))
+        end
+    end
+    if #visites > 0 then table.insert(etapes, string.format(L.ROUTE_BACK, nomMoi)) end
+    -- A acheter (ce qui manque encore dans les sacs).
+    local achats = {}
+    for objet, n in pairs(o.achats or {}) do
+        local manque = (tonumber(n) or 0) - (inv.DisponibleDansLesSacs(objet) or 0)
+        if manque > 0 then table.insert(achats, { objet = objet, n = manque }) end
+    end
+    -- Ce que personne n'a : a recolter ou a trouver.
+    -- Ce qui se vend chez tous les marchands (fioles, fils...) s'achete.
+    local introuvables = {}
+    local cat = NS.recettes
+    for _, objet in ipairs(ordre) do
+        if reste[objet] and (not o.achats or not o.achats[objet]) then
+            if cat and cat.EstVenduPartout and cat.EstVenduPartout(objet) then
+                table.insert(achats, { objet = objet, n = reste[objet] })
+            else
+                table.insert(introuvables, { objet = objet, n = reste[objet] })
+            end
+        end
+    end
+    if #achats > 0 then table.insert(etapes, string.format(L.ROUTE_BUY, Liste(achats))) end
+    if #introuvables > 0 then table.insert(etapes, string.format(L.ROUTE_GATHER, Liste(introuvables))) end
+    -- Les fabrications, dans l'ordre.
+    for _, e in ipairs(EtapesDeFabrication(o.lignes)) do
+        if not e.faite and e.recette then
+            local nomR = e.recette.nom or e.recette.name or inv.NomDObjet(e.objet)
+            table.insert(etapes, string.format(L.ROUTE_CRAFT, nomR, e.fois or 1))
+        end
+    end
+    return etapes
+end
+
+-- La feuille de route dans une infobulle, numerotee.
+function suivi.FeuilleDansLInfobulle(tt, o)
+    local etapes = suivi.FeuilleDeRoute(o)
+    if #etapes == 0 then return end
+    tt:AddLine(" ")
+    tt:AddLine(NS.L.ROUTE_TITLE, 1, 0.82, 0)
+    for i, t in ipairs(etapes) do tt:AddLine(i .. ". " .. t, 1, 1, 1, true) end
+end
+
 -- La prochaine etape : la premiere pas faite. Rend l'etape, son rang, et
 -- si elle peut etre lancee maintenant (tout dans les sacs).
 local function ProchaineEtape(etapes)
@@ -1018,7 +1166,6 @@ local function DessinerObjectifs(y, objectifs, vue)
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                     GameTooltip:SetText(objectif.nom or "", 1, 0.82, 0)
                     if e then
-                        GameTooltip:AddLine(string.format(L.CRAFT_STEP_TIP, rangE, #etapesS, NS.inventaire.NomDObjet(e.objet), e.fois or 1), 1, 1, 1, true)
                         local pret = NS.actions and NS.actions.EtatPourFabriquer and NS.actions.EtatPourFabriquer(e.recette)
                         if pret == nil then
                             GameTooltip:AddLine(L.CRAFT_OTHER_CHAR, 0.8, 0.8, 0.8, true)
@@ -1027,7 +1174,9 @@ local function DessinerObjectifs(y, objectifs, vue)
                     -- Toutes les matieres de l'objectif, aux quantites de
                     -- l'objectif entier, et ou elles sont des qu'elles ne sont
                     -- pas toutes dans les sacs (banque, courrier, autres persos).
-                    NS.inventaire.MatieresDansLInfobulle(GameTooltip, objectif.matieres)
+                    -- La feuille de route : les etapes dans l'ordre le plus
+                    -- rapide (qui envoie quoi, banque, courrier, achats...).
+                    suivi.FeuilleDansLInfobulle(GameTooltip, objectif)
                     for _, achat in pairs(objectif.achats or {}) do
                         GameTooltip:AddLine(L.CRAFT_TO_BUY, 1, 0.82, 0, true)
                         break
