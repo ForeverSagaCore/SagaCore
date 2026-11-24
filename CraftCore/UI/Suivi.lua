@@ -712,6 +712,13 @@ end
 -- l'interface principale.
 -- ---------------------------------------------------------------------------
 local COUT_LIEU = { ville = 1, auberge = 1.5, campagne = 3 }
+-- Un banquier attend toujours en ville, a cote de sa banque : il passe
+-- avant les autres personnages.
+local function Cout(fiche)
+    if NS.banquiers and NS.banquiers.Est(fiche.cle) then return 0.8 end
+    local l = type(fiche) == "table" and type(fiche.lieu) == "table" and fiche.lieu
+    return COUT_LIEU[l and l.genre or "campagne"] or 3
+end
 local function LieuDe(fiche)
     local l = type(fiche) == "table" and fiche.lieu
     if type(l) ~= "table" then return nil end
@@ -763,8 +770,7 @@ function suivi.FeuilleDeRoute(o)
         local meilleur, score, prise
         for _, f in ipairs(candidats) do
             if not f.vu then
-                local l = LieuDe(f)
-                local cout = COUT_LIEU[l and l.genre or "campagne"] or 3
+                local cout = Cout(f)
                 local couvert, p = 0, { sacs = {}, banque = {} }
                 for _, objet in ipairs(ordre) do
                     local r = reste[objet]
@@ -788,28 +794,25 @@ function suivi.FeuilleDeRoute(o)
         table.insert(visites, { fiche = meilleur, prise = prise })
     end
     for _, f in ipairs(candidats) do f.vu = nil end
-    table.sort(visites, function(a, b)
-        local ca = COUT_LIEU[(LieuDe(a.fiche) or {}).genre or "campagne"] or 3
-        local cb = COUT_LIEU[(LieuDe(b.fiche) or {}).genre or "campagne"] or 3
-        return ca < cb
-    end)
+    table.sort(visites, function(a, b) return Cout(a.fiche) < Cout(b.fiche) end)
     -- Les etapes, dans l'ordre.
     if #monCourrier > 0 or #maBanque > 0 then
-        if #monCourrier > 0 then table.insert(etapes, string.format(L.ROUTE_MY_MAIL, nomMoi, Liste(monCourrier))) end
-        if #maBanque > 0 then table.insert(etapes, string.format(L.ROUTE_MY_BANK, nomMoi, Liste(maBanque))) end
+        if #monCourrier > 0 then table.insert(etapes, { texte = string.format(L.ROUTE_MY_MAIL, nomMoi, Liste(monCourrier)), guide = { service = "courrier" } }) end
+        if #maBanque > 0 then table.insert(etapes, { texte = string.format(L.ROUTE_MY_BANK, nomMoi, Liste(maBanque)), guide = { service = "banque" } }) end
     end
     for _, v in ipairs(visites) do
         local nom = inv.NomCourt(v.fiche.cle)
+        if NS.banquiers and NS.banquiers.Est(v.fiche.cle) then nom = nom .. " (" .. L.ROUTE_BANKER .. ")" end
         local tout = {}
         for _, x in ipairs(v.prise.sacs) do table.insert(tout, x) end
         for _, x in ipairs(v.prise.banque) do table.insert(tout, x) end
         if #v.prise.banque > 0 then
-            table.insert(etapes, string.format(L.ROUTE_OTHER_BANK, nom, TexteLieu(LieuDe(v.fiche)), Liste(v.prise.banque), nomMoi, Liste(tout)))
+            table.insert(etapes, { texte = string.format(L.ROUTE_OTHER_BANK, nom, TexteLieu(LieuDe(v.fiche)), Liste(v.prise.banque), nomMoi, Liste(tout)) })
         else
-            table.insert(etapes, string.format(L.ROUTE_OTHER_BAGS, nom, TexteLieu(LieuDe(v.fiche)), nomMoi, Liste(tout)))
+            table.insert(etapes, { texte = string.format(L.ROUTE_OTHER_BAGS, nom, TexteLieu(LieuDe(v.fiche)), nomMoi, Liste(tout)) })
         end
     end
-    if #visites > 0 then table.insert(etapes, string.format(L.ROUTE_BACK, nomMoi)) end
+    if #visites > 0 then table.insert(etapes, { texte = string.format(L.ROUTE_BACK, nomMoi), guide = { service = "courrier" } }) end
     -- A acheter (ce qui manque encore dans les sacs).
     local achats = {}
     for objet, n in pairs(o.achats or {}) do
@@ -829,13 +832,13 @@ function suivi.FeuilleDeRoute(o)
             end
         end
     end
-    if #achats > 0 then table.insert(etapes, string.format(L.ROUTE_BUY, Liste(achats))) end
-    if #introuvables > 0 then table.insert(etapes, string.format(L.ROUTE_GATHER, Liste(introuvables))) end
+    if #achats > 0 then table.insert(etapes, { texte = string.format(L.ROUTE_BUY, Liste(achats)), guide = { marchand = achats[1].objet } }) end
+    if #introuvables > 0 then table.insert(etapes, { texte = string.format(L.ROUTE_GATHER, Liste(introuvables)), guide = { recolte = { objectifs = { o.cle } } } }) end
     -- Les fabrications, dans l'ordre.
     for _, e in ipairs(EtapesDeFabrication(o.lignes)) do
         if not e.faite and e.recette then
             local nomR = e.recette.nom or e.recette.name or inv.NomDObjet(e.objet)
-            table.insert(etapes, string.format(L.ROUTE_CRAFT, nomR, e.fois or 1))
+            table.insert(etapes, { texte = string.format(L.ROUTE_CRAFT, nomR, e.fois or 1) })
         end
     end
     return etapes
@@ -847,7 +850,7 @@ function suivi.FeuilleDansLInfobulle(tt, o)
     if #etapes == 0 then return end
     tt:AddLine(" ")
     tt:AddLine(NS.L.ROUTE_TITLE, 1, 0.82, 0)
-    for i, t in ipairs(etapes) do tt:AddLine(i .. ". " .. t, 1, 1, 1, true) end
+    for i, t in ipairs(etapes) do tt:AddLine(i .. ". " .. t.texte, 1, 1, 1, true) end
 end
 
 -- La prochaine etape : la premiere pas faite. Rend l'etape, son rang, et

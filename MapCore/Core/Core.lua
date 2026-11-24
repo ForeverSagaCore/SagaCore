@@ -128,6 +128,35 @@ _G.MapCoreAPI = {
         if (oui ~= false) ~= (pg.EnGuidage and pg.EnGuidage() or false) and pg.BasculerTournee then pg.BasculerTournee() end
     end,
     EffacerTournee = function() if NS.pageCarte and NS.pageCarte.EffacerTournee then NS.pageCarte.EffacerTournee() end end,
+    -- Le service le plus proche du personnage sur son continent ("banque",
+    -- "courrier", "auberge"...) : { carte, x (0-1), y (0-1), nom }, ou nil.
+    ServicePlusProche = function(categorie)
+        local S = _G.CoreSuite
+        local Lx = S and S.Lieux
+        if not (Lx and Lx.Ici and Lx.Monde and NS.SERVICES) then return nil end
+        local ici = Lx.Ici()
+        if not (ici and ici.wx) then return nil end
+        local camp = NS.Appeler(NS.Lecture("UnitFactionGroup"), "player")
+        local lettre = camp == "Alliance" and "A" or (camp == "Horde" and "H" or nil)
+        local meilleur, cible
+        for carte, liste in pairs(NS.SERVICES) do
+            for _, e in ipairs(liste) do
+                local fac = e[6] or ""
+                if e[1] == categorie and (fac == "" or not lettre or fac:find(lettre, 1, true)) then
+                    local x, y = (tonumber(e[2]) or 0) / 100, (tonumber(e[3]) or 0) / 100
+                    local wx, wy, c = Lx.Monde(carte, x, y)
+                    if wx and c == ici.continent then
+                        local d = (wx - ici.wx) ^ 2 + (wy - ici.wy) ^ 2
+                        if not meilleur or d < meilleur then
+                            meilleur = d
+                            cible = { carte = carte, x = x, y = y, nom = (e[4] ~= "" and e[4]) or nil }
+                        end
+                    end
+                end
+            end
+        end
+        return cible
+    end,
 }
 
 -- ---------------------------------------------------------------------------

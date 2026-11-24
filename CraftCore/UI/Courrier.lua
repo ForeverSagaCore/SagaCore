@@ -110,6 +110,200 @@ local function EnRoutePour(cle)
     return e.objets or {}
 end
 
+-- ---------------------------------------------------------------------------
+-- Banquiers : des personnages qui gardent chacun une famille de composants
+-- (herbes, metaux, etoffes...). A la boite aux lettres, chaque personnage
+-- envoie au bon banquier ce qui ne lui sert pas ; un banquier range en
+-- banque ce qui est a lui et ressort ce qui ne l'est pas. Un registre garde
+-- ses mouvements de banque et ses depenses.
+-- ---------------------------------------------------------------------------
+NS.banquiers = {}
+local bq = NS.banquiers
+
+-- Le catalogue des specialites (classe:sous-classe d'objet du jeu). "reste" :
+-- tout composant qu'aucun autre banquier ne prend. "vendus" : ce qui se vend
+-- chez tous les marchands (fioles, fils, sel...).
+bq.TYPES = {
+    { cle = "reserve",  nom = "Mulgore",     icone = "Interface\\Icons\\INV_Misc_Bag_10", reste = true },
+    { cle = "herbes",   nom = "Fleuralas",   icone = "Interface\\Icons\\INV_Misc_Herb_07", classes = { "7:9" } },
+    { cle = "metaux",   nom = "Lingotar",    icone = "Interface\\Icons\\INV_Ingot_03", classes = { "7:7", "7:1", "7:2", "7:3", "7:4" } },
+    { cle = "etoffes",  nom = "Tannaris",    icone = "Interface\\Icons\\INV_Fabric_Linen_01", classes = { "7:5", "7:6" } },
+    { cle = "cuisine",  nom = "Gargotzan",   icone = "Interface\\Icons\\INV_Misc_Food_15", classes = { "7:8" } },
+    { cle = "enchant",  nom = "Azsharme",    icone = "Interface\\Icons\\INV_Enchant_DustStrange", classes = { "7:12", "7:10" } },
+    { cle = "marchand", nom = "Plandrassil", icone = "Interface\\Icons\\INV_Scroll_03", classes = { "9", "5" }, vendus = true },
+}
+bq.PAR_CLE = {}
+for _, t in ipairs(bq.TYPES) do bq.PAR_CLE[t.cle] = t end
+
+local function DonneesBq()
+    local d = CraftCoreDB
+    if type(d) ~= "table" then return nil end
+    d.banquiers = type(d.banquiers) == "table" and d.banquiers or {}
+    d.registre = type(d.registre) == "table" and d.registre or {}
+    return d
+end
+
+-- Le nom de famille commun, ajoute au nom affiche.
+function bq.Famille()
+    local d = DonneesBq()
+    return d and type(d.banquiersFamille) == "string" and d.banquiersFamille or "des Sept Nains"
+end
+
+-- La specialite d'un objet, d'apres sa classe dans le jeu ; nil : ce n'est
+-- pas un composant (equipement, quete...), aucun banquier ne le prend.
+function bq.TypeDe(objet)
+    objet = tonumber(objet)
+    if not objet then return nil end
+    if NS.recettes and NS.recettes.EstVenduPartout and NS.recettes.EstVenduPartout(objet) then return "marchand" end
+    local lecture = NS.jeu and NS.jeu.infoObjetImmediate
+    if not lecture then return nil end
+    local ok, _, _, _, _, _, classe, sous = pcall(lecture, objet)
+    classe, sous = tonumber(classe), tonumber(sous)
+    if not (ok and classe) then return nil end
+    local avec, seule = classe .. ":" .. tostring(sous), tostring(classe)
+    for _, t in ipairs(bq.TYPES) do
+        for _, c in ipairs(t.classes or {}) do
+            if c == avec or c == seule then return t.cle end
+        end
+    end
+    if classe == 7 then return "reserve" end
+    return nil
+end
+
+-- Les banquiers, dans l'ordre ou ils ont ete nommes.
+function bq.Liste()
+    local d = DonneesBq()
+    local liste = {}
+    if not d then return liste end
+    local fiches = {}
+    for _, f in ipairs(NS.base.TousLesPersonnages()) do fiches[f.cle] = f end
+    for cle, b in pairs(d.banquiers) do
+        if type(b) == "table" and fiches[cle] then
+            table.insert(liste, { cle = cle, fiche = fiches[cle], types = type(b.types) == "table" and b.types or {}, ordre = b.ordre or 0 })
+        end
+    end
+    table.sort(liste, function(a, b) return a.ordre < b.ordre end)
+    return liste
+end
+function bq.Est(cle)
+    local d = DonneesBq()
+    return d and type(d.banquiers[cle]) == "table" or false
+end
+function bq.Nommer(cle)
+    local d = DonneesBq()
+    if not d or not cle or d.banquiers[cle] then return end
+    local n = 0
+    for _, b in pairs(d.banquiers) do if type(b) == "table" and (b.ordre or 0) > n then n = b.ordre end end
+    -- Le premier banquier garde tout ; les suivants, rien tant qu'on ne
+    -- leur a pas choisi de specialite.
+    d.banquiers[cle] = { ordre = n + 1, types = next(d.banquiers) == nil and { reserve = true } or {} }
+end
+function bq.Retirer(cle)
+    local d = DonneesBq()
+    if d then d.banquiers[cle] = nil end
+end
+function bq.Basculer(cle, typ)
+    local d = DonneesBq()
+    local b = d and d.banquiers[cle]
+    if type(b) ~= "table" then return end
+    b.types = type(b.types) == "table" and b.types or {}
+    b.types[typ] = (not b.types[typ]) or nil
+end
+
+-- Le banquier d'un objet : celui de sa specialite, sinon celui de la
+-- reserve. nil : aucun banquier ne le prend.
+function bq.Pour(objet)
+    local typ = bq.TypeDe(objet)
+    if not typ then return nil end
+    local reserve
+    for _, b in ipairs(bq.Liste()) do
+        if b.types[typ] then return b.cle end
+        if b.types.reserve and not reserve then reserve = b.cle end
+    end
+    return reserve
+end
+
+-- Registre : les mouvements et les depenses d'un banquier, les plus recents
+-- d'abord (300 au plus).
+function bq.Noter(cle, genre, objet, n, cuivre)
+    local d = DonneesBq()
+    if not (d and cle and bq.Est(cle)) then return end
+    d.registre[cle] = type(d.registre[cle]) == "table" and d.registre[cle] or {}
+    local r = d.registre[cle]
+    table.insert(r, 1, { quand = NS.Appeler(_G.time) or 0, genre = genre, objet = objet, n = n, cuivre = cuivre })
+    while #r > 300 do table.remove(r) end
+end
+function bq.Registre(cle)
+    local d = DonneesBq()
+    return d and type(d.registre[cle]) == "table" and d.registre[cle] or {}
+end
+
+-- La banque d'un personnage, objet par objet, telle que vue la derniere fois.
+function bq.Banque(fiche)
+    local t = {}
+    if type(fiche) ~= "table" then return t end
+    local conteneurs = NS.base.ConteneursDe(fiche)
+    for objet, ligne in pairs(NS.base.StocksDe(fiche) or {}) do
+        for id, q in pairs(type(ligne) == "table" and ligne.parConteneur or {}) do
+            local fc = conteneurs[id]
+            if fc and fc.source == "banque" then
+                local o = tonumber(objet)
+                if o then t[o] = (t[o] or 0) + (tonumber(q) or 0) end
+            end
+        end
+    end
+    return t
+end
+
+-- Apres un releve, banque ouverte : ce qui est entre ou sorti de la banque
+-- du banquier connecte va au registre.
+function bq.ApresReleve(banqueOuverte)
+    if not banqueOuverte then return end
+    local moi = NS.base.Personnage()
+    if not (moi and bq.Est(moi.cle)) then return end
+    local d = DonneesBq()
+    d.banqueVue = type(d.banqueVue) == "table" and d.banqueVue or {}
+    local avant = d.banqueVue[moi.cle]
+    local maintenant = bq.Banque(moi)
+    if type(avant) == "table" then
+        local vus = {}
+        for objet, n in pairs(maintenant) do
+            vus[objet] = true
+            local ecart = n - (avant[objet] or 0)
+            if ecart > 0 then bq.Noter(moi.cle, "depot", objet, ecart) elseif ecart < 0 then bq.Noter(moi.cle, "retrait", objet, -ecart) end
+        end
+        for objet, n in pairs(avant) do
+            if not vus[objet] and n > 0 then bq.Noter(moi.cle, "retrait", objet, n) end
+        end
+    end
+    d.banqueVue[moi.cle] = maintenant
+end
+
+-- Les depenses et les recettes d'un banquier chez un marchand ou a l'hotel
+-- des ventes (l'or gagne ou perdu pendant que la fenetre est ouverte).
+do
+    local f = CreateFrame("Frame")
+    local chez, argent
+    local function Argent() return tonumber(NS.Appeler(_G.GetMoney)) or 0 end
+    for _, e in ipairs({ "MERCHANT_SHOW", "MERCHANT_CLOSED", "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "PLAYER_MONEY" }) do
+        pcall(f.RegisterEvent, f, e)
+    end
+    f:SetScript("OnEvent", function(_, e)
+        if e == "MERCHANT_SHOW" then chez, argent = "marchand", Argent()
+        elseif e == "AUCTION_HOUSE_SHOW" then chez, argent = "hv", Argent()
+        elseif e == "MERCHANT_CLOSED" or e == "AUCTION_HOUSE_CLOSED" then chez = nil
+        elseif e == "PLAYER_MONEY" and chez and argent then
+            local now = Argent()
+            local ecart = now - argent
+            argent = now
+            local moi = NS.base.Personnage()
+            if moi and ecart ~= 0 then
+                pcall(bq.Noter, moi.cle, (ecart < 0 and "achat_" or "vente_") .. chez, nil, nil, math.abs(ecart))
+            end
+        end
+    end)
+end
+
 function courrier.Plan()
     local moi = NS.base.Personnage()
     if not moi then return nil end
@@ -255,6 +449,12 @@ function courrier.Plan()
             if sortir > 0 then table.insert(plan.sortir, { objet = objet, quantite = sortir }) end
         end
     end
+    -- Les banquiers : ce qui ne sert pas ici part chez le banquier de sa
+    -- specialite ; un banquier ressort ce qui n'est pas a lui.
+    if NS.banquiers.AjouterEnvois then
+        local okB, souciB = pcall(NS.banquiers.AjouterEnvois, plan, moi)
+        if not okB then NS.base.NoterIncident("banquiers", souciB) end
+    end
     table.sort(plan.demandes, function(a, b) return a.quantite > b.quantite end)
     table.sort(plan.sortir, function(a, b) return a.quantite > b.quantite end)
     table.sort(plan.envois, function(a, b) return a.nom < b.nom end)
@@ -324,6 +524,56 @@ local function ConteneursDeBanque()
     end
     table.sort(liste)
     return liste
+end
+
+-- Banquiers : les envois vers chacun, d'apres les sacs tels qu'ils sont
+-- (jamais un objet lie, qui ne peut pas partir par courrier).
+function bq.AjouterEnvois(plan, moi)
+    local liste = bq.Liste()
+    if #liste == 0 or not moi then return end
+    local garder = plan.garder or {}
+    local prevus = {}
+    for _, e in ipairs(plan.envois) do
+        for _, l in ipairs(e.lignes) do prevus[l.objet] = (prevus[l.objet] or 0) + (l.quantite or 0) end
+    end
+    local dispo = {}
+    for _, id in ipairs(TousLesSacs()) do
+        for emplacement = 1, NombreDEmplacements(id) do
+            local info = NS.Appeler(Conteneur("GetContainerItemInfo"), id, emplacement)
+            local objet = type(info) == "table" and tonumber(info.itemID)
+            if objet and not info.isBound then dispo[objet] = (dispo[objet] or 0) + (tonumber(info.stackCount) or 1) end
+        end
+    end
+    local function EnvoiPour(cle)
+        for _, e in ipairs(plan.envois) do if e.cle == cle then return e end end
+        local e = { cle = cle, nom = Nom(cle), lignes = {}, banquier = true }
+        table.insert(plan.envois, e)
+        return e
+    end
+    for objet, n in pairs(dispo) do
+        local dest = bq.Pour(objet)
+        if dest and dest ~= moi.cle then
+            local reste = n - (garder[objet] or 0) - (prevus[objet] or 0)
+            if reste > 0 then
+                table.insert(EnvoiPour(dest).lignes, { objet = objet, quantite = reste, enBanque = 0, banquier = true })
+            end
+        end
+    end
+    -- Un banquier ressort de sa banque ce qui revient a un autre banquier.
+    if bq.Est(moi.cle) then
+        local deja = {}
+        for _, l in ipairs(plan.sortir) do deja[l.objet] = true end
+        for objet, n in pairs(bq.Banque(moi)) do
+            local dest = bq.Pour(objet)
+            if dest and dest ~= moi.cle and not deja[objet] and n > 0 then
+                table.insert(plan.sortir, { objet = objet, quantite = n, banquier = true })
+            end
+        end
+    end
+end
+function bq.EstAMoi(objet)
+    local moi = NS.base.Personnage()
+    return moi and bq.Est(moi.cle) and bq.Pour(objet) == moi.cle or false
 end
 
 local function CaseLibre(reservees)
@@ -545,7 +795,7 @@ function courrier.PilesACompleter(plan)
     for _, id in ipairs(TousLesSacs()) do
         for emplacement = 1, NombreDEmplacements(id) do
             local objet, nombre = ContenuDe(id, emplacement)
-            if objet and enBanque[objet] and not aSortir[objet] then
+            if objet and (enBanque[objet] or bq.EstAMoi(objet)) and not aSortir[objet] then
                 if not parObjet[objet] then
                     parObjet[objet] = { objet = objet, quantite = 0 }
                     table.insert(liste, parObjet[objet])

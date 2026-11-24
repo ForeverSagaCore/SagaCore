@@ -143,6 +143,7 @@ local PAGES = {
     { cle = "monter",      libelle = "NAV_LEVEL_UP_THIS", icone = "Interface\\Icons\\INV_Misc_Book_11" },
     -- Tous les metiers.
     { cle = "stocksTous",  libelle = "NAV_STOCKS_ALL",   icone = "Interface\\Icons\\INV_Misc_Bag_10", filet = true },
+    { cle = "banquiers",   libelle = "NAV_BANKERS",      icone = "Interface\\Icons\\INV_Misc_Coin_02" },
     { cle = "progression", libelle = "NAV_LEVEL_UP",     icone = "Interface\\Icons\\INV_Misc_Book_11" },
     -- L'equipement et les caisses ont leur onglet a droite, sous les metiers.
     { cle = "reglages",    libelle = "NAV_SETTINGS",     icone = "Interface\\Icons\\Trade_Engineering", filet = true },
@@ -866,8 +867,17 @@ local function RendreAtelier(contenu)
                 if not titre then index, y = TitreDeSection(contenu, index, y, L.ROUTE_DASH) titre = true end
                 index, y = LigneSimple(contenu, index, y, nil, o.nom or "?",
                     math.floor((o.pct or 0) * 100 + 0.5) .. " %", function() ecran.Montrer("projets") end)
+                -- Une ligne par etape ; celles qui menent quelque part se
+                -- guident d'un clic (banque, boite aux lettres, marchand,
+                -- recolte), avec le guide choisi.
                 for i, t in ipairs(etapes) do
-                    y = Paragraphe(contenu, y - 6, i .. ". " .. t, "GameFontHighlightSmall", nil, RETRAIT_PAR_NIVEAU + 24)
+                    local g = t.guide
+                    local ligne
+                    index, y, ligne = LigneSimple(contenu, index, y, nil, i .. ". " .. t.texte,
+                        g and L.ROUTE_GUIDE or "", g and function()
+                            if NS.guidage and NS.guidage.Etape then NS.guidage.Etape(g) end
+                        end or nil)
+                    if ligne then ligne.nom:SetWordWrap(false) end
                 end
                 y = y + 4
             end
@@ -4146,6 +4156,244 @@ local function EtatDeCommande(c)
     return L.ORDER_STATE_DONE, { 0.31, 0.82, 0.41 }
 end
 
+
+-- ---------------------------------------------------------------------------
+-- Mes banquiers : un onglet-portrait par banquier, sa fiche dessous (ses
+-- specialites a cocher, sa banque en miniature, son registre).
+-- ---------------------------------------------------------------------------
+local COLONNES_BANQUE = 12
+local function DateCourte(quand)
+    local f = _G.date
+    if not (f and quand and quand > 0) then return "" end
+    local ok, t = pcall(f, "%d/%m %H:%M", quand)
+    return ok and t or ""
+end
+local function Argent(cuivre)
+    cuivre = tonumber(cuivre) or 0
+    local po, pa, pc = math.floor(cuivre / 10000), math.floor(cuivre / 100) % 100, cuivre % 100
+    local t = {}
+    if po > 0 then table.insert(t, po .. " po") end
+    if pa > 0 then table.insert(t, pa .. " pa") end
+    if pc > 0 or #t == 0 then table.insert(t, pc .. " pc") end
+    return table.concat(t, " ")
+end
+local function RendreBanquiers(contenu)
+    CacherLignesAuDela(contenu, 1)
+    local bq = NS.banquiers
+    local z = contenu.zoneBq
+    if not z then
+        z = CreateFrame("Frame", nil, contenu)
+        z:SetPoint("TOPLEFT")
+        z:SetPoint("TOPRIGHT")
+        z:SetHeight(1)
+        z.onglets, z.cases, z.cellules = {}, {}, {}
+        contenu.zoneBq = z
+    end
+    for _, w in ipairs(z.onglets) do w:Hide() end
+    for _, w in ipairs(z.cases) do w:Hide() w.libelle:Hide() w.icone:Hide() end
+    for _, w in ipairs(z.cellules) do w:Hide() end
+    if z.retirer then z.retirer:Hide() end
+    z:Show()
+    local S = _G.CoreSuite
+    local index, y = 0, 0
+    local gauche = RETRAIT_PAR_NIVEAU + 2
+    index, y = EnTeteDePage(contenu, index, y, L.BK_TITLE)
+    y = Paragraphe(contenu, y, L.BK_HELP, "GameFontDisableSmall")
+
+    -- Nommer un banquier : la liste de mes personnages qui ne le sont pas.
+    if not z.nommer and S and S.ListeDeroulante then
+        z.libelleNommer = z:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        z.nommer = S.ListeDeroulante(z, function()
+            local o = {}
+            for _, f in ipairs(NS.base.TousLesPersonnages()) do
+                if not bq.Est(f.cle) then table.insert(o, { f.cle, NS.inventaire.NomCourt(f.cle) }) end
+            end
+            if #o == 0 then table.insert(o, { "", L.BK_NONE_LEFT }) end
+            return o
+        end, function() return "" end, function(v)
+            if v and v ~= "" then bq.Nommer(v) ecran.banquierChoisi = v end
+        end, function() ecran.Montrer("banquiers") end)
+    end
+    if z.nommer then
+        z.libelleNommer:ClearAllPoints()
+        z.libelleNommer:SetPoint("TOPLEFT", contenu, "TOPLEFT", gauche, -(y + 6))
+        z.libelleNommer:SetText(L.BK_NAME)
+        z.libelleNommer:Show()
+        z.nommer:ClearAllPoints()
+        z.nommer:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -y)
+        z.nommer:Show()
+        if z.nommer.Rendre then z.nommer.Rendre() end
+        y = y + 32
+    end
+
+    local liste = bq.Liste()
+    if #liste == 0 then
+        y = Paragraphe(contenu, y, L.BK_EMPTY, "GameFontDisableSmall")
+        contenu:SetHeight(math.max(y, 1))
+        return
+    end
+    local choisi
+    for _, b in ipairs(liste) do if b.cle == ecran.banquierChoisi then choisi = b end end
+    choisi = choisi or liste[1]
+    ecran.banquierChoisi = choisi.cle
+
+    -- Les onglets : un portrait par banquier, le choisi eclaire.
+    local x = gauche
+    for i, b in ipairs(liste) do
+        local o = z.onglets[i]
+        if not o then
+            -- Le portrait dans un cadre d'emplacement du jeu, comme la bande
+            -- des personnages.
+            o = CreateFrame("Button", nil, z)
+            o:SetSize(40, 40)
+            o.cadre = o:CreateTexture(nil, "BACKGROUND")
+            o.cadre:SetAllPoints()
+            o.cadre:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
+            o.visage = o:CreateTexture(nil, "ARTWORK")
+            o.visage:SetPoint("TOPLEFT", 5, -5)
+            o.visage:SetPoint("BOTTOMRIGHT", -5, 5)
+            o.halo = o:CreateTexture(nil, "OVERLAY")
+            o.halo:SetAllPoints()
+            o.halo:SetTexture("Interface\\Buttons\\CheckButtonHilight")
+            o.halo:SetBlendMode("ADD")
+            o:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+            o:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            z.onglets[i] = o
+        end
+        o:ClearAllPoints()
+        o:SetPoint("TOPLEFT", contenu, "TOPLEFT", x, -y)
+        PoserVisage(o.visage, b.fiche, b.cle == NS.ClePersonnage())
+        o.halo:SetShown(b == choisi)
+        local cle = b.cle
+        o:SetScript("OnClick", function() ecran.banquierChoisi = cle ecran.Montrer("banquiers") end)
+        o:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(NS.inventaire.NomCourt(cle) .. " " .. bq.Famille(), 1, 0.82, 0)
+            GameTooltip:Show()
+        end)
+        o:Show()
+        x = x + 46
+    end
+    y = y + 50
+
+    -- La fiche : le nom et son nom de famille, a la couleur de sa classe.
+    local fiche = choisi.fiche
+    local c = CouleurDeClasseDe(fiche)
+    local nom = NS.inventaire.NomCourt(choisi.cle)
+    if c then nom = string.format("|cff%02x%02x%02x%s|r", c.r * 255, c.g * 255, c.b * 255, nom) end
+    local releve = NS.base.ReleveDe and NS.base.ReleveDe(fiche)
+    index, y = TitreDeSection(contenu, index, y, nom .. " " .. bq.Famille(),
+        releve and string.format(L.BK_SEEN, tostring(releve):sub(1, 16)) or L.BK_NEVER)
+
+    -- Ses specialites, sur deux colonnes.
+    index, y = TitreDeSection(contenu, index, y, L.BK_TYPES)
+    local largeurC = math.floor(((tonumber(contenu:GetWidth()) or 600) - gauche - 20) / 2)
+    for i, t in ipairs(bq.TYPES) do
+        local cs = z.cases[i]
+        if not cs then
+            cs = CreateFrame("CheckButton", nil, z, "UICheckButtonTemplate")
+            cs:SetSize(24, 24)
+            cs.icone = z:CreateTexture(nil, "ARTWORK")
+            cs.icone:SetSize(18, 18)
+            cs.icone:SetPoint("LEFT", cs, "RIGHT", 2, 0)
+            cs.libelle = z:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            cs.libelle:SetPoint("LEFT", cs.icone, "RIGHT", 6, 0)
+            cs.libelle:SetWordWrap(false)
+            z.cases[i] = cs
+        end
+        local col, rang = (i - 1) % 2, math.floor((i - 1) / 2)
+        cs:ClearAllPoints()
+        cs:SetPoint("TOPLEFT", contenu, "TOPLEFT", gauche + col * largeurC, -(y + rang * 26))
+        cs.icone:SetTexture(t.icone)
+        cs.libelle:SetWidth(largeurC - 60)
+        cs.libelle:SetText(string.format(L.BK_TYPE_LINE, L["BK_T_" .. t.cle] or t.cle, t.nom))
+        cs:SetChecked(choisi.types[t.cle] == true)
+        local cle, typ = choisi.cle, t.cle
+        cs:SetScript("OnClick", function() bq.Basculer(cle, typ) ecran.Montrer("banquiers") end)
+        cs:Show() cs.icone:Show() cs.libelle:Show()
+    end
+    y = y + math.ceil(#bq.TYPES / 2) * 26 + 4
+
+    -- Sa banque en miniature : une case par objet, le nombre dessus ; ce qui
+    -- revient a un autre banquier est grise.
+    local banque, objets = bq.Banque(fiche), {}
+    for objet, n in pairs(banque) do if n > 0 then table.insert(objets, { objet = objet, n = n }) end end
+    table.sort(objets, function(a, b)
+        local ta, tb = bq.TypeDe(a.objet) or "~", bq.TypeDe(b.objet) or "~"
+        if ta ~= tb then return ta < tb end
+        return a.n > b.n
+    end)
+    index, y = TitreDeSection(contenu, index, y, L.BK_BANK, string.format(L.BK_BANK_COUNT, #objets))
+    if #objets == 0 then
+        y = Paragraphe(contenu, y, releve and L.BK_BANK_EMPTY or L.BK_BANK_UNSEEN, "GameFontDisableSmall")
+    end
+    for i, e in ipairs(objets) do
+        local cel = z.cellules[i]
+        if not cel then
+            cel = CreateFrame("Button", nil, z)
+            cel:SetSize(34, 34)
+            cel.cadre = cel:CreateTexture(nil, "BACKGROUND")
+            cel.cadre:SetAllPoints()
+            cel.cadre:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
+            cel.icone = cel:CreateTexture(nil, "ARTWORK")
+            cel.icone:SetPoint("TOPLEFT", 4, -4)
+            cel.icone:SetPoint("BOTTOMRIGHT", -4, 4)
+            cel.nombre = cel:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+            cel.nombre:SetPoint("BOTTOMRIGHT", -3, 3)
+            cel:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+            cel:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                if self.objet and GameTooltip.SetItemByID then pcall(GameTooltip.SetItemByID, GameTooltip, self.objet) end
+                if self.ailleurs then GameTooltip:AddLine(string.format(L.BK_NOT_HIS, self.ailleurs), 1, 0.82, 0, true) end
+                GameTooltip:Show()
+            end)
+            cel:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            z.cellules[i] = cel
+        end
+        local col, rang = (i - 1) % COLONNES_BANQUE, math.floor((i - 1) / COLONNES_BANQUE)
+        cel:ClearAllPoints()
+        cel:SetPoint("TOPLEFT", contenu, "TOPLEFT", gauche + col * 38, -(y + rang * 38))
+        cel.objet = e.objet
+        cel.icone:SetTexture(NS.Appeler(NS.jeu.iconeObjet, e.objet) or "Interface\\Icons\\INV_Misc_QuestionMark")
+        cel.nombre:SetText(e.n > 999 and "999+" or tostring(e.n))
+        local dest = bq.Pour(e.objet)
+        cel.ailleurs = (dest and dest ~= choisi.cle) and NS.inventaire.NomCourt(dest) or nil
+        cel.icone:SetDesaturated(cel.ailleurs ~= nil)
+        cel:Show()
+    end
+    if #objets > 0 then y = y + math.ceil(#objets / COLONNES_BANQUE) * 38 + 4 end
+
+    -- Son registre : depots, retraits, achats et ventes, les plus recents d'abord.
+    local registre = bq.Registre(choisi.cle)
+    index, y = TitreDeSection(contenu, index, y, L.BK_LEDGER, string.format(L.BK_LEDGER_COUNT, #registre))
+    if #registre == 0 then
+        y = Paragraphe(contenu, y, L.BK_LEDGER_EMPTY, "GameFontDisableSmall")
+    end
+    for i = 1, math.min(15, #registre) do
+        local r = registre[i]
+        local quoi = r.objet and (r.n .. " " .. NS.inventaire.NomDObjet(r.objet)) or ""
+        local texte = string.format(L["BK_LEDGER_" .. string.upper(r.genre or "")] or "%s", quoi)
+        index, y = LigneSimple(contenu, index, y, r.objet and NS.Appeler(NS.jeu.iconeObjet, r.objet) or nil,
+            DateCourte(r.quand) .. "   " .. texte, r.cuivre and Argent(r.cuivre) or "")
+    end
+
+    -- Ne plus etre banquier.
+    y = y + 10
+    if not z.retirer then
+        z.retirer = CreateFrame("Button", nil, z, "UIPanelButtonTemplate")
+        z.retirer:SetSize(180, 24)
+    end
+    z.retirer:SetText(L.BK_REMOVE)
+    z.retirer:ClearAllPoints()
+    z.retirer:SetPoint("TOPLEFT", contenu, "TOPLEFT", gauche, -y)
+    local cleR = choisi.cle
+    z.retirer:SetScript("OnClick", function() bq.Retirer(cleR) ecran.banquierChoisi = nil ecran.Montrer("banquiers") end)
+    z.retirer:Show()
+    y = y + 34
+    CacherLignesAuDela(contenu, index + 1)
+    contenu:SetHeight(math.max(y, 1))
+end
+
 local function RendreCommandes(contenu)
     CacherLignesAuDela(contenu, 1)
     ecran.deplie = ecran.deplie or {}
@@ -5406,6 +5654,7 @@ function ecran.Montrer(cle)
         end
         -- Les paragraphes sont reposes par chaque page qui en a besoin.
         CacherParagraphes(fenetre.contenu)
+        if fenetre.contenu.zoneBq and ecran.page ~= "banquiers" then fenetre.contenu.zoneBq:Hide() end
         if fenetre.contenu.caseCaissesAutres and ecran.page ~= "caisses" then
             fenetre.contenu.caseCaissesAutres:Hide()
             fenetre.contenu.caseCaissesAutres.libelle:Hide()
@@ -5497,6 +5746,9 @@ function ecran.Montrer(cle)
         elseif ecran.page == "atelier" then
             LargeurDesColonnes(fenetre.contenu, 0, 220)
             RendreAtelier(fenetre.contenu)
+        elseif ecran.page == "banquiers" then
+            LargeurDesColonnes(fenetre.contenu, 0, 150)
+            RendreBanquiers(fenetre.contenu)
         else
             RendrePageAVenir(fenetre.contenu)
         end

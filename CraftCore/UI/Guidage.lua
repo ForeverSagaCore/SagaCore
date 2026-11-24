@@ -242,6 +242,37 @@ TYPES.marchand = (function()
     return t
 end)()
 
+-- ---------------------------------------------------------------------------
+-- Service : la banque ou la boite aux lettres la plus proche (lieux de
+-- MapCore), pour une etape de la feuille de route.
+-- ---------------------------------------------------------------------------
+
+local SERVICES = {
+    banque = { icone = "Interface\\Minimap\\Tracking\\Banker", libelle = "ROUTE_GUIDE_BANK" },
+    courrier = { icone = "Interface\\Minimap\\Tracking\\Mailbox", libelle = "ROUTE_GUIDE_MAIL" },
+}
+TYPES.service = (function()
+    local t = S().TypePoint({ icone = "Interface\\Minimap\\Tracking\\Mailbox" })
+    t.Cle = function(p) return tostring(p.categorie) end
+    t.Libelle = function(p) return L()[(SERVICES[p.categorie] or {}).libelle or ""] or tostring(p.categorie) end
+    t.Preparer = function(p, etat)
+        local api = _G.MapCoreAPI
+        local pt = api and api.ServicePlusProche and api.ServicePlusProche(p.categorie)
+        if not pt then Dire(L().ROUTE_GUIDE_NONE) return false end
+        etat.point = { carte = pt.carte, x = pt.x, y = pt.y, nom = pt.nom }
+        return true
+    end
+    t.Reprendre = function(p, etat) return type(etat.point) == "table" and etat.point.carte ~= nil end
+    t.Etapes = function(p, etat)
+        local pt = etat.point
+        if type(pt) ~= "table" then return nil, "atteint" end
+        local quoi = t.Libelle(p)
+        return { { carte = pt.carte, x = pt.x, y = pt.y, titre = quoi, guidage = quoi,
+            qui = pt.nom and (pt.nom .. "\n|cffb3b3b3" .. quoi .. "|r") or quoi, cle = "service" } }
+    end
+    return t
+end)()
+
 S().DeclarerObjectifs("CraftCore", TYPES)
 
 -- ---------------------------------------------------------------------------
@@ -268,6 +299,16 @@ function guidage.Marchand(objet)
         if pt then Dire(string.format(L().VENDOR_GUIDING or "%s %s", tostring(pt.nom or "?"), NomDObjet(objet))) end
     end
     return r
+end
+
+-- Une etape de la feuille de route : { service = "banque" | "courrier" },
+-- { marchand = objet } ou { recolte = params }.
+function guidage.Etape(g)
+    if type(g) ~= "table" then return nil end
+    if g.service then return S().LancerObjectif("CraftCore", "service", { categorie = g.service }) end
+    if g.marchand then return guidage.Marchand(g.marchand) end
+    if g.recolte then return guidage.Lancer(g.recolte) end
+    return nil
 end
 
 _G.CraftCoreAPI = _G.CraftCoreAPI or {}
