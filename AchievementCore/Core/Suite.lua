@@ -3027,6 +3027,37 @@ local function FlecheExterne()
     if ok and trouve then flecheExterne = trouve end
     return flecheExterne
 end
+-- Ce que l'add-on de trajet pose a la place de sa fleche quand l'etape est
+-- un objet a utiliser (Shortest Path Forever : l'icone de l'objet et son
+-- action, « Utiliser Pierre de foyer »). Cree tard : cherche toutes les 5 s.
+local invite, dernierEssaiInvite = nil, 0
+local function InviteExterne()
+    if invite then return invite end
+    local maintenant = GetTime and GetTime() or 0
+    if maintenant - dernierEssaiInvite < 5 then return nil end
+    dernierEssaiInvite = maintenant
+    if not _G.EnumerateFrames then return nil end
+    local ok, trouve = pcall(function()
+        local f = _G.EnumerateFrames()
+        while f do
+            if f.Icon and f.Action and not f.Distance and f:GetParent() == UIParent then return f end
+            f = _G.EnumerateFrames(f)
+        end
+    end)
+    if ok and trouve then invite = trouve end
+    return invite
+end
+
+-- Tout ce que l'add-on de trajet montre en ce moment : sa fleche, son
+-- invite d'objet.
+local function AffichageExterne()
+    local liste = {}
+    for _, f in ipairs({ FlecheExterne() or false, InviteExterne() or false }) do
+        if f and f.IsShown and f:IsShown() then table.insert(liste, f) end
+    end
+    return liste
+end
+
 -- L'encombrement reel de l'add-on de trajet a l'ecran : son cadre, tout ce
 -- qu'il dessine (textes, icones) et ses sous-cadres visibles, quels que
 -- soient leurs noms. En pixels d'ecran : gauche, droite, bas, haut.
@@ -3252,11 +3283,11 @@ local function CadreObjectifs()
         -- La fleche de l'add-on d'itineraire met un instant a paraitre : en
         -- attendant (au plus 2 s), rien sous elle, pour ne pas s'afficher au
         -- milieu de sa boussole puis sauter dessous.
-        local fl = externe and FlecheExterne()
+        local vus = externe and AffichageExterne() or {}
         local maintenant = (_G.GetTime and _G.GetTime()) or 0
         if not externe then self.debutExterne = nil
         elseif not self.debutExterne then self.debutExterne = maintenant end
-        local enAttenteFleche = externe and not (fl and fl:IsShown())
+        local enAttenteFleche = externe and #vus == 0
             and maintenant - (self.debutExterne or maintenant) < 2
         self.etape:ClearAllPoints()
         self.compte:ClearAllPoints()
@@ -3267,7 +3298,15 @@ local function CadreObjectifs()
             -- jamais sur ses textes, jamais l'une sur l'autre.
             local dessus = true
             local g, d, b, h
-            if fl and fl:IsShown() then g, d, b, h = EncombrementDe(fl) end
+            for _, f in ipairs(vus) do
+                local g2, d2, b2, h2 = EncombrementDe(f)
+                if g2 then
+                    g = g and math.min(g, g2) or g2
+                    d = d and math.max(d, d2) or d2
+                    b = b and math.min(b, b2) or b2
+                    h = h and math.max(h, h2) or h2
+                end
+            end
             local kU = UIParent.GetEffectiveScale and UIParent:GetEffectiveScale() or 1
             local kC = self.changer.GetEffectiveScale and self.changer:GetEffectiveScale() or kU
             if g then
