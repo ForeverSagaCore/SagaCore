@@ -170,6 +170,13 @@ local function Qui(id, moi, lieu)
         for _, o in ipairs(q.objectifs or {}) do
             if not o.fait then quoi = tostring(o.texte or "") break end
         end
+        -- Un objet qu'aucun monstre ne donne : comment l'obtenir, en bref.
+        local a = NS.ref.ObjetsAObtenir and NS.ref.ObjetsAObtenir(moi, id)
+        local api = _G.CraftCoreAPI
+        if a and a[1] and api and api.ObtenirCourt then
+            local ok, court = pcall(api.ObtenirCourt, a[1].objet, a[1].nom, a[1].manque)
+            if ok and type(court) == "string" and court ~= "" then quoi = (quoi or "") .. " (" .. court .. ")" end
+        end
     else
         quoi = string.format(L.GUIDE_DO_PICKUP, lieu.qui or "?")
         -- Quete grise (bas niveau) : le jeu ne montre pas son point
@@ -613,6 +620,16 @@ _G.QuestCoreAPI = _G.QuestCoreAPI or {}
 local api = _G.QuestCoreAPI
 api.GuiderRendus = function() return guidage.Lancer("rendus", {}) end
 api.GuiderQuetes = function(ids) return guidage.Lancer("quetes", { ids = Copie(ids) }) end
+-- Pour le releve de l'hotel des ventes (CraftCore) : les objets que les quetes
+-- en cours demandent et qu'aucun monstre ne donne. { objet, nom, manque }.
+api.ObjetsAObtenir = function()
+    local moi = Moi()
+    local res = {}
+    for id in pairs(moi and moi.quetes or {}) do
+        for _, o in ipairs(NS.ref.ObjetsAObtenir(moi, id)) do table.insert(res, o) end
+    end
+    return res
+end
 api.GuiderNiveau = function(n) return guidage.Lancer("niveau", { niveau = tonumber(n) }) end
 api.GuiderParcours = function(uid) return guidage.Lancer("parcours", { uid = uid }) end
 -- Ancien appel : guider les quetes a rendre, ou arreter le guidage de QuestCore.

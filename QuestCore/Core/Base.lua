@@ -150,6 +150,55 @@ function ref.ObjetsRequis(p, id)
     return resultat
 end
 
+-- Objets d'une quete en cours qu'aucun monstre ni objet du monde ne donne
+-- (d'apres la base) : a fabriquer, echanger ou acheter.
+-- { objet (peut manquer), nom, manque }.
+function ref.ObjetsAObtenir(p, id)
+    local res = {}
+    local q = p and p.quetes and p.quetes[id]
+    if type(q) ~= "table" or q.complete == true then return res end
+    local base = ref.ObjetsRequis(p, id)
+    local rang = 0
+    for _, o in ipairs(q.objectifs or {}) do
+        if o.type == "item" then
+            rang = rang + 1
+            local requis, n = tonumber(o.requis) or 0, tonumber(o.n) or 0
+            if not o.fait and requis > n then
+                local objet = tonumber(o.objet) or (base[rang] and tonumber(base[rang].objet))
+                local nom = type(o.texte) == "string" and (o.texte:match("^%s*(.-)%s*:%s*%d+%s*/%s*%d+%s*$") or o.texte) or nil
+                if objet then nom = Lire("ItemDB", objet, "name") or nom end
+                local tombe = false
+                if objet then
+                    local pnj, obj = Lire("ItemDB", objet, "npcDrops"), Lire("ItemDB", objet, "objectDrops")
+                    tombe = (type(pnj) == "table" and #pnj > 0) or (type(obj) == "table" and #obj > 0)
+                end
+                if not tombe and (objet or nom) then
+                    table.insert(res, { objet = objet, nom = nom, manque = requis - n })
+                end
+            end
+        end
+    end
+    return res
+end
+
+-- Sous le but de la quete : comment obtenir ces objets (CraftCore sait qui en
+-- a, qui sait les fabriquer, et leur prix au dernier releve de l'hotel des
+-- ventes).
+function ref.LignesObtenir(tt, p, id)
+    local liste = ref.ObjetsAObtenir(p, id)
+    local api = _G.CraftCoreAPI
+    if #liste == 0 or not (api and api.LignesObtenir) then return end
+    tt:AddLine(" ")
+    tt:AddLine("QuestCore", 1, 0.82, 0)
+    for _, o in ipairs(liste) do
+        tt:AddLine(string.format(NS.L.QUEST_OBTAIN_ITEM, o.nom or "?", o.manque), 1, 1, 1)
+        local ok, lignes = pcall(api.LignesObtenir, o.objet, o.nom, o.manque)
+        for _, l in ipairs(ok and type(lignes) == "table" and lignes or {}) do
+            tt:AddLine("  " .. tostring(l[1]), l[2] or 1, l[3] or 1, l[4] or 1)
+        end
+    end
+end
+
 -- Couleur de difficulte d'une quete pour un niveau de personnage, comme le
 -- journal du jeu : rouge, orange, jaune, vert, gris.
 function ref.CouleurDeNiveau(niveauQuete, niveauPerso)
@@ -420,6 +469,7 @@ function ref.InfobulleDeQuete(tt, q, id, p)
         tt:AddLine(L.QUEST_GOAL, 1, 0.82, 0)
         tt:AddLine(r.but, 1, 1, 1, true)
     end
+    pcall(ref.LignesObtenir, tt, p, id)
     if r and r.description then
         tt:AddLine(" ")
         tt:AddLine(L.QUEST_TEXT, 1, 0.82, 0)

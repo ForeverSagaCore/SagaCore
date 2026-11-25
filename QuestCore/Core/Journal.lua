@@ -15,7 +15,8 @@ local function Objectifs(id, index)
     if type(brut) == "table" then
         for _, o in ipairs(brut) do
             table.insert(liste, { texte = o.text, type = o.type, fait = o.finished and true or false,
-                n = tonumber(o.numFulfilled) or 0, requis = tonumber(o.numRequired) or 0 })
+                n = tonumber(o.numFulfilled) or 0, requis = tonumber(o.numRequired) or 0,
+                objet = (o.type == "item") and tonumber(o.objectID) or nil })
         end
         return liste
     end
