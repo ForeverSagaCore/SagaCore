@@ -99,6 +99,29 @@ local function PointDeQuete(id, moi, continent, jx, jy)
         end
     end
     if lieu then return lieu end
+    -- La base ne sait pas ou se font ses objectifs (quete propre au serveur,
+    -- par exemple) : le point que le jeu lui-meme montre sur sa carte.
+    if q then
+        local carte, gx, gy
+        local suivant = NS.Lecture("C_QuestLog.GetNextWaypoint")
+        if suivant then
+            local okW, c, x, y = pcall(suivant, id)
+            if okW and type(c) == "number" and type(x) == "number" then carte, gx, gy = c, x, y end
+        end
+        if not carte then
+            local poi = NS.Lecture("QuestPOIGetIconInfo")
+            local carteJoueur = NS.Lecture("C_Map.GetBestMapForUnit")
+            local okC, c = pcall(carteJoueur or function() end, "player")
+            if poi and okC and c then
+                local okP, _, x, y = pcall(poi, id)
+                if okP and type(x) == "number" and type(y) == "number" and (x > 0 or y > 0) then carte, gx, gy = c, x, y end
+            end
+        end
+        if carte and not (_G.issecretvalue and (_G.issecretvalue(gx) or _G.issecretvalue(gy))) then
+            local x, y = NS.carte.Reporter({ carte = carte, x = gx, y = gy }, continent)
+            if x then return { x = x, y = y, qui = nil } end
+        end
+    end
     -- A defaut : l'entree du donjon. Celui de la quete quand elle est prise
     -- et pas finie (ses objectifs sont dedans) ; sinon celui de l'instance ou
     -- tombent ses points (donneur ou receveur dedans), jamais une entree au
