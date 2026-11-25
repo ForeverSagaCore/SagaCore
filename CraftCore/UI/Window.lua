@@ -5320,18 +5320,22 @@ local function Construire()
     local precedent
     for _, page in ipairs(PAGES) do
         local bouton = CreerLigneDeMenu(menu, page.icone)
-        bouton:SetPoint("LEFT", menu, "LEFT", 0, 0)
+        bouton:SetPoint("LEFT", menu, "LEFT", 12, 0)
         bouton:SetPoint("RIGHT", menu, "RIGHT", 0, 0)
         if page.section then
             -- Un titre par categorie, comme dans QuestCore : la petite
             -- police doree, de l'air au-dessus quand ce n'est pas la premiere.
-            local titre = menu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local titre = menu:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             table.insert(win.filetsMenu, titre)
+            local S = NS.suite or _G.CoreSuite
+            if S and S.TitreDeMenu then S.TitreDeMenu(titre) end
             titre:SetText(L[page.section])
             titre:SetJustifyH("LEFT")
-            if precedent then titre:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 8, -10)
+            -- Le titre au bord du menu, les lignes en retrait dessous.
+            titre:ClearAllPoints()
+            if precedent then titre:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", -4, -10)
             else titre:SetPoint("TOPLEFT", menu, "TOPLEFT", 8, -2) end
-            bouton:SetPoint("TOP", titre, "BOTTOM", 0, -3)
+            bouton:SetPoint("TOP", titre, "BOTTOM", 0, -4)
         elseif precedent then
             bouton:SetPoint("TOP", precedent, "BOTTOM", 0, -2)
         else

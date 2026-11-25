@@ -721,11 +721,13 @@ local function Disposer()
         vue.cleEcart = cle
         local Suite = NS.suite or _G.CoreSuite
         if Suite and Suite.Ecarter then pcall(Suite.Ecarter, poses, 22) end
-        for _, e in ipairs(poses) do e.b.ecartX, e.b.ecartY = e.dx or 0, e.dy or 0 end
+        for _, e in ipairs(poses) do e.b.ecartX, e.b.ecartY, e.b.ecartMasque, e.b.ecartGroupe = e.dx or 0, e.dy or 0, e.masque, e.groupe end
     end
+    local SuiteE = NS.suite or _G.CoreSuite
     for _, e in ipairs(poses) do
         e.b:ClearAllPoints()
         e.b:SetPoint("CENTER", vue.toile, "TOPLEFT", e.x + (e.b.ecartX or 0), -(e.y + (e.b.ecartY or 0)))
+        if SuiteE and SuiteE.PoserEcarte then pcall(SuiteE.PoserEcarte, e.b) end
     end
     page.PlacerJoueur()
 end
@@ -1524,6 +1526,163 @@ function page.GuiderVers(dst)
     pcall(page.Rendre)
 end
 
+-- ---------------------------------------------------------------------------
+-- Itineraires : les donnees (QuestCore pour les quetes, la tournee de
+-- recolte ici) et le panneau central qui les liste.
+-- ---------------------------------------------------------------------------
+function page.EnItineraires() return page.itineraires == true end
+function page.DonneesItin()
+    local L0 = NS.L
+    local api = _G.QuestCoreAPI
+    local liste = {}
+    if api and api.Itineraires then
+        local ok, l = pcall(api.Itineraires)
+        if ok and type(l) == "table" then liste = l end
+    end
+    local t0 = Tournee()
+    local tournee = (type(t0) == "table" and type(t0.points) == "table" and #t0.points > 0) and t0 or nil
+    local function Compter(valeur)
+        local n = 0
+        for _, it in ipairs(liste) do if it.type == valeur then n = n + 1 end end
+        return n
+    end
+    local types = {
+        { cle = "suite", nom = L0.ROUTES_CHAINS, n = Compter("suite") },
+        { cle = "donjon", nom = L0.ROUTES_DUNGEONS, n = Compter("donjon") },
+        { cle = "niveau", nom = L0.ROUTES_LEVEL, n = 1 },
+        { cle = "recolte", nom = L0.ROUTES_FARM, n = tournee and 1 or 0 },
+    }
+    local parZone, zones = {}, {}
+    for _, it in ipairs(liste) do
+        if it.zone then
+            if not parZone[it.zone] then parZone[it.zone] = { nom = it.zone, n = 0 } table.insert(zones, parZone[it.zone]) end
+            parZone[it.zone].n = parZone[it.zone].n + 1
+        end
+    end
+    table.sort(zones, function(a, b) return a.nom < b.nom end)
+    -- Par defaut : le premier type qui a des itineraires.
+    local filtre = page.filtreItin
+    if not filtre then
+        filtre = (types[1].n > 0 and { type = "suite" }) or (types[2].n > 0 and { type = "donjon" })
+            or (tournee and { type = "recolte" }) or { type = "niveau" }
+    end
+    return { liste = liste, tournee = tournee, types = types, zones = zones, filtre = filtre, api = api }
+end
+
+-- LB / RB dans les itineraires : le type ou la zone precedent / suivant.
+function page.ItinVoisin(pas)
+    local choix = page.choixItin or {}
+    if #choix == 0 then return end
+    local f = page.filtreItin or page.DonneesItin().filtre
+    local rang = 1
+    for i, c in ipairs(choix) do
+        if (c.type and c.type == f.type) or (c.zone and c.zone == f.zone) then rang = i end
+    end
+    rang = math.max(1, math.min(#choix, rang + pas))
+    page.filtreItin = choix[rang]
+    page.Rendre()
+end
+
+-- Le panneau central : les itineraires du type ou de la zone choisis.
+local function PanneauItin()
+    if not vue then return nil end
+    local p = vue.panneauItin
+    if p then return p end
+    p = CreateFrame("Frame", nil, vue)
+    p:SetAllPoints(vue.clip)
+    p:SetFrameLevel((vue.clip:GetFrameLevel() or 1) + 50)
+    p.fond = p:CreateTexture(nil, "BACKGROUND")
+    p.fond:SetAllPoints()
+    p.fond:SetColorTexture(0.05, 0.04, 0.03, 0.88)
+    p.titre = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    p.titre:SetPoint("TOPLEFT", p, "TOPLEFT", 24, -20)
+    local S = NS.suite or _G.CoreSuite
+    if S and S.TitreDeMenu then S.TitreDeMenu(p.titre) end
+    p.aide = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    p.aide:SetPoint("TOPLEFT", p.titre, "BOTTOMLEFT", 0, -6)
+    p.lignes = {}
+    p:EnableMouse(true)
+    vue.panneauItin = p
+    return p
+end
+local function LignePanneau(p, rang)
+    local l = p.lignes[rang]
+    if l then return l end
+    l = CreateFrame("Button", nil, p)
+    l:SetHeight(26)
+    l:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    l.icone = l:CreateTexture(nil, "ARTWORK")
+    l.icone:SetSize(16, 16)
+    l.icone:SetPoint("LEFT", l, "LEFT", 4, 0)
+    l.texte = l:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    l.texte:SetPoint("LEFT", l.icone, "RIGHT", 8, 0)
+    l.texte:SetJustifyH("LEFT")
+    l.texte:SetWordWrap(false)
+    l.droite = l:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    l.droite:SetPoint("RIGHT", l, "RIGHT", -6, 0)
+    l.texte:SetPoint("RIGHT", l.droite, "LEFT", -10, 0)
+    p.lignes[rang] = l
+    return l
+end
+function page.RendrePanneauItin()
+    if not vue then return end
+    if not page.itineraires then
+        if vue.panneauItin then vue.panneauItin:Hide() end
+        return
+    end
+    local L0 = NS.L
+    local p = PanneauItin()
+    local d = page.DonneesItin()
+    local f = d.filtre
+    for _, l in ipairs(p.lignes) do l:Hide() end
+    local titre = f.zone or ((f.type == "suite" and L0.ROUTES_CHAINS) or (f.type == "donjon" and L0.ROUTES_DUNGEONS)
+        or (f.type == "niveau" and L0.ROUTES_LEVEL) or L0.ROUTES_FARM)
+    p.titre:SetText(titre)
+    p.aide:SetText(L0.ROUTES_HELP)
+    local n = 0
+    local function Ajouter(icone, texte, droite, guide, auClic)
+        n = n + 1
+        local l = LignePanneau(p, n)
+        l:ClearAllPoints()
+        l:SetPoint("TOPLEFT", p, "TOPLEFT", 20, -(56 + (n - 1) * 28))
+        l:SetPoint("RIGHT", p, "RIGHT", -20, 0)
+        l.icone:SetTexture(icone)
+        l.texte:SetText(texte)
+        if guide then l.texte:SetTextColor(1, 0.82, 0) else l.texte:SetTextColor(1, 1, 1) end
+        l.droite:SetText(droite or "")
+        l:SetScript("OnClick", auClic)
+        l:Show()
+    end
+    local api = d.api
+    if f.type == "niveau" then
+        local niv = (UnitLevel and UnitLevel("player") or 0) + 1
+        Ajouter("Interface\\Icons\\Spell_Holy_SurgeOfLight", string.format(L0.ROUTES_TO_LEVEL, niv), L0.ROUTES_CLICK_GUIDE, false, function()
+            if api and api.GuiderNiveau then pcall(api.GuiderNiveau, niv) end
+            page.Rendre()
+        end)
+    elseif f.type == "recolte" then
+        if d.tournee then
+            local enCours = page.EnGuidage and page.EnGuidage() or false
+            Ajouter("Interface\\Icons\\Trade_Herbalism", L0.ROUTES_FARM_ROUND,
+                enCours and L0.ROUTES_CLICK_STOP or L0.ROUTES_CLICK_GUIDE, enCours, function() page.BasculerTournee() end)
+        end
+    else
+        for _, it in ipairs(d.liste) do
+            if (f.type and it.type == f.type) or (f.zone and it.zone == f.zone) then
+                local uid = it.uid
+                local icone = it.type == "donjon" and "Interface\\Icons\\INV_Misc_Key_14" or "Interface\\Icons\\INV_Misc_Map_01"
+                local droite = it.faites .. " / " .. it.total .. (it.zone and ("   " .. it.zone) or "")
+                Ajouter(icone, it.nom, droite, it.guide, function()
+                    if api and api.GuiderItineraire then pcall(api.GuiderItineraire, uid) end
+                    page.Rendre()
+                end)
+            end
+        end
+    end
+    if n == 0 then Ajouter("Interface\\Icons\\INV_Misc_QuestionMark", L0.ROUTES_NONE, nil, false, function() end) end
+    p:Show()
+end
+
 local function RendreMenu(idCarte)
     if not menu then return end
     for _, l in ipairs(menu.lignes or {}) do l:Hide() end
@@ -1540,8 +1699,10 @@ local function RendreMenu(idCarte)
         t:ClearAllPoints()
         t:SetPoint("TOPLEFT", menu.liste, "TOPLEFT", 6, -y)
         t:SetText(texte)
-        -- La police des titres de la suite.
-        if NS.charte and NS.charte.TitreDeSection then pcall(NS.charte.TitreDeSection, t) end
+        -- La police des titres de menu de la suite (stylisee, en or).
+        local S = NS.suite or _G.CoreSuite
+        if S and S.TitreDeMenu then pcall(S.TitreDeMenu, t)
+        elseif NS.charte and NS.charte.TitreDeSection then pcall(NS.charte.TitreDeSection, t) end
         t:Show()
         y = y + 24
     end
@@ -1571,95 +1732,35 @@ local function RendreMenu(idCarte)
         l:Show()
         y = y + 19
     end
-    -- Onglet Itineraires : les itineraires par type, puis par zone ; un clic
-    -- sur un type ou une zone montre ses itineraires, un clic sur l'un d'eux
+    -- Onglet Itineraires : a gauche, les itineraires par type puis par zone ;
+    -- au centre, ceux du type ou de la zone choisis ; un clic sur l'un d'eux
     -- le guide (ou l'arrete).
     if page.itineraires then
         local L0 = NS.L
-        local api = _G.QuestCoreAPI
-        local liste = {}
-        if api and api.Itineraires then
-            local ok, l = pcall(api.Itineraires)
-            if ok and type(l) == "table" then liste = l end
-        end
-        local t0 = Tournee()
-        local tournee = (type(t0) == "table" and type(t0.points) == "table" and #t0.points > 0) and t0 or nil
-        local function Compter(cle, valeur)
-            local n = 0
-            for _, it in ipairs(liste) do if it[cle] == valeur then n = n + 1 end end
-            return n
-        end
-        -- Par defaut : le premier type qui a des itineraires.
-        local filtre = page.filtreItin
-        if not filtre then
-            filtre = (Compter("type", "suite") > 0 and { type = "suite" }) or (Compter("type", "donjon") > 0 and { type = "donjon" })
-                or (tournee and { type = "recolte" }) or { type = "niveau" }
-        end
+        local donnees = page.DonneesItin()
+        local filtre = donnees.filtre
+        page.choixItin = {}
         Titre(L0.ROUTES_BY_TYPE)
-        for _, t in ipairs({ { "suite", L0.ROUTES_CHAINS }, { "donjon", L0.ROUTES_DUNGEONS }, { "niveau", L0.ROUTES_LEVEL },
-            { "recolte", L0.ROUTES_FARM } }) do
-            local n = (t[1] == "niveau" and 1) or (t[1] == "recolte" and (tournee and 1 or 0)) or Compter("type", t[1])
-            local cleT = t[1]
-            Ligne(t[2] .. "  |cff8c8c8c" .. n .. "|r", nil, filtre.type == cleT, function()
+        for _, t in ipairs(donnees.types) do
+            local cleT = t.cle
+            table.insert(page.choixItin, { type = cleT })
+            Ligne(t.nom .. "  |cff8c8c8c" .. t.n .. "|r", nil, filtre.type == cleT, function()
                 page.filtreItin = { type = cleT }
                 page.Rendre()
             end)
         end
-        local zones, ordre = {}, {}
-        for _, it in ipairs(liste) do
-            if it.zone then
-                if not zones[it.zone] then zones[it.zone] = 0 table.insert(ordre, it.zone) end
-                zones[it.zone] = zones[it.zone] + 1
-            end
-        end
-        table.sort(ordre)
-        if #ordre > 0 then
+        if #donnees.zones > 0 then
             y = y + 8
             Titre(L0.ROUTES_BY_ZONE)
-            for _, z in ipairs(ordre) do
-                local cleZ = z
-                Ligne(z .. "  |cff8c8c8c" .. zones[z] .. "|r", nil, filtre.zone == cleZ, function()
+            for _, z in ipairs(donnees.zones) do
+                local cleZ = z.nom
+                table.insert(page.choixItin, { zone = cleZ })
+                Ligne(z.nom .. "  |cff8c8c8c" .. z.n .. "|r", nil, filtre.zone == cleZ, function()
                     page.filtreItin = { zone = cleZ }
                     page.Rendre()
                 end)
             end
         end
-        -- Les itineraires du type ou de la zone choisis.
-        y = y + 8
-        Titre(filtre.zone or (filtre.type == "suite" and L0.ROUTES_CHAINS) or (filtre.type == "donjon" and L0.ROUTES_DUNGEONS)
-            or (filtre.type == "niveau" and L0.ROUTES_LEVEL) or L0.ROUTES_FARM)
-        local vide = true
-        if filtre.type == "niveau" then
-            vide = false
-            local niv = (UnitLevel and UnitLevel("player") or 0) + 1
-            Ligne(string.format(L0.ROUTES_TO_LEVEL, niv), nil, false, function()
-                if api and api.GuiderNiveau then pcall(api.GuiderNiveau, niv) end
-                page.Rendre()
-            end)
-        elseif filtre.type == "recolte" then
-            if tournee then
-                vide = false
-                Ligne(L0.ROUTES_FARM_ROUND, nil, page.EnGuidage and page.EnGuidage() or false, function() page.BasculerTournee() end)
-            end
-        else
-            for _, it in ipairs(liste) do
-                if (filtre.type and it.type == filtre.type) or (filtre.zone and it.zone == filtre.zone) then
-                    vide = false
-                    local uid = it.uid
-                    Ligne(it.nom .. "  |cff8c8c8c" .. it.faites .. " / " .. it.total .. "|r", nil, it.guide, function()
-                        if api and api.GuiderItineraire then pcall(api.GuiderItineraire, uid) end
-                        page.Rendre()
-                    end, it.guide and { 1, 0.82, 0 } or { 0.9, 0.9, 0.9 }, function(self)
-                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                        GameTooltip:SetText(it.nom, 1, 0.82, 0)
-                        if it.zone then GameTooltip:AddLine(it.zone, 1, 1, 1) end
-                        GameTooltip:AddLine(it.guide and L0.ROUTES_CLICK_STOP or L0.ROUTES_CLICK_GUIDE, 0.6, 0.6, 0.6)
-                        GameTooltip:Show()
-                    end)
-                end
-            end
-        end
-        if vide then Ligne(L0.ROUTES_NONE, nil, false, function() end, { 0.6, 0.6, 0.6 }) end
         menu.liste:SetHeight(math.max(y, 1))
         return
     end
@@ -2326,6 +2427,7 @@ function page.Rendre(parent, basDroite, menuParent, menuHaut, mere)
         vue.titre:SetShadowColor(0, 0, 0, 1)
     end
     RendreMenu(idCarte)
+    pcall(page.RendrePanneauItin)
     pcall(RendrePortraits)
     pcall(RendreOnglets, idCarte)
     if NS.fenetre and NS.fenetre.ApresRendu then pcall(NS.fenetre.ApresRendu) end

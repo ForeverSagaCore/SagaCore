@@ -618,11 +618,13 @@ local function Disposer()
         vue.cleEcart = cle
         local Suite = NS.suite or _G.CoreSuite
         if Suite and Suite.Ecarter then pcall(Suite.Ecarter, poses, 22) end
-        for _, e in ipairs(poses) do e.b.ecartX, e.b.ecartY = e.dx or 0, e.dy or 0 end
+        for _, e in ipairs(poses) do e.b.ecartX, e.b.ecartY, e.b.ecartMasque, e.b.ecartGroupe = e.dx or 0, e.dy or 0, e.masque, e.groupe end
     end
+    local SuiteE = NS.suite or _G.CoreSuite
     for _, e in ipairs(poses) do
         e.b:ClearAllPoints()
         e.b:SetPoint("CENTER", vue.toile, "TOPLEFT", e.x + (e.b.ecartX or 0), -(e.y + (e.b.ecartY or 0)))
+        if SuiteE and SuiteE.PoserEcarte then pcall(SuiteE.PoserEcarte, e.b) end
     end
     DessinerTrajet()
     page.PlacerJoueur()

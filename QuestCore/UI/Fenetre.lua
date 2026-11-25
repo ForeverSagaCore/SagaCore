@@ -2175,9 +2175,9 @@ local PAGES = {
     { cle = "quetes", section = "MENU_JOURNAL", libelle = "NAV_ACTIVE", icone = "Interface\\Icons\\INV_Misc_Book_08" },
     { cle = "rendre", libelle = "NAV_TURNIN", icone = "Interface\\GossipFrame\\ActiveQuestIcon" },
     { cle = "communes", libelle = "NAV_COMMON", icone = "Interface\\Icons\\INV_Misc_Book_09" },
+    { cle = "parcours", libelle = "NAV_ROUTES", icone = "Interface\\Icons\\INV_Misc_Map_01" },
     { cle = "disponibles", section = "MENU_FIND", libelle = "NAV_AVAILABLE", icone = "Interface\\GossipFrame\\AvailableQuestIcon" },
     { cle = "histoire", libelle = "NAV_STORY", icone = "Interface\\Icons\\INV_Misc_Book_11" },
-    { cle = "parcours", section = "MENU_ROUTES", libelle = "NAV_ROUTES", icone = "Interface\\Icons\\INV_Misc_Map_01" },
     { cle = "donjons", libelle = "NAV_DUNGEONS", icone = "Interface\\Icons\\INV_Misc_Key_14" },
     { cle = "niveau", section = "MENU_PROGRESS", libelle = "NAV_NEXT_LEVEL", icone = "Interface\\Icons\\Spell_Holy_SurgeOfLight" },
     { cle = "objectif", libelle = "NAV_LEVEL_GOAL", icone = "Interface\\Icons\\Ability_Hunter_Pathfinding" },
@@ -2321,13 +2321,15 @@ local function Construire()
         -- Titre de section : la petite police doree des categories.
         if page.section then
             if rang > 1 then yMenu = yMenu + 6 end
-            local t = menu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local t = menu:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local S = _G.CoreSuite
+            if S and S.TitreDeMenu then S.TitreDeMenu(t) end
             t:SetPoint("TOPLEFT", menu, "TOPLEFT", 8, -(yMenu + 4))
             t:SetText(L[page.section])
-            yMenu = yMenu + 20
+            yMenu = yMenu + 24
         end
         local b = CreerLigneDeMenu(menu, page.icone)
-        b:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, -yMenu)
+        b:SetPoint("TOPLEFT", menu, "TOPLEFT", 12, -yMenu)
         b:SetPoint("RIGHT", menu, "RIGHT", 0, 0)
         yMenu = yMenu + 26
         local texte = b.text or b.Text or (b.GetFontString and b:GetFontString())
