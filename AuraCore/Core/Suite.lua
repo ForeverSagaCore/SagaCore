@@ -3512,6 +3512,14 @@ local function CadreObjectifs()
     c.compte:SetWordWrap(false)
     c.compte:SetShadowOffset(1, -1)
     c.compte:Hide()
+    -- Ce qu'il faut faire a l'etape visee (prendre chez, objectif, rendre a),
+    -- sous le compte : on sait toujours ou on en est.
+    c.action = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    c.action:SetWidth(420)
+    c.action:SetJustifyH("CENTER")
+    c.action:SetWordWrap(false)
+    c.action:SetShadowOffset(1, -1)
+    c.action:Hide()
     -- Sous la boussole, pour tous les guidages : changer de guide en route
     -- (quand un add-on d'itineraire est installe).
     -- Une rangee de deux boutons, toujours la pendant un guidage :
@@ -3584,7 +3592,7 @@ local function CadreObjectifs()
             end
             for _, e in ipairs({ self.boussole, self.fondBoussole, self.icone, self.distance, self.temps, self.qui }) do e:Show() end
             self:EnableMouse(true)
-            self.etape:Hide() self.compte:Hide()
+            self.etape:Hide() self.compte:Hide() self.action:Hide()
             self.changer:ClearAllPoints()
             self.changer:SetPoint("TOP", self.qui, "BOTTOM", 0, -6)
             self.fleche:Hide() self.arrivee:Hide() self.temps:SetText("")
@@ -3682,21 +3690,36 @@ local function CadreObjectifs()
             else
                 self.compte:Hide()
             end
+            -- L'action de l'etape visee : « Titre : prendre chez X », sur une
+            -- ligne (le titre et l'action de la cible, sans retour a la ligne).
+            local action = type(cible.qui) == "string" and cible.qui or ""
+            action = action:gsub("\n", " : ")
+            if action ~= "" and action ~= quoi then
+                self.action:SetText(action)
+                self.action:Show()
+            else
+                self.action:Hide()
+            end
+            -- Les lignes affichees, de haut en bas.
+            local colonne = { self.etape }
+            if self.compte:IsShown() then table.insert(colonne, self.compte) end
+            if self.action:IsShown() then table.insert(colonne, self.action) end
+            self.action:ClearAllPoints()
             if dessus then
-                -- De bas en haut : bouton, compte, etape.
-                if self.compte:IsShown() then
-                    self.compte:SetPoint("BOTTOM", self.changer, "TOP", 0, 4)
-                    self.etape:SetPoint("BOTTOM", self.compte, "TOP", 0, 2)
-                else
-                    self.etape:SetPoint("BOTTOM", self.changer, "TOP", 0, 4)
+                -- De bas en haut : bouton, puis les lignes.
+                local dessous = self.changer
+                for k = #colonne, 1, -1 do
+                    colonne[k]:SetPoint("BOTTOM", dessous, "TOP", 0, dessous == self.changer and 4 or 2)
+                    dessous = colonne[k]
                 end
             else
-                self.compte:SetPoint("TOP", self.etape, "BOTTOM", 0, -2)
-                self.changer:SetPoint("TOP", self.compte:IsShown() and self.compte or self.etape, "BOTTOM", 0, -6)
+                for k = 2, #colonne do colonne[k]:SetPoint("TOP", colonne[k - 1], "BOTTOM", 0, -2) end
+                self.changer:SetPoint("TOP", colonne[#colonne], "BOTTOM", 0, -6)
             end
         else
             self.etape:Hide()
             self.compte:Hide()
+            self.action:Hide()
             if externe then
                 self.changer:SetPoint("TOP", self, "CENTER", 0, 0)
                 self.changer:Hide()
