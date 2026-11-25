@@ -5248,8 +5248,9 @@ local function PoserIndicesManette(win)
         end
     end
     if ecran.page == "caisses" then premiere, derniere = nil, nil end
-    Marque(win, "lb", "PADLSHOULDER", premiere, "RIGHT", "RIGHT", -2, 0)
-    Marque(win, "rb", "PADRSHOULDER", derniere, "RIGHT", "RIGHT", -2, 0)
+    -- LB / RB : dits dans la barre du bas, plus sur les lignes du menu.
+    Marque(win, "lb", "PADLSHOULDER", nil, "RIGHT", "RIGHT", -2, 0)
+    Marque(win, "rb", "PADRSHOULDER", nil, "RIGHT", "RIGHT", -2, 0)
     -- LT / RT : au dessus du premier onglet de droite, sous le dernier.
     local premierOnglet = win.onglets and win.ordreOnglets and win.onglets[win.ordreOnglets[1] or ""]
     premierOnglet = premierOnglet or win.ongletCaisses

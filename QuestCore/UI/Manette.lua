@@ -565,8 +565,9 @@ function manette.Indices(win, premiereLigne, derniereLigne, onglet, dernierPortr
         BarreManette(win, nil)
         return
     end
-    Marque(win, "lb", "PADLSHOULDER", premiereLigne, "RIGHT", "RIGHT", -2, 0)
-    Marque(win, "rb", "PADRSHOULDER", derniereLigne, "RIGHT", "RIGHT", -2, 0)
+    -- LB / RB : dits dans la barre du bas, plus sur les lignes du menu.
+    Marque(win, "lb", "PADLSHOULDER", nil, "RIGHT", "RIGHT", -2, 0)
+    Marque(win, "rb", "PADRSHOULDER", nil, "RIGHT", "RIGHT", -2, 0)
     Marque(win, "lt", "PADLTRIGGER", onglet, "BOTTOM", "TOP", 0, 12)
     Marque(win, "rt", "PADRTRIGGER", dernierOnglet or onglet, "TOP", "BOTTOM", 0, -10)
     Marque(win, "dg", "PADDLEFT", dernierPortrait, "LEFT", "RIGHT", 10, 0)
