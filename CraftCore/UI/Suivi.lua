@@ -1846,14 +1846,20 @@ local function DessinerObjectifs(y, objectifs, vue)
                         local nom = T(LIGNE, TAILLE_LIGNE)
                         nom:ClearAllPoints()
                         nom:SetPoint("LEFT", icone, "RIGHT", 6, 0)
-                        nom:SetWidth(largeur - 28 - 22 - 60)
+                        nom:SetPoint("RIGHT", zone, "TOPLEFT", largeur - 66, -(y + 8))
                         nom:SetWordWrap(false)
                         nom:SetText(NS.inventaire.NomDObjet(m.objet))
                         local compte = T(LIGNE, TAILLE_LIGNE)
                         compte:ClearAllPoints()
-                        compte:SetPoint("RIGHT", icone, "LEFT", largeur - 2 - 28, 0)
-                        compte:SetWidth(60)
+                        -- Le compte cale sur le bord droit de la zone, a la
+                        -- meme place pour toutes les lignes, quel que soit
+                        -- leur etat (fait, en cours, absent).
+                        -- Deux points d'ancrage : sa boite est fixe, jamais
+                        -- heritee d'un autre usage du meme texte.
+                        compte:SetPoint("LEFT", zone, "TOPLEFT", largeur - 62, -(y + 8))
+                        compte:SetPoint("RIGHT", zone, "TOPLEFT", largeur - 2, -(y + 8))
                         compte:SetJustifyH("RIGHT")
+                        compte:SetWordWrap(false)
                         compte:SetText(math.min(m.possede, m.requis) .. " / " .. m.requis)
                         if m.manque == 0 and (NS.inventaire.DisponibleDansLesSacs(m.objet) or 0) < m.requis then
                             -- Reunie, mais pas toute dans les sacs : en gris.
