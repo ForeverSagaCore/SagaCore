@@ -190,7 +190,7 @@ end
 
 -- Les etapes d'une liste de quetes, la plus proche d'abord, puis la plus
 -- proche de la precedente.
-local function EtapesDeQuetes(ids, moi, etat, compte)
+local function EtapesDeQuetes(ids, moi, etat, compte, suite)
     if #ids == 0 then return nil, "loin" end
     local continent = Continent()
     if not continent then return nil, "loin", OuAller(moi, ids) end
@@ -224,7 +224,35 @@ local function EtapesDeQuetes(ids, moi, etat, compte)
         return nil, "loin", OuAller(moi, ids)
     end
     etat.chaine = type(etat.chaine) == "table" and etat.chaine or {}
-    local ordre = S().Lieux.Chaine(points, { x = jx, y = jy }, nil, etat.chaine)
+    local ici = { x = jx, y = jy }
+    if suite then
+        -- Une suite de quetes, la meme regle pour toutes : d'abord finir ce
+        -- qui est commence (quetes de la suite dans le journal : objectifs
+        -- ou rendu), la plus proche ; une quete de la suite a prendre n'est
+        -- un detour que si elle est sur le chemin (deux fois plus pres que
+        -- cette cible). Rien de commence : la plus proche a prendre.
+        local P = NS.parcours
+        local commences, aPrendre = {}, {}
+        for _, pt in ipairs(points) do
+            local e = P.EtatEtape(moi, pt.id)
+            if e == "cours" or e == "rendre" then table.insert(commences, pt) else table.insert(aPrendre, pt) end
+        end
+        if #commences > 0 then
+            local ordre = S().Lieux.Chaine(commences, ici, nil, etat.chaine)
+            local cible = ordre[1]
+            local dCible = S().Lieux.Distance(ici, cible)
+            local detours = {}
+            for _, pt in ipairs(aPrendre) do
+                if S().Lieux.Distance(ici, pt) * 2 < dCible then table.insert(detours, pt) end
+            end
+            if #detours > 0 then
+                local avant = S().Lieux.Chaine(detours, ici)
+                for k = #avant, 1, -1 do table.insert(ordre, 1, avant[k]) end
+            end
+            return ordre, nil, nil, compte
+        end
+    end
+    local ordre = S().Lieux.Chaine(points, ici, nil, etat.chaine)
     return ordre, nil, nil, compte
 end
 
@@ -439,7 +467,7 @@ TYPES.parcours = Commun({
             if e ~= "attente" and e ~= "faite" then table.insert(ids, id) end
         end
         if #ids == 0 then return nil, "loin", OuAller(moi, pc.etapes) end
-        return EtapesDeQuetes(ids, moi, etat, { fait = faites, total = total })
+        return EtapesDeQuetes(ids, moi, etat, { fait = faites, total = total }, true)
     end,
 })
 
