@@ -73,15 +73,23 @@ function actions.Fabriquer(recette, nombre, garde)
     -- Le metier va s'ouvrir en cache : sans le bruit d'ouverture.
     if not (NS.recettes.PretALancer and NS.recettes.PretALancer(recette)) and actions.Silence then actions.Silence() end
     local resultat = NS.recettes.Fabriquer(recette, nombre or 1)
+    -- La barre de progression ne remplace le bouton que si la fabrication
+    -- est vraiment lancee (pas quand le clic ne fait qu'ouvrir le metier).
+    if actions.serie then actions.serie.lancee = resultat ~= "ouverture" and resultat ~= "impossible" end
     if resultat == "ouverture" then
         -- Ouvert par notre bouton : la fenetre du metier reste invisible.
         actions.fantomeDemande = NS.Appeler(GetTime) or 0
         NS.Dire(L.CRAFT_OPENED)
         -- Le bouton devient "Lancer" : on redessine des que le metier est la.
         local plusTard = NS.Lecture("C_Timer.After")
-        if plusTard and NS.ecran and NS.ecran.Actualiser then
-            NS.Appeler(plusTard, 0.3, function() pcall(NS.ecran.Actualiser) end)
-            NS.Appeler(plusTard, 1, function() pcall(NS.ecran.Actualiser) end)
+        -- Fenetre et suivi : le bouton passe a « Lancer » aussitot.
+        local function Redessiner()
+            if NS.ecran and NS.ecran.Actualiser then pcall(NS.ecran.Actualiser) end
+            if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
+        end
+        if plusTard then
+            NS.Appeler(plusTard, 0.3, Redessiner)
+            NS.Appeler(plusTard, 1, Redessiner)
         end
     elseif resultat == "enchantement" then
         actions.serie = nil
@@ -376,6 +384,7 @@ do
                 if secret or not serie.recette or tostring(sort) == tostring(serie.recette) then
                     serie.reussis = (serie.reussis or 0) + 1
                     actions.VerifierSerie()
+                    if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
                 end
             end
             if evenement ~= "UNIT_SPELLCAST_SUCCEEDED" or unite == "player" then
