@@ -496,6 +496,7 @@ local function PoserLigne(ligne, retrait, depliable, deplie, auClic)
     ColonneSomme(ligne, false)
     BandeDeClasse(ligne, nil)
     ligne.nom.couleurPropre = nil
+    ligne.nom:SetShadowOffset(1, -1)
     if ligne.cadreVisage then
         ligne.cadreVisage:Hide() ligne.visage:Hide() ligne.detail:Hide() ligne.droiteHaut:Hide()
     end
@@ -957,6 +958,14 @@ local function LigneDePersonnage(ligne, fiche, estConnecte, couleur, detail, dro
     ligne.nom:SetPoint("TOPLEFT", ligne, "TOPLEFT", 42, -4)
     ligne.nom:SetPoint("RIGHT", ligne, "RIGHT", -90, 0)
     ligne.nom:SetFontObject("GameFontNormal")
+    -- Sur le parchemin, le nom a la couleur de sa classe se lit mal avec
+    -- l'ombre portee : la meme police du jeu, cernee d'un trait fin, sans
+    -- ombre.
+    local police, taille = ligne.nom:GetFont()
+    if police then
+        ligne.nom:SetFont(police, (taille or 12) + 1, "OUTLINE")
+        ligne.nom:SetShadowOffset(0, 0)
+    end
     ligne.nom.agrandir = false
     if couleur then
         ligne.nom:SetTextColor(couleur.r, couleur.g, couleur.b)
@@ -5000,18 +5009,33 @@ local TAILLE_PORTRAIT = 30
 -- dossier a part : une mise a jour de l'add-on ne l'efface pas. Rend vrai
 -- si l'image existe.
 local DOSSIER_PORTRAITS = "Interface\\AddOns\\SagaCorePortraits\\"
+-- Trois calques par portrait, chacun a sa place, pour qu'aucun ne garde
+-- l'image d'un autre personnage : dessous l'icone de classe (toujours),
+-- au-dessus le vrai portrait du personnage connecte, tout en haut l'image
+-- deposee par le joueur. Un calque sans image est cache.
+local function Calque(texture, cle, rang)
+    local c = texture[cle]
+    if c then return c end
+    local parent = texture:GetParent()
+    local couche, sous = texture:GetDrawLayer()
+    c = parent:CreateTexture(nil, couche or "ARTWORK", nil, math.min(7, (sous or 0) + rang))
+    c:SetAllPoints(texture)
+    texture[cle] = c
+    -- Le calque suit son portrait : cache avec lui.
+    if hooksecurefunc then
+        hooksecurefunc(texture, "Hide", function() c:Hide() end)
+    end
+    return c
+end
+
 local function PortraitDepose(texture, fiche)
     local nom = type(fiche) == "table" and fiche.cle and NS.inventaire.NomCourt(fiche.cle)
     if type(nom) ~= "string" or nom == "" then return false end
     local ok, reussi = pcall(texture.SetTexture, texture, DOSSIER_PORTRAITS .. nom)
-    if not ok or reussi == false then return false end
-    -- Fichier absent : le jeu ne trouve pas d'identifiant de fichier.
-    if texture.GetTextureFileID then
-        local okI, id = pcall(texture.GetTextureFileID, texture)
-        if okI and (id == nil or id == 0) then
-            local okC, chemin = pcall(texture.GetTextureFilePath, texture)
-            if not (okC and type(chemin) == "string" and chemin ~= "") then return false end
-        end
+    -- Seul un « oui » franc du jeu vaut : sinon pas d'image deposee.
+    if not ok or reussi ~= true then
+        pcall(texture.SetTexture, texture, nil)
+        return false
     end
     pcall(texture.SetTexCoord, texture, 0, 1, 0, 1)
     return true
@@ -5019,12 +5043,17 @@ end
 NS.PortraitDepose = PortraitDepose
 
 PoserVisage = function(texture, fiche, estConnecte)
-    -- Le portrait depose par le joueur passe avant tout.
-    if PortraitDepose(texture, fiche) then return end
+    local vivant = Calque(texture, "calqueVivant", 1)
+    local depose = Calque(texture, "calqueDepose", 2)
+    vivant:Hide() depose:Hide()
+    -- L'image deposee par le joueur passe avant tout.
+    if PortraitDepose(depose, fiche) then depose:Show() end
     -- Le vrai portrait pour le personnage connecte, quand le client le donne.
-    if estConnecte and SetPortraitTexture then
-        local ok = pcall(SetPortraitTexture, texture, "player")
-        if ok then return end
+    if not depose:IsShown() and estConnecte and SetPortraitTexture then
+        if pcall(SetPortraitTexture, vivant, "player") then
+            pcall(vivant.SetTexCoord, vivant, 0, 1, 0, 1)
+            vivant:Show()
+        end
     end
 
     -- Sinon son icone de classe, decoupee dans la planche du jeu.
@@ -5093,7 +5122,7 @@ local function SynchroniserOngletsDePersonnage(win)
     if d.personnages[courant] and Visible(courant) then table.insert(liste, courant) end
     local autres = {}
     for cle in pairs(d.personnages) do
-        if cle ~= courant and Visible(cle) then table.insert(autres, cle) end
+        if cle ~= courant and Visible(cle) and not NS.base.EstDoublon(cle) then table.insert(autres, cle) end
     end
     table.sort(autres)
     for _, cle in ipairs(autres) do table.insert(liste, cle) end
