@@ -195,9 +195,11 @@ local function ObjectifsDeProgression(liste)
             table.insert(liste, { cle = "prog" .. cle .. ":" .. vise, ligne = ligne, vise = vise, nom = string.format(L.GOAL_PROG, nom, vise), genre = "progression",
                 detail = string.format(L.GOAL_PROG_DETAIL, sien.rang, vise), pct = pct, atteint = sien.rang >= vise,
                 matieres = Matieres(requis, manques), achats = plan.achats,
-                -- Recettes a apprendre en chemin (une seule fois chacune).
+                -- Recettes a apprendre en chemin (une seule fois chacune). Elles
+                -- sont retenues pour l'objectif : une fois apprises, elles
+                -- restent affichees, en vert, jusqu'au rang vise.
                 aApprendre = (function()
-                    local t, vus = {}, {}
+                    local trouvees, vus = {}, {}
                     -- Sans recette nouvelle, le rang vise n'est pas atteint :
                     -- le meme calcul, recettes a apprendre comprises, dit lesquelles.
                     local source = plan
@@ -209,11 +211,25 @@ local function ObjectifsDeProgression(liste)
                         local r = etape.apprendre and etape.recette
                         if r and r.id and not vus[r.id] then
                             vus[r.id] = true
-                            local nature = NS.recettes.CommentApprendre and NS.recettes.CommentApprendre(r)
-                            table.insert(t, { nom = r.nom or tostring(r.id), ou = nature and L[nature] or nil,
-                                rang = etape.rangRequis or etape.de })
+                            table.insert(trouvees, r)
                         end
                     end
+                    local g = NS.base.ReglagesGeneraux()
+                    g.aApprendre = type(g.aApprendre) == "table" and g.aApprendre or {}
+                    local cleM = tostring(fiche.cle) .. ":" .. tostring(cle) .. ":" .. tostring(vise)
+                    if sien.rang >= vise then g.aApprendre[cleM] = nil return {} end
+                    local memo = type(g.aApprendre[cleM]) == "table" and g.aApprendre[cleM] or {}
+                    for _, r in ipairs(trouvees) do memo[tostring(r.id)] = r.nom or tostring(r.id) end
+                    g.aApprendre[cleM] = next(memo) and memo or nil
+                    local t = {}
+                    for id, nom in pairs(memo) do
+                        local r = catalogue.Toutes()[id]
+                        table.insert(t, { id = id, nom = nom, recette = r, appris = catalogue.EstApprise(id) })
+                    end
+                    table.sort(t, function(x, y2)
+                        if x.appris ~= y2.appris then return not x.appris end
+                        return tostring(x.nom) < tostring(y2.nom)
+                    end)
                     return t
                 end)(),
                 -- Les recettes du plan, dans l'ordre : le bouton Creer les lance.
@@ -1499,6 +1515,7 @@ local function DessinerObjectifs(y, objectifs, vue)
             cadreSuivi.icones[ni] = icone
         end
         icone:ClearAllPoints()
+        icone:SetSize(16, 16)
         icone:SetDesaturated(false)
         icone:Show()
         return icone
@@ -1650,6 +1667,23 @@ local function DessinerObjectifs(y, objectifs, vue)
                     -- La feuille de route : les etapes dans l'ordre le plus
                     -- rapide (qui envoie quoi, banque, courrier, achats...).
                     suivi.FeuilleDansLInfobulle(GameTooltip, objectif)
+                    -- Recettes a apprendre : ou les apprendre.
+                    local premiere = true
+                    for _, a in ipairs(objectif.aApprendre or {}) do
+                        if not a.appris then
+                            if premiere then
+                                GameTooltip:AddLine(" ")
+                                GameTooltip:AddLine(L.GOAL_LEARN_WHERE, 1, 0.82, 0)
+                                premiere = false
+                            end
+                            GameTooltip:AddLine(a.nom, 1, 1, 1)
+                            local okC, _, lignesSrc = pcall(NS.recettes.CommentApprendre, a.recette)
+                            for k, ls in ipairs(okC and lignesSrc or {}) do
+                                if k > 3 then break end
+                                GameTooltip:AddLine("  " .. tostring(ls), 0.8, 0.8, 0.8, true)
+                            end
+                        end
+                    end
                     for _, achat in pairs(objectif.achats or {}) do
                         GameTooltip:AddLine(L.CRAFT_TO_BUY, 1, 0.82, 0, true)
                         break
@@ -1867,17 +1901,28 @@ local function DessinerObjectifs(y, objectifs, vue)
                         y = y + 6
                     end
                     -- D'abord les recettes a apprendre, avant les matieres.
+                    -- Comme les matieres : a faire en couleur, fait en gris
+                    -- avec la coche verte a droite. Ou l'apprendre : au survol.
                     for _, a in ipairs(o.aApprendre or {}) do
                         local icone = Icone()
                         icone:SetPoint("TOPLEFT", zone, "TOPLEFT", 28, -y)
                         icone:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
+                        icone:SetDesaturated(a.appris)
                         local t = T(LIGNE, TAILLE_LIGNE)
                         t:ClearAllPoints()
                         t:SetPoint("LEFT", icone, "RIGHT", 6, 0)
-                        t:SetPoint("RIGHT", zone, "TOPLEFT", largeur - 2, -(y + 8))
+                        t:SetPoint("RIGHT", zone, "TOPLEFT", largeur - 22, -(y + 8))
                         t:SetWordWrap(false)
-                        t:SetText(string.format(L.GOAL_LEARN, a.nom) .. (a.ou and ("  |cff9d9d9d" .. a.ou .. "|r") or ""))
-                        t:SetTextColor(1, 0.82, 0)
+                        t:SetText(string.format(L.GOAL_LEARN, a.nom))
+                        if a.appris then
+                            t:SetTextColor(0.5, 0.5, 0.5)
+                            local coche = Icone()
+                            coche:SetSize(14, 14)
+                            coche:SetPoint("RIGHT", zone, "TOPLEFT", largeur - 2, -(y + 8))
+                            coche:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+                        else
+                            t:SetTextColor(1, 0.82, 0)
+                        end
                         y = y + 18
                     end
                     if #(o.matieres or {}) == 0 then

@@ -371,6 +371,8 @@ cadre:SetScript("OnEvent", function(_, evenement, argument1)
         if evenement == "NEW_RECIPE_LEARNED" and NS.recettes.NoterApprise then
             pcall(NS.recettes.NoterApprise, argument1)
             ecran.Actualiser()
+            -- Le suivi aussi : une recette a apprendre passe au vert.
+            if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
         end
         ReleverRecettesBientot()
     elseif evenement == "PLAYER_ENTERING_WORLD" or evenement == "ZONE_CHANGED_NEW_AREA" or evenement == "PLAYER_UPDATE_RESTING" then
