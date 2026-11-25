@@ -697,6 +697,87 @@ function encheres.EnStock()
     return rendu
 end
 
+-- Ce qui, dans les sacs, peut se vendre a l'hotel des ventes : ni lie, ni
+-- gris, ni objet de quete, et rien dont un projet ou un rang vise a besoin.
+-- { objet, nombre, sac, case, unite (net, au dernier releve), marchand,
+--   releve (prix deja cherche) }, les plus rentables d'abord.
+function encheres.AVendre()
+    local C = function(nom) return NS.Lecture("C_Container." .. nom, nom) end
+    local nbCases, contenu, idObjet = C("GetContainerNumSlots"), C("GetContainerItemInfo"), C("GetContainerItemID")
+    local info = NS.Lecture("C_Item.GetItemInfo", "GetItemInfo")
+    if not (nbCases and idObjet and info) then return {} end
+    -- Ce dont les fabrications et les rangs vises ont besoin : on le garde.
+    local garde = {}
+    local okB, besoins = pcall(NS.recettes.BesoinsDesObjectifs)
+    for objet, n in pairs(okB and besoins or {}) do garde[tonumber(objet) or 0] = n end
+    -- Les composants des projets et des fabrications rapides.
+    local cibles = { "rapides" }
+    local okP, projets = pcall(NS.projets.Tous, false)
+    for _, projet in ipairs(okP and projets or {}) do table.insert(cibles, projet.id) end
+    for _, cible in ipairs(cibles) do
+        local okC, entrees = pcall(NS.projets.Contenu, cible)
+        for _, e in ipairs(okC and entrees or {}) do
+            local r = CraftCoreDB and CraftCoreDB.recettes and CraftCoreDB.recettes[tostring(e.recette)]
+            for _, c in ipairs(r and r.composants or {}) do
+                local o = tonumber(c.objet)
+                if o then garde[o] = (garde[o] or 0) + (tonumber(c.quantite) or 1) * (tonumber(e.quantite) or 1) end
+            end
+        end
+    end
+    local parObjet, liste = {}, {}
+    for sac = 0, 5 do
+        for case = 1, tonumber(NS.Appeler(nbCases, sac)) or 0 do
+            local objet = tonumber(NS.Appeler(idObjet, sac, case))
+            local d = objet and NS.Appeler(contenu, sac, case)
+            local lie = type(d) == "table" and d.isBound
+            if objet and not lie then
+                local v = parObjet[objet]
+                if not v then
+                    local ok, _, _, qualite, _, _, _, _, _, _, _, prixMarchand, classe = pcall(info, objet)
+                    local vendable = ok and (tonumber(qualite) or 0) >= 1 and classe ~= 12 and not Lie(objet)
+                    if vendable then
+                        v = { objet = objet, nombre = 0, sac = sac, case = case, marchand = tonumber(prixMarchand) or 0 }
+                        parObjet[objet] = v
+                        table.insert(liste, v)
+                    else
+                        parObjet[objet] = false
+                    end
+                end
+                if v then v.nombre = v.nombre + (type(d) == "table" and tonumber(d.stackCount) or 1) end
+            end
+        end
+    end
+    local rendu = {}
+    for _, v in ipairs(liste) do
+        local reste = v.nombre - (garde[v.objet] or 0)
+        if reste > 0 then
+            v.nombre = reste
+            local prix, quand = encheres.Prix(v.objet, reste)
+            v.releve = quand ~= nil
+            if prix then v.unite = prix * (1 - COMMISSION) end
+            table.insert(rendu, v)
+        end
+    end
+    table.sort(rendu, function(a, b)
+        local va, vb = (a.unite or 0) * a.nombre, (b.unite or 0) * b.nombre
+        if va ~= vb then return va > vb end
+        return (a.marchand or 0) * a.nombre > (b.marchand or 0) * b.nombre
+    end)
+    return rendu
+end
+
+-- Met l'objet de cette case en vente dans la fenetre de l'hotel des ventes :
+-- le jeu propose son prix, le joueur verifie et valide lui-meme.
+function encheres.MettreEnVente(sac, case)
+    local f = _G.AuctionHouseFrame
+    local Loc = _G.ItemLocation
+    if not (f and f.SetPostItem and Loc and Loc.CreateFromBagAndSlot) then return false end
+    local okL, loc = pcall(Loc.CreateFromBagAndSlot, Loc, sac, case)
+    if not okL or not loc then return false end
+    local ok = pcall(f.SetPostItem, f, loc)
+    return ok
+end
+
 -- Pour les autres add-ons de la suite (TradeCore) : ce qu'on peut fabriquer
 -- et vendre, et ce qu'on a a vendre, avec les prix releves.
 _G.CraftCoreAPI = _G.CraftCoreAPI or {}
