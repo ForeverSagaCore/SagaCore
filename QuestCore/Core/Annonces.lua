@@ -56,7 +56,7 @@ local function XP(id)
         if ok and tonumber(xp) and tonumber(xp) > 0 then return tonumber(xp) end
     end
     local niveau = UnitLevel and UnitLevel("player")
-    return NS.ref and NS.ref.XPDeLaBase and tonumber(NS.ref.XPDeLaBase(id, niveau)) or 0
+    return NS.ref and NS.ref.XPDeLaBase and tonumber((NS.ref.XPDeLaBase(id, niveau))) or 0
 end
 
 local completes = nil
