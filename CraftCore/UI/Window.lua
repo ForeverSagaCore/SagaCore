@@ -611,6 +611,56 @@ local function MarquerObjetDeQuete(ligne, objet)
     ligne.quete:SetPoint("TOPLEFT", ligne.icone, "TOPLEFT", -4, 3)
     ligne.quete:Show()
 end
+-- Les metiers dont les recettes connues du compte prennent cet objet comme
+-- composant : { ligne, ... } (index refait quand le catalogue change).
+local usages, usagesTaille = nil, -1
+local function MetiersQuiUtilisent(objet)
+    local catalogueR = CraftCoreDB and CraftCoreDB.recettes or {}
+    local taille = 0
+    for _ in pairs(catalogueR) do taille = taille + 1 end
+    if not usages or taille ~= usagesTaille then
+        usages, usagesTaille = {}, taille
+        for _, r in pairs(catalogueR) do
+            local ligneM = type(r) == "table" and NS.recettes.MetierDe(r)
+            for _, c in ipairs(ligneM and r.composants or {}) do
+                local o = tonumber(c.objet)
+                if o then
+                    usages[o] = usages[o] or {}
+                    usages[o][ligneM] = true
+                end
+            end
+        end
+    end
+    local liste = {}
+    for ligneM in pairs(usages[tonumber(objet) or 0] or {}) do table.insert(liste, ligneM) end
+    table.sort(liste)
+    return liste
+end
+NS.MetiersQuiUtilisent = MetiersQuiUtilisent
+
+-- Apres le nom : les symboles des metiers ou l'objet sert de composant.
+local function IconesDUsage(objet)
+    local t = {}
+    for rang, ligneM in ipairs(MetiersQuiUtilisent(objet)) do
+        if rang > 4 then break end
+        local ic = ICONES_METIERS[ligneM]
+        if ic then table.insert(t, "|T" .. ic .. ":14:14:0:0:64:64:5:59:5:59|t") end
+    end
+    return #t > 0 and ("  " .. table.concat(t, " ")) or ""
+end
+
+local function UsagesDansLInfobulle(tt, objet)
+    local noms = {}
+    for _, ligneM in ipairs(MetiersQuiUtilisent(objet)) do
+        local nom = NS.recettes.NomDuMetier(ligneM)
+        if nom then table.insert(noms, nom) end
+    end
+    if #noms == 0 then return end
+    tt:AddLine(" ")
+    tt:AddLine(L.RECIPES_USED_IN, 1, 0.82, 0)
+    tt:AddLine("  " .. table.concat(noms, ", "), 1, 1, 1, true)
+end
+
 local function QuetesDansLInfobulle(tt, objet)
     local liste = QuetesDuProduit(objet)
     local n = 0
@@ -4021,7 +4071,8 @@ local function RendreRecettes(contenu)
             ecran.deplie[cleDepli] = (not deplie) or nil
             ecran.Montrer(ecran.page)
         end)
-        ligne.nom:SetText(recette.nom or ("recette " .. tostring(recette.id)))
+        ligne.nom:SetText((recette.nom or ("recette " .. tostring(recette.id)))
+            .. (recette.objetProduit and IconesDUsage(recette.objetProduit) or ""))
 
         local icone = recette.objetProduit and NS.jeu.iconeObjet
             and NS.Appeler(NS.jeu.iconeObjet, recette.objetProduit)
@@ -4109,7 +4160,7 @@ local function RendreRecettes(contenu)
             else
                 GameTooltip:SetText(recetteSurvol.nom or "")
             end
-            if objet then QuetesDansLInfobulle(GameTooltip, objet) end
+            if objet then QuetesDansLInfobulle(GameTooltip, objet) UsagesDansLInfobulle(GameTooltip, objet) end
             local palierSurvol = catalogue.EstApprise(recetteSurvol.id) and PalierDeProgression(recetteSurvol)
             if palierSurvol then
                 local c = COULEURS_PALIER[palierSurvol]
