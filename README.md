@@ -7,12 +7,14 @@
 | **QuestCore** | Suivi des quêtes, trajets guidés, progression de niveau, donjons, quêtes de groupe. |
 | **CraftCore** | Métiers, recettes, projets, progression, commandes entre vos personnages, prix et bénéfices. |
 | **MapCore** | Cartes, services (maîtres, réparation, boîtes aux lettres...), vos repères, où sont vos personnages. |
-| **LegacyCore** | Arbres d'héritage, défis du compte, chronologie et temps par niveau. |
+| **LegacyCore** | Arbres d'héritage, défis du compte, temps passé sur chaque niveau. |
 | **StuffCore** | Votre équipement : ce qui l'améliore et d'où ça vient (crafts, butins du monde, quêtes, donjons). Demande CraftCore. |
 | **FriendsCore** | Une petite aide : les add-ons d'autres auteurs qui complètent la suite, et les passerelles qui leur confient une tâche (itinéraires détaillés). |
 | **AuraCore** *(bêta)* | Un anneau discret autour du personnage : améliorations, procs, nourriture, flacon, potion, buffs de groupe, et les effets nuisibles sur leur propre cercle. Aussi publié seul. |
 
-Chaque add-on s'installe aussi seul (StuffCore demande CraftCore). Installés ensemble, ils partagent la même barre d'onglets, le même personnage choisi et la même flèche de guidage. Tout se joue aussi à la manette, en 7 langues.
+Chaque add-on s'installe aussi seul (StuffCore demande CraftCore). Installés ensemble, ils partagent la même interface (barre des personnages, menus, paramètres), le même personnage choisi et le même guidage, toujours annulable. Tout se joue aussi à la manette, en 7 langues.
+
+**Nouveautés de la 2.0** : interface commune à toute la suite, un personnage = une seule fiche, guidage annulable qui ne chevauche jamais un add-on d'itinéraire, feuille de route et banquiers dans CraftCore, itinéraires dans MapCore, donjons réécrits dans QuestCore. Le détail : [notes de la 2.0.0](notes/2.0.0.md).
 
 Ouvrir la suite là où on l'avait laissée : `/sagacore`.
 
