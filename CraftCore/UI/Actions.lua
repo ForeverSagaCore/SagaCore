@@ -99,6 +99,54 @@ function actions.Fabriquer(recette, nombre, garde)
     end
 end
 
+-- La barre d'une serie de fabrication, la meme partout : celle du jeu (barre
+-- d'incantation des metiers, son remplissage et son cadre), en petit.
+-- barre:Poser(faits, total).
+local function Atlas(nom)
+    local ct = _G.C_Texture
+    if not (ct and ct.GetAtlasInfo) then return nil end
+    local ok, info = pcall(ct.GetAtlasInfo, nom)
+    return ok and info and nom or nil
+end
+function actions.BarreDeSerie(parent)
+    local barre = CreateFrame("StatusBar", nil, parent)
+    barre:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    local remplissage = Atlas("ui-castingbar-filling-tradeskill") or Atlas("ui-castingbar-filling-standard")
+    local tex = barre:GetStatusBarTexture()
+    if remplissage and tex and tex.SetAtlas then
+        pcall(tex.SetAtlas, tex, remplissage, false)
+    else
+        barre:SetStatusBarColor(1, 0.7, 0)
+    end
+    barre.fond = barre:CreateTexture(nil, "BACKGROUND")
+    barre.fond:SetAllPoints()
+    local fond = Atlas("ui-castingbar-background")
+    if fond then barre.fond:SetAtlas(fond, false) else barre.fond:SetColorTexture(0, 0, 0, 0.5) end
+    barre.cadre = barre:CreateTexture(nil, "OVERLAY")
+    local cadre = Atlas("ui-castingbar-frame")
+    if cadre then
+        barre.cadre:SetAtlas(cadre, false)
+        barre.cadre:SetPoint("TOPLEFT", barre, "TOPLEFT", -2, 2)
+        barre.cadre:SetPoint("BOTTOMRIGHT", barre, "BOTTOMRIGHT", 2, -2)
+    else
+        barre.cadre:SetTexture("Interface\\CastingBar\\UI-CastingBar-Border-Small")
+        barre.cadre:SetPoint("TOPLEFT", barre, "TOPLEFT", -6, 6)
+        barre.cadre:SetPoint("BOTTOMRIGHT", barre, "BOTTOMRIGHT", 6, -6)
+    end
+    barre.texte = barre:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    barre.texte:SetPoint("CENTER", barre, "CENTER", 0, 0)
+    if barre.texte.SetShadowOffset then barre.texte:SetShadowOffset(1, -1) end
+    function barre:Poser(faits, total)
+        total = math.max(1, tonumber(total) or 1)
+        faits = math.max(0, math.min(total, tonumber(faits) or 0))
+        self:SetMinMaxValues(0, total)
+        self:SetValue(faits)
+        self.texte:SetText(faits .. " / " .. total)
+        self:Show()
+    end
+    return barre
+end
+
 -- Pose sur un bouton du jeu tout ce qu'il faut pour fabriquer `recette` :
 -- grise s'il manque quelque chose dans les sacs, et au survol, chaque
 -- composant, ce qu'on en a et ou est le reste.

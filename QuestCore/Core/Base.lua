@@ -585,6 +585,57 @@ function ref.ConstruireIndexRecompenses()
     end)
 end
 
+-- Objets demandes par les quetes (objectifs "objet" de la base) : pour
+-- signaler dans CraftCore les fabrications qui servent a une quete. Construit
+-- peu a peu, une seule fois.
+local quetesParObjet, indexObjetsPret, indexObjetsLance = {}, false, false
+function ref.ConstruireIndexObjetsDeQuetes()
+    local base = _G.QuestDB
+    if indexObjetsLance or not (base and base.GetAllIds) then return end
+    local ok, ids = pcall(base.GetAllIds)
+    if not ok or type(ids) ~= "table" then return end
+    indexObjetsLance = true
+    local rang, cadre = 1, CreateFrame("Frame")
+    cadre:SetScript("OnUpdate", function(self)
+        local fin = math.min(#ids, rang + 300)
+        for i = rang, fin do
+            local q = ids[i]
+            local o = Lire("QuestDB", q, "objectives")
+            for _, it in ipairs(type(o) == "table" and type(o[3]) == "table" and o[3] or {}) do
+                local objet = tonumber(it[1])
+                if objet then
+                    quetesParObjet[objet] = quetesParObjet[objet] or {}
+                    table.insert(quetesParObjet[objet], q)
+                end
+            end
+        end
+        rang = fin + 1
+        if rang > #ids then
+            indexObjetsPret = true
+            self:SetScript("OnUpdate", nil)
+        end
+    end)
+end
+
+-- Les quetes qui demandent cet objet : { id, nom, niveau, faite } (celles que
+-- le personnage peut faire, d'apres sa race, sa classe et son camp).
+function ref.QuetesDemandant(objet)
+    local res = {}
+    if not indexObjetsPret then pcall(ref.ConstruireIndexObjetsDeQuetes) return res end
+    local cle = NS.ClePersonnage and NS.ClePersonnage()
+    local p = cle and NS.base.Perso(cle)
+    for _, q in ipairs(quetesParObjet[tonumber(objet) or 0] or {}) do
+        local admise = not (NS.histoire and NS.histoire.Admise) or not p or NS.histoire.Admise(p, q)
+        local retiree = NS.histoire and NS.histoire.Retiree and NS.histoire.Retiree(q)
+        if admise and not retiree then
+            table.insert(res, { id = q, nom = ref.NomDeQuete(q, p), niveau = tonumber(Lire("QuestDB", q, "questLevel")) or 0,
+                faite = p and p.faites and p.faites[q] and true or false })
+        end
+    end
+    table.sort(res, function(a, b) if a.niveau ~= b.niveau then return a.niveau < b.niveau end return a.id < b.id end)
+    return res
+end
+
 -- Infobulle d'une quete pas encore prise : niveau, donneur, recompenses de la base.
 function ref.InfobulleDeLaBase(tt, id, p)
     local L = NS.L

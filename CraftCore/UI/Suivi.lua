@@ -1694,24 +1694,12 @@ local function DessinerObjectifs(y, objectifs, vue)
                     and (serie.reussis or 0) < (serie.total or 1)
                 if b.barreFab then b.barreFab:Hide() end
                 if serieIci then
-                    if not b.barreFab then
-                        local barre = CreateFrame("StatusBar", nil, b)
-                        barre:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-                        barre:SetStatusBarColor(0.31, 0.82, 0.41)
-                        barre.fond = barre:CreateTexture(nil, "BACKGROUND")
-                        barre.fond:SetAllPoints()
-                        barre.fond:SetColorTexture(0, 0, 0, 0.55)
-                        barre.texte = barre:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                        barre.texte:SetPoint("CENTER")
-                        b.barreFab = barre
-                    end
+                    if not b.barreFab then b.barreFab = NS.actions.BarreDeSerie(b) end
                     local barre = b.barreFab
                     barre:ClearAllPoints()
-                    barre:SetPoint("RIGHT", b.droite, "LEFT", -6, 0)
-                    barre:SetSize(60, 12)
-                    barre:SetMinMaxValues(0, serie.total or 1)
-                    barre:SetValue(serie.reussis or 0)
-                    barre.texte:SetText((serie.reussis or 0) .. " / " .. (serie.total or 1))
+                    barre:SetPoint("RIGHT", b.droite, "LEFT", -8, 0)
+                    barre:SetSize(52, 10)
+                    barre:Poser(serie.reussis, serie.total)
                     barre:SetFrameLevel(b:GetFrameLevel() + 3)
                     barre:Show()
                     if b.creer then b.creer:Hide() end

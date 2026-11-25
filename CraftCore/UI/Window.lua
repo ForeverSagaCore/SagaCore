@@ -463,6 +463,7 @@ local function PoserLigne(ligne, retrait, depliable, deplie, auClic)
     ligne.plus:Hide()
     if ligne.fabriquer then ligne.fabriquer:Hide() end
     if ligne.barreFab then ligne.barreFab:Hide() end
+    if ligne.quete then ligne.quete:Hide() end
     if ligne.manque then ligne.manque:Hide() end
     if ligne.palier then ligne.palier:Hide() end
     ligne.quantite:Hide()
@@ -548,25 +549,13 @@ local function PoserBoutonFabriquer(ligne, recette, nombre)
     local serie = NS.actions and NS.actions.serie
     if serie and serie.lancee and recette and tostring(serie.recette) == tostring(recette.id)
         and (serie.reussis or 0) < (serie.total or 1) then
-        if not ligne.barreFab then
-            local barre = CreateFrame("StatusBar", nil, ligne)
-            barre:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-            barre:SetStatusBarColor(0.31, 0.82, 0.41)
-            barre.fond = barre:CreateTexture(nil, "BACKGROUND")
-            barre.fond:SetAllPoints()
-            barre.fond:SetColorTexture(0, 0, 0, 0.55)
-            barre.texte = barre:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            barre.texte:SetPoint("CENTER")
-            ligne.barreFab = barre
-        end
+        if not ligne.barreFab then ligne.barreFab = NS.actions.BarreDeSerie(ligne) end
         local barre = ligne.barreFab
         barre:ClearAllPoints()
-        barre:SetPoint("TOPLEFT", b, "TOPLEFT", 0, -3)
-        barre:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, 3)
-        barre:SetMinMaxValues(0, serie.total or 1)
-        barre:SetValue(serie.reussis or 0)
-        barre.texte:SetText((serie.reussis or 0) .. " / " .. (serie.total or 1))
-        barre:Show()
+        barre:SetSize(52, 10)
+        barre:SetPoint("CENTER", b, "CENTER", 0, 0)
+        barre:SetFrameLevel(ligne:GetFrameLevel() + 3)
+        barre:Poser(serie.reussis, serie.total)
         b:Hide()
         if ligne.manque then ligne.manque:Hide() end
         AncrerLibelle(ligne, b)
@@ -596,6 +585,47 @@ local function PoserBoutonFabriquer(ligne, recette, nombre)
             butee = ligne.manque
         end
         AncrerLibelle(ligne, butee)
+    end
+end
+
+-- Ce que fabrique la recette sert a une quete (d'apres QuestCore) : le
+-- point d'exclamation des quetes en coin d'icone, en haut a gauche.
+local function QuetesDuProduit(objet)
+    local api = _G.QuestCoreAPI
+    if not (objet and api and api.QuetesDemandant) then return {} end
+    local ok, liste = pcall(api.QuetesDemandant, objet)
+    return ok and type(liste) == "table" and liste or {}
+end
+local function MarquerObjetDeQuete(ligne, objet)
+    local liste = QuetesDuProduit(objet)
+    local a = false
+    for _, q in ipairs(liste) do if not q.faite then a = true break end end
+    if not a then
+        if ligne.quete then ligne.quete:Hide() end
+        return
+    end
+    if not ligne.quete then
+        ligne.quete = ligne:CreateTexture(nil, "OVERLAY")
+        ligne.quete:SetSize(12, 12)
+        ligne.quete:SetTexture("Interface\\GossipFrame\\AvailableQuestIcon")
+    end
+    ligne.quete:ClearAllPoints()
+    ligne.quete:SetPoint("TOPLEFT", ligne.icone, "TOPLEFT", -4, 3)
+    ligne.quete:Show()
+end
+local function QuetesDansLInfobulle(tt, objet)
+    local liste = QuetesDuProduit(objet)
+    local n = 0
+    for _, q in ipairs(liste) do
+        if not q.faite then
+            if n == 0 then
+                tt:AddLine(" ")
+                tt:AddLine(L.RECIPES_QUEST_ITEM, 1, 0.82, 0)
+            end
+            n = n + 1
+            if n > 4 then break end
+            tt:AddLine("  " .. string.format(L.RECIPES_QUEST_LINE, q.niveau or 0, q.nom or "?"), 1, 1, 1)
+        end
     end
 end
 
@@ -4002,6 +4032,7 @@ local function RendreRecettes(contenu)
         if icone then
             ligne.icone:SetTexture(icone)
             ligne.icone:Show()
+            MarquerObjetDeQuete(ligne, recette.objetProduit)
         else
             ligne.icone:Hide()
         end
@@ -4082,6 +4113,7 @@ local function RendreRecettes(contenu)
             else
                 GameTooltip:SetText(recetteSurvol.nom or "")
             end
+            if objet then QuetesDansLInfobulle(GameTooltip, objet) end
             local palierSurvol = catalogue.EstApprise(recetteSurvol.id) and PalierDeProgression(recetteSurvol)
             if palierSurvol then
                 local c = COULEURS_PALIER[palierSurvol]
@@ -5402,36 +5434,14 @@ local function Construire()
 
     -- Fabrication en cours : la fenetre couvre souvent la barre d'incantation
     -- du jeu, alors on la redit ici, dans le pied, avec la texture du jeu.
-    -- La meme barre que QuestCore : texture des competences du jeu, fine
-    -- bordure d'infobulle aux coins arrondis, texte dedans. 12 pixels de haut
-    -- (16 avec la bordure) : elle tient dans le pied sans en deborder.
-    local okF, fab = pcall(CreateFrame, "StatusBar", nil, barre, "BackdropTemplate")
-    fab = okF and fab or CreateFrame("StatusBar", nil, barre)
+    -- La barre d'incantation du jeu (celle des metiers), en plus court.
+    local fab = NS.actions.BarreDeSerie(barre)
     fab.sansEncre = true
-    fab:SetSize(260, 12)
+    fab:SetSize(180, 10)
     fab:SetPoint("CENTER", barre, "CENTER", 0, 0)
-    fab:SetStatusBarTexture("Interface\\PaperDollInfoFrame\\UI-Character-Skills-Bar")
-    fab:SetStatusBarColor(1, 0.7, 0)
     fab:SetMinMaxValues(0, 1)
-    fab.fond = fab:CreateTexture(nil, "BACKGROUND")
-    fab.fond:SetAllPoints()
-    fab.fond:SetColorTexture(0, 0, 0, 0.65)
-    local okB, bordure = pcall(CreateFrame, "Frame", nil, fab, "BackdropTemplate")
-    bordure = okB and bordure or CreateFrame("Frame", nil, fab)
-    bordure:SetPoint("TOPLEFT", -2, 2)
-    bordure:SetPoint("BOTTOMRIGHT", 2, -2)
-    if bordure.SetBackdrop then
-        bordure:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 5 })
-        bordure:SetBackdropBorderColor(0.8, 0.65, 0.35, 1)
-    end
-    bordure:SetFrameLevel(fab:GetFrameLevel() + 2)
-    fab.texte = bordure:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    fab.texte:SetPoint("CENTER", fab, "CENTER", 0, 0)
     fab.texte:SetWordWrap(false)
-    fab.texte:SetWidth(250)
-    local fichier, _, drapeaux = fab.texte:GetFont()
-    if fichier then fab.texte:SetFont(NS.Police(fichier), 9, drapeaux) end
-    fab.texte:SetShadowOffset(1, -1)
+    fab.texte:SetWidth(176)
     fab:Hide()
     win.barreFabrication = fab
     local function Suivre()
