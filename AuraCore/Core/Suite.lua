@@ -3040,6 +3040,22 @@ local function BasDeFleche(f)
     return bas
 end
 
+-- Le haut visible de cette fleche (ce qu'elle affiche au-dessus compris).
+-- Les textes de la suite se posent au-dessus : ses lignes du dessous
+-- changent de hauteur a chaque etape, son haut ne bouge pas.
+local function HautDeFleche(f)
+    local haut, plusHaut = f, f:GetTop() or 0
+    for _, cle in ipairs({ "Icon", "Distance", "Progress", "Lines", "ArrivalTitle", "ArrivalLines" }) do
+        local e = f[cle]
+        if e and e.IsShown and e:IsShown() and e.GetTop then
+            local t = e:GetTop()
+            local texte = not e.GetText or (e:GetText() or "") ~= ""
+            if t and texte and t > plusHaut then haut, plusHaut = e, t end
+        end
+    end
+    return haut, plusHaut
+end
+
 local Finir, Calculer
 
 local function CadreObjectifs()
@@ -3217,8 +3233,20 @@ local function CadreObjectifs()
         self.compte:ClearAllPoints()
         self.changer:ClearAllPoints()
         if externe and not enAttenteFleche then
+            -- Nos lignes en une colonne, au-dessus de la fleche de l'add-on
+            -- (sous elle si elle touche le haut de l'ecran) : jamais sur ses
+            -- textes, jamais l'une sur l'autre.
+            local dessus = false
             if fl and fl:IsShown() then
-                self.etape:SetPoint("TOP", BasDeFleche(fl), "BOTTOM", 0, -8)
+                local haut, y = HautDeFleche(fl)
+                local ecran = (UIParent.GetTop and UIParent:GetTop()) or 768
+                local echelle = (fl.GetEffectiveScale and UIParent.GetEffectiveScale) and (fl:GetEffectiveScale() / UIParent:GetEffectiveScale()) or 1
+                dessus = (y or 0) * echelle + 70 < ecran
+                if dessus then
+                    self.changer:SetPoint("BOTTOM", haut, "TOP", 0, 8)
+                else
+                    self.etape:SetPoint("TOP", BasDeFleche(fl), "BOTTOM", 0, -8)
+                end
             else
                 self.etape:SetPoint("TOP", self, "CENTER", 0, 0)
             end
@@ -3230,14 +3258,24 @@ local function CadreObjectifs()
             if quoi ~= "" then ligne = ligne .. " : " .. quoi end
             self.etape:SetText(ligne)
             self.etape:Show()
-            self.compte:SetPoint("TOP", self.etape, "BOTTOM", 0, -2)
             if total > 1 then
                 self.compte:SetText(string.format(TX("Step %d of %d"), rang, total))
                 self.compte:Show()
             else
                 self.compte:Hide()
             end
-            self.changer:SetPoint("TOP", self.compte:IsShown() and self.compte or self.etape, "BOTTOM", 0, -6)
+            if dessus then
+                -- De bas en haut : bouton, compte, etape.
+                if self.compte:IsShown() then
+                    self.compte:SetPoint("BOTTOM", self.changer, "TOP", 0, 4)
+                    self.etape:SetPoint("BOTTOM", self.compte, "TOP", 0, 2)
+                else
+                    self.etape:SetPoint("BOTTOM", self.changer, "TOP", 0, 4)
+                end
+            else
+                self.compte:SetPoint("TOP", self.etape, "BOTTOM", 0, -2)
+                self.changer:SetPoint("TOP", self.compte:IsShown() and self.compte or self.etape, "BOTTOM", 0, -6)
+            end
         else
             self.etape:Hide()
             self.compte:Hide()
@@ -5072,7 +5110,9 @@ local function Panneau()
     local p = Suite.panneauRaccourcis
     if p then return p end
     p = CreateFrame("Frame", "CoreSuiteRaccourcis", UIParent)
-    p:SetFrameStrata("DIALOG")
+    p:SetFrameStrata("FULLSCREEN_DIALOG")
+    if p.SetToplevel then p:SetToplevel(true) end
+    p:HookScript("OnShow", function(self) self:Raise() end)
     p:SetClampedToScreen(true)
     p.boutons = {}
     p.focus = 1

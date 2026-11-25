@@ -60,7 +60,15 @@ function charte.Fenetre(nom, largeur, hauteur, options)
     cadre = cadre or CreateFrame("Frame", nom, options.parent or UIParent)
 
     cadre:SetSize(largeur, hauteur)
-    cadre:SetFrameStrata(options.strate or "FULLSCREEN_DIALOG")
+    -- Une fenetre qui surgit (strate DIALOG demandee, ou surgit) passe
+    -- toujours devant les fenetres de la suite : meme strate qu'elles, au
+    -- premier plan a chaque apparition.
+    local surgit = options.surgit or options.strate == "DIALOG"
+    cadre:SetFrameStrata(surgit and "FULLSCREEN_DIALOG" or options.strate or "FULLSCREEN_DIALOG")
+    if surgit then
+        if cadre.SetToplevel then cadre:SetToplevel(true) end
+        cadre:HookScript("OnShow", function(self) if self.Raise then self:Raise() end end)
+    end
     cadre:EnableMouse(true)
     cadre:SetClampedToScreen(true)
     if options.deplacable ~= false then
