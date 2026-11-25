@@ -1524,6 +1524,7 @@ local function DessinerObjectifs(y, objectifs, vue)
         end
         b:ClearAllPoints()
         if b.creer then b.creer:Hide() end
+        if b.barreFab then b.barreFab:Hide() end
         b:Show()
         return b
     end
@@ -1667,7 +1668,37 @@ local function DessinerObjectifs(y, objectifs, vue)
                 for objet, n in pairs(toutEnSacs and type(o.achats) == "table" and o.achats or {}) do
                     if (NS.inventaire.DisponibleDansLesSacs(objet) or 0) < (tonumber(n) or 0) then toutEnSacs = false break end
                 end
-                if recettePrete and toutEnSacs then
+                -- Une serie de cette recette est en cours : a la place du
+                -- bouton, une petite barre qui avance a chaque objet fabrique
+                -- (« 3 / 17 »). Le bouton revient a la fin de la serie.
+                local serie = NS.actions and NS.actions.serie
+                local serieIci = serie and serie.lancee and recettePrete and tostring(serie.recette) == tostring(recettePrete.id)
+                    and (serie.reussis or 0) < (serie.total or 1)
+                if b.barreFab then b.barreFab:Hide() end
+                if serieIci then
+                    if not b.barreFab then
+                        local barre = CreateFrame("StatusBar", nil, b)
+                        barre:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+                        barre:SetStatusBarColor(0.31, 0.82, 0.41)
+                        barre.fond = barre:CreateTexture(nil, "BACKGROUND")
+                        barre.fond:SetAllPoints()
+                        barre.fond:SetColorTexture(0, 0, 0, 0.55)
+                        barre.texte = barre:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                        barre.texte:SetPoint("CENTER")
+                        b.barreFab = barre
+                    end
+                    local barre = b.barreFab
+                    barre:ClearAllPoints()
+                    barre:SetPoint("RIGHT", b.droite, "LEFT", -6, 0)
+                    barre:SetSize(60, 12)
+                    barre:SetMinMaxValues(0, serie.total or 1)
+                    barre:SetValue(serie.reussis or 0)
+                    barre.texte:SetText((serie.reussis or 0) .. " / " .. (serie.total or 1))
+                    barre:SetFrameLevel(b:GetFrameLevel() + 3)
+                    barre:Show()
+                    if b.creer then b.creer:Hide() end
+                    b.nom:SetPoint("RIGHT", barre, "LEFT", -6, 0)
+                elseif recettePrete and toutEnSacs then
                     if not b.creer then
                         b.creer = CreateFrame("Button", nil, b, "UIPanelButtonTemplate")
                         b.creer:SetSize(52, 16)
@@ -1856,8 +1887,8 @@ local function DessinerObjectifs(y, objectifs, vue)
                         -- leur etat (fait, en cours, absent).
                         -- Deux points d'ancrage : sa boite est fixe, jamais
                         -- heritee d'un autre usage du meme texte.
-                        compte:SetPoint("LEFT", zone, "TOPLEFT", largeur - 62, -(y + 8))
                         compte:SetPoint("RIGHT", zone, "TOPLEFT", largeur - 2, -(y + 8))
+                        compte:SetWidth(0)
                         compte:SetJustifyH("RIGHT")
                         compte:SetWordWrap(false)
                         compte:SetText(math.min(m.possede, m.requis) .. " / " .. m.requis)
