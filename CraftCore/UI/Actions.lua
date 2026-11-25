@@ -385,6 +385,8 @@ do
                     serie.reussis = (serie.reussis or 0) + 1
                     actions.VerifierSerie()
                     if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
+                    -- La barre de la fenetre avance aussi.
+                    if NS.ecran and NS.ecran.Actualiser then pcall(NS.ecran.Actualiser) end
                 end
             end
             if evenement ~= "UNIT_SPELLCAST_SUCCEEDED" or unite == "player" then
@@ -428,7 +430,7 @@ do
                 local okC, sort = pcall(UnitCastingInfo, "player")
                 local enCours = okC and sort ~= nil
                 local serie = actions.serie
-                local serieFinie = not serie or (serie.faits or 0) >= (serie.total or 1)
+                local serieFinie = not serie or (serie.reussis or 0) >= (serie.total or 1)
                 if not enCours and serieFinie and not EncoreAFaire() then Fermer() end
             end
         end

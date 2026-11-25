@@ -471,6 +471,7 @@ local function PoserLigne(ligne, retrait, depliable, deplie, auClic)
     ligne.moins:Hide()
     ligne.plus:Hide()
     if ligne.fabriquer then ligne.fabriquer:Hide() end
+    if ligne.barreFab then ligne.barreFab:Hide() end
     if ligne.manque then ligne.manque:Hide() end
     if ligne.palier then ligne.palier:Hide() end
     ligne.quantite:Hide()
@@ -550,6 +551,36 @@ local function PoserBoutonFabriquer(ligne, recette, nombre)
     b:ClearAllPoints()
     local voisin = (ligne.moins:IsShown() and ligne.moins) or (ligne.plus:IsShown() and ligne.plus) or ligne.total
     b:SetPoint("RIGHT", voisin, "LEFT", voisin == ligne.total and -6 or -4, 0)
+    -- Une serie de cette recette est en cours : a la place du bouton, la
+    -- meme petite barre que dans le suivi (« 3 / 12 »).
+    if ligne.barreFab then ligne.barreFab:Hide() end
+    local serie = NS.actions and NS.actions.serie
+    if serie and serie.lancee and recette and tostring(serie.recette) == tostring(recette.id)
+        and (serie.reussis or 0) < (serie.total or 1) then
+        if not ligne.barreFab then
+            local barre = CreateFrame("StatusBar", nil, ligne)
+            barre:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+            barre:SetStatusBarColor(0.31, 0.82, 0.41)
+            barre.fond = barre:CreateTexture(nil, "BACKGROUND")
+            barre.fond:SetAllPoints()
+            barre.fond:SetColorTexture(0, 0, 0, 0.55)
+            barre.texte = barre:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            barre.texte:SetPoint("CENTER")
+            ligne.barreFab = barre
+        end
+        local barre = ligne.barreFab
+        barre:ClearAllPoints()
+        barre:SetPoint("TOPLEFT", b, "TOPLEFT", 0, -3)
+        barre:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 0, 3)
+        barre:SetMinMaxValues(0, serie.total or 1)
+        barre:SetValue(serie.reussis or 0)
+        barre.texte:SetText((serie.reussis or 0) .. " / " .. (serie.total or 1))
+        barre:Show()
+        b:Hide()
+        if ligne.manque then ligne.manque:Hide() end
+        AncrerLibelle(ligne, b)
+        return
+    end
     b:SetText(L.CRAFT_BUTTON)
     -- Grise : ce qui manque dans les sacs, ecrit a cote, sans avoir a survoler.
     if not ligne.manque then
