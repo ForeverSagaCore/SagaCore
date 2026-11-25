@@ -295,6 +295,7 @@ local DICO = {
         ["Show or hide everything"] = "Tout afficher ou tout masquer",
         ["Open"] = "Ouvrir",
         ["Change guide"] = "Changer de guide",
+        ["Stop"] = "Arrêter",
         ["Route add-ons"] = "Add-ons d'itinéraire",
         ["Shortest Path Forever and TomTom draw a detailed route. Install them with CurseForge or WowUp, then restart the game : they become available here."] = "Shortest Path Forever et TomTom tracent un itinéraire détaillé. Installez-les avec CurseForge ou WowUp, puis relancez le jeu : ils deviennent disponibles ici.",
         ["Greyed : add-on not installed (see the i)."] = "Grisé : add-on non installé (voir le i).",
@@ -4332,34 +4333,35 @@ local function FlecheExterne()
     if ok and trouve then flecheExterne = trouve end
     return flecheExterne
 end
--- Le bas visible de cette fleche (ses lignes de texte comprises).
-local function BasDeFleche(f)
-    local bas, plusBas = f, f:GetBottom() or 0
-    for _, cle in ipairs({ "Icon", "Distance", "Progress", "Lines", "ArrivalTitle", "ArrivalLines" }) do
-        local e = f[cle]
-        if e and e.IsShown and e:IsShown() and e.GetBottom then
-            local b = e:GetBottom()
-            local texte = not e.GetText or (e:GetText() or "") ~= ""
-            if b and texte and b < plusBas then bas, plusBas = e, b end
+-- L'encombrement reel de l'add-on de trajet a l'ecran : son cadre, tout ce
+-- qu'il dessine (textes, icones) et ses sous-cadres visibles, quels que
+-- soient leurs noms. En pixels d'ecran : gauche, droite, bas, haut.
+local function EncombrementDe(f)
+    local g, d, b, h
+    local function Prendre(e)
+        if not (e and e.IsVisible and e:IsVisible() and e.GetLeft) then return end
+        if e.GetText and not e.GetChildren and (e:GetText() or "") == "" then return end
+        if e.GetAlpha and (e:GetAlpha() or 1) <= 0.01 then return end
+        local l, r, bo, t = e:GetLeft(), e:GetRight(), e:GetBottom(), e:GetTop()
+        if not (l and r and bo and t) then return end
+        local k = e.GetEffectiveScale and e:GetEffectiveScale() or 1
+        l, r, bo, t = l * k, r * k, bo * k, t * k
+        g = g and math.min(g, l) or l
+        d = d and math.max(d, r) or r
+        b = b and math.min(b, bo) or bo
+        h = h and math.max(h, t) or t
+    end
+    local function Parcourir(e, profondeur)
+        Prendre(e)
+        if e.GetRegions then for _, r in ipairs({ e:GetRegions() }) do Prendre(r) end end
+        if profondeur > 0 and e.GetChildren then
+            for _, enfant in ipairs({ e:GetChildren() }) do
+                if enfant.IsVisible and enfant:IsVisible() then Parcourir(enfant, profondeur - 1) end
+            end
         end
     end
-    return bas
-end
-
--- Le haut visible de cette fleche (ce qu'elle affiche au-dessus compris).
--- Les textes de la suite se posent au-dessus : ses lignes du dessous
--- changent de hauteur a chaque etape, son haut ne bouge pas.
-local function HautDeFleche(f)
-    local haut, plusHaut = f, f:GetTop() or 0
-    for _, cle in ipairs({ "Icon", "Distance", "Progress", "Lines", "ArrivalTitle", "ArrivalLines" }) do
-        local e = f[cle]
-        if e and e.IsShown and e:IsShown() and e.GetTop then
-            local t = e:GetTop()
-            local texte = not e.GetText or (e:GetText() or "") ~= ""
-            if t and texte and t > plusHaut then haut, plusHaut = e, t end
-        end
-    end
-    return haut, plusHaut
+    Parcourir(f, 3)
+    return g, d, b, h
 end
 
 local Finir, Calculer
@@ -4456,11 +4458,32 @@ local function CadreObjectifs()
     c.compte:Hide()
     -- Sous la boussole, pour tous les guidages : changer de guide en route
     -- (quand un add-on d'itineraire est installe).
-    c.changer = CreateFrame("Button", "CoreSuiteGuidageChanger", c, "UIPanelButtonTemplate")
-    c.changer:SetSize(130, 20)
+    -- Une rangee de deux boutons, toujours la pendant un guidage :
+    -- « Changer de guide » (si un add-on de trajet est installe) et
+    -- « Arreter », qui coupe le guidage en cours, d'ou qu'il vienne.
+    c.changer = CreateFrame("Frame", nil, c)
+    c.changer:SetSize(130 + 4 + 90, 20)
     c.changer:SetPoint("TOP", c.qui, "BOTTOM", 0, -6)
-    c.changer:SetText(TX("Change guide"))
-    c.changer:SetScript("OnClick", function() Suite.ChangerDeGuide() end)
+    c.btnChanger = CreateFrame("Button", "CoreSuiteGuidageChanger", c.changer, "UIPanelButtonTemplate")
+    c.btnChanger:SetSize(130, 20)
+    c.btnChanger:SetText(TX("Change guide"))
+    c.btnChanger:SetScript("OnClick", function() Suite.ChangerDeGuide() end)
+    c.btnArreter = CreateFrame("Button", "CoreSuiteGuidageArreter", c.changer, "UIPanelButtonTemplate")
+    c.btnArreter:SetSize(90, 20)
+    c.btnArreter:SetText(TX("Stop"))
+    c.btnArreter:SetScript("OnClick", function() Suite.Arreter("joueur") end)
+    function c.changer.Poser(peutChanger)
+        c.btnChanger:ClearAllPoints()
+        c.btnArreter:ClearAllPoints()
+        c.btnChanger:SetShown(peutChanger)
+        if peutChanger then
+            c.btnChanger:SetPoint("LEFT", c.changer, "LEFT", 0, 0)
+            c.btnArreter:SetPoint("RIGHT", c.changer, "RIGHT", 0, 0)
+        else
+            c.btnArreter:SetPoint("CENTER", c.changer, "CENTER", 0, 0)
+        end
+    end
+    c.changer.Poser(false)
     c.changer:Hide()
     local attente = 0
     c:SetScript("OnUpdate", function(self, ecoule)
@@ -4469,7 +4492,12 @@ local function CadreObjectifs()
         attente = 0.05
         local inst = Suite.guide.actif
         if not inst then self:Hide() return end
-        self.changer:SetShown(Suite.PeutChangerDeGuide and Suite.PeutChangerDeGuide() or false)
+        local peutChanger = Suite.PeutChangerDeGuide and Suite.PeutChangerDeGuide() or false
+        if self.changer.peut ~= peutChanger then
+            self.changer.peut = peutChanger
+            self.changer.Poser(peutChanger)
+        end
+        self.changer:Show()
         -- En marche, le bouton s'efface presque (10 %) : on sait qu'il est
         -- la ; a l'arret, il revient et se clique.
         local vM = Suite.VitesseJoueur()
@@ -4480,7 +4508,8 @@ local function CadreObjectifs()
             a = (a < vise) and math.min(vise, a + 0.15) or math.max(vise, a - 0.15)
             self.changer:SetAlpha(a)
         end
-        self.changer:EnableMouse(not enMarche)
+        self.btnChanger:EnableMouse(not enMarche)
+        self.btnArreter:EnableMouse(not enMarche)
         local calcul = Calculer()
         -- Objectif atteint pendant le calcul : tout est deja range.
         if Suite.guide.actif ~= inst then return end
@@ -4539,22 +4568,25 @@ local function CadreObjectifs()
         self.compte:ClearAllPoints()
         self.changer:ClearAllPoints()
         if externe and not enAttenteFleche then
-            -- Nos lignes en une colonne, au-dessus de la fleche de l'add-on
-            -- (sous elle si elle touche le haut de l'ecran) : jamais sur ses
-            -- textes, jamais l'une sur l'autre.
-            local dessus = false
-            if fl and fl:IsShown() then
-                local haut, y = HautDeFleche(fl)
-                local ecran = (UIParent.GetTop and UIParent:GetTop()) or 768
-                local echelle = (fl.GetEffectiveScale and UIParent.GetEffectiveScale) and (fl:GetEffectiveScale() / UIParent:GetEffectiveScale()) or 1
-                dessus = (y or 0) * echelle + 70 < ecran
+            -- Nos lignes en une colonne, au-dessus de TOUT ce que l'add-on
+            -- de trajet dessine (sous lui s'il touche le haut de l'ecran) :
+            -- jamais sur ses textes, jamais l'une sur l'autre.
+            local dessus = true
+            local g, d, b, h
+            if fl and fl:IsShown() then g, d, b, h = EncombrementDe(fl) end
+            local kU = UIParent.GetEffectiveScale and UIParent:GetEffectiveScale() or 1
+            local kC = self.changer.GetEffectiveScale and self.changer:GetEffectiveScale() or kU
+            if g then
+                local ecran = ((UIParent.GetTop and UIParent:GetTop()) or 768) * kU
+                local x = (g + d) / 2
+                dessus = h + 70 * kC < ecran
                 if dessus then
-                    self.changer:SetPoint("BOTTOM", haut, "TOP", 0, 8)
+                    self.changer:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", x / kC, (h + 8 * kC) / kC)
                 else
-                    self.etape:SetPoint("TOP", BasDeFleche(fl), "BOTTOM", 0, -8)
+                    self.etape:SetPoint("TOP", UIParent, "BOTTOMLEFT", x / kC, (b - 8 * kC) / kC)
                 end
             else
-                self.etape:SetPoint("TOP", self, "CENTER", 0, 0)
+                self.changer:SetPoint("BOTTOM", self, "CENTER", 0, 0)
             end
             local nomP = Def(inst) and Def(inst).nomProprietaire or inst.proprietaire
             local quoi = inst.libelle
