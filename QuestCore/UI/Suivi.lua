@@ -3060,13 +3060,39 @@ end
 -- s'il revient ; rien n'est remplace. Jamais en combat.
 local SUIVIS_DU_JEU = { "ObjectiveTrackerFrame", "QuestWatchFrame", "WatchFrame" }
 local suivisAccroches = {}
+-- Le jeu re-montre son suivi a chaque quete prise (et le replace) : le
+-- cacher ne tient pas. Il est donc range dans un cadre toujours cache : quoi
+-- que fasse le jeu, il ne se voit plus. Rendu a son parent d'origine quand
+-- le reglage repasse sur Afficher. Jamais en combat (repris a la sortie).
+local rangement
+local parents = {}
+local function Rangement()
+    if not rangement then
+        rangement = CreateFrame("Frame")
+        rangement:Hide()
+    end
+    return rangement
+end
 
 local function MasquerSiDemande(f)
     if not Reglages().masquerNatif then return end
     if InCombatLockdown and InCombatLockdown() then return end
+    if f:GetParent() ~= Rangement() then
+        parents[f] = parents[f] or f:GetParent() or UIParent
+        pcall(f.SetParent, f, Rangement())
+    end
     pcall(f.Hide, f)
 end
 
+local function RendreAuJeu(f)
+    if InCombatLockdown and InCombatLockdown() then return end
+    if rangement and f:GetParent() == rangement then
+        pcall(f.SetParent, f, parents[f] or UIParent)
+    end
+    pcall(f.Show, f)
+end
+
+local veilleCombat
 function suivi.AppliquerNatif()
     for _, nom in ipairs(SUIVIS_DU_JEU) do
         local f = _G[nom]
@@ -3075,12 +3101,15 @@ function suivi.AppliquerNatif()
                 suivisAccroches[f] = true
                 pcall(f.HookScript, f, "OnShow", MasquerSiDemande)
             end
-            if Reglages().masquerNatif then
-                MasquerSiDemande(f)
-            elseif not (InCombatLockdown and InCombatLockdown()) then
-                pcall(f.Show, f)
-            end
+            if Reglages().masquerNatif then MasquerSiDemande(f) else RendreAuJeu(f) end
         end
+    end
+    -- Un changement demande en combat s'applique a la sortie du combat.
+    if not veilleCombat then
+        veilleCombat = CreateFrame("Frame")
+        veilleCombat:RegisterEvent("PLAYER_REGEN_ENABLED")
+        veilleCombat:RegisterEvent("QUEST_ACCEPTED")
+        veilleCombat:SetScript("OnEvent", function() pcall(suivi.AppliquerNatif) end)
     end
 end
 
