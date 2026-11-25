@@ -167,7 +167,7 @@ local function Poser(contenu, index, y, o)
     l.gauche.couleurPropre = c.classe or nil
     l.gauche.nomDePerso = c.classe or nil
     if c.classe then NomLisible(l.gauche) end
-    if l.colNom then l.colNom:Hide() l.colNiv:Hide() end
+    if l.colNom then l.colNom:Hide() l.colNiv:Hide() l.colTemps:Hide() end
     l.droite:SetText(o.droite or "")
     local cd = o.couleurDroite or GRIS
     l.droite:SetTextColor(cd[1], cd[2], cd[3])
@@ -815,7 +815,7 @@ local function DessinerHistogramme(contenu, p, y)
     return y + HAUTEUR_HISTO + 22, t
 end
 
-local COL_HEURE, COL_NOM, COL_NIVEAU = 44, 130, 90
+local COL_HEURE, COL_NOM, COL_NIVEAU, COL_TEMPS = 44, 130, 130, 220
 
 local function RendreChrono(contenu, p, index, y)
     if p then
@@ -859,49 +859,66 @@ local function RendreChrono(contenu, p, index, y)
             index = index + 1
             y = Poser(contenu, index, y + 6, { texte = ceJour, police = "GameFontNormalSmall", couleur = OR })
         end
-        local detail
-        if e.genre == "niveau" then
-            temps[e.cle] = temps[e.cle] or NS.base.TempsParNiveau(e.cle)
-            local avant = temps[e.cle].durees[(e.niveau or 0) - 1]
-            if avant then detail = string.format(L.TIMELINE_TOOK, NS.Duree(avant), (e.niveau or 0) - 1) end
+        -- Le niveau releve juste avant pour ce personnage : s'il en manque
+        -- entre les deux (jeu ferme, add-on absent), la ligne le dit.
+        local precedent
+        for k2 = k + 1, #evenements do
+            local e2 = evenements[k2]
+            if e2.cle == e.cle and e2.niveau then precedent = e2.niveau break end
         end
+        local niveau = e.niveau or 0
+        local texteNiveau = string.format(L.LEVEL, niveau)
+        if precedent and niveau - precedent == 2 then
+            texteNiveau = string.format(L.LEVELS_TWO, niveau - 1, niveau)
+        elseif precedent and niveau - precedent > 2 then
+            texteNiveau = string.format(L.LEVELS_RANGE, precedent + 1, niveau)
+        end
+        local detail = ""
+        temps[e.cle] = temps[e.cle] or NS.base.TempsParNiveau(e.cle)
+        local avant = temps[e.cle].durees[niveau - 1]
+        if avant then detail = string.format(L.TIMELINE_TOOK, NS.Duree(avant), niveau - 1) end
         local q = persos[e.cle] or { cle = e.cle, classe = e.classe }
         index = index + 1
-        -- En colonnes : l'heure, le nom (couleur de sa classe), le niveau
-        -- atteint, et a droite le temps passe sur le precedent. Tout dans
-        -- la meme police, chaque colonne a la meme place sur chaque ligne.
+        -- En colonnes, toutes alignees a gauche et dans la meme police :
+        -- l'heure, le nom (couleur de sa classe), le niveau atteint, le
+        -- temps passe sur le niveau d'avant.
         y = Poser(contenu, index, y, { retrait = RETRAIT, icone = "Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES",
-            texte = tostring(NS.Appeler(date, "%H:%M", e.quand) or ""), police = "GameFontHighlight",
-            couleur = BLANC, droite = detail, couleurDroite = SECONDAIRE })
+            texte = tostring(NS.Appeler(date, "%H:%M", e.quand) or ""), couleur = BLANC })
         local l = contenu.lignes[index]
         local coords = _G.CLASS_ICON_TCOORDS and q.classe and _G.CLASS_ICON_TCOORDS[q.classe]
         if coords then l.icone:SetTexCoord(coords[1], coords[2], coords[3], coords[4]) else l.icone:Hide() end
         if not l.colNom then
             l.colNom = l:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            l.colNom:SetJustifyH("LEFT") l.colNom:SetWordWrap(false)
             l.colNiv = l:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            l.colNiv:SetJustifyH("LEFT") l.colNiv:SetWordWrap(false)
+            l.colTemps = l:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            for _, c in ipairs({ l.colNom, l.colNiv, l.colTemps }) do c:SetJustifyH("LEFT") c:SetWordWrap(false) end
         end
+        NS.charte.PoliceDeNom(l.gauche)
         l.gauche:ClearAllPoints()
-        l.gauche:SetPoint("TOPLEFT", l.icone, "TOPRIGHT", 6, -3)
+        l.gauche:SetPoint("TOPLEFT", l.icone, "TOPRIGHT", 6, -2)
         l.gauche:SetWidth(COL_HEURE)
-        l.colNom:SetFontObject("GameFontHighlight")
-        l.colNom:ClearAllPoints()
-        l.colNom:SetPoint("LEFT", l.gauche, "LEFT", COL_HEURE + 8, 0)
-        l.colNom:SetWidth(COL_NOM)
         local cc = CouleurDeClasse(q.classe)
-        l.colNom:SetTextColor(cc[1], cc[2], cc[3])
+        local colonnes = {
+            { l.colNom, COL_NOM, NS.NomCourt(e.cle), cc },
+            { l.colNiv, COL_NIVEAU, texteNiveau, BLANC },
+            { l.colTemps, COL_TEMPS, detail, BLANC },
+        }
+        local avantC = l.gauche
+        local largeurAvant = COL_HEURE
+        for _, col in ipairs(colonnes) do
+            local fs = col[1]
+            NS.charte.PoliceDeNom(fs)
+            fs:ClearAllPoints()
+            fs:SetPoint("LEFT", avantC, "LEFT", largeurAvant + 12, 0)
+            fs:SetWidth(col[2])
+            fs:SetTextColor(col[4][1], col[4][2], col[4][3])
+            fs:SetText(col[3])
+            fs:Show()
+            avantC, largeurAvant = fs, col[2]
+        end
         l.colNom.couleurPropre = true
         l.colNom.nomDePerso = true
-        l.colNom:SetText(NS.NomCourt(e.cle))
-        NomLisible(l.colNom)
-        l.colNiv:SetFontObject("GameFontHighlight")
-        l.colNiv:ClearAllPoints()
-        l.colNiv:SetPoint("LEFT", l.colNom, "RIGHT", 8, 0)
-        l.colNiv:SetWidth(COL_NIVEAU)
-        l.colNiv:SetTextColor(1, 1, 1)
-        l.colNiv:SetText(string.format(L.LEVEL, e.niveau or 0))
-        l.colNom:Show() l.colNiv:Show()
+        l.colTemps.couleurPropre = nil
     end
     return index, y
 end

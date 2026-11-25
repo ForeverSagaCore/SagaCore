@@ -1875,6 +1875,24 @@ function Suite.OngletsComplements(cadre, cleCourante)
         b:Show()
         precedent = b
     end
+    -- Comme L3 / R3 pour la colonne de gauche : LT au-dessus des
+    -- complements, RT dessous. Les complements se parcourent avec eux seuls.
+    local premier, dernier = cadre.suiteComplements[1], precedent
+    if premier and dernier then
+        if not cadre.suiteLT then
+            cadre.suiteLT = cadre:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            cadre.suiteRT = cadre:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        end
+        cadre.suiteLT:ClearAllPoints()
+        cadre.suiteLT:SetPoint("BOTTOM", premier, "TOP", 0, 12)
+        cadre.suiteRT:ClearAllPoints()
+        cadre.suiteRT:SetPoint("TOP", dernier, "BOTTOM", 0, -10)
+        local pad = ManetteActive() and true or false
+        cadre.suiteLT:SetText(GlyphePad("PADLTRIGGER"))
+        cadre.suiteRT:SetText(GlyphePad("PADRTRIGGER"))
+        cadre.suiteLT:SetShown(pad)
+        cadre.suiteRT:SetShown(pad)
+    end
 end
 
 -- Les add-ons de la suite en onglets lateraux, sur le bord GAUCHE de la
@@ -2000,11 +2018,9 @@ function Suite.Voisin(cleCourante, pas)
     for _, info in ipairs(Suite.Liste()) do
         if Suite.Installe(info.cle) then table.insert(liste, { cle = info.cle }) end
     end
-    -- Puis les complements, dans l'ordre de leurs onglets.
-    for _, c in ipairs(Suite.Complements()) do
-        if Suite.membres[c.cle] then table.insert(liste, { cle = c.cle })
-        else table.insert(liste, { cle = c.cle, action = c.action }) end
-    end
+    -- Les complements n'en font pas partie : L3 / R3 ne parcourent que la
+    -- colonne de gauche (les piliers) ; les complements, a droite, se
+    -- parcourent avec LT / RT, et seulement eux.
     if #liste < 2 then return false end
     local index = Suite.dernierVoisin and Suite.dernierVoisin.depuis == cleCourante and Suite.dernierVoisin.rang or nil
     if not index then
@@ -2302,6 +2318,8 @@ function Suite.Actualiser()
             rangee.r3:SetText(GlyphePad("PADRSTICK"))
             rangee.l3:SetShown(pad)
             rangee.r3:SetShown(pad)
+            local cc = rangee.cadre
+            if cc and cc.suiteLT then cc.suiteLT:SetShown(pad) cc.suiteRT:SetShown(pad) end
             local reg = rangee.cadre and rangee.cadre.suiteReglages
             if reg then reg:SetText((pad and (GlyphePad("PADFORWARD") .. " ") or "") .. TX("Settings")) end
         end
