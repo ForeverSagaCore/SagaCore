@@ -598,9 +598,7 @@ local function QuetesDuProduit(objet)
 end
 local function MarquerObjetDeQuete(ligne, objet)
     local liste = QuetesDuProduit(objet)
-    local a = false
-    for _, q in ipairs(liste) do if not q.faite then a = true break end end
-    if not a then
+    if #liste == 0 then
         if ligne.quete then ligne.quete:Hide() end
         return
     end
@@ -617,15 +615,13 @@ local function QuetesDansLInfobulle(tt, objet)
     local liste = QuetesDuProduit(objet)
     local n = 0
     for _, q in ipairs(liste) do
-        if not q.faite then
-            if n == 0 then
-                tt:AddLine(" ")
-                tt:AddLine(L.RECIPES_QUEST_ITEM, 1, 0.82, 0)
-            end
-            n = n + 1
-            if n > 4 then break end
-            tt:AddLine("  " .. string.format(L.RECIPES_QUEST_LINE, q.niveau or 0, q.nom or "?"), 1, 1, 1)
+        if n == 0 then
+            tt:AddLine(" ")
+            tt:AddLine(L.RECIPES_QUEST_ITEM, 1, 0.82, 0)
         end
+        n = n + 1
+        if n > 4 then break end
+        tt:AddLine("  " .. string.format(L.RECIPES_QUEST_LINE, q.niveau or 0, q.nom or "?"), 1, 1, 1)
     end
 end
 
