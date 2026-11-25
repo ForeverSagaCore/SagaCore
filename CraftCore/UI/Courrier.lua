@@ -20,6 +20,11 @@ local courrier = NS.courrier
 local PAUSE = 0.3          -- entre deux deplacements : le jeu verrouille la case un instant
 local PAUSE_PIECE = 0.15   -- entre deux pieces jointes : plus court (une case verrouillee est reessayee)
 local LARGEUR = 300
+-- Largeur utile d'une colonne du panneau (la barre de defilement gardee).
+local COLONNE = LARGEUR - 2 * 12 - 10 - 22
+-- A l'hotel des ventes : deux colonnes et un trait entre elles.
+local ECART_COLONNES = 24
+local function LargeurDuLieu(l) return l == "encheres" and (2 * LARGEUR - 2 * 12 + ECART_COLONNES) or LARGEUR end
 local statut               -- resultat de la derniere action, montre dans le panneau
 local statutManette        -- indication manette (X : action suivante)
 local panneau
@@ -1137,15 +1142,19 @@ local function Remplir(plan)
     for _, i in ipairs(panneau.icones) do i:Hide() end
     for _, b in ipairs(panneau.boutons) do b:Hide() end
     for _, c in ipairs(panneau.cases or {}) do c:Hide() end
+    for _, v in ipairs(panneau.ventes or {}) do v:Hide() end
+    if panneau.trait then panneau.trait:Hide() end
     local y, nt, ni, nb, nc = 0, 0, 0, 0, 0
-    local largeur = panneau.contenu:GetWidth()
-    if not largeur or largeur < 50 then largeur = LARGEUR - 2 * NS.charte.MARGE - 10 end
+    -- x0 : le bord gauche de la colonne en cours (deux colonnes a l'hotel
+    -- des ventes : acheter a gauche, vendre a droite).
+    local x0 = 0
+    local largeur = COLONNE
 
     local function Titre(texte)
         nt = nt + 1
         local t = Texte(nt, "GameFontNormal")
         t:ClearAllPoints()
-        t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 0, -y)
+        t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 + 0, -y)
         t:SetWidth(largeur)
         t:SetText(texte)
         y = y + 18
@@ -1154,7 +1163,7 @@ local function Remplir(plan)
         ni, nt = ni + 1, nt + 1
         local icone = Icone(ni)
         icone:ClearAllPoints()
-        icone:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 2, -y)
+        icone:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 + 2, -y)
         icone:SetTexture(NS.Appeler(NS.jeu.iconeObjet, objet) or "Interface\\Icons\\INV_Misc_QuestionMark")
         local t = Texte(nt)
         t:ClearAllPoints()
@@ -1167,7 +1176,7 @@ local function Remplir(plan)
         nt = nt + 1
         local t = Texte(nt, "GameFontDisableSmall")
         t:ClearAllPoints()
-        t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 24, -y)
+        t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 + 24, -y)
         t:SetWidth(largeur - 24)
         t:SetText(string.format(L().ASSIST_MORE, nombre))
         y = y + 16
@@ -1192,7 +1201,7 @@ local function Remplir(plan)
         nb = nb + 1
         local b = Bouton(nb)
         b:ClearAllPoints()
-        b:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 0, -(y + 4))
+        b:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 + 0, -(y + 4))
         b.libelle = libelle
         b:SetText(libelle)
         b:SetAlpha(1)
@@ -1206,12 +1215,99 @@ local function Remplir(plan)
         y = y + 32
     end
 
+    -- Une ligne d'objet avec un petit bouton a droite : le nom s'arrete
+    -- avant le bouton, jamais par-dessus.
+    local function LigneAvecBouton(objet, droite, libelle, auClic)
+        ni, nt, nb = ni + 1, nt + 1, nb + 1
+        local icone = Icone(ni)
+        icone:ClearAllPoints()
+        icone:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 + 2, -(y + 3))
+        icone:SetTexture(NS.Appeler(NS.jeu.iconeObjet, objet) or "Interface\\Icons\\INV_Misc_QuestionMark")
+        local b = Bouton(nb)
+        b:ClearAllPoints()
+        b:SetSize(76, 20)
+        b:SetPoint("TOPRIGHT", panneau.contenu, "TOPLEFT", x0 + largeur, -y)
+        b.libelle = libelle
+        b:SetText(libelle)
+        b:SetAlpha(1)
+        b:UnlockHighlight()
+        b:SetScript("OnClick", auClic)
+        b:SetEnabled(not enCours)
+        Choisissable(b, "ligne:" .. tostring(objet))
+        local t = Texte(nt)
+        t:ClearAllPoints()
+        t:SetPoint("LEFT", icone, "RIGHT", 6, 0)
+        t:SetWidth(largeur - 26 - 82)
+        t:SetText(NS.inventaire.NomDObjet(objet) .. "  |cffffffff" .. droite .. "|r")
+        y = y + 24
+    end
+
+    -- Une ligne a vendre : toute la ligne se clique (souris ou manette) et
+    -- met l'objet en vente dans la fenetre du jeu.
+    local nv = 0
+    local function LigneVente(v)
+        nv = nv + 1
+        panneau.ventes = panneau.ventes or {}
+        local l = panneau.ventes[nv]
+        if not l then
+            l = CreateFrame("Button", "CraftCoreAssistantVente" .. nv, panneau.contenu)
+            l:SetHeight(20)
+            l:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+            l.icone = l:CreateTexture(nil, "ARTWORK")
+            l.icone:SetSize(16, 16)
+            l.icone:SetPoint("LEFT", l, "LEFT", 2, 0)
+            l.prix = l:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            l.prix:SetPoint("RIGHT", l, "RIGHT", -2, 0)
+            l.prix:SetJustifyH("RIGHT")
+            l.prix:SetWordWrap(false)
+            l.nom = l:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            l.nom:SetPoint("LEFT", l.icone, "RIGHT", 6, 0)
+            l.nom:SetPoint("RIGHT", l.prix, "LEFT", -6, 0)
+            l.nom:SetJustifyH("LEFT")
+            l.nom:SetWordWrap(false)
+            panneau.ventes[nv] = l
+        end
+        l:ClearAllPoints()
+        l:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0, -y)
+        l:SetWidth(largeur)
+        l.icone:SetTexture(NS.Appeler(NS.jeu.iconeObjet, v.objet) or "Interface\\Icons\\INV_Misc_QuestionMark")
+        l.nom:SetText(NS.inventaire.NomDObjet(v.objet) .. (v.nombre > 1 and ("  |cffb3b3b3x" .. v.nombre .. "|r") or ""))
+        if v.unite then
+            l.prix:SetText(NS.marchands.Monnaie(v.unite))
+        elseif v.marchand and v.marchand > 0 then
+            l.prix:SetText("|cff8c8c8c" .. string.format(L().AH_SELL_VENDOR, NS.marchands.Monnaie(v.marchand)) .. "|r")
+        else
+            l.prix:SetText("|cff8c8c8c" .. L().AH_NEVER .. "|r")
+        end
+        l.prix:SetWidth(math.min(120, (l.prix:GetStringWidth() or 60) + 4))
+        local vv = v
+        l:SetScript("OnClick", function()
+            if NS.encheres.MettreEnVente(vv.sac, vv.case) then
+                statut = string.format(L().AH_SELL_READY, NS.inventaire.NomDObjet(vv.objet))
+            else
+                statut = L().AH_SELL_FAIL
+            end
+            courrier.Actualiser()
+        end)
+        l:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            if GameTooltip.SetItemByID then pcall(GameTooltip.SetItemByID, GameTooltip, vv.objet) end
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine(L().AH_SELL_TIP, 1, 0.82, 0, true)
+            GameTooltip:Show()
+        end)
+        l:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        l:Show()
+        table.insert(elements, { cadre = l, cle = "vente:" .. tostring(v.objet) })
+        y = y + 20
+    end
+
     -- Une ligne avec sa case a cocher (completer les piles).
     local function LigneACocher(objet, droite)
         nc, nt = nc + 1, nt + 1
         local c = Case(nc)
         c:ClearAllPoints()
-        c:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", -2, -(y - 2))
+        c:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 + -2, -(y - 2))
         c:SetChecked(courrier.PileChoisie(objet))
         c:UnlockHighlight()
         Choisissable(c, "pile:" .. tostring(objet))
@@ -1305,7 +1401,7 @@ local function Remplir(plan)
                 nt = nt + 1
                 local t = Texte(nt, "GameFontDisableSmall")
                 t:ClearAllPoints()
-                t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 0, -y)
+                t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 + 0, -y)
                 t:SetWidth(largeur)
                 t:SetText(L().ASSIST_NOTHING_IN_BAGS)
                 y = y + 16
@@ -1329,7 +1425,7 @@ local function Remplir(plan)
             nt = nt + 1
             local t = Texte(nt, "GameFontDisableSmall")
             t:ClearAllPoints()
-            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 0, -y)
+            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 + 0, -y)
             t:SetWidth(largeur)
             t:SetText(L().AH_NOTHING)
             y = y + 16
@@ -1355,7 +1451,7 @@ local function Remplir(plan)
                 for k, objet in ipairs(aChercher) do
                     if k > 6 then Reste(#aChercher - 6) break end
                     local o = objet
-                    Action(string.format(L().AH_FIND, NS.inventaire.NomDObjet(o), manques[o]), function()
+                    LigneAvecBouton(o, string.format(L().AH_MISSING, manques[o]), L().AH_FIND_SHORT, function()
                         NS.encheres.Chercher(o)
                     end)
                 end
@@ -1370,7 +1466,7 @@ local function Remplir(plan)
             nt = nt + 1
             local t = Texte(nt, "GameFontDisableSmall")
             t:ClearAllPoints()
-            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 0, -y)
+            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 + 0, -y)
             t:SetWidth(largeur)
             t:SetText(L().AH_CRAFT_NONE)
             y = y + 16
@@ -1409,6 +1505,49 @@ local function Remplir(plan)
                 end)
             end
         end
+
+        -- Colonne de droite : ce que j'ai dans mes sacs et qui peut se vendre.
+        local yGauche = y
+        x0, y = COLONNE + ECART_COLONNES, 0
+        if not panneau.trait then
+            panneau.trait = panneau.contenu:CreateTexture(nil, "ARTWORK")
+            panneau.trait:SetColorTexture(0.75, 0.6, 0.35, 0.5)
+            panneau.trait:SetWidth(1)
+        end
+        Titre(L().AH_SELL_TITLE)
+        local okV, aVendre = pcall(NS.encheres.AVendre)
+        aVendre = okV and aVendre or {}
+        if #aVendre == 0 then
+            nt = nt + 1
+            local t = Texte(nt, "GameFontDisableSmall")
+            t:ClearAllPoints()
+            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0, -y)
+            t:SetWidth(largeur)
+            t:SetText(L().AH_SELL_NONE)
+            y = y + 16
+        else
+            for rang, v in ipairs(aVendre) do
+                if rang > 40 then Reste(#aVendre - 40) break end
+                LigneVente(v)
+            end
+            -- Le prix de ce qui n'a pas encore ete releve.
+            local sansPrix = {}
+            for _, v in ipairs(aVendre) do if not v.unite and not v.releve then table.insert(sansPrix, v.objet) end end
+            if #sansPrix > 0 and not NS.encheres.EnCours() then
+                Action(string.format(L().AH_SCAN_BAGS, #sansPrix), function()
+                    statut = nil
+                    NS.encheres.Relever(sansPrix)
+                    courrier.Actualiser()
+                end)
+            end
+        end
+        y = math.max(y, yGauche)
+        panneau.trait:ClearAllPoints()
+        panneau.trait:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", COLONNE + ECART_COLONNES / 2, 0)
+        panneau.trait:SetHeight(math.max(1, y))
+        panneau.trait:Show()
+        x0 = 0
+        largeur = 2 * COLONNE + ECART_COLONNES
     end
     -- L'element choisi a la manette : celui d'avant s'il est encore la, sinon
     -- l'envoi choisi, sinon le premier. Il s'eclaire et porte l'icone Y.
@@ -1443,7 +1582,7 @@ local function Remplir(plan)
         nt = nt + 1
         local t = Texte(nt, "GameFontHighlightSmall")
         t:ClearAllPoints()
-        t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 0, -(y + 2))
+        t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 + 0, -(y + 2))
         t:SetWidth(largeur)
         t:SetText(statutManette)
         y = y + 18
@@ -1453,7 +1592,7 @@ local function Remplir(plan)
         nt = nt + 1
         local t = Texte(nt, "GameFontHighlightSmall")
         t:ClearAllPoints()
-        t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 0, -(y + 2))
+        t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 + 0, -(y + 2))
         t:SetWidth(largeur)
         t:SetWordWrap(true)
         t:SetText("|cff80ff80" .. statut .. "|r")
@@ -1514,7 +1653,8 @@ local function Replacer()
 end
 Placer = function()
     panneau:ClearAllPoints()
-    panneau:SetWidth(LARGEUR)
+    panneau:SetWidth(LargeurDuLieu(lieu))
+    if panneau.contenu then panneau.contenu:SetWidth(LargeurDuLieu(lieu) - 2 * NS.charte.MARGE - 10 - 22) end
     -- Le meme fond partout (banque, courrier, encheres).
     if panneau.cuir then panneau.cuir:Hide() end
     local gauche, droite, bas, haut = Bornes(FENETRES[lieu] or {})
