@@ -1873,9 +1873,8 @@ function suivi.Rendre()
         for _, pc in ipairs(NS.parcours and NS.parcours.Liste(NS.ClePersonnage()) or {}) do
             if CategorieDe(pc) == "donjons" then nDonjons = nDonjons + 1 else nDivers = nDivers + 1 end
         end
-        local tournee = TourneeRecolte()
-        local nRecolte = tournee and 1 or 0
-        nParcours = nParcours + nRecolte
+        -- La recolte n'est pas un itineraire de quetes : elle est dans MapCore.
+        if s.routeCategorie == "recolte" then s.routeCategorie = nil end
         -- Premiere fois : la sorte du dernier parcours choisi.
         if not s.routeCategorie then
             local choisi = NS.parcours and NS.parcours.Trouver(NS.ClePersonnage(), s.parcoursChoisi)
@@ -1887,7 +1886,6 @@ function suivi.Rendre()
         end
         if cadre.vuesRoute then
             cadre.vuesRoute.divers:Compter(nDivers)
-            cadre.vuesRoute.recolte:Compter(nRecolte)
             cadre.vuesRoute.donjons:Compter(nDonjons)
         end
         cadre.filetHaut:SetShown(not s.replie)
@@ -2911,7 +2909,6 @@ local function Construire()
     cadre.vuesRoute = {}
     for rang, v in ipairs({
         { "divers", L.TRACK_ROUTE_MISC, nil, "Interface\\Icons\\INV_Misc_Map_01", true },
-        { "recolte", L.TRACK_ROUTE_FARM, nil, "Interface\\Icons\\Trade_Herbalism", true },
         { "donjons", L.TRACK_ROUTE_DUNGEON, "Dungeon", "Interface\\Minimap\\Dungeon" } }) do
         local b = OngletRond(rang, v)
         local cle = v[1]

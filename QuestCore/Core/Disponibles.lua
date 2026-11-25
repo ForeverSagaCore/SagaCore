@@ -461,11 +461,24 @@ end
 -- Les zones des quetes a prendre, avec ce que chacune represente : quetes,
 -- part deja faite, XP de ce qui reste et distance (la zone ou l'on est en
 -- premier, puis les plus proches sur le continent, puis les autres).
+-- La regle de niveau, la meme partout : "pour vous" jusqu'a niveau + 3
+-- (pas grises) ; au-dessus, "plus tard" ; les grises a part.
+dispo.ECART_PLUS_TARD = 3
+function dispo.PlusTard(p, d) return (d.niveau or 0) > (tonumber(p.niveau) or 0) + dispo.ECART_PLUS_TARD end
+
+-- Les quetes au-dessus du niveau, a part (pour la rubrique Plus tard).
+function dispo.ListePlusTard(p)
+    local res = {}
+    for _, d in ipairs(dispo.Liste(p)) do if dispo.PlusTard(p, d) then table.insert(res, d) end end
+    table.sort(res, function(a, b) if a.niveau ~= b.niveau then return a.niveau < b.niveau end return a.id < b.id end)
+    return res
+end
+
 function dispo.Zones(p, avecGrises)
     local liste = dispo.Liste(p)
     local parZone, zones = {}, {}
     for _, d in ipairs(liste) do
-        if avecGrises or not d.gris then
+        if (avecGrises or not d.gris) and not dispo.PlusTard(p, d) then
             local z = parZone[d.zone]
             if not z then
                 z = { zone = d.zone, ids = {}, xp = 0, faites = 0, enCours = 0, niveauMin = d.niveau, niveauMax = d.niveau }
@@ -507,26 +520,61 @@ function dispo.Zones(p, avecGrises)
             end
         end
     end
+    -- Le classement selon le niveau : l'ecart moyen des quetes au niveau du
+    -- personnage (les plus adaptees d'abord), la zone ou l'on est en tete si
+    -- elle en a ; a ecart egal, la plus proche. Dans chaque zone, les quetes
+    -- de son niveau d'abord.
+    local niv = tonumber(p.niveau) or 0
+    for _, z in ipairs(zones) do
+        local somme = 0
+        for _, d in ipairs(z.ids) do somme = somme + math.abs(niv - d.niveau) end
+        z.ecart = math.floor(somme / math.max(1, #z.ids) + 0.5)
+        table.sort(z.ids, function(a, b)
+            local ea, eb = math.abs(niv - a.niveau), math.abs(niv - b.niveau)
+            if ea ~= eb then return ea < eb end
+            return a.id < b.id
+        end)
+    end
     table.sort(zones, function(a, b)
         if a.ici ~= b.ici then return a.ici end
+        if a.ecart ~= b.ecart then return a.ecart < b.ecart end
         if a.distance ~= b.distance then return a.distance < b.distance end
         return a.niveauMin < b.niveauMin
     end)
     return zones
 end
 
--- Le plan vers un niveau : les zones dans l'ordre (la plus proche d'abord),
--- jusqu'a ce que l'XP suffise ; chacune avec le niveau atteint apres elle.
+-- La part du niveau suivant qu'apporte une quantite d'XP (1 = atteint).
+function dispo.PartDuSuivant(p, xp)
+    local besoin = dispo.XPJusquA(p, (tonumber(p.niveau) or 0) + 1)
+    if besoin <= 0 then return 1 end
+    return (tonumber(xp) or 0) / besoin
+end
+
+-- Le plan vers un niveau, niveau par niveau : pour chaque niveau gagne, les
+-- zones qui y menent (les plus adaptees et proches d'abord, sans les grises).
+-- Renvoie { { niveau, jusqua, zones = { z... }, quetes, xp } }, XP manquante.
 function dispo.PlanVers(p, vise)
     local besoin = dispo.XPJusquA(p, vise)
-    local plan, cumul = {}, 0
-    if besoin <= 0 then return plan, 0, 0 end
-    for _, z in ipairs(dispo.Zones(p, true)) do
+    local plan = {}
+    if besoin <= 0 then return plan, 0 end
+    local actuel = tonumber(p.niveau) or 0
+    local cumul, paquet = 0, { zones = {}, quetes = 0, xp = 0 }
+    for _, z in ipairs(dispo.Zones(p, false)) do
         if z.xp > 0 then
+            table.insert(paquet.zones, z)
+            paquet.quetes = paquet.quetes + #z.ids
+            paquet.xp = paquet.xp + z.xp
             cumul = cumul + z.xp
-            table.insert(plan, { z = z, apres = dispo.NiveauApres(p, cumul) })
-            if cumul >= besoin then break end
+            local atteint = math.min(math.floor(dispo.NiveauApres(p, cumul)), vise)
+            if atteint > actuel then
+                paquet.niveau, paquet.jusqua = actuel + 1, atteint
+                table.insert(plan, paquet)
+                paquet = { zones = {}, quetes = 0, xp = 0 }
+                actuel = atteint
+            end
+            if actuel >= vise then break end
         end
     end
-    return plan, cumul, besoin
+    return plan, math.max(0, besoin - cumul)
 end
