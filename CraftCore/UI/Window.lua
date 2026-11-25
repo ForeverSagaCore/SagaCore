@@ -78,14 +78,7 @@ end
 
 -- Ligne du menu choisie ou non : meme teinte, meme regle d'estompe.
 local function MarquerLigneDeMenu(bouton, choisi)
-    local texte = bouton.text or bouton.Text or (bouton.GetFontString and bouton:GetFontString())
-    if texte then texte:SetFontObject(choisi and "GameFontNormal" or "GameFontHighlight") end
-    if bouton.fond then
-        bouton.fond:SetVertexColor(CouleurSelection())
-        bouton.fond:SetShown(choisi and true or false)
-    end
-    -- Brillance normale pour toutes les lignes, comme QuestCore et MapCore.
-    bouton:SetAlpha(1)
+    local SuiteM = NS.suite or _G.CoreSuite SuiteM.MarquerLigneDeMenu(bouton, choisi)
 end
 
 -- Pages ou le metier choisi a droite agit sur le contenu : la son onglet est
@@ -157,39 +150,10 @@ local function CreerFenetre()
 end
 
 -- Une ligne de menu. Modele de liste natif, repli sur un bouton simple.
+-- Une ligne de menu : le modele commun de la suite (meme aspect, meme
+-- survol, meme selection partout).
 local function CreerLigneDeMenu(parent, cheminIcone)
-    local bouton
-    local ok, cree = pcall(CreateFrame, "Button", nil, parent, "OptionsListButtonTemplate")
-    if ok and cree then bouton = cree end
-    if not bouton then
-        bouton = CreateFrame("Button", nil, parent)
-        local texte = bouton:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        bouton.text = texte
-        bouton:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-    end
-    bouton:SetHeight(24)
-
-    -- Fond de selection, la texture que le jeu emploie pour une ligne choisie.
-    bouton.fond = bouton:CreateTexture(nil, "BACKGROUND")
-    bouton.fond:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
-    bouton.fond:SetBlendMode("ADD")
-    bouton.fond:SetPoint("TOPLEFT", bouton, "TOPLEFT", 0, 0)
-    bouton.fond:SetPoint("BOTTOMRIGHT", bouton, "BOTTOMRIGHT", 0, 0)
-    bouton.fond:Hide()
-
-    bouton.icone = bouton:CreateTexture(nil, "ARTWORK")
-    bouton.icone:SetSize(16, 16)
-    bouton.icone:SetPoint("LEFT", bouton, "LEFT", RETRAIT_LIBELLE - 4, 0)
-    if cheminIcone then bouton.icone:SetTexture(cheminIcone) end
-
-    -- Le libelle se range derriere l'icone, dans les deux cas de figure.
-    local texte = bouton.text or bouton.Text or (bouton.GetFontString and bouton:GetFontString())
-    if texte then
-        texte:ClearAllPoints()
-        texte:SetPoint("LEFT", bouton.icone, "RIGHT", 6, 0)
-        texte:SetJustifyH("LEFT")
-    end
-    return bouton
+    return (NS.suite or _G.CoreSuite).LigneDeMenu(parent, cheminIcone)
 end
 
 -- Onglet d'icone sur le bord droit : l'onglet du grimoire du jeu, de la

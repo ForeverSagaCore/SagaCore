@@ -2162,32 +2162,10 @@ local PAGES = {
 }
 
 -- Une ligne de menu, le modele de liste du jeu (comme CraftCore).
+-- Une ligne de menu : le modele commun de la suite (meme aspect, meme
+-- survol, meme selection partout).
 local function CreerLigneDeMenu(parent, icone)
-    local b
-    local ok, cree = pcall(CreateFrame, "Button", nil, parent, "OptionsListButtonTemplate")
-    if ok and cree then b = cree end
-    if not b then
-        b = CreateFrame("Button", nil, parent)
-        b.text = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-    end
-    b:SetHeight(24)
-    b.fond = b:CreateTexture(nil, "BACKGROUND")
-    b.fond:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
-    b.fond:SetBlendMode("ADD")
-    b.fond:SetAllPoints()
-    b.fond:Hide()
-    b.icone = b:CreateTexture(nil, "ARTWORK")
-    b.icone:SetSize(16, 16)
-    b.icone:SetPoint("LEFT", b, "LEFT", 8, 0)
-    b.icone:SetTexture(icone)
-    local texte = b.text or b.Text or (b.GetFontString and b:GetFontString())
-    if texte then
-        texte:ClearAllPoints()
-        texte:SetPoint("LEFT", b.icone, "RIGHT", 6, 0)
-        texte:SetJustifyH("LEFT")
-    end
-    return b
+    return (NS.suite or _G.CoreSuite).LigneDeMenu(parent, icone)
 end
 
 fen.PAGES = PAGES
@@ -2249,10 +2227,7 @@ end
 MarquerMenu = function()
     for cle, b in pairs(cadre.boutonsMenu or {}) do
         local choisi = cle == (etat.page or "quetes")
-        local texte = b.text or b.Text or (b.GetFontString and b:GetFontString())
-        if texte then texte:SetFontObject(choisi and "GameFontNormal" or "GameFontHighlight") end
-        b.fond:SetShown(choisi)
-        b:SetAlpha(1)
+        local SuiteM = NS.suite or _G.CoreSuite SuiteM.MarquerLigneDeMenu(b, choisi)
     end
 end
 

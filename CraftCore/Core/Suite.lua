@@ -447,6 +447,8 @@ local DICO = {
         ["Out of range"] = "Hors de portée",
         ["General settings"] = "Réglages généraux",
         ["Settings"] = "Réglages",
+        ["Parameters"] = "Paramètres",
+        ["Contents"] = "Contenu",
         ["Common to the whole suite."] = "Communs à toute la suite.",
         ["Language"] = "Langue",
         ["Game language"] = "Langue du jeu",
@@ -2745,6 +2747,47 @@ function Suite.TitreDeMenu(fs)
     fs:SetShadowColor(0, 0, 0, 1)
     fs:SetShadowOffset(1, -1)
     fs:SetJustifyH("LEFT")
+end
+
+-- ---------------------------------------------------------------------------
+-- Les modeles communs des menus de gauche (une seule definition, partout)
+-- ---------------------------------------------------------------------------
+-- Une ligne : icone 16, texte blanc, sur une ligne ; au survol, la lueur
+-- du jeu seule (le texte ne change jamais de couleur au survol) ; choisie :
+-- texte en or et la meme lueur, fixe.
+Suite.ICONE_PARAMETRES = "Interface\\Icons\\Trade_Engineering"
+Suite.HAUTEUR_LIGNE_MENU = 24
+Suite.PAS_LIGNE_MENU = 26
+function Suite.LigneDeMenu(parent, icone)
+    local b = CreateFrame("Button", nil, parent)
+    b:SetHeight(Suite.HAUTEUR_LIGNE_MENU)
+    b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    b.fond = b:CreateTexture(nil, "BACKGROUND")
+    b.fond:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+    b.fond:SetBlendMode("ADD")
+    b.fond:SetAllPoints()
+    b.fond:Hide()
+    b.icone = b:CreateTexture(nil, "ARTWORK")
+    b.icone:SetSize(16, 16)
+    b.icone:SetPoint("LEFT", b, "LEFT", 8, 0)
+    if icone then b.icone:SetTexture(icone) end
+    b.text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    b.texte = b.text
+    b.text:SetPoint("LEFT", b.icone, "RIGHT", 6, 0)
+    b.text:SetPoint("RIGHT", b, "RIGHT", -6, 0)
+    b.text:SetJustifyH("LEFT")
+    b.text:SetWordWrap(false)
+    -- Les add-ons qui ecrivent par SetText sur le bouton.
+    b.SetText = function(self, t) self.text:SetText(t) end
+    b.GetFontString = function(self) return self.text end
+    return b
+end
+function Suite.MarquerLigneDeMenu(b, choisi)
+    if not b then return end
+    local t = b.text or (b.GetFontString and b:GetFontString())
+    if t then t:SetFontObject(choisi and "GameFontNormal" or "GameFontHighlight") end
+    if b.fond then b.fond:SetShown(choisi and true or false) end
+    b:SetAlpha(1)
 end
 
 -- Pose un repere apres Ecarter : masque s'il est regroupe, le compte du
@@ -7290,16 +7333,26 @@ function Suite.FenetreAPages(o)
     -- Les rubriques du menu : le contenu sous le nom de l'add-on, puis ses
     -- reglages a part, en dernier (sauf rubriques donnees par l'add-on).
     do
+        local REGLAGES = { reglages = true, suite = true, parametres = true, options = true }
+        -- Les reglages d'un add-on : partout le meme nom (Parametres) et la
+        -- meme icone.
+        for _, page in ipairs(o.pages) do
+            if REGLAGES[page.cle] then
+                page.libelle = function() return TX("Parameters") end
+                page.icone = Suite.ICONE_PARAMETRES
+            end
+        end
         local donnees = false
         for _, page in ipairs(o.pages) do if page.section then donnees = true end end
         if not donnees and #o.pages > 1 then
-            local REGLAGES = { reglages = true, suite = true, parametres = true, options = true }
             local contenu, reglages = {}, {}
             for _, page in ipairs(o.pages) do table.insert(REGLAGES[page.cle] and reglages or contenu, page) end
             if #contenu > 0 and #reglages > 0 then
+                -- Comme les piliers : le contenu, puis une rubrique au nom
+                -- de l'add-on avec ses Parametres, en dernier.
                 local nom = o.cle
-                contenu[1].section = nom
-                reglages[1].section = function() return TX("Settings") end
+                contenu[1].section = function() return TX("Contents") end
+                reglages[1].section = nom
                 o.pages = {}
                 for _, page in ipairs(contenu) do table.insert(o.pages, page) end
                 for _, page in ipairs(reglages) do table.insert(o.pages, page) end
@@ -7320,35 +7373,11 @@ function Suite.FenetreAPages(o)
             t:SetText(type(page.section) == "function" and page.section() or tostring(page.section))
             yMenu = yMenu + Suite.HAUTEUR_TITRE_MENU
         end
-        local b
-        local ok, cree = pcall(CreateFrame, "Button", nil, menu, "OptionsListButtonTemplate")
-        b = ok and cree or CreateFrame("Button", nil, menu)
-        if not (ok and cree) then
-            b.text = b:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-        end
-        b:SetHeight(24)
+        local b = Suite.LigneDeMenu(menu, page.icone)
         local avecSections = o.pages[1] and o.pages[1].section ~= nil
         b:SetPoint("TOPLEFT", menu, "TOPLEFT", avecSections and Suite.RETRAIT_MENU or 0, -yMenu)
-        yMenu = yMenu + 26
+        yMenu = yMenu + Suite.PAS_LIGNE_MENU
         b:SetPoint("RIGHT", menu, "RIGHT", 0, 0)
-        b.fond = b:CreateTexture(nil, "BACKGROUND")
-        b.fond:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
-        b.fond:SetBlendMode("ADD")
-        b.fond:SetAllPoints()
-        b.fond:Hide()
-        b.icone = b:CreateTexture(nil, "ARTWORK")
-        b.icone:SetSize(16, 16)
-        b.icone:SetPoint("LEFT", b, "LEFT", 8, 0)
-        b.icone:SetTexture(page.icone)
-        b.texte = b.text or b.Text or (b.GetFontString and b:GetFontString())
-        if b.texte then
-            b.texte:ClearAllPoints()
-            b.texte:SetPoint("LEFT", b.icone, "RIGHT", 6, 0)
-            b.texte:SetPoint("RIGHT", b, "RIGHT", -6, 0)
-            b.texte:SetWordWrap(false)
-            b.texte:SetJustifyH("LEFT")
-        end
         local cle = page.cle
         b:SetScript("OnClick", function() w.page = cle w.Rendre() end)
         w.boutonsMenu[cle] = b
@@ -7539,8 +7568,7 @@ function Suite.FenetreAPages(o)
         for cle, b in pairs(w.boutonsMenu) do
             local choisi = cle == w.page
             for _, p in ipairs(o.pages) do if p.cle == cle and b.texte then b.texte:SetText(p.libelle()) end end
-            if b.texte then b.texte:SetFontObject(choisi and "GameFontNormal" or "GameFontHighlight") end
-            b.fond:SetShown(choisi)
+            Suite.MarquerLigneDeMenu(b, choisi)
         end
         for _, p in ipairs(o.pages) do p.cadre:SetShown(p == page) end
         local ok, souci = pcall(page.rendre, page, page.O)
