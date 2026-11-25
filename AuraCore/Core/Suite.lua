@@ -5362,6 +5362,7 @@ Finir = function(raison)
         CoreSuiteDB.finsDeGuidage = h
         table.insert(h, { quoi = tostring(inst.proprietaire) .. ":" .. tostring(inst.type) .. " " .. tostring(inst.libelle or ""),
             raison = tostring(raison), quand = _G.date and _G.date("%Y-%m-%d %H:%M:%S") or "",
+            origine = _G.debugstack and string.sub(tostring(_G.debugstack(3, 4, 0) or ""), 1, 400) or nil,
             niveau = _G.UnitLevel and _G.UnitLevel("player") or nil })
         while #h > 20 do table.remove(h, 1) end
     end)
@@ -5979,7 +5980,8 @@ local function Pilote()
                     if f then pcall(f, e, cote) end
                 end
             end
-        elseif bouton == "PAD4" then Suite.Arreter("joueur")
+        -- Y n'arrete plus le guidage : une touche cachee ne coupe jamais ce
+        -- que le joueur a lance (le guidage a son bouton Arreter).
         elseif bouton == "PADBACK" then p.barreVisible = not p.barreVisible
         elseif bouton == "PAD2" then
             local f = _G[p.nom]
