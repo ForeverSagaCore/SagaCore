@@ -839,87 +839,9 @@ local function RendreChrono(contenu, p, index, y)
         index = index + 1
         y = Poser(contenu, index, y, { texte = L.TIMELINE_NOTE, couleur = SECONDAIRE, multi = true, apres = 4 })
     end
-    index = index + 1
-    y = Titre(contenu, index, y, L.TIMELINE_ACCOUNT, true)
-    local evenements = NS.base.Chronologie()
-    if #evenements == 0 then
-        index = index + 1
-        y = Poser(contenu, index, y, { texte = L.TIMELINE_EMPTY, couleur = SECONDAIRE, multi = true })
-        return index, y
-    end
-    local jour
-    local persos = {}
-    for _, q in ipairs(PersosVisibles()) do persos[q.cle] = q end
-    local temps = {}
-    for k, e in ipairs(evenements) do
-        if k > 150 then break end
-        local ceJour = tostring(NS.Appeler(date, "%d/%m/%Y", e.quand) or "?")
-        if ceJour ~= jour then
-            jour = ceJour
-            index = index + 1
-            y = Poser(contenu, index, y + 6, { texte = ceJour, police = "GameFontNormalSmall", couleur = OR })
-        end
-        -- Le niveau releve juste avant pour ce personnage : s'il en manque
-        -- entre les deux (jeu ferme, add-on absent), la ligne le dit.
-        local precedent
-        for k2 = k + 1, #evenements do
-            local e2 = evenements[k2]
-            if e2.cle == e.cle and e2.niveau then precedent = e2.niveau break end
-        end
-        local niveau = e.niveau or 0
-        local texteNiveau = string.format(L.LEVEL, niveau)
-        if precedent and niveau - precedent == 2 then
-            texteNiveau = string.format(L.LEVELS_TWO, niveau - 1, niveau)
-        elseif precedent and niveau - precedent > 2 then
-            texteNiveau = string.format(L.LEVELS_RANGE, precedent + 1, niveau)
-        end
-        local detail = ""
-        temps[e.cle] = temps[e.cle] or NS.base.TempsParNiveau(e.cle)
-        local avant = temps[e.cle].durees[niveau - 1]
-        if avant then detail = string.format(L.TIMELINE_TOOK, NS.Duree(avant), niveau - 1) end
-        local q = persos[e.cle] or { cle = e.cle, classe = e.classe }
-        index = index + 1
-        -- En colonnes, toutes alignees a gauche et dans la meme police :
-        -- l'heure, le nom (couleur de sa classe), le niveau atteint, le
-        -- temps passe sur le niveau d'avant.
-        y = Poser(contenu, index, y, { retrait = RETRAIT, icone = "Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES",
-            texte = tostring(NS.Appeler(date, "%H:%M", e.quand) or ""), couleur = BLANC })
-        local l = contenu.lignes[index]
-        local coords = _G.CLASS_ICON_TCOORDS and q.classe and _G.CLASS_ICON_TCOORDS[q.classe]
-        if coords then l.icone:SetTexCoord(coords[1], coords[2], coords[3], coords[4]) else l.icone:Hide() end
-        if not l.colNom then
-            l.colNom = l:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            l.colNiv = l:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            l.colTemps = l:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            for _, c in ipairs({ l.colNom, l.colNiv, l.colTemps }) do c:SetJustifyH("LEFT") c:SetWordWrap(false) end
-        end
-        NS.charte.PoliceDeNom(l.gauche)
-        l.gauche:ClearAllPoints()
-        l.gauche:SetPoint("TOPLEFT", l.icone, "TOPRIGHT", 6, -2)
-        l.gauche:SetWidth(COL_HEURE)
-        local cc = CouleurDeClasse(q.classe)
-        local colonnes = {
-            { l.colNom, COL_NOM, NS.NomCourt(e.cle), cc },
-            { l.colNiv, COL_NIVEAU, texteNiveau, BLANC },
-            { l.colTemps, COL_TEMPS, detail, BLANC },
-        }
-        local avantC = l.gauche
-        local largeurAvant = COL_HEURE
-        for _, col in ipairs(colonnes) do
-            local fs = col[1]
-            NS.charte.PoliceDeNom(fs)
-            fs:ClearAllPoints()
-            fs:SetPoint("LEFT", avantC, "LEFT", largeurAvant + 12, 0)
-            fs:SetWidth(col[2])
-            fs:SetTextColor(col[4][1], col[4][2], col[4][3])
-            fs:SetText(col[3])
-            fs:Show()
-            avantC, largeurAvant = fs, col[2]
-        end
-        l.colNom.couleurPropre = true
-        l.colNom.nomDePerso = true
-        l.colTemps.couleurPropre = nil
-    end
+    -- Plus de journal du compte : une liste de toutes les montees de niveau
+    -- de tous les personnages devient illisible et n'apprend rien de plus
+    -- que les colonnes ci-dessus, personnage par personnage.
     return index, y
 end
 
@@ -977,40 +899,14 @@ local function CreerPortrait(parent)
     return b
 end
 
+-- La barre des personnages : celle de la suite, la meme partout.
 local function RendreBande(persos)
-    local bande = cadre.bande
-    local courant = NS.ClePersonnage()
-    bande.boutons = bande.boutons or {}
-    for _, b in ipairs(bande.boutons) do b:Hide() end
-    for rang, p in ipairs(persos) do
-        local b = bande.boutons[rang]
-        if not b then
-            b = CreerPortrait(bande)
-            bande.boutons[rang] = b
-        end
-        b:ClearAllPoints()
-        b:SetPoint("LEFT", bande, "LEFT", 2 + (rang - 1) * (TAILLE_PORTRAIT + 6), 0)
-        PoserVisage(b.visage, p, p.cle == courant)
-        -- Grise tant que le personnage n'a pas le niveau de l'heritage.
-        b.visage:SetDesaturated((p.niveau or 0) < NS.base.NIVEAU_HERITAGE)
-        b.halo:SetShown(p.cle == etat.cle)
-        b:SetAlpha(p.cle == etat.cle and 1 or 0.7)
-        local cle, perso = p.cle, p
-        b:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-            GameTooltip:SetText(NS.NomCourt(cle), 1, 0.82, 0)
-            if perso.niveau then GameTooltip:AddLine(string.format(L.LEVEL, perso.niveau), 1, 1, 1) end
-            if (perso.niveau or 0) < NS.base.NIVEAU_HERITAGE then
-                GameTooltip:AddLine(string.format(L.LOCKED_LEVEL, NS.base.NIVEAU_HERITAGE, perso.niveau or 0), 0.6, 0.6, 0.6)
-            end
-            GameTooltip:Show()
-        end)
-        b:SetScript("OnClick", function()
-            ChoisirPerso(cle)
-            fen.Rendre()
-        end)
-        b:Show()
-    end
+    local S = NS.suite or _G.CoreSuite
+    local cles = S.BandePersos(cadre.bande, { choisi = etat.cle, auClic = function(cle)
+        ChoisirPerso(cle)
+        fen.Rendre()
+    end })
+    cadre.bande.ordre = cles
 end
 
 -- ---------------------------------------------------------------------------
@@ -1285,11 +1181,11 @@ local function PageVoisine(pas)
 end
 
 local function PersoVoisin(pas)
-    local persos = PersosVisibles()
+    local persos = cadre and cadre.bande and cadre.bande.ordre or {}
     if #persos == 0 then return end
     local index = 1
-    for rang, p in ipairs(persos) do if p.cle == etat.cle then index = rang end end
-    ChoisirPerso(persos[((index - 1 + pas) % #persos) + 1].cle)
+    for rang, cle in ipairs(persos) do if cle == etat.cle then index = rang end end
+    ChoisirPerso(persos[((index - 1 + pas) % #persos) + 1])
     fen.Rendre()
 end
 
