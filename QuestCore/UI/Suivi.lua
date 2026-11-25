@@ -260,9 +260,7 @@ end
 local function RondDuJeu(ligne, etat, x, y)
     if not (AtlasExiste("UI-QuestPoi-QuestNumber")) then return nil end
     -- "fait" : le point d'interrogation du rendu, en vert (quete rendue).
-    -- "prendre" : le point d'exclamation jaune d'une quete a prendre.
-    local symbole = (etat == true or etat == "fait") and "UI-QuestIcon-TurnIn-Normal"
-        or (etat == "prendre" and "QuestNormal") or "Quest-In-Progress-Icon-yellow"
+    local symbole = (etat == true or etat == "fait") and "UI-QuestIcon-TurnIn-Normal" or "Quest-In-Progress-Icon-yellow"
     if not AtlasExiste(symbole) then return nil end
     if not ligne.rond then
         local support = CreateFrame("Frame", nil, ligne)
@@ -279,8 +277,16 @@ local function RondDuJeu(ligne, etat, x, y)
     ligne.rond:SetPoint("TOPLEFT", ligne, "TOPLEFT", x or 1, y or 2)
     ligne.rond.fond:SetAtlas("UI-QuestPoi-QuestNumber")
     ligne.rond.fond:SetSize(24, 24)
-    ligne.rond.symbole:SetAtlas(symbole)
-    ligne.rond.symbole:SetSize(24, 24)
+    -- "prendre" : le petit point d'exclamation des PNJ du jeu, a la taille
+    -- des symboles des autres ronds, dans le meme rond.
+    if etat == "prendre" then
+        ligne.rond.symbole:SetTexture("Interface\\GossipFrame\\AvailableQuestIcon")
+        ligne.rond.symbole:SetTexCoord(0, 1, 0, 1)
+        ligne.rond.symbole:SetSize(12, 12)
+    else
+        ligne.rond.symbole:SetAtlas(symbole)
+        ligne.rond.symbole:SetSize(24, 24)
+    end
     ligne.rond.symbole:SetDesaturated(etat == "fait" or etat == "suite")
     if etat == "fait" then ligne.rond.symbole:SetVertexColor(0.3, 1, 0.3)
     elseif etat == "suite" then ligne.rond.symbole:SetVertexColor(0.55, 0.55, 0.55)
