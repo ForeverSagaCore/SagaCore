@@ -1396,7 +1396,7 @@ local function RendreDisponibles(contenu, p, index, y)
         local xpZone = 0
         for _, d in ipairs(z.ids) do
             if not d.gris and (d.niveau or 0) <= (p.niveau or 0) then
-                xpZone = xpZone + (tonumber(NS.ref.XPDeLaBase(d.id, p.niveau)) or 0)
+                xpZone = xpZone + (tonumber((NS.ref.XPDeLaBase(d.id, p.niveau))) or 0)
             end
         end
         local fermee = etat.ouvertes[cleZone] == false or (etat.ouvertes[cleZone] == nil and z.nom ~= ici)
