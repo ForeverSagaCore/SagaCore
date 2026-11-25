@@ -1395,15 +1395,13 @@ local function RendreDisponibles(contenu, p, index, y)
     -- Les quetes disponibles maintenant (pour griser les autres etapes d'une suite).
     local dispo = {}
     for _, z in ipairs(zones) do for _, d in ipairs(z.ids) do if not d.gris then dispo[d.id] = true end end end
-    local niveauActuel = NS.disponibles.NiveauApres(p, 0)
     for _, z in ipairs(zones) do
         local cleZone = "dz" .. z.nom
-        -- Par zone : la part deja faite, l'XP de ce qui reste et les niveaux
-        -- que ca represente (recompenses de quetes seulement).
-        local gain = NS.disponibles.NiveauApres(p, z.xp) - niveauActuel
-        local droite = z.xp > 0 and string.format(L.AVAIL_ZONE_XP, NS.ref.NombreLisible(z.xp),
-            gain >= 0.95 and string.format(L.AVAIL_ZONE_LEVELS, math.floor(gain + 0.05)) or
-            string.format(L.AVAIL_ZONE_PART, math.floor(gain * 100 + 0.5))) or nil
+        -- Par zone : la part deja faite, l'XP de ce qui reste et ce qu'elle
+        -- apporte pour le niveau suivant (recompenses de quetes seulement).
+        local part = NS.disponibles.PartDuSuivant(p, z.xp)
+        local droite = z.xp > 0 and (part >= 1 and ("|cff4fd16a" .. L.AVAIL_ZONE_NEXT .. "|r")
+            or string.format(L.AVAIL_ZONE_PART, NS.ref.NombreLisible(z.xp), math.floor(part * 100 + 0.5))) or nil
         local fermee = etat.ouvertes[cleZone] == false or (etat.ouvertes[cleZone] == nil and not z.ici)
         index = index + 1
         y = Poser(contenu, index, y, { retrait = 0, depliable = true, deplie = not fermee,
@@ -1478,6 +1476,25 @@ local function RendreDisponibles(contenu, p, index, y)
             end
         end
     end
+    -- Plus tard : les quetes au-dessus de votre niveau, repliees en bas.
+    local tard = NS.disponibles.ListePlusTard(p)
+    if #tard > 0 then
+        local ouvert = etat.ouvertes.dispoTard == true
+        y = y + ESPACE_SECTION
+        index = index + 1
+        y = Poser(contenu, index, y, { retrait = 0, depliable = true, deplie = ouvert,
+            texte = string.format(L.AVAIL_LATER, #tard), police = "GameFontNormalSmall", couleur = { 0.6, 0.6, 0.6 },
+            auClic = function() etat.ouvertes.dispoTard = not ouvert fen.Rendre() end })
+        if ouvert then
+            for _, d in ipairs(tard) do
+                local nomZone = (d.zone > 0 and NS.Appeler(NS.Lecture("C_Map.GetAreaInfo"), d.zone)) or L.ZONE_OTHER
+                index = index + 1
+                y = Poser(contenu, index, y, { retrait = RETRAIT, icone = "Interface\\GossipFrame\\AvailableQuestIcon",
+                    texte = string.format("[%d] %s", d.niveau, NS.ref.NomDeQuete(d.id, p)), couleur = { 0.6, 0.6, 0.6 },
+                    droite = nomZone, couleurDroite = { 0.6, 0.6, 0.6 }, survol = SurvolEtape(p, d.id) })
+            end
+        end
+    end
     return index, y
 end
 
@@ -1490,42 +1507,6 @@ local function Memoire()
     if type(QuestCoreDB) ~= "table" then return nil end
     QuestCoreDB.memoire = type(QuestCoreDB.memoire) == "table" and QuestCoreDB.memoire or {}
     return QuestCoreDB.memoire
-end
-
--- ---------------------------------------------------------------------------
--- Itineraires : la recolte (la tournee de MapCore), comme dans le suivi.
--- ---------------------------------------------------------------------------
-local function RendreRecolte(contenu, p, index, y)
-    local api = _G.MapCoreAPI
-    local okT, t = false, nil
-    if api and api.Tournee then okT, t = pcall(api.Tournee) end
-    t = okT and type(t) == "table" and t or nil
-    index = index + 1
-    y = Titre(contenu, index, y, L.TRACK_ROUTE_FARM)
-    if not t then
-        index = index + 1
-        y = Poser(contenu, index, y, { retrait = RETRAIT, texte = L.TRACK_FARM_NONE, police = "GameFontDisableSmall",
-            couleur = { 0.6, 0.6, 0.6 } })
-        return index, y
-    end
-    local pct = (t.total or 0) > 0 and math.floor((t.faits or 0) * 100 / t.total + 0.5) or 0
-    local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), t.carte)
-    index = index + 1
-    y = Poser(contenu, index, y, { retrait = 0, police = "GameFontNormalSmall", couleur = { 1, 0.82, 0 },
-        texte = (type(info) == "table" and info.name) and string.format(L.TRACK_FARM_IN, info.name) or L.TRACK_ROUTE_FARM,
-        droite = pct .. " %", couleurDroite = { 1, 1, 1 } })
-    local parObjet, ordre = {}, {}
-    for _, pt in ipairs(t.points or {}) do
-        if not parObjet[pt.objet] then parObjet[pt.objet] = 0 table.insert(ordre, pt.objet) end
-        parObjet[pt.objet] = parObjet[pt.objet] + 1
-    end
-    for _, objet in ipairs(ordre) do
-        index = index + 1
-        y = Poser(contenu, index, y, { retrait = RETRAIT, icone = NS.ref.IconeDObjet(objet),
-            texte = NS.ref.NomDObjet(objet), couleur = { 1, 1, 1 },
-            droite = string.format(L.TRACK_FARM_SPOTS, parObjet[objet]), couleurDroite = { 0.8, 0.8, 0.8 } })
-    end
-    return index, y
 end
 
 -- ---------------------------------------------------------------------------
@@ -1582,17 +1563,36 @@ local function RendreNiveauSuivant(contenu, p, index, y)
     if not ok or type(ids) ~= "table" or #ids == 0 then
         return Explication(contenu, index, y, L.LEVEL_NONE)
     end
-    local cumul = 0
+    -- Deux blocs : ce qui est deja fini (a rendre), puis ce qu'il y a a
+    -- prendre au plus pres. Chaque quete avec son XP.
+    local rendre, prendre = {}, {}
     for _, id in ipairs(ids) do
         local q = p.quetes and p.quetes[id]
-        local xp = tonumber(q and q.recompenses and q.recompenses.xp) or tonumber((NS.ref.XPDeLaBase(id, p.niveau))) or 0
-        cumul = cumul + xp
-        index, y = LigneDeQuete(contenu, p, index, y, id, string.format(L.LEVEL_XP, NS.ref.NombreLisible(xp)))
+        table.insert((q and q.complete == true) and rendre or prendre, id)
     end
+    local cumul = 0
+    local function Bloc(titre, liste)
+        if #liste == 0 then return end
+        index = index + 1
+        y = Poser(contenu, index, y + 6, { retrait = 0, section = true, filet = true, texte = string.format(titre, #liste) }) + 2
+        for _, id in ipairs(liste) do
+            local q = p.quetes and p.quetes[id]
+            local xp = tonumber(q and q.recompenses and q.recompenses.xp) or tonumber((NS.ref.XPDeLaBase(id, p.niveau))) or 0
+            cumul = cumul + xp
+            index, y = LigneDeQuete(contenu, p, index, y, id, string.format(L.LEVEL_XP, NS.ref.NombreLisible(xp)))
+        end
+    end
+    Bloc(L.LEVEL_BLOCK_TURNIN, rendre)
+    Bloc(L.LEVEL_BLOCK_TAKE, prendre)
+    -- La conclusion : le niveau est-il atteint avec ces quetes ?
     index = index + 1
-    y = Poser(contenu, index, y + 4, { retrait = RETRAIT, couleur = { 1, 0.82, 0 },
-        texte = string.format(L.LEVEL_TOTAL, #ids), droite = string.format(L.LEVEL_XP, NS.ref.NombreLisible(cumul)),
-        couleurDroite = cumul >= besoin and { 0.31, 0.82, 0.41 } or { 1, 1, 1 } })
+    if cumul >= besoin then
+        y = Poser(contenu, index, y + 8, { retrait = RETRAIT, couleur = { 0.31, 0.82, 0.41 },
+            texte = string.format(L.LEVEL_REACHED, vise) })
+    else
+        y = Poser(contenu, index, y + 8, { retrait = RETRAIT, couleur = { 1, 1, 1 },
+            texte = string.format(L.LEVEL_MISSING, NS.ref.NombreLisible(besoin - cumul)) })
+    end
     return index, y
 end
 
@@ -1638,30 +1638,33 @@ local function RendreObjectifNiveau(contenu, p, index, y)
         if li.Rendre then pcall(li.Rendre) end
         y = y + 8
     end
-    local plan, cumul, besoin = NS.disponibles.PlanVers(p, vise)
+    local besoin = NS.disponibles.XPJusquA(p, vise)
+    local plan, manque = NS.disponibles.PlanVers(p, vise)
     index = index + 1
     y = Poser(contenu, index, y + 4, { retrait = RETRAIT, couleur = { 1, 1, 1 },
         texte = string.format(L.LEVEL_GOAL_LINE, NS.ref.NombreLisible(besoin), vise) })
     index, y = Explication(contenu, index, y, L.LEVEL_ONLY_QUESTS)
     if #plan == 0 then return Explication(contenu, index, y, L.LEVEL_NONE) end
+    -- Niveau par niveau : les zones qui y menent, jamais de decimales.
     for _, e in ipairs(plan) do
-        local z = e.z
+        local premiere = e.zones[1]
+        local nomZones = premiere.nom .. ((#e.zones > 2) and string.format(L.LEVEL_MORE_ZONES, #e.zones - 1) or (#e.zones == 2 and L.LEVEL_MORE_ZONE) or "")
+        local niveaux = (e.jusqua > e.niveau) and string.format(L.LEVEL_STEP_RANGE, e.niveau, e.jusqua)
+            or string.format(L.LEVEL_STEP, e.niveau)
         index = index + 1
         y = Poser(contenu, index, y, { retrait = RETRAIT, police = "GameFontNormalSmall", couleur = { 1, 0.82, 0 },
             icone = "Interface\\GossipFrame\\AvailableQuestIcon",
-            texte = string.format(L.LEVEL_ZONE, z.nom, #z.ids, z.niveauMin, z.niveauMax)
-                .. (z.ici and ("   |cff4fd16a" .. L.STORY_HERE .. "|r") or ""),
-            droite = string.format(L.LEVEL_ZONE_AFTER, NS.ref.NombreLisible(z.xp), math.floor(e.apres * 10) / 10),
-            couleurDroite = { 1, 1, 1 },
+            texte = niveaux .. " : " .. nomZones,
+            droite = string.format(L.LEVEL_STEP_QUESTS, e.quetes), couleurDroite = { 1, 1, 1 },
             auClic = function()
-                -- La zone dans Disponibles, ouverte.
-                etat.ouvertes["dz" .. z.nom] = true
+                -- La premiere zone dans Disponibles, ouverte.
+                etat.ouvertes["dz" .. premiere.nom] = true
                 etat.page = "disponibles"
                 fen.Rendre()
             end })
     end
-    if cumul < besoin then
-        index, y = Explication(contenu, index, y, string.format(L.LEVEL_GOAL_SHORT, NS.ref.NombreLisible(besoin - cumul)))
+    if manque > 0 then
+        index, y = Explication(contenu, index, y, string.format(L.LEVEL_GOAL_SHORT, NS.ref.NombreLisible(manque)))
     end
     return index, y
 end
@@ -1674,6 +1677,7 @@ function fen.Rendre()
         if m.page then etat.page = m.page end
     end
     -- "En cours" et "A rendre" : le filtre partage avec le suivi et la carte.
+    if etat.page == "recolte" then etat.page = "parcours" end
     if etat.page == "quetes" and NS.base.FiltreARendre() then etat.page = "rendre"
     elseif etat.page == "rendre" and not NS.base.FiltreARendre() then etat.page = "quetes" end
     local ok, souci = pcall(function()
@@ -1751,9 +1755,6 @@ function fen.Rendre()
             elseif etat.page == "parcours" then
                 cadre.titre:SetText(L.TITLE .. " : " .. L.NAV_ROUTES .. " (" .. NS.NomCourt(p.cle) .. ")")
                 index, y = RendreParcours(contenu, p, index, y, "autres")
-            elseif etat.page == "recolte" then
-                cadre.titre:SetText(L.TITLE .. " : " .. L.TRACK_ROUTE_FARM .. " (" .. NS.NomCourt(p.cle) .. ")")
-                index, y = RendreRecolte(contenu, p, index, y)
             elseif etat.page == "niveau" then
                 cadre.titre:SetText(L.TITLE .. " : " .. L.NAV_NEXT_LEVEL .. " (" .. NS.NomCourt(p.cle) .. ")")
                 index, y = RendreNiveauSuivant(contenu, p, index, y)
@@ -2174,7 +2175,6 @@ local PAGES = {
     { cle = "disponibles", section = "MENU_FIND", libelle = "NAV_AVAILABLE", icone = "Interface\\GossipFrame\\AvailableQuestIcon" },
     { cle = "histoire", libelle = "NAV_STORY", icone = "Interface\\Icons\\INV_Misc_Book_11" },
     { cle = "parcours", section = "MENU_ROUTES", libelle = "NAV_ROUTES", icone = "Interface\\Icons\\INV_Misc_Map_01" },
-    { cle = "recolte", libelle = "TRACK_ROUTE_FARM", icone = "Interface\\Icons\\Trade_Herbalism" },
     { cle = "donjons", libelle = "NAV_DUNGEONS", icone = "Interface\\Icons\\INV_Misc_Key_14" },
     { cle = "niveau", section = "MENU_PROGRESS", libelle = "NAV_NEXT_LEVEL", icone = "Interface\\Icons\\Spell_Holy_SurgeOfLight" },
     { cle = "objectif", libelle = "NAV_LEVEL_GOAL", icone = "Interface\\Icons\\Ability_Hunter_Pathfinding" },
