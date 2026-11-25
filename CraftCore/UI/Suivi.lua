@@ -201,6 +201,27 @@ local function ObjectifsDeProgression(liste)
             table.insert(liste, { cle = "prog" .. cle .. ":" .. vise, ligne = ligne, vise = vise, nom = string.format(L.GOAL_PROG, nom, vise), genre = "progression",
                 detail = string.format(L.GOAL_PROG_DETAIL, sien.rang, vise), pct = pct, atteint = sien.rang >= vise,
                 matieres = Matieres(requis, manques), achats = plan.achats,
+                -- Recettes a apprendre en chemin (une seule fois chacune).
+                aApprendre = (function()
+                    local t, vus = {}, {}
+                    -- Sans recette nouvelle, le rang vise n'est pas atteint :
+                    -- le meme calcul, recettes a apprendre comprises, dit lesquelles.
+                    local source = plan
+                    if sien.rang < vise and (plan.atteint or sien.rang) < vise then
+                        local ok, avec = pcall(catalogue.Progression, ligne, seg.de or sien.rang, sien.rangMax, vise, nil, true)
+                        if ok and avec then source = avec end
+                    end
+                    for _, etape in ipairs(source.etapes or {}) do
+                        local r = etape.apprendre and etape.recette
+                        if r and r.id and not vus[r.id] then
+                            vus[r.id] = true
+                            local nature = NS.recettes.CommentApprendre and NS.recettes.CommentApprendre(r)
+                            table.insert(t, { nom = r.nom or tostring(r.id), ou = nature and L[nature] or nil,
+                                rang = etape.rangRequis or etape.de })
+                        end
+                    end
+                    return t
+                end)(),
                 -- Les recettes du plan, dans l'ordre : le bouton Creer les lance.
                 lignes = (function()
                     local t = {}
@@ -1859,6 +1880,20 @@ local function DessinerObjectifs(y, objectifs, vue)
                         PeindreFilet(f, 0.8, 0.65, 0.35, 0.22)
                         f:Show()
                         y = y + 6
+                    end
+                    -- D'abord les recettes a apprendre, avant les matieres.
+                    for _, a in ipairs(o.aApprendre or {}) do
+                        local icone = Icone()
+                        icone:SetPoint("TOPLEFT", zone, "TOPLEFT", 28, -y)
+                        icone:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
+                        local t = T(LIGNE, TAILLE_LIGNE)
+                        t:ClearAllPoints()
+                        t:SetPoint("LEFT", icone, "RIGHT", 6, 0)
+                        t:SetPoint("RIGHT", zone, "TOPLEFT", largeur - 2, -(y + 8))
+                        t:SetWordWrap(false)
+                        t:SetText(string.format(L.GOAL_LEARN, a.nom) .. (a.ou and ("  |cff9d9d9d" .. a.ou .. "|r") or ""))
+                        t:SetTextColor(1, 0.82, 0)
+                        y = y + 18
                     end
                     if #(o.matieres or {}) == 0 then
                         local t = T(LIGNE, TAILLE_LIGNE)
