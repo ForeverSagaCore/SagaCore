@@ -430,7 +430,7 @@ local function EtapesDuKit(moi, pc, etat)
     if #ids == 0 then return true, nil, "atteint" end
     -- Nouvelle rubrique : la cible d'avant ne compte plus.
     if etat.phase ~= phase then etat.phase, etat.chaine = phase, {} end
-    return true, EtapesDeQuetes(ids, moi, etat, { fait = faites, total = math.max(total, faites + 1) })
+    return true, EtapesDeQuetes(ids, moi, etat, { fait = faites, total = math.max(total, faites + 1) }, true)
 end
 
 TYPES.parcours = Commun({
