@@ -1427,7 +1427,10 @@ function suivi.EncoreUtile(cle, idRec)
     producteurs = nil
     for _, o in ipairs(objectifs or {}) do
         if o.cle == cle then
-            if o.atteint then return false end
+            -- « Atteint » ne veut dire « fini » que pour un rang vise ; pour un
+            -- projet ou les fabrications rapides, c'est « tout est reuni » :
+            -- justement le moment de fabriquer, la serie continue.
+            if o.atteint and o.genre == "progression" then return false end
             for _, e in ipairs(EtapesDeFabrication(o.lignes)) do
                 if e.recette and tostring(e.recette.id) == tostring(idRec) then
                     if e.finale then return true end
