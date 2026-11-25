@@ -398,7 +398,7 @@ local function EtapesDuKit(moi, pc, etat)
     if not d then return false end
     D.MettreAJourKit(moi, d, pc)
     local ids, phase = D.AGuider(moi, d, pc)
-    local faites, total = NS.parcours.Avancement(moi, pc)
+    local faites, total = NS.parcours.AvancementGestes(moi, pc)
     if #ids == 0 then return true, nil, "atteint" end
     -- Nouvelle rubrique : la cible d'avant ne compte plus.
     if etat.phase ~= phase then etat.phase, etat.chaine = phase, {} end
@@ -431,6 +431,8 @@ TYPES.parcours = Commun({
         end
         local faites, total = NS.parcours.Avancement(moi, pc)
         if total > 0 and faites >= total then return nil, "atteint" end
+        -- Le compte affiche, lui, avance a chaque geste (prendre, faire, rendre).
+        faites, total = NS.parcours.AvancementGestes(moi, pc)
         local ids = {}
         for _, id in ipairs(pc.etapes or {}) do
             local e = NS.parcours.EtatEtape(moi, id)
