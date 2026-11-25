@@ -1395,18 +1395,39 @@ local TRANCHES = {
     { cle = "rouge", couleur = { 1.00, 0.10, 0.10 }, nom = function() return NS.L.ZONES_RED end },
     { cle = "aucun", couleur = { 0.75, 0.75, 0.75 }, nom = function() return NS.L.ZONES_NONE end },
 }
+-- Les couleurs exactes du jeu, si elles sont la.
+do
+    local Q = _G.QuestDifficultyColors
+    local CLES = { grise = "trivial", verte = "standard", jaune = "difficult", orange = "verydifficult", rouge = "impossible" }
+    if type(Q) == "table" then
+        for _, t in ipairs(TRANCHES) do
+            local c = CLES[t.cle] and Q[CLES[t.cle]]
+            if type(c) == "table" and c.r then t.couleur = { c.r, c.g, c.b } end
+        end
+    end
+end
 local RANG_TRANCHE = {}
 for rang, t in ipairs(TRANCHES) do RANG_TRANCHE[t.cle] = rang end
-TrancheDeZone = function(id)
+-- Le niveau qui represente la zone : son niveau d'entree, plus la moitie de
+-- sa fourchette, plafonnee a 10 (Forever donne des fourchettes tres larges,
+-- 15-60 : le haut ne dit pas pour qui est la zone).
+local function NiveauTypique(id)
     local mini, maxi = NiveauxDeZone(id)
-    if not mini then return TRANCHES[6] end
-    maxi = maxi or mini
-    local moi = NiveauJoueur()
-    if maxi < moi - EcartVert() then return TRANCHES[1] end
-    if maxi < moi then return TRANCHES[2] end
-    if mini <= moi then return TRANCHES[3] end
-    if mini <= moi + 4 then return TRANCHES[4] end
-    return TRANCHES[5]
+    if not mini then return nil end
+    return mini + math.floor(math.min(10, (maxi or mini) - mini) / 2)
+end
+-- Les seuils du journal de quetes du jeu : rouge a 5 niveaux au-dessus,
+-- orange a 3, jaune jusqu'a 2 en dessous, vert ensuite, gris au-dela de
+-- l'ecart ou les quetes ne rapportent plus.
+TrancheDeZone = function(id)
+    local typique = NiveauTypique(id)
+    if not typique then return TRANCHES[6] end
+    local ecart = typique - NiveauJoueur()
+    if ecart >= 5 then return TRANCHES[5] end
+    if ecart >= 3 then return TRANCHES[4] end
+    if ecart >= -2 then return TRANCHES[3] end
+    if ecart >= -EcartVert() then return TRANCHES[2] end
+    return TRANCHES[1]
 end
 
 -- Les zones par niveau : la plus basse d'abord (niveau mini, puis maxi,
@@ -1798,7 +1819,9 @@ local function RendreMenu(idCarte)
             t = menu.liste:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             menu.titres[nt] = t
         end
-        t:SetFontObject("GameFontNormalSmall")
+        -- Meme police que les zones (jamais plus petite), a la couleur de
+        -- sa tranche, et le trait dessous, sur toute la largeur.
+        t:SetFontObject("GameFontNormal")
         t:ClearAllPoints()
         t:SetPoint("TOPLEFT", menu.liste, "TOPLEFT", 12, -(y + 4))
         t:SetText(texte)
@@ -1806,12 +1829,12 @@ local function RendreMenu(idCarte)
         t:Show()
         if not t.trait then t.trait = menu.liste:CreateTexture(nil, "ARTWORK") end
         t.trait:ClearAllPoints()
-        t.trait:SetPoint("LEFT", t, "RIGHT", 6, 0)
+        t.trait:SetPoint("TOPLEFT", t, "BOTTOMLEFT", 0, -3)
         t.trait:SetPoint("RIGHT", menu.liste, "RIGHT", -8, 0)
         t.trait:SetHeight(1)
-        t.trait:SetColorTexture(couleur[1], couleur[2], couleur[3], 0.45)
+        t.trait:SetColorTexture(couleur[1], couleur[2], couleur[3], 0.5)
         t.trait:Show()
-        y = y + 20
+        y = y + 26
     end
     local function Ligne(texte, case, choisie, auClic, couleur, survol)
         n = n + 1
@@ -1940,7 +1963,8 @@ local function RendreMenu(idCarte)
         local texte, couleur = "   " .. z.name, nil
         if mini then
             texte = string.format("   [%s] %s", mini == maxi and mini or (mini .. "-" .. maxi), z.name)
-            couleur = CouleurDeNiveau(math.floor((mini + maxi) / 2))
+            -- La couleur de sa tranche : la ligne et son titre disent pareil.
+            couleur = TrancheDeZone(id).couleur
         end
         Ligne(texte, nil, idCarte == id, function()
             carteChoisie = id
