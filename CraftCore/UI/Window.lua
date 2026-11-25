@@ -390,6 +390,7 @@ local function AncrerLibelle(ligne, butee)
     ligne.nom:ClearAllPoints()
     ligne.nom:SetPoint("LEFT", ligne.icone, "RIGHT", 6, 0)
     ligne.nom:SetPoint("RIGHT", butee, "LEFT", -8, 0)
+    ligne.butee = butee
 end
 
 -- La colonne du courrier, entre la banque et la colonne de droite.
@@ -464,6 +465,9 @@ local function PoserLigne(ligne, retrait, depliable, deplie, auClic)
     if ligne.fabriquer then ligne.fabriquer:Hide() end
     if ligne.barreFab then ligne.barreFab:Hide() end
     if ligne.quete then ligne.quete:Hide() end
+    for _, p in ipairs(ligne.usages or {}) do p:Hide() end
+    for _, e in ipairs(ligne.legende or {}) do e:Hide() end
+    ligne.butee = nil
     if ligne.manque then ligne.manque:Hide() end
     if ligne.palier then ligne.palier:Hide() end
     ligne.quantite:Hide()
@@ -638,15 +642,113 @@ local function MetiersQuiUtilisent(objet)
 end
 NS.MetiersQuiUtilisent = MetiersQuiUtilisent
 
--- Apres le nom : les symboles des metiers ou l'objet sert de composant.
-local function IconesDUsage(objet)
-    local t = {}
-    for rang, ligneM in ipairs(MetiersQuiUtilisent(objet)) do
-        if rang > 4 then break end
-        local ic = ICONES_METIERS[ligneM]
-        if ic then table.insert(t, "|T" .. ic .. ":14:14:0:0:64:64:5:59:5:59|t") end
+-- Petit carre d'icone de metier : l'icone rognee de ses bords, un fin cadre
+-- or sombre, comme une case du jeu. Le meme dans les lignes et la legende.
+local TAILLE_PASTILLE = 14
+local function Pastille(parent)
+    local okP, p = pcall(CreateFrame, "Frame", nil, parent, "BackdropTemplate")
+    p = okP and p or CreateFrame("Frame", nil, parent)
+    p:SetSize(TAILLE_PASTILLE, TAILLE_PASTILLE)
+    if p.SetBackdrop then
+        p:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        p:SetBackdropColor(0, 0, 0, 0.6)
+        p:SetBackdropBorderColor(0.75, 0.6, 0.35, 0.9)
     end
-    return #t > 0 and ("  " .. table.concat(t, " ")) or ""
+    p.t = p:CreateTexture(nil, "ARTWORK")
+    p.t:SetPoint("TOPLEFT", p, "TOPLEFT", 1, -1)
+    p.t:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -1, 1)
+    p.t:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    return p
+end
+
+-- Apres le nom de la recette : les metiers ou l'objet sert de composant,
+-- chacun dans son petit carre. Le nom s'arrete avant eux.
+local function PoserUsages(ligne, objet)
+    ligne.usages = ligne.usages or {}
+    for _, p in ipairs(ligne.usages) do p:Hide() end
+    if not objet then return end
+    local n = 0
+    for _, ligneM in ipairs(MetiersQuiUtilisent(objet)) do
+        local ic = ICONES_METIERS[ligneM]
+        if ic and n < 4 then
+            n = n + 1
+            local p = ligne.usages[n] or Pastille(ligne)
+            ligne.usages[n] = p
+            p.t:SetTexture(ic)
+            p:ClearAllPoints()
+            p:Show()
+        end
+    end
+    if n == 0 then return end
+    -- Juste avant ce qui est a droite de la ligne (boutons, etat) ; le nom
+    -- s'arrete avant les carres, jamais dessous.
+    local butee = ligne.butee or ligne.sacs
+    for k = n, 1, -1 do
+        local p = ligne.usages[k]
+        if k == n then p:SetPoint("RIGHT", butee, "LEFT", -8, 0)
+        else p:SetPoint("RIGHT", ligne.usages[k + 1], "LEFT", -3, 0) end
+        p:SetFrameLevel(ligne:GetFrameLevel() + 2)
+    end
+    ligne.nom:ClearAllPoints()
+    ligne.nom:SetPoint("LEFT", ligne.icone, "RIGHT", 6, 0)
+    ligne.nom:SetPoint("RIGHT", ligne.usages[1], "LEFT", -6, 0)
+end
+
+-- La legende, sur une ligne : le point d'exclamation (sert a des quetes),
+-- puis chaque metier rencontre, dans son carre.
+local function PoserLegendeUsages(ligne)
+    ligne.legende = ligne.legende or {}
+    local L_ = L
+    for _, e in ipairs(ligne.legende) do e:Hide() end
+    local morceaux = { { quete = true, texte = L_.RECIPES_LEGEND_QUEST } }
+    local vus = {}
+    for _, r in pairs(CraftCoreDB and CraftCoreDB.recettes or {}) do
+        local m = type(r) == "table" and NS.recettes.MetierDe(r)
+        if m and ICONES_METIERS[m] and not vus[m] then vus[m] = true end
+    end
+    local metiers = {}
+    for m in pairs(vus) do table.insert(metiers, m) end
+    table.sort(metiers, function(a, b) return tostring(NS.recettes.NomDuMetier(a)) < tostring(NS.recettes.NomDuMetier(b)) end)
+    for _, m in ipairs(metiers) do table.insert(morceaux, { metier = m, texte = NS.recettes.NomDuMetier(m) or "?" }) end
+    local x, k = 0, 0
+    local function Suivant(genre)
+        k = k + 1
+        local e = ligne.legende[k]
+        if not e or e.genre ~= genre then
+            if genre == "texte" then
+                e = ligne:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+                e:SetWordWrap(false)
+            elseif genre == "quete" then
+                e = ligne:CreateTexture(nil, "OVERLAY")
+                e:SetSize(12, 12)
+                e:SetTexture("Interface\\GossipFrame\\AvailableQuestIcon")
+            else
+                e = Pastille(ligne)
+            end
+            e.genre = genre
+            ligne.legende[k] = e
+        end
+        e:ClearAllPoints()
+        e:Show()
+        return e
+    end
+    local t0 = Suivant("texte")
+    t0:SetPoint("LEFT", ligne, "LEFT", 2, 0)
+    t0:SetText(L_.RECIPES_LEGEND_USES)
+    x = 2 + (t0:GetStringWidth() or 0) + 8
+    local largeurMax = (ligne:GetWidth() or 600) - 4
+    for _, m in ipairs(morceaux) do
+        local ic
+        if m.quete then ic = Suivant("quete") else ic = Suivant("pastille") ic.t:SetTexture(ICONES_METIERS[m.metier]) end
+        local t = Suivant("texte")
+        t:SetText(m.texte)
+        local w = (ic:GetWidth() or 14) + 4 + (t:GetStringWidth() or 0)
+        -- Une seule ligne : ce qui ne tient pas n'est pas montre.
+        if x + w > largeurMax then ic:Hide() t:Hide() break end
+        ic:SetPoint("LEFT", ligne, "LEFT", x, 0)
+        t:SetPoint("LEFT", ic, "RIGHT", 4, 0)
+        x = x + w + 12
+    end
 end
 
 local function UsagesDansLInfobulle(tt, objet)
@@ -3936,6 +4038,20 @@ local function RendreRecettes(contenu)
     legende:Show()
     y = y + HAUTEUR_LIGNE
 
+    -- Legende des usages : quetes, et chaque metier.
+    index = index + 1
+    local legendeU = LigneDeTableau(contenu, index)
+    legendeU:ClearAllPoints()
+    legendeU:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
+    legendeU:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
+    PoserLigne(legendeU, 0, false, false, nil)
+    legendeU.icone:Hide()
+    legendeU.nom:SetText("")
+    legendeU.sacs:SetText("") legendeU.banque:SetText("") legendeU.total:SetText("")
+    PoserLegendeUsages(legendeU)
+    legendeU:Show()
+    y = y + HAUTEUR_LIGNE
+
     if #liste == 0 then
         CacherLignesAuDela(contenu, index + 1)
         PoserMessage(contenu, L.RECIPES_NONE, y)
@@ -4071,8 +4187,7 @@ local function RendreRecettes(contenu)
             ecran.deplie[cleDepli] = (not deplie) or nil
             ecran.Montrer(ecran.page)
         end)
-        ligne.nom:SetText((recette.nom or ("recette " .. tostring(recette.id)))
-            .. (recette.objetProduit and IconesDUsage(recette.objetProduit) or ""))
+        ligne.nom:SetText(recette.nom or ("recette " .. tostring(recette.id)))
 
         local icone = recette.objetProduit and NS.jeu.iconeObjet
             and NS.Appeler(NS.jeu.iconeObjet, recette.objetProduit)
@@ -4149,6 +4264,7 @@ local function RendreRecettes(contenu)
             -- Creer : tout ce que les sacs permettent, pour tous les metiers.
             PoserBoutonFabriquer(ligne, recette, "tout")
         end
+        PoserUsages(ligne, recette.objetProduit)
         -- Au survol : l'objet fabrique, et pour une recette non apprise, comment
         -- l'apprendre, avec les mots du jeu.
         local recetteSurvol = recette
