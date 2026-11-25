@@ -349,6 +349,16 @@ function parcours.Avancement(p, pc)
     return faites, total, pct
 end
 
+-- Le compte du guidage (« Etape X sur Y ») avance a chaque geste, pas
+-- seulement quand une quete est rendue : chaque quete compte trois gestes,
+-- la prendre, la faire, la rendre. Une quete prise compte donc deja.
+local GESTES = { faite = 3, rendre = 2, cours = 1, prendre = 0, attente = 0 }
+function parcours.AvancementGestes(p, pc)
+    local fait = 0
+    for _, id in ipairs(pc.etapes or {}) do fait = fait + (GESTES[parcours.EtatEtape(p, id)] or 0) end
+    return fait, 3 * #(pc.etapes or {})
+end
+
 -- Premiere etape pas encore faite : la prochaine chose a faire.
 function parcours.Prochaine(p, pc)
     for rang, id in ipairs(pc.etapes) do
