@@ -998,6 +998,22 @@ local function RendreHistoire(contenu, p, index, y)
                 y = Poser(contenu, index, y, { retrait = RETRAIT * 2, texte = string.format(L.STORY_ZONE_XP,
                     NS.ref.NombreLisible(xp), #z.restantes), couleur = { 1, 0.82, 0 } })
             end
+            -- Toute la zone en un itineraire, dans l'ordre : il rejoint les
+            -- itineraires sans arreter le guidage en cours.
+            if #z.restantes > 0 then
+                local zoneId, nomZ, ids = z.zone, z.nom, z.restantes
+                index = index + 1
+                y = Poser(contenu, index, y + 2, { retrait = RETRAIT * 2, boutons = {
+                    { L.STORY_ZONE_ROUTE, function()
+                        local cleP = NS.ClePersonnage()
+                        local pc = cleP and NS.parcours.CreerZone(cleP, p, zoneId, nomZ, ids)
+                        if pc then
+                            NS.Dire(string.format(L.STORY_ZONE_ROUTE_DONE, pc.nom))
+                            if ParcoursChange then ParcoursChange() else fen.Rendre() end
+                        end
+                    end },
+                } }) + 2
+            end
             -- Ce qui reste, par niveau.
             local restantes = {}
             for _, id in ipairs(z.restantes) do

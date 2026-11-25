@@ -653,7 +653,7 @@ _G.QuestCoreAPI = {
                 local _, id = NS.parcours.Prochaine(p, pc)
                 local zone = id and tonumber(NS.ref.Lire("QuestDB", id, "zoneOrSort")) or 0
                 local nomZone = zone > 0 and NS.Appeler(NS.Lecture("C_Map.GetAreaInfo"), zone) or nil
-                local genre = (pc.genre == "kit" and "donjon") or "suite"
+                local genre = (pc.genre == "kit" and "donjon") or (pc.genre == "zone" and "zone") or "suite"
                 local guide = NS.guidage and NS.guidage.EstActif and NS.guidage.EstActif("parcours", { uid = pc.uid }) or false
                 table.insert(res, { uid = pc.uid, nom = pc.nom, type = genre, faites = faites, total = total,
                     zone = nomZone, guide = guide })

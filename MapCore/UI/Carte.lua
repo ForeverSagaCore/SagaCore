@@ -1555,6 +1555,7 @@ function page.DonneesItin()
     local types = {
         { cle = "suite", nom = L0.ROUTES_CHAINS, n = Compter("suite"), icone = "Interface\\Icons\\INV_Scroll_03" },
         { cle = "donjon", nom = L0.ROUTES_DUNGEONS, n = Compter("donjon"), icone = "Interface\\Icons\\INV_Misc_Key_14" },
+        { cle = "zone", nom = L0.ROUTES_ZONES, n = Compter("zone"), icone = "Interface\\Icons\\INV_Misc_Map_02" },
         { cle = "niveau", nom = L0.ROUTES_LEVEL, n = 1, icone = "Interface\\Icons\\Spell_Holy_SurgeOfLight" },
         { cle = "recolte", nom = L0.ROUTES_FARM, n = (tournee and 1 or 0) + (recolteEnCours and 1 or 0), icone = "Interface\\Icons\\Trade_Herbalism" },
     }
@@ -1648,6 +1649,7 @@ function page.RendrePanneauItin()
     local f = d.filtre
     for _, l in ipairs(p.lignes) do l:Hide() end
     local titre = f.zone or ((f.type == "suite" and L0.ROUTES_CHAINS) or (f.type == "donjon" and L0.ROUTES_DUNGEONS)
+        or (f.type == "zone" and L0.ROUTES_ZONES)
         or (f.type == "niveau" and L0.ROUTES_LEVEL) or L0.ROUTES_FARM)
     p.titre:SetText(titre)
     p.aide:SetText(L0.ROUTES_HELP)
@@ -1692,7 +1694,8 @@ function page.RendrePanneauItin()
         for _, it in ipairs(d.liste) do
             if (f.type and it.type == f.type) or (f.zone and it.zone == f.zone) then
                 local uid = it.uid
-                local icone = it.type == "donjon" and "Interface\\Icons\\INV_Misc_Key_14" or "Interface\\Icons\\INV_Misc_Map_01"
+                local icone = (it.type == "donjon" and "Interface\\Icons\\INV_Misc_Key_14")
+                    or (it.type == "zone" and "Interface\\Icons\\INV_Misc_Map_02") or "Interface\\Icons\\INV_Misc_Map_01"
                 local droite = it.faites .. " / " .. it.total .. (it.zone and ("   " .. it.zone) or "")
                 Ajouter(icone, it.nom, droite, it.guide, function()
                     if api and api.GuiderItineraire then pcall(api.GuiderItineraire, uid) end

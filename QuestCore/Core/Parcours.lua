@@ -307,6 +307,45 @@ function parcours.CreerKit(cle, ids, nom, zone)
     return pc
 end
 
+-- Itineraire de toute une zone (Mon histoire) : ses quetes qui restent,
+-- chacune precedee de ce qu'il faut faire avant (suites dans l'ordre), les
+-- plus basses d'abord. Jamais une quete qu'on ne peut plus prendre. Un seul
+-- itineraire par zone : le precedent est remplace. Le creer ne lance aucun
+-- guidage : il rejoint les itineraires, le guidage en cours continue.
+function parcours.CreerZone(cle, p, zone, nomZone, ids)
+    if type(ids) ~= "table" or #ids == 0 then return nil end
+    local tries = {}
+    for _, id in ipairs(ids) do
+        if not (NS.histoire and NS.histoire.Retiree and NS.histoire.Retiree(id)) or (p.quetes and p.quetes[id]) then
+            table.insert(tries, { id = id, niveau = tonumber(NS.ref.Lire("QuestDB", id, "questLevel")) or 0 })
+        end
+    end
+    table.sort(tries, function(a, b)
+        if a.niveau ~= b.niveau then return a.niveau < b.niveau end
+        return a.id < b.id
+    end)
+    local etapes, vues = {}, {}
+    for _, t in ipairs(tries) do
+        local chemin = parcours.Suite(p, t.id)
+        if #chemin == 0 then chemin = { t.id } end
+        for _, id in ipairs(chemin) do
+            if not vues[id] and not Faite(p, id) then vues[id] = true table.insert(etapes, id) end
+            if id == t.id then break end
+        end
+        if not vues[t.id] and not Faite(p, t.id) then vues[t.id] = true table.insert(etapes, t.id) end
+        if #etapes >= 2 * MAX_ETAPES then break end
+    end
+    if #etapes == 0 then return nil end
+    local liste = parcours.Liste(cle)
+    for i = #liste, 1, -1 do
+        if liste[i].genre == "zone" and liste[i].zone == zone then table.remove(liste, i) end
+    end
+    local pc = { id = NouvelId(liste), uid = NouvelUid(), genre = "zone", carte = true, etapes = etapes,
+        nom = string.format(NS.L.ROUTE_ZONE_NAME, tostring(nomZone or zone)), zone = zone }
+    table.insert(liste, pc)
+    return pc
+end
+
 function parcours.Ajouter(cle, idParcours, quete)
     local pc = parcours.Trouver(cle, idParcours)
     if not pc then return end
