@@ -300,8 +300,6 @@ local function RendreQuetes(contenu, p, index, y)
     local filtre = NS.base.FiltreARendre()
     local nRendre = NS.base.NombreARendre(p)
     local boutonsTitre = {
-        { L.TURNIN_ALL, function() NS.base.PoserFiltreARendre(false) end, filtre },
-        { string.format(L.TURNIN_TAB, nRendre), function() NS.base.PoserFiltreARendre(true) end, not filtre },
         -- Le meme bouton Guider que le suivi (personnage connecte seulement).
         (p.cle == NS.ClePersonnage()) and { NS.guidage.EstActif("rendus", {}) and L.GUIDE_STOP or L.GUIDE_START, function()
             NS.guidage.Basculer("rendus", {})
@@ -630,8 +628,26 @@ local function RendreCommunes(contenu, index, y)
         end
     end
     table.sort(zones)
+    -- Tout ouvrir / tout fermer : les zones et le detail de chaque quete.
+    local toutOuvert = total > 0
+    for zone, ids in pairs(parZone) do
+        if etat.ouvertes["qz" .. zone] == false then toutOuvert = false end
+        for _, id in ipairs(ids) do if etat.ouvertes["commune" .. id] ~= true then toutOuvert = false end end
+    end
     index = index + 1
-    y = Titre(contenu, index, y, string.format(L.COMMON_TITLE, total))
+    y = Titre(contenu, index, y, string.format(L.COMMON_TITLE, total), total > 0 and {
+        { toutOuvert and L.COMMON_CLOSE_ALL or L.COMMON_OPEN_ALL, function()
+            for zone, ids in pairs(parZone) do
+                etat.ouvertes["qz" .. zone] = (not toutOuvert) and nil or false
+                for _, id in ipairs(ids) do etat.ouvertes["commune" .. id] = (not toutOuvert) and true or nil end
+            end
+            fen.Rendre()
+        end },
+    } or nil)
+    -- Ce que c'est, pour qui n'a qu'un personnage.
+    index = index + 1
+    y = Poser(contenu, index, y, { retrait = RETRAIT, texte = L.COMMON_HELP, police = "GameFontDisableSmall",
+        couleur = { 0.6, 0.6, 0.6 } }) + 4
     if total == 0 then
         index = index + 1
         y = Poser(contenu, index, y, { retrait = RETRAIT, texte = L.COMMON_NONE, couleur = { 0.6, 0.6, 0.6 } })
@@ -735,21 +751,20 @@ local function SurvolEtape(p, id)
     end
 end
 
-local function RendreParcours(contenu, p, index, y)
-    local liste = NS.parcours.Liste(p.cle)
+local function RendreParcours(contenu, p, index, y, filtre)
+    -- Filtre : "kit" (trajets de donjon, page Donjons) ou les autres
+    -- (page Parcours), comme les onglets Itineraire du suivi.
+    local liste = {}
+    for _, pc in ipairs(NS.parcours.Liste(p.cle)) do
+        if not filtre or ((pc.genre == "kit") == (filtre == "kit")) then table.insert(liste, pc) end
+    end
+    if filtre == "kit" and #liste == 0 then return index, y end
     -- Progression : seulement pour le personnage connecte (son experience).
     local connecte = p.cle == NS.ClePersonnage()
     local manque = connecte and NS.disponibles.XPManquante() or 0
     index = index + 1
-    y = Titre(contenu, index, y, string.format(L.ROUTE_TITLE, #liste), {
-        { connecte and string.format(L.ROUTE_MAKE_LEVEL, (p.niveau or 0) + 1, manque) or L.ROUTE_MAKE_LEVEL_OFF,
-            function()
-                -- Le guidage vers le niveau suivant (objectif "niveau").
-                local ok, lance = pcall(NS.guidage.Lancer, "niveau", { niveau = (p.niveau or 0) + 1 })
-                if not ok then NS.base.NoterIncident("progression", lance) return end
-                fen.Rendre()
-            end, connecte and manque > 0 },
-    })
+    -- Le guidage vers un niveau est dans Progression.
+    y = Titre(contenu, index, y, string.format(filtre == "kit" and L.ROUTE_TITLE_KIT or L.ROUTE_TITLE, #liste))
     if #liste == 0 then
         index = index + 1
         y = Poser(contenu, index, y, { retrait = RETRAIT, texte = L.ROUTE_NONE, couleur = { 0.6, 0.6, 0.6 } })
@@ -769,9 +784,12 @@ local function RendreParcours(contenu, p, index, y)
     for _, groupe in ipairs(groupes) do
       if #groupe.liste > 0 then
         local cleGroupe = "grp" .. groupe.cle
-        local groupeFerme = etat.ouvertes[cleGroupe] == false
+        -- Page Donjons : les trajets directement sous leur titre.
+        local sansEntete = filtre == "kit"
+        local groupeFerme = not sansEntete and etat.ouvertes[cleGroupe] == false
         -- Chaque genre de parcours sous son propre titre de section (comme
         -- les autres pages), avec ce qu'il est, en une ligne.
+        if not sansEntete then
         if y > 0 then y = y + ESPACE_SECTION end
         index = index + 1
         y = Poser(contenu, index, y, { retrait = 0, depliable = true, deplie = not groupeFerme, section = true, filet = true,
@@ -781,7 +799,8 @@ local function RendreParcours(contenu, p, index, y)
                 else etat.ouvertes[cleGroupe] = false end
                 fen.Rendre()
             end }) + 2
-        if not groupeFerme and groupe.aide then
+        end
+        if not groupeFerme and not sansEntete and groupe.aide then
             index = index + 1
             y = Poser(contenu, index, y, { retrait = RETRAIT, texte = groupe.aide, police = "GameFontDisableSmall",
                 couleur = { 0.6, 0.6, 0.6 } }) + 2
@@ -1348,30 +1367,13 @@ end
 -- ---------------------------------------------------------------------------
 
 local function RendreDisponibles(contenu, p, index, y)
-    local ok, liste = pcall(NS.disponibles.Liste, p)
-    if not ok then NS.base.NoterIncident("disponibles", liste) return index, y end
-    local ici = NS.Appeler(NS.Lecture("GetRealZoneText"))
-    local parZone, zones, total = {}, {}, 0
-    for _, d in ipairs(liste) do
-        if not d.gris or etat.disposGrises then
-            local nom = (d.zone > 0 and NS.Appeler(NS.Lecture("C_Map.GetAreaInfo"), d.zone)) or L.ZONE_OTHER
-            if not parZone[nom] then
-                parZone[nom] = { nom = nom, ids = {}, niveau = d.niveau }
-                table.insert(zones, parZone[nom])
-            end
-            table.insert(parZone[nom].ids, d)
-            total = total + 1
-        end
+    local ok, zones = pcall(NS.disponibles.Zones, p, etat.disposGrises)
+    if not ok then NS.base.NoterIncident("disponibles", zones) return index, y end
+    local total, grises = 0, 0
+    for _, z in ipairs(zones) do
+        total = total + #z.ids
+        for _, d in ipairs(z.ids) do if d.gris then grises = grises + 1 end end
     end
-    table.sort(zones, function(a, b)
-        if (a.nom == ici) ~= (b.nom == ici) then return a.nom == ici end
-        if a.niveau ~= b.niveau then return a.niveau < b.niveau end
-        return a.nom < b.nom
-    end)
-    -- Le compte couvre toutes les zones du monde (pas seulement celle ou l'on
-    -- est) : on le dit, avec le nombre de zones et la part des grises.
-    local grises = 0
-    for _, z in ipairs(zones) do for _, d in ipairs(z.ids) do if d.gris then grises = grises + 1 end end end
     local titre = etat.disposGrises and string.format(L.AVAIL_TITLE_ALL_GRAY, total, #zones, grises)
         or string.format(L.AVAIL_TITLE_ALL, total, #zones)
     index = index + 1
@@ -1381,6 +1383,10 @@ local function RendreDisponibles(contenu, p, index, y)
             fen.Rendre()
         end },
     })
+    -- Ce que montre la page, en une phrase.
+    index = index + 1
+    y = Poser(contenu, index, y, { retrait = RETRAIT, texte = L.AVAIL_HELP, police = "GameFontDisableSmall",
+        couleur = { 0.6, 0.6, 0.6 } }) + 4
     if total == 0 then
         index = index + 1
         y = Poser(contenu, index, y, { retrait = RETRAIT, texte = L.AVAIL_NONE, couleur = { 0.6, 0.6, 0.6 } })
@@ -1389,23 +1395,22 @@ local function RendreDisponibles(contenu, p, index, y)
     -- Les quetes disponibles maintenant (pour griser les autres etapes d'une suite).
     local dispo = {}
     for _, z in ipairs(zones) do for _, d in ipairs(z.ids) do if not d.gris then dispo[d.id] = true end end end
+    local niveauActuel = NS.disponibles.NiveauApres(p, 0)
     for _, z in ipairs(zones) do
         local cleZone = "dz" .. z.nom
-        -- Experience a prendre dans la zone avec les quetes du niveau du
-        -- personnage, comme dans le suivi.
-        local xpZone = 0
-        for _, d in ipairs(z.ids) do
-            if not d.gris and (d.niveau or 0) <= (p.niveau or 0) then
-                xpZone = xpZone + (tonumber((NS.ref.XPDeLaBase(d.id, p.niveau))) or 0)
-            end
-        end
-        local fermee = etat.ouvertes[cleZone] == false or (etat.ouvertes[cleZone] == nil and z.nom ~= ici)
+        -- Par zone : la part deja faite, l'XP de ce qui reste et les niveaux
+        -- que ca represente (recompenses de quetes seulement).
+        local gain = NS.disponibles.NiveauApres(p, z.xp) - niveauActuel
+        local droite = z.xp > 0 and string.format(L.AVAIL_ZONE_XP, NS.ref.NombreLisible(z.xp),
+            gain >= 0.95 and string.format(L.AVAIL_ZONE_LEVELS, math.floor(gain + 0.05)) or
+            string.format(L.AVAIL_ZONE_PART, math.floor(gain * 100 + 0.5))) or nil
+        local fermee = etat.ouvertes[cleZone] == false or (etat.ouvertes[cleZone] == nil and not z.ici)
         index = index + 1
         y = Poser(contenu, index, y, { retrait = 0, depliable = true, deplie = not fermee,
-            texte = z.nom .. " (" .. #z.ids .. ")" .. ((z.nom == ici) and ("   |cff4fd16a" .. L.STORY_HERE .. "|r") or ""),
-            police = "GameFontNormalSmall", couleur = { 1, 0.82, 0 }, surligne = z.nom == ici,
-            droite = xpZone > 0 and string.format(L.TRACK_ZONE_XP, NS.ref.NombreLisible(xpZone)) or nil,
-            couleurDroite = { 1, 0.82, 0 },
+            texte = z.nom .. " (" .. #z.ids .. ")   |cff8c8c8c" .. string.format(L.AVAIL_ZONE_DONE, z.pct) .. "|r"
+                .. (z.ici and ("   |cff4fd16a" .. L.STORY_HERE .. "|r") or ""),
+            police = "GameFontNormalSmall", couleur = { 1, 0.82, 0 }, surligne = z.ici,
+            droite = droite, couleurDroite = { 1, 0.82, 0 },
             auClic = function()
                 -- Ouverte : on la ferme ; fermee : on l'ouvre.
                 if fermee then etat.ouvertes[cleZone] = true else etat.ouvertes[cleZone] = false end
@@ -1487,6 +1492,180 @@ local function Memoire()
     return QuestCoreDB.memoire
 end
 
+-- ---------------------------------------------------------------------------
+-- Itineraires : la recolte (la tournee de MapCore), comme dans le suivi.
+-- ---------------------------------------------------------------------------
+local function RendreRecolte(contenu, p, index, y)
+    local api = _G.MapCoreAPI
+    local okT, t = false, nil
+    if api and api.Tournee then okT, t = pcall(api.Tournee) end
+    t = okT and type(t) == "table" and t or nil
+    index = index + 1
+    y = Titre(contenu, index, y, L.TRACK_ROUTE_FARM)
+    if not t then
+        index = index + 1
+        y = Poser(contenu, index, y, { retrait = RETRAIT, texte = L.TRACK_FARM_NONE, police = "GameFontDisableSmall",
+            couleur = { 0.6, 0.6, 0.6 } })
+        return index, y
+    end
+    local pct = (t.total or 0) > 0 and math.floor((t.faits or 0) * 100 / t.total + 0.5) or 0
+    local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), t.carte)
+    index = index + 1
+    y = Poser(contenu, index, y, { retrait = 0, police = "GameFontNormalSmall", couleur = { 1, 0.82, 0 },
+        texte = (type(info) == "table" and info.name) and string.format(L.TRACK_FARM_IN, info.name) or L.TRACK_ROUTE_FARM,
+        droite = pct .. " %", couleurDroite = { 1, 1, 1 } })
+    local parObjet, ordre = {}, {}
+    for _, pt in ipairs(t.points or {}) do
+        if not parObjet[pt.objet] then parObjet[pt.objet] = 0 table.insert(ordre, pt.objet) end
+        parObjet[pt.objet] = parObjet[pt.objet] + 1
+    end
+    for _, objet in ipairs(ordre) do
+        index = index + 1
+        y = Poser(contenu, index, y, { retrait = RETRAIT, icone = NS.ref.IconeDObjet(objet),
+            texte = NS.ref.NomDObjet(objet), couleur = { 1, 1, 1 },
+            droite = string.format(L.TRACK_FARM_SPOTS, parObjet[objet]), couleurDroite = { 0.8, 0.8, 0.8 } })
+    end
+    return index, y
+end
+
+-- ---------------------------------------------------------------------------
+-- Progression : le niveau suivant et un objectif de niveau. Seulement l'XP
+-- des recompenses de quetes ; les monstres tues en route raccourcissent.
+-- ---------------------------------------------------------------------------
+local function BoutonGuiderNiveau(p, vise)
+    local connecte = p.cle == NS.ClePersonnage()
+    if not connecte then return nil end
+    local actif = NS.guidage.EstActif and NS.guidage.EstActif("niveau", { niveau = vise })
+    return { actif and L.GUIDE_STOP or L.GUIDE_START, function()
+        if actif then pcall(NS.guidage.Basculer, "niveau", { niveau = vise })
+        else
+            local ok, lance = pcall(NS.guidage.Lancer, "niveau", { niveau = vise })
+            if not ok then NS.base.NoterIncident("progression", lance) end
+        end
+        fen.Rendre()
+    end }
+end
+
+local function LigneDeQuete(contenu, p, index, y, id, droite)
+    local niveau = tonumber(NS.ref.Lire("QuestDB", id, "questLevel")) or 0
+    local q = p.quetes and p.quetes[id]
+    local rr, gg, bb = NS.ref.CouleurDeNiveau(niveau, p.niveau)
+    index = index + 1
+    y = Poser(contenu, index, y, { retrait = RETRAIT,
+        icone = q and (q.complete == true and "Interface\\GossipFrame\\ActiveQuestIcon" or "Interface\\GossipFrame\\IncompleteQuestIcon")
+            or "Interface\\GossipFrame\\AvailableQuestIcon",
+        texte = string.format("[%d] %s", niveau, NS.ref.NomDeQuete(id, p)), couleur = { rr, gg, bb },
+        droite = droite, couleurDroite = { 1, 0.82, 0 }, survol = SurvolEtape(p, id) })
+    return index, y
+end
+
+local function Explication(contenu, index, y, texte)
+    index = index + 1
+    y = Poser(contenu, index, y, { retrait = RETRAIT, texte = texte, police = "GameFontDisableSmall",
+        couleur = { 0.6, 0.6, 0.6 } }) + 4
+    return index, y
+end
+
+local function RendreNiveauSuivant(contenu, p, index, y)
+    local vise = (p.niveau or 0) + 1
+    index = index + 1
+    y = Titre(contenu, index, y, string.format(L.LEVEL_NEXT_TITLE, vise), { BoutonGuiderNiveau(p, vise) })
+    if p.cle ~= NS.ClePersonnage() then
+        return Explication(contenu, index, y, L.LEVEL_CONNECT)
+    end
+    local besoin = NS.disponibles.XPJusquA(p, vise)
+    index = index + 1
+    y = Poser(contenu, index, y, { retrait = RETRAIT, couleur = { 1, 1, 1 },
+        texte = string.format(L.LEVEL_NEXT_LINE, p.niveau or 0, NS.ref.NombreLisible(besoin), vise) })
+    index, y = Explication(contenu, index, y, L.LEVEL_ONLY_QUESTS)
+    local ok, ids = pcall(NS.disponibles.EtapesPourNiveau, p)
+    if not ok or type(ids) ~= "table" or #ids == 0 then
+        return Explication(contenu, index, y, L.LEVEL_NONE)
+    end
+    local cumul = 0
+    for _, id in ipairs(ids) do
+        local q = p.quetes and p.quetes[id]
+        local xp = tonumber(q and q.recompenses and q.recompenses.xp) or tonumber((NS.ref.XPDeLaBase(id, p.niveau))) or 0
+        cumul = cumul + xp
+        index, y = LigneDeQuete(contenu, p, index, y, id, string.format(L.LEVEL_XP, NS.ref.NombreLisible(xp)))
+    end
+    index = index + 1
+    y = Poser(contenu, index, y + 4, { retrait = RETRAIT, couleur = { 1, 0.82, 0 },
+        texte = string.format(L.LEVEL_TOTAL, #ids), droite = string.format(L.LEVEL_XP, NS.ref.NombreLisible(cumul)),
+        couleurDroite = cumul >= besoin and { 0.31, 0.82, 0.41 } or { 1, 1, 1 } })
+    return index, y
+end
+
+local function ObjectifDeNiveau(p)
+    local g = NS.base.ReglagesGeneraux()
+    g.objectifNiveau = type(g.objectifNiveau) == "table" and g.objectifNiveau or {}
+    local n = tonumber(g.objectifNiveau[p.cle])
+    if not n or n <= (p.niveau or 0) then n = math.min((p.niveau or 0) + 5, NS.disponibles.NIVEAU_MAX) end
+    return n, g.objectifNiveau
+end
+
+local function RendreObjectifNiveau(contenu, p, index, y)
+    local vise, memoire = ObjectifDeNiveau(p)
+    index = index + 1
+    y = Titre(contenu, index, y, L.LEVEL_GOAL_TITLE, { BoutonGuiderNiveau(p, vise) })
+    index, y = Explication(contenu, index, y, L.LEVEL_GOAL_HELP)
+    -- Le niveau vise : la liste deroulante de la suite, a droite.
+    index = index + 1
+    y = Poser(contenu, index, y, { retrait = RETRAIT, texte = L.LEVEL_GOAL_CHOOSE, couleur = { 1, 1, 1 } })
+    local S = _G.CoreSuite
+    if S and S.ListeDeroulante then
+        if not contenu.listeNiveau then
+            local cleP = p.cle
+            contenu.listeNiveau = S.ListeDeroulante(contenu, function()
+                local o = {}
+                local pp = NS.base.PersoParCle(etat.cle)
+                for n = ((pp and pp.niveau) or 1) + 1, NS.disponibles.NIVEAU_MAX do
+                    table.insert(o, { n, string.format(L.LEVEL_GOAL_ITEM, n) })
+                end
+                return o
+            end, function()
+                local pp = NS.base.PersoParCle(etat.cle)
+                return pp and (ObjectifDeNiveau(pp)) or nil
+            end, function(v)
+                local pp = NS.base.PersoParCle(etat.cle)
+                if pp then local _, m = ObjectifDeNiveau(pp) m[pp.cle] = tonumber(v) end
+            end, function() pcall(fen.Rendre) end)
+        end
+        local li = contenu.listeNiveau
+        li:ClearAllPoints()
+        li:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -6, -(y - HAUTEUR_LIGNE - 2))
+        li:Show()
+        if li.Rendre then pcall(li.Rendre) end
+        y = y + 8
+    end
+    local plan, cumul, besoin = NS.disponibles.PlanVers(p, vise)
+    index = index + 1
+    y = Poser(contenu, index, y + 4, { retrait = RETRAIT, couleur = { 1, 1, 1 },
+        texte = string.format(L.LEVEL_GOAL_LINE, NS.ref.NombreLisible(besoin), vise) })
+    index, y = Explication(contenu, index, y, L.LEVEL_ONLY_QUESTS)
+    if #plan == 0 then return Explication(contenu, index, y, L.LEVEL_NONE) end
+    for _, e in ipairs(plan) do
+        local z = e.z
+        index = index + 1
+        y = Poser(contenu, index, y, { retrait = RETRAIT, police = "GameFontNormalSmall", couleur = { 1, 0.82, 0 },
+            icone = "Interface\\GossipFrame\\AvailableQuestIcon",
+            texte = string.format(L.LEVEL_ZONE, z.nom, #z.ids, z.niveauMin, z.niveauMax)
+                .. (z.ici and ("   |cff4fd16a" .. L.STORY_HERE .. "|r") or ""),
+            droite = string.format(L.LEVEL_ZONE_AFTER, NS.ref.NombreLisible(z.xp), math.floor(e.apres * 10) / 10),
+            couleurDroite = { 1, 1, 1 },
+            auClic = function()
+                -- La zone dans Disponibles, ouverte.
+                etat.ouvertes["dz" .. z.nom] = true
+                etat.page = "disponibles"
+                fen.Rendre()
+            end })
+    end
+    if cumul < besoin then
+        index, y = Explication(contenu, index, y, string.format(L.LEVEL_GOAL_SHORT, NS.ref.NombreLisible(besoin - cumul)))
+    end
+    return index, y
+end
+
 function fen.Rendre()
     if not cadre or not cadre:IsShown() then return end
     local m = Memoire()
@@ -1494,6 +1673,9 @@ function fen.Rendre()
         pageRestauree = true
         if m.page then etat.page = m.page end
     end
+    -- "En cours" et "A rendre" : le filtre partage avec le suivi et la carte.
+    if etat.page == "quetes" and NS.base.FiltreARendre() then etat.page = "rendre"
+    elseif etat.page == "rendre" and not NS.base.FiltreARendre() then etat.page = "quetes" end
     local ok, souci = pcall(function()
         local persos = PersosVisibles()
         SuivreLaSuite()
@@ -1545,6 +1727,7 @@ function fen.Rendre()
         local contenu = cadre.contenu
         for _, l in ipairs(contenu.lignes or {}) do l:Hide() end
         if contenu.saisieNom then contenu.saisieNom:Hide() end
+        if contenu.listeNiveau then contenu.listeNiveau:Hide() end
         local p = etat.cle and NS.base.PersoParCle(etat.cle)
         local index, y = 0, 0
         if not p then
@@ -1561,10 +1744,22 @@ function fen.Rendre()
                 index, y = RendreHistoire(contenu, p, index, y)
             elseif etat.page == "donjons" then
                 cadre.titre:SetText(L.TITLE .. " : " .. L.NAV_DUNGEONS .. " (" .. NS.NomCourt(p.cle) .. ")")
+                -- Les trajets de donjon d'abord (comme l'onglet Donjons du
+                -- suivi), puis les donjons.
+                index, y = RendreParcours(contenu, p, index, y, "kit")
                 index, y = RendreDonjons(contenu, p, index, y)
             elseif etat.page == "parcours" then
                 cadre.titre:SetText(L.TITLE .. " : " .. L.NAV_ROUTES .. " (" .. NS.NomCourt(p.cle) .. ")")
-                index, y = RendreParcours(contenu, p, index, y)
+                index, y = RendreParcours(contenu, p, index, y, "autres")
+            elseif etat.page == "recolte" then
+                cadre.titre:SetText(L.TITLE .. " : " .. L.TRACK_ROUTE_FARM .. " (" .. NS.NomCourt(p.cle) .. ")")
+                index, y = RendreRecolte(contenu, p, index, y)
+            elseif etat.page == "niveau" then
+                cadre.titre:SetText(L.TITLE .. " : " .. L.NAV_NEXT_LEVEL .. " (" .. NS.NomCourt(p.cle) .. ")")
+                index, y = RendreNiveauSuivant(contenu, p, index, y)
+            elseif etat.page == "objectif" then
+                cadre.titre:SetText(L.TITLE .. " : " .. L.NAV_LEVEL_GOAL .. " (" .. NS.NomCourt(p.cle) .. ")")
+                index, y = RendreObjectifNiveau(contenu, p, index, y)
             elseif etat.page == "communes" then
                 cadre.titre:SetText(L.TITLE .. " : " .. L.NAV_COMMON)
                 index, y = RendreCommunes(contenu, index, y)
@@ -1574,8 +1769,7 @@ function fen.Rendre()
             else
                 index, y = RendreQuetes(contenu, p, index, y)
             end
-            if etat.page ~= "communes" and etat.page ~= "parcours" and etat.page ~= "histoire" and etat.page ~= "donjons"
-                and etat.page ~= "disponibles" then
+            if etat.page == "quetes" or etat.page == "rendre" then
                 index, y = RendreEchanges(contenu, p, index, y)
             end
         end
@@ -1973,14 +2167,21 @@ PoserOnglet = function()
     end
 end
 
+-- Le menu en sections, dans la structure du suivi : le journal (en cours,
+-- a rendre), trouver des quetes, les itineraires (parcours, recolte,
+-- donjons) et la progression.
 local PAGES = {
-    { cle = "quetes", libelle = "NAV_QUESTS", icone = "Interface\\Icons\\INV_Misc_Book_08" },
+    { cle = "quetes", section = "MENU_JOURNAL", libelle = "NAV_ACTIVE", icone = "Interface\\Icons\\INV_Misc_Book_08" },
+    { cle = "rendre", libelle = "NAV_TURNIN", icone = "Interface\\GossipFrame\\ActiveQuestIcon" },
     { cle = "communes", libelle = "NAV_COMMON", icone = "Interface\\Icons\\INV_Misc_Book_09" },
-    { cle = "disponibles", libelle = "NAV_AVAILABLE", icone = "Interface\\GossipFrame\\AvailableQuestIcon" },
+    { cle = "disponibles", section = "MENU_FIND", libelle = "NAV_AVAILABLE", icone = "Interface\\GossipFrame\\AvailableQuestIcon" },
     { cle = "histoire", libelle = "NAV_STORY", icone = "Interface\\Icons\\INV_Misc_Book_11" },
+    { cle = "parcours", section = "MENU_ROUTES", libelle = "NAV_ROUTES", icone = "Interface\\Icons\\INV_Misc_Map_01" },
+    { cle = "recolte", libelle = "TRACK_ROUTE_FARM", icone = "Interface\\Icons\\Trade_Herbalism" },
     { cle = "donjons", libelle = "NAV_DUNGEONS", icone = "Interface\\Icons\\INV_Misc_Key_14" },
-    { cle = "parcours", libelle = "NAV_ROUTES", icone = "Interface\\Icons\\INV_Scroll_03" },
-    { cle = "reglages", libelle = "SETTINGS", icone = "Interface\\Icons\\Trade_Engineering" },
+    { cle = "niveau", section = "MENU_PROGRESS", libelle = "NAV_NEXT_LEVEL", icone = "Interface\\Icons\\Spell_Holy_SurgeOfLight" },
+    { cle = "objectif", libelle = "NAV_LEVEL_GOAL", icone = "Interface\\Icons\\Ability_Hunter_Pathfinding" },
+    { cle = "reglages", section = "MENU_OTHER", libelle = "SETTINGS", icone = "Interface\\Icons\\Trade_Engineering" },
 }
 
 -- Une ligne de menu, le modele de liste du jeu (comme CraftCore).
@@ -2031,6 +2232,7 @@ function fen.PageVoisine(pas)
     if suivant == index then return end
     etat.page = PAGES[suivant].cle
     etat.pageMenu = etat.page
+    if etat.page == "quetes" or etat.page == "rendre" then NS.base.PoserFiltreARendre(etat.page == "rendre") end
     fen.Rendre()
 end
 
@@ -2114,14 +2316,26 @@ local function Construire()
     cadre.fondMenu = fondMenu
 
     cadre.boutonsMenu = {}
+    local yMenu = 0
     for rang, page in ipairs(PAGES) do
+        -- Titre de section : la petite police doree des categories.
+        if page.section then
+            if rang > 1 then yMenu = yMenu + 6 end
+            local t = menu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            t:SetPoint("TOPLEFT", menu, "TOPLEFT", 8, -(yMenu + 4))
+            t:SetText(L[page.section])
+            yMenu = yMenu + 20
+        end
         local b = CreerLigneDeMenu(menu, page.icone)
-        b:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, -(rang - 1) * 26)
+        b:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, -yMenu)
         b:SetPoint("RIGHT", menu, "RIGHT", 0, 0)
+        yMenu = yMenu + 26
         local texte = b.text or b.Text or (b.GetFontString and b:GetFontString())
         if texte then texte:SetText(L[page.libelle]) end
         local cle = page.cle
         b:SetScript("OnClick", function()
+            -- En cours / A rendre : le filtre partage avec le suivi.
+            if cle == "quetes" or cle == "rendre" then NS.base.PoserFiltreARendre(cle == "rendre") end
             etat.page = cle
             fen.Rendre()
         end)
@@ -2291,6 +2505,7 @@ end
 function fen.OuvrirPage(page)
     if not cadre then Construire() end
     ChoisirPerso(NS.ClePersonnage() or etat.cle)
+    if page == "quetes" or page == "rendre" then NS.base.PoserFiltreARendre(page == "rendre") end
     etat.page = page
     if cadre:IsShown() then fen.Rendre() else cadre:Show() end
 end
