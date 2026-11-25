@@ -21,6 +21,7 @@ local PAUSE = 0.3          -- entre deux deplacements : le jeu verrouille la cas
 local PAUSE_PIECE = 0.15   -- entre deux pieces jointes : plus court (une case verrouillee est reessayee)
 local LARGEUR = 300
 local statut               -- resultat de la derniere action, montre dans le panneau
+local statutManette        -- indication manette (X : action suivante)
 local panneau
 local lieu                 -- "banque" ou "courrier", nil quand rien n'est ouvert
 local enCours = false
@@ -310,6 +311,21 @@ function courrier.Plan()
     if not moi then return nil end
     local plan = { envois = {}, demandes = {}, sortir = {} }
 
+    -- Mes propres besoins passent avant tout envoi : ce que mes projets et
+    -- mes rangs vises prennent chez moi n'est jamais propose a un autre
+    -- personnage, ni a un banquier (sinon il faudrait le redemander ensuite).
+    local mesBesoins = {}
+    do
+        local okB, _, prisB = pcall(BesoinsDe, moi.cle)
+        if okB and type(prisB) == "table" then for objet, q in pairs(prisB) do Ajout(mesBesoins, objet, q) end end
+        local okO, objectifsB = pcall(NS.recettes.BesoinsDesObjectifs, moi)
+        if okO and type(objectifsB) == "table" then for objet, q in pairs(objectifsB) do Ajout(mesBesoins, objet, q) end end
+    end
+    local function ADonner(objet, dejaPris)
+        local sacs, banque = NS.inventaire.SacsEtBanque(moi, objet)
+        return math.max(0, (sacs or 0) + (banque or 0) - (mesBesoins[objet] or 0) - (dejaPris or 0))
+    end
+
     -- Ce que chacun de mes autres personnages attend, et que je detiens.
     local dansMesSacsPourEnvoi = {}
     for _, autre in ipairs(NS.base.TousLesPersonnages()) do
@@ -329,8 +345,8 @@ function courrier.Plan()
                 end
                 for objet, besoin in pairs(rapatries) do
                     local quantite = besoin - (enRoute[objet] or 0)
-                    local sacs, banque = NS.inventaire.SacsEtBanque(moi, objet)
-                    local donner = math.min(quantite, sacs + banque)
+                    local sacs = NS.inventaire.SacsEtBanque(moi, objet)
+                    local donner = math.min(quantite, ADonner(objet, dansMesSacsPourEnvoi[objet]))
                     if donner > 0 then
                         table.insert(lignes, { objet = objet, quantite = donner, enBanque = math.max(0, donner - sacs) })
                         Ajout(dansMesSacsPourEnvoi, objet, donner)
@@ -350,8 +366,7 @@ function courrier.Plan()
     local disponible = {}
     local function Dispo(objet)
         if disponible[objet] == nil then
-            local sacs, banque = NS.inventaire.SacsEtBanque(moi, objet)
-            disponible[objet] = (sacs + banque) - (dansMesSacsPourEnvoi[objet] or 0)
+            disponible[objet] = ADonner(objet, dansMesSacsPourEnvoi[objet])
         end
         return disponible[objet]
     end
@@ -552,8 +567,18 @@ function bq.AjouterEnvois(plan, moi)
         table.insert(plan.envois, e)
         return e
     end
+    -- Ce que le personnage utilise lui-meme ne part jamais chez un
+    -- banquier : munitions (fleches, balles), carquois, consommables
+    -- (nourriture, boissons, potions, parchemins).
+    local instantane = Lire("C_Item.GetItemInfoInstant") or Lire("GetItemInfoInstant")
+    local GARDES = { [0] = true, [6] = true, [11] = true }
+    local function Utilise(objet)
+        if not instantane then return false end
+        local ok, _, _, _, _, _, classe = pcall(instantane, objet)
+        return ok and GARDES[tonumber(classe) or -1] or false
+    end
     for objet, n in pairs(dispo) do
-        local dest = bq.Pour(objet)
+        local dest = not Utilise(objet) and bq.Pour(objet)
         if dest and dest ~= moi.cle then
             local reste = n - (garder[objet] or 0) - (prevus[objet] or 0)
             if reste > 0 then
@@ -1051,15 +1076,36 @@ local function Relais()
     return relaisManette
 end
 
+local relaisSuivant
+local function RelaisSuivant()
+    if relaisSuivant then return relaisSuivant end
+    relaisSuivant = CreateFrame("Button", "CraftCoreAssistantSuivant", UIParent)
+    relaisSuivant:Hide()
+    pcall(relaisSuivant.RegisterForClicks, relaisSuivant, "AnyDown", "AnyUp")
+    local dernier = -1
+    relaisSuivant:SetScript("OnClick", function()
+        local maintenant = NS.Appeler(_G.GetTime) or 0
+        if maintenant - dernier < 0.4 then return end
+        dernier = maintenant
+        courrier.Deplacer(1)
+    end)
+    return relaisSuivant
+end
+
 local function LierManette(actif)
     if not panneau then return end
     if NS.Appeler(NS.Lecture("InCombatLockdown")) then return end
     pcall(_G.ClearOverrideBindings, panneau)
     if actif and courrier.ToucheManette() and #(panneau.elements or {}) > 0 then
         Relais()
+        RelaisSuivant()
         -- Y, pas A : A reste au jeu pour prendre et poser les objets de la
         -- banque et des sacs.
         pcall(_G.SetOverrideBindingClick, panneau, true, "PAD4", "CraftCoreAssistantManette", "LeftButton")
+        -- X : l'action suivante du panneau (d'un envoi a l'autre).
+        if #(panneau.elements or {}) > 1 then
+            pcall(_G.SetOverrideBindingClick, panneau, true, "PAD3", "CraftCoreAssistantSuivant", "LeftButton")
+        end
         -- Plus de LB / RB : Y fait l'action principale (le premier bouton du
         -- panneau) ; les cases et les autres boutons se touchent au curseur.
 
@@ -1369,7 +1415,12 @@ local function Remplir(plan)
     local actifs = {}
     for _, e in ipairs(elements) do if e.cadre:IsEnabled() then table.insert(actifs, e) end end
     panneau.elements = actifs
-    local choix = actifs[1]
+    local choix
+    for _, e in ipairs(actifs) do if courrier.focusCle and e.cle == courrier.focusCle then choix = e end end
+    if not choix then
+        for _, e in ipairs(actifs) do if e.envoi and e.envoi == courrier.envoiChoisi then choix = e end end
+    end
+    choix = choix or actifs[1]
     panneau.choix = choix
     courrier.focusCle = choix and choix.cle or nil
     if choix and courrier.ToucheManette() then
@@ -1378,8 +1429,25 @@ local function Remplir(plan)
             local ok, g = pcall(NS.manette.Glyphe, "PAD4", 14)
             if ok and g then choix.cadre:SetText(g .. " " .. choix.cadre.libelle) end
         end
+        -- Plusieurs actions (plusieurs envois) : X passe a la suivante, dit
+        -- sous le panneau.
+        if #actifs > 1 then
+            local okX, gx = pcall(NS.manette.Glyphe, "PAD3", 14)
+            statutManette = (okX and gx or "X") .. " " .. L().ASSIST_PAD_NEXT
+        else
+            statutManette = nil
+        end
     end
 
+    if statutManette and courrier.ToucheManette() and #actifs > 1 then
+        nt = nt + 1
+        local t = Texte(nt, "GameFontHighlightSmall")
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 0, -(y + 2))
+        t:SetWidth(largeur)
+        t:SetText(statutManette)
+        y = y + 18
+    end
     -- Resultat de la derniere action, ici meme : pas seulement dans la discussion.
     if statut and not vide then
         nt = nt + 1
