@@ -296,9 +296,33 @@ end
 function parcours.CreerKit(cle, ids, nom, zone)
     if type(ids) ~= "table" or #ids == 0 then return nil end
     local liste = parcours.Liste(cle)
+    -- Le trajet deja la pour ce donjon est repris tel quel (meme trajet, memes
+    -- etapes faites en tete, memes etapes retirees) : seules les etapes du
+    -- moment s'y ajoutent. Jamais d'avancement perdu.
+    local p = NS.base and NS.base.Perso and NS.base.Perso(cle)
+    local garde
     for i = #liste, 1, -1 do
         local x = liste[i]
-        if x.genre == "kit" and (x.nom == nom or (zone and x.donjon == zone)) then table.remove(liste, i) end
+        if x.genre == "kit" and (x.nom == nom or (zone and x.donjon == zone)) then
+            if not garde and type(x.etapes) == "table" then garde = x else table.remove(liste, i) end
+        end
+    end
+    if garde then
+        local etapes, deja, ignorees = {}, {}, garde.ignorees or {}
+        for _, id in ipairs(garde.etapes) do
+            if not deja[id] and p and parcours.EtatEtape(p, id) == "faite" then
+                table.insert(etapes, id)
+                deja[id] = true
+            end
+        end
+        for _, id in ipairs(ids) do
+            if not deja[id] and not ignorees[id] then table.insert(etapes, id) deja[id] = true end
+        end
+        for i = #garde.etapes, 1, -1 do garde.etapes[i] = nil end
+        for i, id in ipairs(etapes) do garde.etapes[i] = id end
+        garde.nom, garde.donjon = nom, zone or garde.donjon
+        garde.uid = garde.uid or NouvelUid()
+        return garde
     end
     local etapes = {}
     for _, id in ipairs(ids) do table.insert(etapes, id) end
