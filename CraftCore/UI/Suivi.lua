@@ -1167,6 +1167,7 @@ function suivi.FeuilleDansLInfobulle(tt, o)
     -- 100 % mais pas tout dans les sacs : le dire.
     if (o.pct or 0) >= 1 and not suivi.Pret(o) then
         tt:AddLine(L.ROUTE_THEORETICAL, 0.7, 0.7, 0.7, true)
+        Petite(tt)
     end
     for i, t in ipairs(etapes) do
         tt:AddLine(" ")
@@ -1181,7 +1182,15 @@ function suivi.FeuilleDansLInfobulle(tt, o)
                 if t.faite then tt:AddLine("     " .. b.action, VERT[1], VERT[2], VERT[3]) else tt:AddLine("     " .. b.action, 0.9, 0.9, 0.9) end
                 Petite(tt)
             end
-            for _, x in ipairs(b.objets or {}) do LigneDObjet(tt, x.objet, x.n, x.fois, t.faite) end
+            -- Une infobulle ne defile pas : au-dela de 5 objets, leur nombre.
+            for k, x in ipairs(b.objets or {}) do
+                if k > 5 then
+                    tt:AddLine("        " .. string.format(L.TIP_MORE_ITEMS, #b.objets - 5), 0.6, 0.6, 0.6)
+                    Petite(tt)
+                    break
+                end
+                LigneDObjet(tt, x.objet, x.n, x.fois, t.faite)
+            end
         end
     end
 end
@@ -1203,13 +1212,29 @@ local function Consigne()
     f:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
     if f.titre then f.titre:SetText("CraftCore") end
     f.lignes = {}
-    f.ok = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    f.ok:SetSize(120, 24)
-    f.ok:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 12)
+    -- Les boutons du pied de la charte, comme toutes les fenetres de la suite.
+    if f.pied and NS.charte.BoutonDePied then
+        f.ok = NS.charte.BoutonDePied(f, "", 120)
+        f.guider = NS.charte.BoutonDePied(f, "", 170, f.ok)
+    else
+        f.ok = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        f.ok:SetSize(120, 24)
+        f.ok:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 12)
+        f.guider = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        f.guider:SetSize(170, 24)
+        f.guider:SetPoint("RIGHT", f.ok, "LEFT", -8, 0)
+    end
     f.ok:SetScript("OnClick", function() f:Hide() end)
-    f.guider = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    f.guider:SetSize(150, 24)
-    f.guider:SetPoint("RIGHT", f.ok, "LEFT", -8, 0)
+    -- On arrive sur place pendant que la consigne est ouverte : le bouton
+    -- de guidage s'en va.
+    for _, e in ipairs({ "BANKFRAME_OPENED", "MAIL_SHOW" }) do pcall(f.RegisterEvent, f, e) end
+    f:HookScript("OnEvent", function(self, e)
+        if not self:IsShown() then return end
+        local service = self.guideService
+        if (e == "BANKFRAME_OPENED" and service == "banque") or (e == "MAIL_SHOW" and service ~= "banque") then
+            self.guider:Hide()
+        end
+    end)
     -- Manette : A ferme, Y guide.
     if f.EnableGamePadButton then
         pcall(f.EnableGamePadButton, f, true)
@@ -1251,8 +1276,18 @@ local function Montrer(titre, lignes, guide)
     y = y + 4
     for _, l in ipairs(lignes) do Ligne(l[1], l[2] or "GameFontHighlightSmall", l[3], l[4], l[5]) end
     f.ok:SetText(L.ROUTE_OK)
-    f.guider:SetShown(guide ~= nil)
+    -- Deja sur place (banque ou boite aux lettres ouverte) : pas de guidage.
+    f.guideService = guide and guide.service or nil
+    local surPlace = false
     if guide then
+        local cadres = (guide.service == "banque") and { "BankFrame", "BankPanel" } or { "MailFrame" }
+        for _, nom in ipairs(cadres) do
+            local c = _G[nom]
+            if c and c.IsVisible and c:IsVisible() then surPlace = true end
+        end
+    end
+    f.guider:SetShown(guide ~= nil and not surPlace)
+    if guide and not surPlace then
         f.guider:SetText((guide.service == "banque") and L.ROUTE_GUIDE_BANK_SHORT or L.ROUTE_GUIDE_MAIL_SHORT)
         f.guider:SetScript("OnClick", function()
             if NS.guidage and NS.guidage.Etape then NS.guidage.Etape(guide) end
@@ -1682,23 +1717,26 @@ local function DessinerObjectifs(y, objectifs, vue)
                                 GameTooltip:AddLine(L.GOAL_LEARN_WHERE, 1, 0.82, 0)
                                 premiere = false
                             end
-                            GameTooltip:AddLine(a.nom, 1, 1, 1)
+                            GameTooltip:AddLine("     " .. a.nom, 1, 1, 1)
+                            Petite(GameTooltip)
                             local okC, _, lignesSrc = pcall(NS.recettes.CommentApprendre, a.recette)
                             for k, ls in ipairs(okC and lignesSrc or {}) do
-                                if k > 3 then break end
-                                GameTooltip:AddLine("  " .. tostring(ls), 0.8, 0.8, 0.8, true)
+                                if k > 2 then break end
+                                GameTooltip:AddLine("        " .. tostring(ls), 0.7, 0.7, 0.7)
+                                Petite(GameTooltip)
                             end
                         end
                     end
-                    for _, achat in pairs(objectif.achats or {}) do
-                        GameTooltip:AddLine(L.CRAFT_TO_BUY, 1, 0.82, 0, true)
-                        break
-                    end
+                    -- A acheter : seulement ce qui manque encore dans les sacs.
+                    local aAcheter = {}
                     for objet, n in pairs(objectif.achats or {}) do
                         local dans = NS.inventaire.DisponibleDansLesSacs(objet) or 0
-                        if dans < n then
-                            GameTooltip:AddLine("  " .. NS.inventaire.NomDObjet(objet) .. "  x" .. (n - dans), 1, 1, 1)
-                        end
+                        if dans < n then table.insert(aAcheter, { objet = objet, n = n - dans }) end
+                    end
+                    if #aAcheter > 0 then
+                        GameTooltip:AddLine(" ")
+                        GameTooltip:AddLine(L.CRAFT_TO_BUY, 1, 0.82, 0)
+                        for _, x in ipairs(aAcheter) do LigneDObjet(GameTooltip, x.objet, x.n, false, false) end
                     end
                     GameTooltip:Show()
                 end)
