@@ -139,6 +139,14 @@ local function Qui(id, moi, lieu)
         end
     else
         quoi = string.format(L.GUIDE_DO_PICKUP, lieu.qui or "?")
+        -- Quete grise (bas niveau) : le jeu ne montre pas son point
+        -- d'exclamation si son affichage est coupe. On le dit, pour aller
+        -- la prendre quand meme.
+        local niveau = tonumber(NS.ref.Lire and NS.ref.Lire("QuestDB", id, "questLevel"))
+        if niveau and moi.niveau and NS.ref.CouleurDeNiveau then
+            local r, v, b = NS.ref.CouleurDeNiveau(niveau, moi.niveau)
+            if r == 0.5 and v == 0.5 and b == 0.5 then quoi = quoi .. "  " .. L.GUIDE_LOW_LEVEL end
+        end
     end
     return Titre(id, moi) .. (quoi and quoi ~= "" and ("\n|cffb3b3b3" .. quoi .. "|r") or "")
 end
