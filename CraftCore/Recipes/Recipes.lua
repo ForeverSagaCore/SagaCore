@@ -1018,13 +1018,13 @@ end
 -- Les rangs vises d'un metier, a la suite : chacun part du precedent, et ce
 -- que le precedent prend dans les stocks n'est pas compte deux fois.
 -- Rend { { vise, de, plan }, ... }, du plus bas au plus haut.
-function recettes.PlansVises(fiche, cle, rang, rangMax, liste)
+function recettes.PlansVises(fiche, cle, rang, rangMax, liste, apprendreTout)
     local res, pris, de = {}, {}, rang
     -- Le rang choisi aux fleches : le vrai guide, recettes a apprendre comprises.
     local e = Emplacements(fiche, cle)
     for _, vise in ipairs(liste or recettes.RangsVises(fiche, cle)) do
         if de and vise > de then
-            local ok, plan = pcall(recettes.Progression, tonumber(cle), de, rangMax, vise, pris, e.choix ~= nil and vise == e.choix)
+            local ok, plan = pcall(recettes.Progression, tonumber(cle), de, rangMax, vise, pris, apprendreTout or (e.choix ~= nil and vise == e.choix))
             if ok and plan then
                 table.insert(res, { vise = vise, de = de, plan = plan })
                 for objet, n in pairs(plan.utilises or {}) do pris[objet] = (pris[objet] or 0) + n end
