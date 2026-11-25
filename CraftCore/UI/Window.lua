@@ -204,6 +204,7 @@ local function CreerOngletLateral(fenetreMere, precedent, icone, auClic)
     end
     return onglet
 end
+NS.CreerOngletLateral = function(...) return CreerOngletLateral(...) end
 
 -- ---------------------------------------------------------------------------
 -- Pages

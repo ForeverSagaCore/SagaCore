@@ -22,9 +22,13 @@ local PAUSE_PIECE = 0.15   -- entre deux pieces jointes : plus court (une case v
 local LARGEUR = 300
 -- Largeur utile d'une colonne du panneau (la barre de defilement gardee).
 local COLONNE = LARGEUR - 2 * 12 - 10 - 22
--- A l'hotel des ventes : deux colonnes et un trait entre elles.
-local ECART_COLONNES = 24
-local function LargeurDuLieu(l) return l == "encheres" and (2 * LARGEUR - 2 * 12 + ECART_COLONNES) or LARGEUR end
+local function LargeurDuLieu() return LARGEUR end
+-- A l'hotel des ventes : deux onglets sur le bord droit, en bas : acheter
+-- (prix, achats, fabrications) et vendre (ce qu'il y a dans mes sacs).
+local function OngletHV()
+    local g = NS.base.ReglagesGeneraux()
+    return g.ongletHV == "vendre" and "vendre" or "acheter"
+end
 local statut               -- resultat de la derniere action, montre dans le panneau
 local statutManette        -- indication manette (X : action suivante)
 local panneau
@@ -1416,7 +1420,7 @@ local function Remplir(plan)
             end)
         end
     end
-    if lieu == "encheres" and NS.encheres and NS.encheres.Disponible() then
+    if lieu == "encheres" and NS.encheres and NS.encheres.Disponible() and OngletHV() == "acheter" then
         -- Hotel des ventes : le releve des prix de ce qui manque.
         vide = false
         Titre(L().AH_TITLE)
@@ -1506,14 +1510,10 @@ local function Remplir(plan)
             end
         end
 
-        -- Colonne de droite : ce que j'ai dans mes sacs et qui peut se vendre.
-        local yGauche = y
-        x0, y = COLONNE + ECART_COLONNES, 0
-        if not panneau.trait then
-            panneau.trait = panneau.contenu:CreateTexture(nil, "ARTWORK")
-            panneau.trait:SetColorTexture(0.75, 0.6, 0.35, 0.5)
-            panneau.trait:SetWidth(1)
-        end
+    end
+    if lieu == "encheres" and NS.encheres and NS.encheres.Disponible() and OngletHV() == "vendre" then
+        -- Onglet Vendre : ce que j'ai dans mes sacs et qui peut se vendre.
+        vide = false
         Titre(L().AH_SELL_TITLE)
         local okV, aVendre = pcall(NS.encheres.AVendre)
         aVendre = okV and aVendre or {}
@@ -1541,13 +1541,41 @@ local function Remplir(plan)
                 end)
             end
         end
-        y = math.max(y, yGauche)
-        panneau.trait:ClearAllPoints()
-        panneau.trait:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", COLONNE + ECART_COLONNES / 2, 0)
-        panneau.trait:SetHeight(math.max(1, y))
-        panneau.trait:Show()
-        x0 = 0
-        largeur = 2 * COLONNE + ECART_COLONNES
+    end
+    -- Les onglets de l'hotel des ventes, sur le bord droit, en bas.
+    if panneau.onglets then for _, o in pairs(panneau.onglets) do o:Hide() end end
+    if lieu == "encheres" and NS.CreerOngletLateral then
+        panneau.onglets = panneau.onglets or {}
+        local defs = {
+            { cle = "acheter", icone = "Interface\\Icons\\INV_Misc_Coin_02", aide = L().AH_TAB_BUY },
+            { cle = "vendre", icone = "Interface\\Icons\\INV_Misc_Bag_08", aide = L().AH_TAB_SELL },
+        }
+        local precedent
+        for k = #defs, 1, -1 do
+            local d = defs[k]
+            local o = panneau.onglets[d.cle]
+            if not o then
+                o = NS.CreerOngletLateral(panneau, nil, d.icone, function()
+                    NS.base.ReglagesGeneraux().ongletHV = d.cle
+                    statut = nil
+                    courrier.Actualiser()
+                end)
+                panneau.onglets[d.cle] = o
+            end
+            o.tooltipText = d.aide
+            o:ClearAllPoints()
+            if precedent then
+                o:SetPoint("BOTTOMLEFT", precedent, "TOPLEFT", 0, (NS.suite and NS.suite.ECART_ENTRE_ONGLETS) or 14)
+            else
+                o:SetPoint("BOTTOMLEFT", panneau, "BOTTOMRIGHT", -2, 24)
+            end
+            precedent = o
+            local choisi = OngletHV() == d.cle
+            o.choisi = choisi
+            o:SetChecked(choisi)
+            if o.Icon then o.Icon:SetVertexColor(choisi and 1 or 0.55, choisi and 1 or 0.55, choisi and 1 or 0.55) end
+            o:Show()
+        end
     end
     -- L'element choisi a la manette : celui d'avant s'il est encore la, sinon
     -- l'envoi choisi, sinon le premier. Il s'eclaire et porte l'icone Y.
