@@ -684,7 +684,9 @@ MontrerQuestion = function(q)
             question:SetBackdropColor(0.09, 0.09, 0.09, 0.92)
             question:SetBackdropBorderColor(0.75, 0.6, 0.35, 1)
         end
-        question:SetFrameStrata("DIALOG")
+        question:SetFrameStrata("FULLSCREEN_DIALOG")
+        if question.SetToplevel then question:SetToplevel(true) end
+        question:HookScript("OnShow", function(self) self:Raise() end)
         question:SetClampedToScreen(true)
         question:SetPoint("TOP", UIParent, "TOP", 0, -190)
         question:SetWidth(380)
