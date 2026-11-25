@@ -211,6 +211,7 @@ local function Poser(page, i, y, o)
     l.nom:SetTextColor(c[1], c[2], c[3], 1)
     -- Couleur de classe : la vraie, jamais a l'encre (le pretre reste blanc).
     l.nom.couleurPropre = c.classe or nil
+    l.nom.nomDePerso = c.classe or nil
     if o.detail then
         l.detail:ClearAllPoints()
         l.detail:SetPoint("TOPLEFT", l.nom, "BOTTOMLEFT", 0, -4)
