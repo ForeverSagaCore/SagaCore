@@ -226,7 +226,7 @@ if not _G.SagaCoreUnifieur then
     end)
 end
 
-local VERSION = 143
+local VERSION = 150
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
