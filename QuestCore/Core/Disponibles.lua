@@ -409,3 +409,124 @@ function dispo.QuetesPourNiveau(p)
     for _, c in ipairs(meilleurTrajet) do table.insert(ids, c.id) end
     return ids
 end
+
+-- ---------------------------------------------------------------------------
+-- Progression : l'experience par niveau, les zones et un objectif de niveau.
+-- Tout ne compte que l'XP des recompenses de quetes (les monstres tues en
+-- route raccourcissent d'autant).
+-- ---------------------------------------------------------------------------
+
+-- XP pour passer du niveau n au suivant (table du jeu d'origine) ; le
+-- niveau en cours se lit dans le jeu.
+local XP_NIVEAU = { 400, 900, 1400, 2100, 2800, 3600, 4500, 5400, 6500, 7600, 8800, 10100, 11400, 12900, 14400,
+    16000, 17700, 19400, 21300, 23200, 25200, 27300, 29400, 31700, 34000, 36400, 38900, 41400, 44300, 47400,
+    50800, 54500, 58600, 62800, 67100, 71600, 76100, 80800, 85700, 90700, 95800, 101000, 106300, 111800,
+    117500, 123200, 129100, 135100, 141200, 147500, 153900, 160400, 167100, 173900, 180800, 187900, 195000,
+    202300, 209800 }
+dispo.NIVEAU_MAX = #XP_NIVEAU + 1
+
+-- Le point de depart d'un personnage : son niveau, son XP dans le niveau et
+-- l'XP de ce niveau (le jeu pour le personnage connecte).
+local function Depart(p)
+    local niveau = tonumber(p and p.niveau) or 1
+    local dans, taille = 0, XP_NIVEAU[niveau] or 0
+    if p and p.cle == NS.ClePersonnage() then
+        dans = tonumber((NS.Appeler(UnitXP, "player"))) or 0
+        taille = tonumber((NS.Appeler(UnitXPMax, "player"))) or taille
+    end
+    return niveau, dans, taille
+end
+
+-- XP qui manque pour atteindre le niveau vise.
+function dispo.XPJusquA(p, vise)
+    local niveau, dans, taille = Depart(p)
+    if vise <= niveau then return 0 end
+    local besoin = math.max(0, taille - dans)
+    for n = niveau + 1, math.min(vise - 1, #XP_NIVEAU) do besoin = besoin + XP_NIVEAU[n] end
+    return besoin
+end
+
+-- Le niveau atteint (avec sa part du suivant) en gagnant `xp`.
+function dispo.NiveauApres(p, xp)
+    local niveau, dans, taille = Depart(p)
+    local reste = (tonumber(xp) or 0) + dans
+    while niveau < dispo.NIVEAU_MAX and taille > 0 and reste >= taille do
+        reste = reste - taille
+        niveau = niveau + 1
+        taille = XP_NIVEAU[niveau] or 0
+    end
+    return niveau + ((taille > 0) and (reste / taille) or 0)
+end
+
+-- Les zones des quetes a prendre, avec ce que chacune represente : quetes,
+-- part deja faite, XP de ce qui reste et distance (la zone ou l'on est en
+-- premier, puis les plus proches sur le continent, puis les autres).
+function dispo.Zones(p, avecGrises)
+    local liste = dispo.Liste(p)
+    local parZone, zones = {}, {}
+    for _, d in ipairs(liste) do
+        if avecGrises or not d.gris then
+            local z = parZone[d.zone]
+            if not z then
+                z = { zone = d.zone, ids = {}, xp = 0, faites = 0, enCours = 0, niveauMin = d.niveau, niveauMax = d.niveau }
+                parZone[d.zone] = z
+                table.insert(zones, z)
+            end
+            table.insert(z.ids, d)
+            z.xp = z.xp + (tonumber((XP(d.id, p))) or 0)
+            z.niveauMin = math.min(z.niveauMin, d.niveau)
+            z.niveauMax = math.max(z.niveauMax, d.niveau)
+        end
+    end
+    -- Part faite : les quetes rendues et en cours de la zone.
+    for id in pairs(p.faites or {}) do
+        local z = parZone[tonumber(Lire("QuestDB", id, "zoneOrSort")) or 0]
+        if z then z.faites = z.faites + 1 end
+    end
+    for id in pairs(p.quetes or {}) do
+        local z = parZone[tonumber(Lire("QuestDB", id, "zoneOrSort")) or 0]
+        if z then z.enCours = z.enCours + 1 end
+    end
+    local continent = Continent()
+    local px, py
+    if continent then
+        local pos = NS.Appeler(NS.Lecture("C_Map.GetPlayerMapPosition"), continent, "player")
+        if type(pos) == "table" and pos.GetXY then px, py = pos:GetXY() end
+    end
+    local ici = NS.Appeler(NS.Lecture("GetRealZoneText"))
+    for _, z in ipairs(zones) do
+        z.nom = (z.zone > 0 and NS.Appeler(NS.Lecture("C_Map.GetAreaInfo"), z.zone)) or NS.L.ZONE_OTHER
+        z.ici = z.nom == ici
+        local total = #z.ids + z.faites + z.enCours
+        z.pct = total > 0 and math.floor(z.faites * 100 / total + 0.5) or 0
+        z.distance = 99
+        if px then
+            for k = 1, math.min(3, #z.ids) do
+                local x, y = Position(z.ids[k].id, p, continent)
+                if x then z.distance = math.min(z.distance, math.sqrt((x - px) ^ 2 + (y - py) ^ 2)) end
+            end
+        end
+    end
+    table.sort(zones, function(a, b)
+        if a.ici ~= b.ici then return a.ici end
+        if a.distance ~= b.distance then return a.distance < b.distance end
+        return a.niveauMin < b.niveauMin
+    end)
+    return zones
+end
+
+-- Le plan vers un niveau : les zones dans l'ordre (la plus proche d'abord),
+-- jusqu'a ce que l'XP suffise ; chacune avec le niveau atteint apres elle.
+function dispo.PlanVers(p, vise)
+    local besoin = dispo.XPJusquA(p, vise)
+    local plan, cumul = {}, 0
+    if besoin <= 0 then return plan, 0, 0 end
+    for _, z in ipairs(dispo.Zones(p, true)) do
+        if z.xp > 0 then
+            cumul = cumul + z.xp
+            table.insert(plan, { z = z, apres = dispo.NiveauApres(p, cumul) })
+            if cumul >= besoin then break end
+        end
+    end
+    return plan, cumul, besoin
+end
