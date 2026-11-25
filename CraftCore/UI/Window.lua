@@ -3087,8 +3087,14 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         catalogue.PoserEmplacement(fiche, cleObjectif, "choix", nil)
         emp.choix = nil
     end
+    -- Les trois rangs vises s'excluent : en choisir un retire les deux autres.
     local function Basculer(nom, valeur)
         if not fiche then return end
+        if valeur then
+            for _, autre in ipairs({ "sur", "recettes", "choix" }) do
+                if autre ~= nom then catalogue.PoserEmplacement(fiche, cleObjectif, autre, nil) end
+            end
+        end
         catalogue.PoserEmplacement(fiche, cleObjectif, nom, valeur)
         if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
         ecran.Montrer(ecran.page)
@@ -3124,18 +3130,18 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
             case:SetSize(24, 24)
             contenu.casesVise[k] = case
         end
-        l.case = nil
-        if auClic then
-            case:ClearAllPoints()
-            case:SetPoint("RIGHT", contenu, "TOPRIGHT", -8, -(y - HAUTEUR_LIGNE / 2))
-            case:SetFrameLevel(l:GetFrameLevel() + 2)
-            case:SetChecked(coche and true or false)
-            case:SetScript("OnClick", auClic)
-            case:Show()
-            l.case = case
-        else
-            case:Hide()
-        end
+        -- La case est toujours la, a la meme place : grisee quand ce rang
+        -- n'est pas possible, pour voir d'un coup les trois choix.
+        l.case = case
+        case:SetSize(28, 28)
+        case:ClearAllPoints()
+        case:SetPoint("RIGHT", contenu, "TOPRIGHT", -8, -(y - HAUTEUR_LIGNE / 2))
+        case:SetFrameLevel(l:GetFrameLevel() + 2)
+        case:SetChecked(coche and true or false)
+        case:SetEnabled(auClic ~= nil)
+        case:SetAlpha(auClic and 1 or 0.4)
+        case:SetScript("OnClick", auClic)
+        case:Show()
         return l
     end
 
@@ -3187,6 +3193,8 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         contenu.etatObjectif.poser = function(v)
             ecran.choixRang[cleObjectif] = v
             if fiche then
+                catalogue.PoserEmplacement(fiche, cleObjectif, "sur", nil)
+                catalogue.PoserEmplacement(fiche, cleObjectif, "recettes", nil)
                 catalogue.PoserEmplacement(fiche, cleObjectif, "choix", v)
                 if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
             end
@@ -3239,11 +3247,22 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     -- Rien de vise : pas d'etapes. Elles suivent tous les rangs vises.
     local vises = {}
     for _, v in ipairs(catalogue.RangsVises(fiche, cleObjectif)) do if v > rang then table.insert(vises, v) end end
+    -- Rien de coche : le guide propose quand meme le chemin vers le rang au
+    -- choix (10 rangs plus haut par defaut), recettes a apprendre et achats
+    -- compris. Cocher le rang le suit dans « Mes fabrications ».
+    local propose = false
+    if #vises == 0 and choix > rang then
+        vises = { choix }
+        propose = true
+    end
     if #vises == 0 then return index, y + 6 end
+    if propose then
+        y = Paragraphe(contenu, y + 6, string.format(L.GUIDE_PROPOSED, choix), POLICE, OR, aligne)
+    end
     -- Les rangs vises, sur une ligne, au-dessus des etapes.
     local noms = {}
     for _, v in ipairs(vises) do table.insert(noms, string.format(L.GUIDE_TARGET_ONE, v)) end
-    local segments = catalogue.PlansVises(fiche, cleObjectif, rang, rangMax, vises)
+    local segments = catalogue.PlansVises(fiche, cleObjectif, rang, rangMax, vises, propose)
     -- Vert seulement si tout se fait en points surs (recettes oranges).
     -- Sinon, dit clairement jusqu'ou c'est sur, et comment le reste est prevu.
     local auHasard, rangSur = false, rang
@@ -3271,16 +3290,9 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     -- tout doit etre dans les sacs avant la premiere fabrication.
     local bloque
     if next(plan.manques) ~= nil then bloque = L.GUIDE_GATHER_FIRST end
-    if not bloque then
-        for objet, n in pairs(plan.achats) do
-            if (NS.inventaire.DisponibleDansLesSacs(objet) or 0) < n then bloque = L.GUIDE_BUY_FIRST break end
-        end
-    end
-    if not bloque then
-        for objet, n in pairs(plan.utilises) do
-            if (NS.inventaire.DisponibleDansLesSacs(objet) or 0) < n then bloque = L.GUIDE_FETCH_FIRST break end
-        end
-    end
+    -- Achats (fioles...) et objets a sortir de la banque ne bloquent plus
+    -- tout : chaque bouton Creer se grise seul s'il lui manque quelque chose
+    -- dans les sacs. On fabrique ce qu'on peut deja.
     local function Creer(l, recette, n)
         PoserBoutonFabriquer(l, recette, n)
         if bloque and l.fabriquer then
@@ -3345,6 +3357,42 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         for objet, n in pairs(t or {}) do if n > 0 then table.insert(liste, { objet = objet, n = n }) end end
         table.sort(liste, function(a, b) if a.n ~= b.n then return a.n > b.n end return tostring(a.objet) < tostring(b.objet) end)
         return liste
+    end
+
+    -- 0. Apprendre d'abord : les recettes du parcours qu'on peut apprendre
+    -- des maintenant (rang deja atteint), toutes ensemble, avant de partir
+    -- recolter ou fabriquer. Un seul passage chez le formateur.
+    do
+        local maintenant, vus = {}, {}
+        for _, seg in ipairs(segments) do
+            for _, etape in ipairs(seg.plan.etapes or {}) do
+                local id = etape.apprendre and etape.recette and etape.recette.id
+                if id and not vus[id] and (etape.rangRequis or etape.de or 0) <= rang then
+                    vus[id] = true
+                    table.insert(maintenant, etape)
+                end
+            end
+        end
+        if #maintenant > 0 and Etape(L.GUIDE_LEARN_FIRST, false) then
+            for _, etape in ipairs(maintenant) do
+                local nature, lignesSrc = catalogue.CommentApprendre(etape.recette)
+                local l
+                index, y, l = LigneSimple(contenu, index, y, "Interface\\Icons\\INV_Misc_Book_09",
+                    tostring(etape.recette.nom or "?"), L[nature or ""] or "")
+                if l then
+                    l.total:SetTextColor(0.31, 0.82, 0.41)
+                    l:EnableMouse(true)
+                    local titreA = etape.recette.nom
+                    l:SetScript("OnEnter", function(self)
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetText(titreA or "", 1, 0.82, 0)
+                        for _, t in ipairs(lignesSrc or {}) do GameTooltip:AddLine(t, 1, 1, 1, true) end
+                        GameTooltip:Show()
+                    end)
+                    l:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                end
+            end
+        end
     end
 
     -- 1. Recolter d'abord ce qui manque encore au compte.
