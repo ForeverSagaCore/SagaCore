@@ -1378,9 +1378,42 @@ local function NiveauxDeZone(id)
     return mini, maxi
 end
 
+local TrancheDeZone
+-- Les tranches de difficulte d'une zone pour le personnage connecte, d'apres
+-- ses niveaux (mini - maxi) : les couleurs du journal de quetes du jeu.
+local function NiveauJoueur() return tonumber(NS.Appeler(NS.Lecture("UnitLevel"), "player")) or 1 end
+local function EcartVert()
+    local f = NS.Lecture("GetQuestGreenRange")
+    local ok, v = pcall(f or function() end)
+    return tonumber(ok and v) or 5
+end
+local TRANCHES = {
+    { cle = "grise", couleur = { 0.62, 0.62, 0.62 }, nom = function() return NS.L.ZONES_GREY end },
+    { cle = "verte", couleur = { 0.25, 0.75, 0.25 }, nom = function() return NS.L.ZONES_GREEN end },
+    { cle = "jaune", couleur = { 1.00, 0.82, 0.00 }, nom = function() return NS.L.ZONES_YELLOW end },
+    { cle = "orange", couleur = { 1.00, 0.50, 0.25 }, nom = function() return NS.L.ZONES_ORANGE end },
+    { cle = "rouge", couleur = { 1.00, 0.10, 0.10 }, nom = function() return NS.L.ZONES_RED end },
+    { cle = "aucun", couleur = { 0.75, 0.75, 0.75 }, nom = function() return NS.L.ZONES_NONE end },
+}
+local RANG_TRANCHE = {}
+for rang, t in ipairs(TRANCHES) do RANG_TRANCHE[t.cle] = rang end
+TrancheDeZone = function(id)
+    local mini, maxi = NiveauxDeZone(id)
+    if not mini then return TRANCHES[6] end
+    maxi = maxi or mini
+    local moi = NiveauJoueur()
+    if maxi < moi - EcartVert() then return TRANCHES[1] end
+    if maxi < moi then return TRANCHES[2] end
+    if mini <= moi then return TRANCHES[3] end
+    if mini <= moi + 4 then return TRANCHES[4] end
+    return TRANCHES[5]
+end
+
 -- Les zones par niveau : la plus basse d'abord (niveau mini, puis maxi,
 -- puis nom) ; une zone sans niveau connu (capitale...) a la fin.
 local function ParNiveau(a, b)
+    local ta, tb = RANG_TRANCHE[TrancheDeZone(a.mapID).cle], RANG_TRANCHE[TrancheDeZone(b.mapID).cle]
+    if ta ~= tb then return ta < tb end
     local amin, amax = NiveauxDeZone(a.mapID)
     local bmin, bmax = NiveauxDeZone(b.mapID)
     if (amin ~= nil) ~= (bmin ~= nil) then return amin ~= nil end
@@ -1735,7 +1768,7 @@ end
 local function RendreMenu(idCarte)
     if not menu then return end
     for _, l in ipairs(menu.lignes or {}) do l:Hide() end
-    for _, t in ipairs(menu.titres or {}) do t:Hide() end
+    for _, t in ipairs(menu.titres or {}) do t:Hide() if t.trait then t.trait:Hide() end end
     local y, n, nt = 0, 0, 0
     local function Titre(texte)
         nt = nt + 1
@@ -1754,6 +1787,31 @@ local function RendreMenu(idCarte)
         elseif NS.charte and NS.charte.TitreDeSection then pcall(NS.charte.TitreDeSection, t) end
         t:Show()
         y = y + 24
+    end
+    -- Un separateur fin : un libelle a la couleur de sa tranche, suivi d'un
+    -- trait de la meme couleur jusqu'au bord.
+    local function Separateur(texte, couleur)
+        nt = nt + 1
+        menu.titres = menu.titres or {}
+        local t = menu.titres[nt]
+        if not t then
+            t = menu.liste:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            menu.titres[nt] = t
+        end
+        t:SetFontObject("GameFontNormalSmall")
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", menu.liste, "TOPLEFT", 12, -(y + 4))
+        t:SetText(texte)
+        t:SetTextColor(couleur[1], couleur[2], couleur[3])
+        t:Show()
+        if not t.trait then t.trait = menu.liste:CreateTexture(nil, "ARTWORK") end
+        t.trait:ClearAllPoints()
+        t.trait:SetPoint("LEFT", t, "RIGHT", 6, 0)
+        t.trait:SetPoint("RIGHT", menu.liste, "RIGHT", -8, 0)
+        t.trait:SetHeight(1)
+        t.trait:SetColorTexture(couleur[1], couleur[2], couleur[3], 0.45)
+        t.trait:Show()
+        y = y + 20
     end
     local function Ligne(texte, case, choisie, auClic, couleur, survol)
         n = n + 1
@@ -1911,7 +1969,18 @@ local function RendreMenu(idCarte)
         -- Toutes les zones du continent, meme rangees sous une autre carte.
         local zones = Enfants(continent, 3, true)
         table.sort(zones, ParNiveau)
-        for _, z in ipairs(zones) do LigneZone(z) end
+        -- Par tranche de difficulte pour le personnage, comme le journal de
+        -- quetes : grises, vertes, jaunes, orange, rouges, puis sans niveau.
+        local tranchePrecedente
+        for _, z in ipairs(zones) do
+            local tranche = TrancheDeZone(z.mapID)
+            if tranche ~= tranchePrecedente then
+                if tranchePrecedente then y = y + 4 end
+                Separateur(tranche.nom(), tranche.couleur)
+                tranchePrecedente = tranche
+            end
+            LigneZone(z)
+        end
     end
     menu.liste:SetHeight(math.max(y, 1))
 end
