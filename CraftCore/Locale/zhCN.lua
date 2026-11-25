@@ -644,6 +644,9 @@ L.GUIDE_LEVEL = "提升专业"
 L.GUIDE_LEVEL_HELP = "绿色 : 必得点数。金色 : 靠运气的点数。"
 
 -- Menu en groupes
+L.PROG_LEARN_NEEDED = "Nothing you know gives points anymore : to learn, orange right now"
+L.PROG_LEARN_MORE = "To learn, orange right now"
+L.PROG_LEARN_WHERE = "rank %d, %s"
 L.NAV_LEVEL_UP_THIS = "提升此专业"
 L.NAV_STOCKS_ALL = "我的全部库存"
 L.STOCKS_OTHER_ITEMS = "其他物品"

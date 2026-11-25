@@ -644,6 +644,9 @@ L.GUIDE_LEVEL = "subir la profesión"
 L.GUIDE_LEVEL_HELP = "Verde : punto seguro. Oro : punto con suerte."
 
 -- Menu en groupes
+L.PROG_LEARN_NEEDED = "Nothing you know gives points anymore : to learn, orange right now"
+L.PROG_LEARN_MORE = "To learn, orange right now"
+L.PROG_LEARN_WHERE = "rank %d, %s"
 L.NAV_LEVEL_UP_THIS = "Subir esta profesión"
 L.NAV_STOCKS_ALL = "Todas mis existencias"
 L.STOCKS_OTHER_ITEMS = "Otros objetos"

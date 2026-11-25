@@ -3138,6 +3138,37 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         end
     end
 
+    -- Ce qui fait monter tout de suite et qu'on ne connait pas encore : les
+    -- recettes oranges au rang actuel (un point a coup sur), pas apprises,
+    -- avec ou les apprendre. Montre surtout quand rien de connu ne fait
+    -- plus monter.
+    do
+        local aApprendre = {}
+        for _, r in ipairs((catalogue.Pour(ligneMetier))) do
+            if not catalogue.EstApprise(r.id) then
+                local requis = catalogue.RangRequis(r)
+                local fin = catalogue.FinDuOrange(r)
+                if requis and fin and requis <= rang and fin > rang then table.insert(aApprendre, { r = r, requis = requis }) end
+            end
+        end
+        table.sort(aApprendre, function(a, b)
+            if a.requis ~= b.requis then return a.requis > b.requis end
+            return tostring(a.r.nom) < tostring(b.r.nom)
+        end)
+        if #aApprendre > 0 then
+            local rienDeConnu = (atteignable or rang) <= rang
+            y = Paragraphe(contenu, y + 6, rienDeConnu and L.PROG_LEARN_NEEDED or L.PROG_LEARN_MORE, POLICE,
+                rienDeConnu and OR or nil, aligne)
+            for k, e in ipairs(aApprendre) do
+                if k > 6 then break end
+                local nature = catalogue.CommentApprendre(e.r)
+                local ou = nature and L[nature] or ""
+                local icone = e.r.objetProduit and NS.Appeler(NS.jeu.iconeObjet, e.r.objetProduit) or nil
+                index, y = LigneSimple(contenu, index, y, icone, tostring(e.r.nom or e.r.id), string.format(L.PROG_LEARN_WHERE, e.requis, ou))
+            end
+        end
+    end
+
     -- Rien de vise : pas d'etapes. Elles suivent tous les rangs vises.
     local vises = {}
     for _, v in ipairs(catalogue.RangsVises(fiche, cleObjectif)) do if v > rang then table.insert(vises, v) end end

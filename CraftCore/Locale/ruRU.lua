@@ -644,6 +644,9 @@ L.GUIDE_LEVEL = "прокачать профессию"
 L.GUIDE_LEVEL_HELP = "Зелёный : верное очко. Золотой : очко с удачей."
 
 -- Menu en groupes
+L.PROG_LEARN_NEEDED = "Nothing you know gives points anymore : to learn, orange right now"
+L.PROG_LEARN_MORE = "To learn, orange right now"
+L.PROG_LEARN_WHERE = "rank %d, %s"
 L.NAV_LEVEL_UP_THIS = "Прокачать эту профессию"
 L.NAV_STOCKS_ALL = "Все мои запасы"
 L.STOCKS_OTHER_ITEMS = "Другие предметы"

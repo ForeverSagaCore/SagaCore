@@ -829,6 +829,9 @@ L.GUIDE_LEVEL = "monter le métier"
 L.GUIDE_LEVEL_HELP = "|cff4fd168En vert : un point sûr.|r |cffffd100En or : un point avec de la chance.|r"
 
 -- Menu en groupes
+L.PROG_LEARN_NEEDED = "Rien de ce que vous connaissez ne fait plus monter : à apprendre, orange dès maintenant"
+L.PROG_LEARN_MORE = "À apprendre, orange dès maintenant"
+L.PROG_LEARN_WHERE = "rang %d, %s"
 L.NAV_LEVEL_UP_THIS = "Monter ce métier"
 L.NAV_STOCKS_ALL = "Tous mes stocks"
 L.STOCKS_OTHER_ITEMS = "Autres objets"
