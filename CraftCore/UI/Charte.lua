@@ -262,8 +262,34 @@ end
 
 -- Une ligne de texte : a l'encre sur parchemin, rendue a sa couleur sur noir.
 -- fs.couleurPropre : jamais encree (nom de classe, meme blanc pour le pretre).
+-- La police d'un nom de personnage, la meme dans toute la suite.
+charte.TAILLE_NOM = 12
+function charte.PoliceDeNom(fs)
+    local objet = _G.GameFontNormal
+    local fichier = objet and objet.GetFont and objet:GetFont()
+    if not fichier or not fs.SetFont then return end
+    local Police = (NS and NS.Police) or function(x) return x end
+    fs:SetFont(Police(fichier), charte.TAILLE_NOM, "")
+end
+
+-- L'ombre portee des textes sur le parchemin : legere.
+local OMBRE_PARCHEMIN = 0.22
+
 local function EncrerTexte(fs, parchemin)
-    if fs.couleurPropre then return end
+    -- Une couleur propre (nom a la couleur de sa classe) n'est pas encree,
+    -- mais garde la meme ombre douce que les autres textes du parchemin :
+    -- meme police, meme taille, meme relief que tout le reste.
+    if fs.couleurPropre then
+        -- Un nom de personnage (couleur de sa classe) : partout la meme
+        -- police du jeu, la meme taille, quelle que soit la fenetre.
+        local r0, g0, b0 = fs:GetTextColor()
+        if fs.nomDePerso or (r0 and CouleurDeClasse(r0, g0, b0)) then charte.PoliceDeNom(fs) end
+        if parchemin then
+            if fs.SetShadowColor then fs:SetShadowColor(0, 0, 0, OMBRE_PARCHEMIN) end
+            if fs.SetShadowOffset then fs:SetShadowOffset(1, -1) end
+        end
+        return
+    end
     local r, g, b, a = fs:GetTextColor()
     if not r then return end
     local texte = fs:GetText()
@@ -297,7 +323,7 @@ local function EncrerTexte(fs, parchemin)
         end
         -- Une ombre portee legere sur tous les textes : lisibles sur le
         -- papier, et tous du meme relief.
-        if fs.SetShadowColor then fs:SetShadowColor(0, 0, 0, 0.4) end
+        if fs.SetShadowColor then fs:SetShadowColor(0, 0, 0, OMBRE_PARCHEMIN) end
         if fs.SetShadowOffset then fs:SetShadowOffset(1, -1) end
         -- Le nom d'une ligne gagne un point : plus lisible sur le papier.
         if fs.agrandir and fs.GetFont then

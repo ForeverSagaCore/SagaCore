@@ -496,6 +496,7 @@ local function PoserLigne(ligne, retrait, depliable, deplie, auClic)
     ColonneSomme(ligne, false)
     BandeDeClasse(ligne, nil)
     ligne.nom.couleurPropre = nil
+    ligne.nom.nomDePerso = nil
     ligne.nom:SetShadowOffset(1, -1)
     if ligne.cadreVisage then
         ligne.cadreVisage:Hide() ligne.visage:Hide() ligne.detail:Hide() ligne.droiteHaut:Hide()
@@ -958,18 +959,15 @@ local function LigneDePersonnage(ligne, fiche, estConnecte, couleur, detail, dro
     ligne.nom:SetPoint("TOPLEFT", ligne, "TOPLEFT", 42, -4)
     ligne.nom:SetPoint("RIGHT", ligne, "RIGHT", -90, 0)
     ligne.nom:SetFontObject("GameFontNormal")
-    -- Sur le parchemin, le nom a la couleur de sa classe se lit mal avec
-    -- l'ombre portee : la meme police du jeu, cernee d'un trait fin, sans
-    -- ombre.
-    local police, taille = ligne.nom:GetFont()
-    if police then
-        ligne.nom:SetFont(police, (taille or 12) + 1, "OUTLINE")
-        ligne.nom:SetShadowOffset(0, 0)
-    end
+    -- Le nom garde la police et la taille des autres textes ; seule l'ombre
+    -- est adoucie, comme partout sur le parchemin.
+    ligne.nom:SetShadowColor(0, 0, 0, 0.22)
+    ligne.nom:SetShadowOffset(1, -1)
     ligne.nom.agrandir = false
     if couleur then
         ligne.nom:SetTextColor(couleur.r, couleur.g, couleur.b)
         ligne.nom.couleurPropre = true
+        ligne.nom.nomDePerso = true
     end
     ligne.nom:SetText(NS.inventaire.NomCourt(fiche.cle))
     ligne.detail:ClearAllPoints()
@@ -1112,6 +1110,7 @@ local function RendreStocks(contenu, tous)
         if c then
             fs:SetTextColor(c.r, c.g, c.b)
             fs.couleurPropre = true
+            fs.nomDePerso = true
         end
         fs:SetText(nom .. (suite and ("|cff8c8c8c" .. suite .. "|r") or ""))
     end
@@ -3471,6 +3470,7 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                         if c then
                             lo.nom:SetTextColor(c.r, c.g, c.b)
                             lo.nom.couleurPropre = true
+                            lo.nom.nomDePerso = true
                         end
                     end
                     retraitCourant = retraitCourant - RETRAIT_PAR_NIVEAU
@@ -5032,8 +5032,9 @@ local function PortraitDepose(texture, fiche)
     local nom = type(fiche) == "table" and fiche.cle and NS.inventaire.NomCourt(fiche.cle)
     if type(nom) ~= "string" or nom == "" then return false end
     local ok, reussi = pcall(texture.SetTexture, texture, DOSSIER_PORTRAITS .. nom)
-    -- Seul un « oui » franc du jeu vaut : sinon pas d'image deposee.
-    if not ok or reussi ~= true then
+    -- Le jeu ne dit pas toujours si le fichier existe : un fichier absent
+    -- ne dessine rien (calque transparent), le portrait dessous se voit.
+    if not ok or reussi == false then
         pcall(texture.SetTexture, texture, nil)
         return false
     end
@@ -5049,7 +5050,7 @@ PoserVisage = function(texture, fiche, estConnecte)
     -- L'image deposee par le joueur passe avant tout.
     if PortraitDepose(depose, fiche) then depose:Show() end
     -- Le vrai portrait pour le personnage connecte, quand le client le donne.
-    if not depose:IsShown() and estConnecte and SetPortraitTexture then
+    if estConnecte and SetPortraitTexture then
         if pcall(SetPortraitTexture, vivant, "player") then
             pcall(vivant.SetTexCoord, vivant, 0, 1, 0, 1)
             vivant:Show()

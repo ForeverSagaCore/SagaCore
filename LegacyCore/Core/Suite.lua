@@ -81,11 +81,24 @@ if not _G.SagaCoreRoyaume then
     local retenu
     function _G.SagaCoreRoyaume()
         local db = type(_G.CoreSuiteDB) == "table" and _G.CoreSuiteDB or nil
-        -- 1. Le nom que le jeu donne d'habitude : il fait foi.
+        -- 0. Le royaume de la suite est fixe : le serveur Forever donne des
+        -- noms de royaume changeants (« CAMWOW EU5 Realm 1 PvE », puis
+        -- « Legacy », « Kity »...) pour un meme personnage. Des que la suite
+        -- a des donnees, elle garde le royaume sous lequel elles sont
+        -- rangees : un personnage n'a qu'une cle, jamais deux.
+        if retenu then return retenu end
+        if db and Propre(db.royaumeSuite) then retenu = db.royaumeSuite return retenu end
+        local deja = RoyaumesConnus(db)
+        if deja then
+            if db then db.royaumeSuite = deja end
+            retenu = deja
+            return deja
+        end
+        -- 1. Installation neuve : le nom que le jeu donne d'habitude.
         local ok, r = pcall(GetRealmName)
         r = ok and not (_G.issecretvalue and _G.issecretvalue(r)) and Propre(r) or nil
         if r then
-            if db then db.dernierRoyaume = r end
+            if db then db.dernierRoyaume = r db.royaumeSuite = r end
             retenu = r
             return r
         end
@@ -123,6 +136,94 @@ if not _G.SagaCoreRoyaume then
         if db then db.royaumeProvisoire = true end
         return PROVISOIRE
     end
+
+    -- Une fois toutes les sauvegardes chargees : les donnees d'un personnage
+    -- rangees sous un autre nom de royaume rejoignent sa cle unique. Si la
+    -- cle unique a deja ses donnees, l'autre copie part aux archives de la
+    -- suite (CoreSuiteDB.archivesRoyaume), jamais effacee.
+    function _G.SagaCoreUnifierRoyaume()
+        local db = type(_G.CoreSuiteDB) == "table" and _G.CoreSuiteDB or nil
+        local canon = _G.SagaCoreRoyaume()
+        if not canon or canon == PROVISOIRE then return 0 end
+        -- Les personnages connus (nom seul) et les royaumes sous lesquels ils
+        -- ont ete ranges, d'apres les listes de personnages de la suite.
+        local noms, royaumes = {}, {}
+        local listes = {
+            type(_G.CraftCoreDB) == "table" and _G.CraftCoreDB.personnages,
+            type(_G.QuestCoreDB) == "table" and _G.QuestCoreDB.persos,
+            type(_G.LegacyCoreDB) == "table" and _G.LegacyCoreDB.persos,
+            type(_G.MapCoreDB) == "table" and _G.MapCoreDB.persos,
+            type(_G.AchievementCoreDB) == "table" and _G.AchievementCoreDB.persos,
+        }
+        for i = 1, 5 do
+            local l = listes[i]
+            if type(l) == "table" then
+                for cle in pairs(l) do
+                    local nom, roy
+                    if type(cle) == "string" then nom, roy = cle:match("^(%S+) %- ?(.*)$") end
+                    if nom then noms[nom] = true royaumes[roy or ""] = true end
+                end
+            end
+        end
+        local function Autre(cle)
+            if type(cle) ~= "string" then return nil end
+            local nom, roy = cle:match("^(%S+) %- ?(.*)$")
+            if not (nom and noms[nom] and royaumes[roy or ""]) or roy == canon then return nil end
+            return nom .. " - " .. canon
+        end
+        local okJ, joueur = pcall(UnitName, "player")
+        joueur = okJ and not (_G.issecretvalue and _G.issecretvalue(joueur)) and joueur or nil
+        local okR, royaumeDuJeu = pcall(GetRealmName)
+        royaumeDuJeu = okR and not (_G.issecretvalue and _G.issecretvalue(royaumeDuJeu)) and Propre(royaumeDuJeu) or nil
+        local n = 0
+        local function Parcourir(t, chemin, prof)
+            if type(t) ~= "table" or prof > 4 then return end
+            local cles, valeurs = {}, {}
+            for cle, v in pairs(t) do
+                if Autre(cle) then table.insert(cles, cle) end
+                if type(v) == "string" and Autre(v) then table.insert(valeurs, cle) end
+            end
+            for _, cle in ipairs(valeurs) do t[cle] = Autre(t[cle]) n = n + 1 end
+            for _, cle in ipairs(cles) do
+                local neuve = Autre(cle)
+                if t[neuve] == nil then
+                    t[neuve] = t[cle]
+                else
+                    -- Deux copies : la plus fraiche reste. Celle du personnage
+                    -- connecte, sous le royaume que le jeu donne en ce moment,
+                    -- est celle ou il ecrit depuis : elle passe devant.
+                    local nom, roy = cle:match("^(%S+) %- ?(.*)$")
+                    local vivante = nom == joueur and roy == royaumeDuJeu
+                    local perdue = vivante and t[neuve] or t[cle]
+                    if vivante then t[neuve] = t[cle] end
+                    if db then
+                        db.archivesRoyaume = db.archivesRoyaume or {}
+                        table.insert(db.archivesRoyaume, { ou = chemin, cle = vivante and neuve or cle, valeur = perdue })
+                    end
+                end
+                t[cle] = nil
+                n = n + 1
+            end
+            for cle, v in pairs(t) do
+                if type(v) == "table" then Parcourir(v, chemin .. "." .. tostring(cle), prof + 1) end
+            end
+        end
+        for _, nom in ipairs(NOMS_BASES) do
+            if type(_G[nom]) == "table" then pcall(Parcourir, _G[nom], nom, 1) end
+        end
+        return n
+    end
+end
+
+-- A la connexion (toutes les sauvegardes sont la) : une seule cle par
+-- personnage dans toute la suite.
+if not _G.SagaCoreUnifieur then
+    local f = CreateFrame("Frame")
+    _G.SagaCoreUnifieur = f
+    f:RegisterEvent("PLAYER_LOGIN")
+    f:SetScript("OnEvent", function()
+        if _G.SagaCoreUnifierRoyaume then pcall(_G.SagaCoreUnifierRoyaume) end
+    end)
 end
 
 local VERSION = 200
@@ -296,6 +397,7 @@ local DICO = {
         ["Open"] = "Ouvrir",
         ["Change guide"] = "Changer de guide",
         ["Stop"] = "Arrêter",
+        ["Cancel"] = "Annuler",
         ["Route add-ons"] = "Add-ons d'itinéraire",
         ["Shortest Path Forever and TomTom draw a detailed route. Install them with CurseForge or WowUp, then restart the game : they become available here."] = "Shortest Path Forever et TomTom tracent un itinéraire détaillé. Installez-les avec CurseForge ou WowUp, puis relancez le jeu : ils deviennent disponibles ici.",
         ["Greyed : add-on not installed (see the i)."] = "Grisé : add-on non installé (voir le i).",
@@ -4829,15 +4931,23 @@ function Suite.ChoisirGuide()
         f.note:SetWordWrap(false)
         -- Fermer sans choisir (croix, B, Echap) : la fleche de la suite.
         if f.fermer then f.fermer:SetScript("OnClick", function() f:Hide() end) end
+        -- Fermer sans choisir (croix, B, Echap, Annuler) annule la manoeuvre :
+        -- au lancement, le guidage n'a pas lieu ; en changeant de guide, le
+        -- guide d'avant reste.
         f:HookScript("OnHide", function(self)
-            if not self.choisi and Suite.guide.actif then ChoisirFlecheSuite() end
+            if not self.choisi and Suite.guide.actif then Suite.AnnulerChoixDuGuide() end
             self.choisi = true
         end)
+        f.annuler = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        f.annuler:SetSize(100, 22)
+        f.annuler:SetText(TX("Cancel"))
+        f.annuler:SetScript("OnClick", function() f:Hide() end)
         -- Manette : la croix haut / bas passe d'un choix a l'autre (le choix
         -- s'allume), A valide, B ferme (fleche de la suite).
         function f.Allumer(i)
             local vus = {}
             for _, b in ipairs(f.boutons) do if b:IsShown() and b:IsEnabled() then table.insert(vus, b) end end
+            if f.annuler and f.annuler:IsShown() then table.insert(vus, f.annuler) end
             if #vus == 0 then return end
             i = math.max(1, math.min(#vus, i or 1))
             f.rang = i
@@ -4885,6 +4995,7 @@ function Suite.ChoisirGuide()
         local cle = ch.cle
         b:SetScript("OnClick", function()
             f.choisi = true
+            Suite.guideAvantChangement = nil
             if cle == "aucun" then
                 ChoisirFlecheSuite()
             else
@@ -4902,8 +5013,12 @@ function Suite.ChoisirGuide()
     f.note:SetPoint("RIGHT", f.zone, "RIGHT", 0, 0)
     f.note:SetText(manque and TX("Greyed : add-on not installed (see the i).") or "")
     f.note:SetShown(manque)
-    -- Barre de titre, marge, texte, boutons, note, marge.
-    f:SetHeight(24 + 12 + 22 + #choix * 28 + (manque and 16 or 0) + 12 + 8)
+    -- Annuler, sous tout le reste, a droite.
+    f.annuler:ClearAllPoints()
+    f.annuler:SetPoint("TOPRIGHT", f.zone, "TOPRIGHT", 0, -22 - #choix * 28 - (manque and 16 or 0) - 6)
+    f.annuler:Show()
+    -- Barre de titre, marge, texte, boutons, note, Annuler, marge.
+    f:SetHeight(24 + 12 + 22 + #choix * 28 + (manque and 16 or 0) + 28 + 12 + 8)
     f:ClearAllPoints()
     -- Toujours au meme endroit, au milieu de l'ecran : on ne peut pas la rater.
     f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
@@ -4918,8 +5033,22 @@ function Suite.PeutChangerDeGuide()
     local hub = _G.FriendsCoreAPI
     return hub and hub.Moyens and #hub.Moyens() > 0 and Suite.guide.actif ~= nil or false
 end
+-- Annuler « Qui vous guide ? » : au lancement, le guidage s'arrete ; en
+-- changeant de guide, l'ancien guide reprend.
+function Suite.AnnulerChoixDuGuide()
+    local ancien = Suite.guideAvantChangement
+    Suite.guideAvantChangement = nil
+    local hub = _G.FriendsCoreAPI
+    if ancien == nil then Suite.Arreter("joueur") return end
+    if ancien == "aucun" then ChoisirFlecheSuite() return end
+    if hub and hub.Choisir then pcall(hub.Choisir, ancien) end
+    if Suite.guide.actif then Suite.guide.actif.guide = ancien end
+    Suite.guide.envoye = nil
+end
+
 function Suite.ChangerDeGuide()
     local hub = _G.FriendsCoreAPI
+    Suite.guideAvantChangement = Suite.guide.actif and Suite.guide.actif.guide or "aucun"
     if Suite.guide.actif then Suite.guide.actif.guide = nil end
     if hub and hub.Oublier then pcall(hub.Oublier) end
     Suite.guide.envoye = nil

@@ -77,6 +77,13 @@ end
 -- Lignes du contenu
 -- ---------------------------------------------------------------------------
 
+-- Un nom a la couleur de sa classe : la meme police et la meme taille que
+-- le reste, la meme ombre douce (celle du parchemin), rien de plus.
+local function NomLisible(fs)
+    fs:SetShadowColor(0, 0, 0, 0.22)
+    fs:SetShadowOffset(1, -1)
+end
+
 local function Ligne(contenu, index)
     contenu.lignes = contenu.lignes or {}
     local l = contenu.lignes[index]
@@ -155,8 +162,12 @@ local function Poser(contenu, index, y, o)
     l.gauche:SetText(o.texte or "")
     local c = o.couleur or BLANC
     l.gauche:SetTextColor(c[1], c[2], c[3])
-    -- Couleur de classe : la vraie, jamais encree (le pretre reste blanc).
+    -- Couleur de classe : la vraie, jamais encree (le pretre reste blanc),
+    -- cernee d'un trait fin et sans ombre pour se lire sur le parchemin.
     l.gauche.couleurPropre = c.classe or nil
+    l.gauche.nomDePerso = c.classe or nil
+    if c.classe then NomLisible(l.gauche) end
+    if l.colNom then l.colNom:Hide() l.colNiv:Hide() end
     l.droite:SetText(o.droite or "")
     local cd = o.couleurDroite or GRIS
     l.droite:SetTextColor(cd[1], cd[2], cd[3])
@@ -692,6 +703,12 @@ end
 -- ---------------------------------------------------------------------------
 
 local NIVEAU_MAX = 60
+-- Teintes des colonnes : { bas, haut } du degrade.
+local COULEURS_HISTO = {
+    fini    = { { 0.16, 0.42, 0.16 }, { 0.30, 0.66, 0.28 } },
+    enCours = { { 0.12, 0.30, 0.62 }, { 0.26, 0.52, 0.90 } },
+    inconnu = { { 0.45, 0.45, 0.45 }, { 0.60, 0.60, 0.60 } },
+}
 local HAUTEUR_HISTO = 96
 
 local function Histogramme(contenu)
@@ -703,9 +720,19 @@ local function Histogramme(contenu)
         b.fond = b:CreateTexture(nil, "BACKGROUND")
         b.fond:SetAllPoints()
         b.fond:SetColorTexture(1, 1, 1, 0)
+        -- Une colonne fine et nette : un degrade vertical (plus clair en
+        -- haut), un liseré plus sombre sur les cotes, un trait clair au
+        -- sommet. Centree dans sa case, avec de l'air entre deux niveaux.
         b.plein = b:CreateTexture(nil, "ARTWORK")
-        b.plein:SetPoint("BOTTOMLEFT")
-        b.plein:SetPoint("BOTTOMRIGHT")
+        b.plein:SetPoint("BOTTOM")
+        b.plein:SetTexture("Interface\\Buttons\\WHITE8X8")
+        b.bord = b:CreateTexture(nil, "BORDER")
+        b.bord:SetPoint("TOPLEFT", b.plein, "TOPLEFT", -1, 1)
+        b.bord:SetPoint("BOTTOMRIGHT", b.plein, "BOTTOMRIGHT", 1, 0)
+        b.sommet = b:CreateTexture(nil, "OVERLAY")
+        b.sommet:SetPoint("TOPLEFT", b.plein, "TOPLEFT", 0, 0)
+        b.sommet:SetPoint("TOPRIGHT", b.plein, "TOPRIGHT", 0, 0)
+        b.sommet:SetHeight(1)
         b:EnableMouse(true)
         b:SetScript("OnLeave", function() GameTooltip:Hide() end)
         h.barres[n] = b
@@ -742,28 +769,38 @@ local function DessinerHistogramme(contenu, p, y)
         b:ClearAllPoints()
         b:SetPoint("BOTTOMLEFT", h, "BOTTOMLEFT", (n - 1) * pas + 1, 16)
         b:SetSize(math.max(2, pas - 2), HAUTEUR_HISTO)
+        b.plein:SetWidth(math.max(2, math.floor(pas * 0.55)))
         local duree = t.durees[n]
         local enCours = (n == niveauPerso) and t.enCours or nil
         local valeur = duree or enCours
+        -- Vert : niveau termine. Bleu : niveau en cours. Gris : atteint
+        -- avant l'installation (temps inconnu).
+        local teinte
         if valeur then
             b.plein:SetHeight(math.max(3, HAUTEUR_HISTO * valeur / plusLong))
-            if enCours and not duree then b.plein:SetColorTexture(0.42, 0.62, 0.36, 0.85)
-            else b.plein:SetColorTexture(1, 0.82, 0, 0.85) end
-            b.plein:Show()
+            teinte = (enCours and not duree) and COULEURS_HISTO.enCours or COULEURS_HISTO.fini
         elseif n < niveauPerso then
-            -- Atteint, mais avant l'installation : inconnu.
             b.plein:SetHeight(3)
-            b.plein:SetColorTexture(0.6, 0.6, 0.6, 0.6)
-            b.plein:Show()
+            teinte = COULEURS_HISTO.inconnu
+        end
+        if teinte then
+            local bas, haut = teinte[1], teinte[2]
+            b.plein:SetVertexColor(1, 1, 1, 1)
+            local ok = b.plein.SetGradient and _G.CreateColor and pcall(b.plein.SetGradient, b.plein, "VERTICAL",
+                _G.CreateColor(bas[1], bas[2], bas[3], 1), _G.CreateColor(haut[1], haut[2], haut[3], 1))
+            if not ok then b.plein:SetVertexColor(haut[1], haut[2], haut[3], 1) end
+            b.bord:SetColorTexture(bas[1] * 0.55, bas[2] * 0.55, bas[3] * 0.55, 0.9)
+            b.sommet:SetColorTexture(math.min(1, haut[1] + 0.25), math.min(1, haut[2] + 0.25), math.min(1, haut[3] + 0.25), 1)
+            b.plein:Show() b.bord:Show() b.sommet:Show()
         else
-            b.plein:Hide()
+            b.plein:Hide() b.bord:Hide() b.sommet:Hide()
         end
         local niveau = n
         b:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             GameTooltip:SetText(string.format(L.LEVEL, niveau), 1, 0.82, 0)
             if duree then GameTooltip:AddLine(string.format(L.LEVEL_TIME, NS.Duree(duree)), 1, 1, 1)
-            elseif enCours then GameTooltip:AddLine(string.format(L.LEVEL_TIME_NOW, NS.Duree(enCours)), 0.31, 0.82, 0.41)
+            elseif enCours then GameTooltip:AddLine(string.format(L.LEVEL_TIME_NOW, NS.Duree(enCours)), 0.26, 0.52, 0.90)
             elseif niveau < niveauPerso then GameTooltip:AddLine(L.LEVEL_TIME_UNKNOWN, 0.6, 0.6, 0.6)
             else GameTooltip:AddLine(L.LEVEL_TIME_LATER, 0.6, 0.6, 0.6) end
             GameTooltip:Show()
@@ -777,6 +814,8 @@ local function DessinerHistogramme(contenu, p, y)
     h:Show()
     return y + HAUTEUR_HISTO + 22, t
 end
+
+local COL_HEURE, COL_NOM, COL_NIVEAU = 44, 130, 90
 
 local function RendreChrono(contenu, p, index, y)
     if p then
@@ -828,15 +867,41 @@ local function RendreChrono(contenu, p, index, y)
         end
         local q = persos[e.cle] or { cle = e.cle, classe = e.classe }
         index = index + 1
+        -- En colonnes : l'heure, le nom (couleur de sa classe), le niveau
+        -- atteint, et a droite le temps passe sur le precedent. Tout dans
+        -- la meme police, chaque colonne a la meme place sur chaque ligne.
         y = Poser(contenu, index, y, { retrait = RETRAIT, icone = "Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES",
-            texte = tostring(NS.Appeler(date, "%H:%M", e.quand) or "") .. "   " .. "|cff" .. string.format("%02x%02x%02x",
-                math.floor(CouleurDeClasse(q.classe)[1] * 255), math.floor(CouleurDeClasse(q.classe)[2] * 255),
-                math.floor(CouleurDeClasse(q.classe)[3] * 255)) .. NS.NomCourt(e.cle) .. "|r  "
-                .. string.format(L.TIMELINE_LEVEL_UP, e.niveau or 0),
+            texte = tostring(NS.Appeler(date, "%H:%M", e.quand) or ""), police = "GameFontHighlight",
             couleur = BLANC, droite = detail, couleurDroite = SECONDAIRE })
         local l = contenu.lignes[index]
         local coords = _G.CLASS_ICON_TCOORDS and q.classe and _G.CLASS_ICON_TCOORDS[q.classe]
         if coords then l.icone:SetTexCoord(coords[1], coords[2], coords[3], coords[4]) else l.icone:Hide() end
+        if not l.colNom then
+            l.colNom = l:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            l.colNom:SetJustifyH("LEFT") l.colNom:SetWordWrap(false)
+            l.colNiv = l:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            l.colNiv:SetJustifyH("LEFT") l.colNiv:SetWordWrap(false)
+        end
+        l.gauche:ClearAllPoints()
+        l.gauche:SetPoint("TOPLEFT", l.icone, "TOPRIGHT", 6, -3)
+        l.gauche:SetWidth(COL_HEURE)
+        l.colNom:SetFontObject("GameFontHighlight")
+        l.colNom:ClearAllPoints()
+        l.colNom:SetPoint("LEFT", l.gauche, "LEFT", COL_HEURE + 8, 0)
+        l.colNom:SetWidth(COL_NOM)
+        local cc = CouleurDeClasse(q.classe)
+        l.colNom:SetTextColor(cc[1], cc[2], cc[3])
+        l.colNom.couleurPropre = true
+        l.colNom.nomDePerso = true
+        l.colNom:SetText(NS.NomCourt(e.cle))
+        NomLisible(l.colNom)
+        l.colNiv:SetFontObject("GameFontHighlight")
+        l.colNiv:ClearAllPoints()
+        l.colNiv:SetPoint("LEFT", l.colNom, "RIGHT", 8, 0)
+        l.colNiv:SetWidth(COL_NIVEAU)
+        l.colNiv:SetTextColor(1, 1, 1)
+        l.colNiv:SetText(string.format(L.LEVEL, e.niveau or 0))
+        l.colNom:Show() l.colNiv:Show()
     end
     return index, y
 end
