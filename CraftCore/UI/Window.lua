@@ -5109,90 +5109,35 @@ local function CreerPortraitDePersonnage(parent)
     return bouton
 end
 
--- Les portraits suivent les personnages connus, le connecte en premier.
+-- La barre des personnages : celle de la suite, la meme partout. CraftCore
+-- y ajoute les metiers de chacun (infobulle).
 local function SynchroniserOngletsDePersonnage(win)
-    local d = CraftCoreDB
-    if type(d) ~= "table" or type(d.personnages) ~= "table" then return end
     if not win.bandePersos then return end
-
-    local courant = NS.ClePersonnage()
-    -- Seulement la faction regardee (onglets Alliance / Horde de la suite).
-    local S = NS.suite
-    local function Visible(cle) return not (S and S.Visible) or S.Visible(cle) end
-    local liste = {}
-    if d.personnages[courant] and Visible(courant) then table.insert(liste, courant) end
-    local autres = {}
-    for cle in pairs(d.personnages) do
-        if cle ~= courant and Visible(cle) and not NS.base.EstDoublon(cle) then table.insert(autres, cle) end
-    end
-    table.sort(autres)
-    for _, cle in ipairs(autres) do table.insert(liste, cle) end
+    local S = NS.suite or _G.CoreSuite
+    local d = CraftCoreDB
+    local persos = type(d) == "table" and type(d.personnages) == "table" and d.personnages or {}
+    local cles = S.BandePersos(win.bandePersos, {
+        choisi = NS.base.PersonnageAffiche(),
+        infobulle = function(cle, tip)
+            local fiche = persos[cle]
+            local metiers = {}
+            for cleMetier, sien in pairs((fiche and fiche.metiers) or {}) do
+                if type(sien) == "table" and (tonumber(cleMetier) or 0) > 0 and sien.nom then table.insert(metiers, sien) end
+            end
+            table.sort(metiers, function(a, b) return (a.nom or "") < (b.nom or "") end)
+            for _, sien in ipairs(metiers) do
+                tip:AddLine(NS.recettes.LibelleAvecNiveau(sien.nom, sien.rang, sien.rangMax), 1, 1, 1)
+            end
+        end,
+        auClic = function(cle)
+            NS.base.PoserPersonnageAffiche(cle)
+            ecran.Montrer(ecran.page)
+        end })
     -- Ordre retenu pour passer d'un personnage a l'autre a la manette.
-    win.ordrePersos = liste
-
-    win.ongletsPersos = win.ongletsPersos or {}
-    local affiche = NS.base.PersonnageAffiche()
-    local precedent
-
-    for _, cle in ipairs(liste) do
-        local fiche = d.personnages[cle]
-        local portrait = win.ongletsPersos[cle]
-        if not portrait then
-            portrait = CreerPortraitDePersonnage(win.bandePersos)
-            portrait.cle = cle
-            portrait:SetScript("OnClick", function()
-                NS.base.PoserPersonnageAffiche(cle)
-                if PlaySound and SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_TAB then
-                    PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB)
-                end
-                ecran.Montrer(ecran.page)
-            end)
-            win.ongletsPersos[cle] = portrait
-        end
-
-        PoserVisage(portrait.visage, fiche, cle == courant)
-
-        local nom = NS.inventaire.NomCourt(cle)
-        local detail = nom
-        if fiche and fiche.niveau then detail = detail .. "  " .. fiche.niveau end
-        if fiche and fiche.classe then detail = detail .. "  " .. fiche.classe end
-        portrait.tooltipText = detail
-        -- Au survol aussi : chacun de ses metiers avec son niveau.
-        local metiersDuPerso = {}
-        for cleMetier, sien in pairs((fiche and fiche.metiers) or {}) do
-            if type(sien) == "table" and (tonumber(cleMetier) or 0) > 0 and sien.nom then
-                table.insert(metiersDuPerso, sien)
-            end
-        end
-        table.sort(metiersDuPerso, function(a, b) return (a.nom or "") < (b.nom or "") end)
-        portrait:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-            GameTooltip:SetText(self.tooltipText)
-            for _, sien in ipairs(metiersDuPerso) do
-                GameTooltip:AddLine(NS.recettes.LibelleAvecNiveau(sien.nom, sien.rang, sien.rangMax), 1, 1, 1)
-            end
-            GameTooltip:Show()
-        end)
-
-        local choisi = (cle == affiche)
-        portrait.halo:Hide()
-        portrait.visage:SetDesaturated(false)
-        MarquerSelection(portrait, choisi, portrait)
-
-        portrait:ClearAllPoints()
-        if precedent then
-            portrait:SetPoint("LEFT", precedent, "RIGHT", 6, 0)
-        else
-            portrait:SetPoint("LEFT", win.bandePersos, "LEFT", 2, 0)
-        end
-        portrait:Show()
-        precedent = portrait
-    end
-    win.dernierPortrait = precedent
-
-    for cle, portrait in pairs(win.ongletsPersos) do
-        if not d.personnages[cle] or not Visible(cle) then portrait:Hide() end
-    end
+    win.ordrePersos = cles
+    -- La croix gauche / droite est dite par la barre elle-meme.
+    win.dernierPortrait = nil
+    for _, portrait in pairs(win.ongletsPersos or {}) do portrait:Hide() end
 end
 
 -- ---------------------------------------------------------------------------

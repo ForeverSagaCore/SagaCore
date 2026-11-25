@@ -1913,6 +1913,8 @@ local function Portrait(parent)
     return b
 end
 
+-- La barre des personnages : celle de la suite, la meme partout. MapCore
+-- y ajoute ou se trouve chaque personnage (infobulle, clic).
 local function RendrePortraits()
     local f = fenetreMere
     if not f or not f.entete then return end
@@ -1921,53 +1923,38 @@ local function RendrePortraits()
         bande:SetPoint("LEFT", f.entete, "LEFT", 0, 0)
         bande:SetPoint("RIGHT", f.entete, "RIGHT", 0, 0)
         bande:SetHeight(TAILLE_PORTRAIT + 4)
-        bande.boutons = {}
         f.bandePersos = bande
     end
     local bande = f.bandePersos
     local L0 = NS.L
     local S = NS.suite or _G.CoreSuite
-    local liste = {}
-    for _, p in ipairs(NS.base.Positions and NS.base.Positions() or {}) do
-        if not (S and S.Visible) or S.Visible(p.cle) then table.insert(liste, p) end
-    end
-    for _, b in ipairs(bande.boutons) do b:Hide() end
+    local positions = {}
+    local NomC = function(c) return tostring(c):match("^(%S+) %- ") or c end
+    for _, p in ipairs(NS.base.Positions and NS.base.Positions() or {}) do positions[NomC(p.cle)] = p end
     local vu = persoVu
-    if not vu then for _, p in ipairs(liste) do if p.moi then vu = p.cle end end end
-    for rang, p in ipairs(liste) do
-        local b = bande.boutons[rang]
-        if not b then b = Portrait(bande) bande.boutons[rang] = b end
-        b:ClearAllPoints()
-        b:SetPoint("LEFT", bande, "LEFT", 2 + (rang - 1) * (TAILLE_PORTRAIT + 6), 0)
-        PoserVisage(b.visage, p)
-        b.halo:SetShown(p.cle == vu)
-        b:SetAlpha(p.cle == vu and 1 or 0.7)
-        local perso = p
-        b:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-            local couleur = _G.RAID_CLASS_COLORS and perso.classe and _G.RAID_CLASS_COLORS[perso.classe]
-            GameTooltip:SetText(NS.NomCourt(perso.cle) .. (perso.niveau and ("  " .. string.format(L0.CHAR_LVL, perso.niveau)) or ""),
-                couleur and couleur.r or 1, couleur and couleur.g or 0.82, couleur and couleur.b or 0)
+    if not vu then for _, p in pairs(positions) do if p.moi then vu = p.cle end end end
+    if not vu then vu = NS.ClePersonnage and NS.ClePersonnage() end
+    S.BandePersos(bande, { choisi = vu,
+        infobulle = function(cle, tip)
+            local perso = positions[NomC(cle)]
+            if not perso then return end
             local lieu = tostring(perso.zone or "?")
             if perso.sousZone and perso.sousZone ~= "" and perso.sousZone ~= perso.zone then
                 lieu = lieu .. ", " .. perso.sousZone
             end
-            GameTooltip:AddLine(lieu, 1, 1, 1)
-            if perso.foyer then GameTooltip:AddLine(string.format(L0.CHAR_HEARTH, perso.foyer), 1, 1, 1) end
+            tip:AddLine(lieu, 1, 1, 1)
+            if perso.foyer then tip:AddLine(string.format(L0.CHAR_HEARTH, perso.foyer), 1, 1, 1) end
             if perso.quand and not perso.moi then
-                GameTooltip:AddLine(string.format(L0.CHAR_SEEN, tostring(NS.Appeler(date, "%d/%m %H:%M", perso.quand) or "?")), 0.6, 0.6, 0.6)
+                tip:AddLine(string.format(L0.CHAR_SEEN, tostring(NS.Appeler(date, "%d/%m %H:%M", perso.quand) or "?")), 0.6, 0.6, 0.6)
             end
-            if perso.carte then GameTooltip:AddLine(L0.CHAR_CLICK, 0.6, 0.6, 0.6) end
-            GameTooltip:Show()
-        end)
-        b:SetScript("OnClick", function()
-            persoVu = perso.cle
-            if PlaySound and SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_TAB then PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB) end
-            if perso.carte then carteChoisie, continentChoisi = perso.carte, nil end
+            if perso.carte then tip:AddLine(L0.CHAR_CLICK, 0.6, 0.6, 0.6) end
+        end,
+        auClic = function(cle)
+            persoVu = cle
+            local perso = positions[NomC(cle)]
+            if perso and perso.carte then carteChoisie, continentChoisi = perso.carte, nil end
             page.Rendre()
-        end)
-        b:Show()
-    end
+        end })
 end
 
 -- Icone d'un continent : la teleportation de mage vers une capitale de ce
@@ -2062,7 +2049,7 @@ end
 -- Pour la manette : les portraits, et LT / RT d'un continent a l'autre.
 function page.Portraits()
     local liste = {}
-    for _, b in ipairs(fenetreMere and fenetreMere.bandePersos and fenetreMere.bandePersos.boutons or {}) do
+    for _, b in ipairs(fenetreMere and fenetreMere.bandePersos and fenetreMere.bandePersos.boutonsSuite or {}) do
         if b:IsShown() then table.insert(liste, b) end
     end
     return liste

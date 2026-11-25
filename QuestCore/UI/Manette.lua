@@ -570,8 +570,9 @@ function manette.Indices(win, premiereLigne, derniereLigne, onglet, dernierPortr
     Marque(win, "rb", "PADRSHOULDER", nil, "RIGHT", "RIGHT", -2, 0)
     Marque(win, "lt", "PADLTRIGGER", onglet, "BOTTOM", "TOP", 0, 12)
     Marque(win, "rt", "PADRTRIGGER", dernierOnglet or onglet, "TOP", "BOTTOM", 0, -10)
-    Marque(win, "dg", "PADDLEFT", dernierPortrait, "LEFT", "RIGHT", 10, 0)
-    Marque(win, "dd", "PADDRIGHT", win.marquesManette.dg, "LEFT", "RIGHT", 2, 0)
+    -- La croix gauche / droite est dite par la barre des personnages.
+    Marque(win, "dg", "PADDLEFT", nil, "LEFT", "RIGHT", 10, 0)
+    Marque(win, "dd", "PADDRIGHT", nil, "LEFT", "RIGHT", 2, 0)
     local actions
     if enZone then
         actions = { { { "PADDUP", "PADDDOWN", "PADDLEFT", "PADDRIGHT" }, L.PAD_MOVE }, { "PAD1", L.PAD_SELECT },

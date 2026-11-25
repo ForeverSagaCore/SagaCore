@@ -305,8 +305,9 @@ local function Indications()
     local L_ = NS.L
     local portraits = NS.pageCarte.Portraits and NS.pageCarte.Portraits() or {}
     local onglets = cadre.ordreContinents or {}
-    Marque("dg", "PADDLEFT", #portraits > 1 and portraits[#portraits] or nil, "LEFT", "RIGHT", 10, 0)
-    Marque("dd", "PADDRIGHT", #portraits > 1 and cadre.marquesManette.dg or nil, "LEFT", "RIGHT", 2, 0)
+    -- La croix gauche / droite est dite par la barre des personnages.
+    Marque("dg", "PADDLEFT", nil, "LEFT", "RIGHT", 10, 0)
+    Marque("dd", "PADDRIGHT", nil, "LEFT", "RIGHT", 2, 0)
     Marque("lt", "PADLTRIGGER", onglets[1], "BOTTOM", "TOP", 0, 12)
     Marque("rt", "PADRTRIGGER", onglets[#onglets], "TOP", "BOTTOM", 0, -10)
     local morceaux

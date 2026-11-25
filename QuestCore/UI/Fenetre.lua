@@ -566,36 +566,16 @@ local function CreerPortrait(parent)
     return b
 end
 
+-- La barre des personnages : celle de la suite, la meme partout.
 local function RendreListe()
+    local S = NS.suite or _G.CoreSuite
     local bande = cadre.bande
-    local persos = PersosVisibles()
-    local courant = NS.ClePersonnage()
-    bande.boutons = bande.boutons or {}
-    for _, b in ipairs(bande.boutons) do b:Hide() end
-    for rang, p in ipairs(persos) do
-        local b = bande.boutons[rang]
-        if not b then
-            b = CreerPortrait(bande)
-            bande.boutons[rang] = b
-        end
-        b:ClearAllPoints()
-        b:SetPoint("LEFT", bande, "LEFT", 2 + (rang - 1) * (TAILLE_PORTRAIT + 6), 0)
-        PoserVisage(b.visage, p, p.cle == courant)
-        b.halo:SetShown(p.cle == etat.cle)
-        b:SetAlpha(p.cle == etat.cle and 1 or 0.7)
-        local cle, perso = p.cle, p
-        b:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-            GameTooltip:SetText(NS.NomCourt(cle), 1, 0.82, 0)
-            if perso.niveau then GameTooltip:AddLine(string.format(L.LEVEL, perso.niveau), 1, 1, 1) end
-            GameTooltip:Show()
-        end)
-        b:SetScript("OnClick", function()
-            ChoisirPerso(cle)
-            fen.Rendre()
-        end)
-        b:Show()
-    end
+    local cles, dernier = S.BandePersos(bande, { choisi = etat.cle, auClic = function(cle)
+        ChoisirPerso(cle)
+        fen.Rendre()
+    end })
+    bande.ordre = cles
+    bande.boutons = { dernier }
 end
 
 -- ---------------------------------------------------------------------------
@@ -2260,11 +2240,11 @@ end
 
 -- Croix gauche / droite : personnage voisin dans la bande du haut.
 function fen.PersonnageVoisin(pas)
-    local persos = PersosVisibles()
+    local persos = cadre and cadre.bande and cadre.bande.ordre or {}
     if #persos == 0 then return end
     local index = 1
-    for rang, p in ipairs(persos) do if p.cle == etat.cle then index = rang break end end
-    ChoisirPerso(persos[((index - 1 + pas) % #persos) + 1].cle)
+    for rang, cle in ipairs(persos) do if cle == etat.cle then index = rang break end end
+    ChoisirPerso(persos[((index - 1 + pas) % #persos) + 1])
     if PlaySound and SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_TAB then PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB) end
     fen.Rendre()
 end

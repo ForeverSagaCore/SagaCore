@@ -398,6 +398,7 @@ local DICO = {
         ["Change guide"] = "Changer de guide",
         ["Stop"] = "Arrêter",
         ["Cancel"] = "Annuler",
+        ["Level %d"] = "Niveau %d",
         ["Route add-ons"] = "Add-ons d'itinéraire",
         ["Shortest Path Forever and TomTom draw a detailed route. Install them with CurseForge or WowUp, then restart the game : they become available here."] = "Shortest Path Forever et TomTom tracent un itinéraire détaillé. Installez-les avec CurseForge ou WowUp, puis relancez le jeu : ils deviennent disponibles ici.",
         ["Greyed : add-on not installed (see the i)."] = "Grisé : add-on non installé (voir le i).",
@@ -1097,6 +1098,163 @@ function Suite.PersosDeFaction(faction)
         return a < b
     end)
     return liste
+end
+
+-- ---------------------------------------------------------------------------
+-- La barre des personnages : une seule pour toute la suite
+-- ---------------------------------------------------------------------------
+-- Une liste (Suite.ListePersos), un portrait (Suite.PoserVisagePerso), une
+-- barre (Suite.BandePersos). Chaque add-on la pose dans son en-tete et dit
+-- seulement quoi faire au clic : memes personnages, meme ordre, meme
+-- aspect partout.
+
+local function JetonDe(f)
+    if type(f) ~= "table" then return nil end
+    if type(f.jetonClasse) == "string" then return f.jetonClasse end
+    local c = f.classe
+    if type(c) == "string" and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[c] then return c end
+    if type(c) == "string" then
+        for _, noms in ipairs({ _G.LOCALIZED_CLASS_NAMES_MALE, _G.LOCALIZED_CLASS_NAMES_FEMALE }) do
+            for jeton, nom in pairs(type(noms) == "table" and noms or {}) do if nom == c then return jeton end end
+        end
+    end
+    return nil
+end
+
+-- Tous les personnages connus de la suite (une entree par nom), de la
+-- faction regardee : le connecte d'abord, puis par nom.
+function Suite.ListePersos()
+    local parNom, ordre = {}, {}
+    for _, src in ipairs(SourcesDePersos()) do
+        for cle, f in pairs(src) do
+            local nom = type(cle) == "string" and cle:match("^(%S+) %- .")
+            if nom and type(f) == "table" then
+                local p = parNom[nom]
+                if not p then
+                    p = { cle = cle, nom = nom }
+                    parNom[nom] = p
+                    table.insert(ordre, p)
+                end
+                p.classe = p.classe or JetonDe(f)
+                local n = tonumber(f.niveau)
+                if n and n > (p.niveau or 0) then p.niveau = n end
+            end
+        end
+    end
+    local courant = NS.ClePersonnage and NS.ClePersonnage()
+    local nomCourant = courant and courant:match("^(%S+) %- ")
+    local liste = {}
+    for _, p in ipairs(ordre) do
+        if p.nom == nomCourant then p.cle = courant end
+        p.moi = p.nom == nomCourant
+        if Suite.Visible(p.cle) then table.insert(liste, p) end
+    end
+    table.sort(liste, function(a, b)
+        if a.moi ~= b.moi then return a.moi end
+        return a.nom < b.nom
+    end)
+    return liste
+end
+
+-- Le portrait d'un personnage, en trois calques : l'icone de classe, le
+-- vrai portrait du personnage connecte, l'image deposee dans
+-- SagaCorePortraits (un fichier absent ne dessine rien).
+local function Calque(texture, cle, rang)
+    local c = texture[cle]
+    if c then return c end
+    local couche, sous = texture:GetDrawLayer()
+    c = texture:GetParent():CreateTexture(nil, couche or "ARTWORK", nil, math.min(7, (sous or 0) + rang))
+    c:SetAllPoints(texture)
+    texture[cle] = c
+    if hooksecurefunc then hooksecurefunc(texture, "Hide", function() c:Hide() end) end
+    return c
+end
+function Suite.PoserVisagePerso(texture, p)
+    local vivant = Calque(texture, "calqueVivant", 1)
+    local depose = Calque(texture, "calqueDepose", 2)
+    vivant:Hide() depose:Hide()
+    pcall(texture.SetTexCoord, texture, 0, 1, 0, 1)
+    local coords = _G.CLASS_ICON_TCOORDS and p.classe and _G.CLASS_ICON_TCOORDS[p.classe]
+    if coords then
+        texture:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
+        pcall(texture.SetTexCoord, texture, coords[1], coords[2], coords[3], coords[4])
+    else
+        texture:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+    end
+    if p.moi and SetPortraitTexture and pcall(SetPortraitTexture, vivant, "player") then vivant:Show() end
+    local ok, reussi = pcall(depose.SetTexture, depose, "Interface\\AddOns\\SagaCorePortraits\\" .. tostring(p.nom))
+    if ok and reussi ~= false then depose:Show() end
+end
+
+local TAILLE_PORTRAIT_BANDE = 30
+local function PortraitDeBande(bande)
+    local b = CreateFrame("Button", nil, bande)
+    b:SetSize(TAILLE_PORTRAIT_BANDE, TAILLE_PORTRAIT_BANDE)
+    b.cadre = b:CreateTexture(nil, "BACKGROUND")
+    b.cadre:SetAllPoints()
+    b.cadre:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
+    b.visage = b:CreateTexture(nil, "ARTWORK")
+    b.visage:SetPoint("TOPLEFT", 4, -4)
+    b.visage:SetPoint("BOTTOMRIGHT", -4, 4)
+    b.halo = b:CreateTexture(nil, "OVERLAY")
+    b.halo:SetPoint("TOPLEFT", b, "TOPLEFT", -2, 2)
+    b.halo:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 2, -2)
+    b.halo:SetTexture("Interface\\Buttons\\CheckButtonHilight")
+    b.halo:SetBlendMode("ADD")
+    b.halo:Hide()
+    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    return b
+end
+
+-- La barre, dans `bande` (un cadre de l'en-tete). o.choisi : la cle
+-- montree ; o.auClic(cle) ; o.infobulle(cle, GameTooltip) pour ajouter des
+-- lignes. Rend la liste des cles (ordre de la croix gauche / droite) et le
+-- dernier portrait.
+function Suite.BandePersos(bande, o)
+    o = o or {}
+    bande.boutonsSuite = bande.boutonsSuite or {}
+    for _, b in ipairs(bande.boutonsSuite) do b:Hide() end
+    local liste, cles = Suite.ListePersos(), {}
+    local choisi = o.choisi
+    local nomChoisi = type(choisi) == "string" and choisi:match("^(%S+) %- ")
+    local dernier
+    for rang, p in ipairs(liste) do
+        local b = bande.boutonsSuite[rang]
+        if not b then b = PortraitDeBande(bande) bande.boutonsSuite[rang] = b end
+        b:ClearAllPoints()
+        b:SetPoint("LEFT", bande, "LEFT", 2 + (rang - 1) * (TAILLE_PORTRAIT_BANDE + 6), 0)
+        Suite.PoserVisagePerso(b.visage, p)
+        local estChoisi = p.nom == nomChoisi
+        b.halo:SetShown(estChoisi)
+        b:SetAlpha(estChoisi and 1 or 0.7)
+        local perso = p
+        b:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            local c = _G.RAID_CLASS_COLORS and perso.classe and _G.RAID_CLASS_COLORS[perso.classe]
+            GameTooltip:SetText(perso.nom, c and c.r or 1, c and c.g or 0.82, c and c.b or 0)
+            if perso.niveau then GameTooltip:AddLine(string.format(TX("Level %d"), perso.niveau), 1, 1, 1) end
+            if o.infobulle then pcall(o.infobulle, perso.cle, GameTooltip) end
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnClick", function()
+            if PlaySound and SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_TAB then PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB) end
+            if o.auClic then o.auClic(perso.cle) end
+        end)
+        b.cle = perso.cle
+        b:Show()
+        table.insert(cles, perso.cle)
+        dernier = b
+    end
+    -- A la manette : la croix gauche / droite passe d'un personnage a
+    -- l'autre, dit juste apres le dernier portrait.
+    if not bande.indicePad then bande.indicePad = bande:CreateFontString(nil, "OVERLAY", "GameFontHighlight") end
+    bande.indicePad:ClearAllPoints()
+    if dernier then bande.indicePad:SetPoint("LEFT", dernier, "RIGHT", 10, 0) end
+    local G = Suite.GlyphePad or function(t) return t end
+    bande.indicePad:SetText(G("PADDLEFT") .. " " .. G("PADDRIGHT"))
+    bande.indicePad:SetShown(dernier ~= nil and Suite.ManetteActive and Suite.ManetteActive() and true or false)
+    return cles, dernier
 end
 
 -- Le personnage a montrer pour la faction regardee.
@@ -2934,6 +3092,7 @@ local function ManetteActive()
     local ok, actif = pcall(pad.IsEnabled)
     return ok and actif == true
 end
+Suite.ManetteActive = function() return ManetteActive() end
 
 -- ---------------------------------------------------------------------------
 -- Reglages generaux : communs a toute la suite (pour l'instant la langue).
