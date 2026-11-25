@@ -108,15 +108,45 @@ function base.ReleveDe(fiche)
 end
 
 -- Tous les personnages connus, le courant en premier.
+-- Un meme personnage releve sous deux cles (ancienne fiche au royaume mal
+-- lu, « Nom - Legacy »...) n'est montre et compte qu'une fois : la fiche du
+-- personnage connecte, sinon celle du royaume courant, sinon la plus haute
+-- en niveau, sinon la premiere dans l'ordre des cles. Les autres sont des
+-- doublons, gardees sur le disque mais jamais affichees ni additionnees.
+local function RoyaumeDe(cle) return string.match(cle or "", "%-%s*(.-)%s*$") or "" end
+function base.EstDoublon(cle)
+    local d = CraftCoreDB
+    if type(d) ~= "table" or type(d.personnages) ~= "table" or type(cle) ~= "string" then return false end
+    local nom = NS.inventaire.NomCourt(cle)
+    local courant = NS.ClePersonnage()
+    local royaume = RoyaumeDe(courant)
+    local function Rang(c, f)
+        if c == courant then return 4 end
+        local r = (royaume ~= "" and RoyaumeDe(c) == royaume) and 2 or 0
+        return r + (tonumber(type(f) == "table" and f.niveau) or 0) / 1000
+    end
+    local moi = Rang(cle, d.personnages[cle])
+    for autre, f in pairs(d.personnages) do
+        if autre ~= cle and NS.inventaire.NomCourt(autre) == nom then
+            local r = Rang(autre, f)
+            if r > moi or (r == moi and autre < cle) then return true end
+        end
+    end
+    return false
+end
+
 function base.TousLesPersonnages()
     local d = CraftCoreDB
     if type(d) ~= "table" or type(d.personnages) ~= "table" then return {} end
     local courant = NS.ClePersonnage()
     local liste = {}
     if d.personnages[courant] then table.insert(liste, d.personnages[courant]) end
-    for cle, fiche in pairs(d.personnages) do
-        if cle ~= courant then table.insert(liste, fiche) end
+    local autres = {}
+    for cle in pairs(d.personnages) do
+        if cle ~= courant and not base.EstDoublon(cle) then table.insert(autres, cle) end
     end
+    table.sort(autres)
+    for _, cle in ipairs(autres) do table.insert(liste, d.personnages[cle]) end
     return liste
 end
 
