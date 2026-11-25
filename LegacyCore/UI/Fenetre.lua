@@ -26,11 +26,11 @@ local etat = { page = "arbres", cle = nil, persoVu = nil }
 local BrancherManette
 
 local PAGES = {
-    { cle = "arbres", libelle = "NAV_TREES", icone = "Interface\\Icons\\Spell_Holy_SealOfWisdom" },
+    { cle = "arbres", section = "MENU_LEGACY", libelle = "NAV_TREES", icone = "Interface\\Icons\\Spell_Holy_SealOfWisdom" },
     { cle = "defis", libelle = "NAV_CHALLENGES", icone = "Interface\\Icons\\INV_Misc_Note_01" },
-    { cle = "persos", libelle = "NAV_CHARACTERS", icone = "Interface\\Icons\\INV_Misc_GroupNeedMore" },
+    { cle = "persos", section = "MENU_FAMILY", libelle = "NAV_CHARACTERS", icone = "Interface\\Icons\\INV_Misc_GroupNeedMore" },
     { cle = "chrono", libelle = "NAV_TIMELINE", icone = "Interface\\Icons\\INV_Misc_PocketWatch_01" },
-    { cle = "conseils", libelle = "NAV_ADVICE", icone = "Interface\\Icons\\INV_Misc_Book_09" },
+    { cle = "conseils", section = "MENU_HELP", libelle = "NAV_ADVICE", icone = "Interface\\Icons\\INV_Misc_Book_09" },
 }
 fen.PAGES = PAGES
 
@@ -1006,9 +1006,19 @@ local function Construire()
     cadre.fondMenu = fondMenu
 
     cadre.boutonsMenu = {}
+    local yMenu = 0
     for rang, page in ipairs(PAGES) do
+        -- Un titre par categorie, comme dans toute la suite.
+        if page.section then
+            if rang > 1 then yMenu = yMenu + 8 end
+            local t = menu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            t:SetPoint("TOPLEFT", menu, "TOPLEFT", 8, -(yMenu + 2))
+            t:SetText(L[page.section])
+            yMenu = yMenu + 20
+        end
         local b = CreerLigneDeMenu(menu, page.icone)
-        b:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, -(rang - 1) * 26)
+        b:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, -yMenu)
+        yMenu = yMenu + 26
         b:SetPoint("RIGHT", menu, "RIGHT", 0, 0)
         local texte = b.text or b.Text or (b.GetFontString and b:GetFontString())
         if texte then texte:SetText(L[page.libelle]) end

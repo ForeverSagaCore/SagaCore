@@ -89,3 +89,6 @@ L.OPEN_LEGACY_FAIL = "Impossible d'ouvrir la fenêtre d'héritage : utilisez son
 L.OPEN_LEGACY_KEY = "Le jeu réserve l'ouverture de l'héritage à sa propre interface : appuyez sur %s."
 L.UNLOCKED_LEVEL = "Héritage débloqué (niveau %d)"
 L.OPEN_LEGACY_OTHER = "Connectez-vous sur %s pour dépenser ses points."
+L.MENU_LEGACY = "Héritage"
+L.MENU_FAMILY = "Mes personnages"
+L.MENU_HELP = "Aide"

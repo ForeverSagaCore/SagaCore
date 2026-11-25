@@ -1571,6 +1571,98 @@ local function RendreMenu(idCarte)
         l:Show()
         y = y + 19
     end
+    -- Onglet Itineraires : les itineraires par type, puis par zone ; un clic
+    -- sur un type ou une zone montre ses itineraires, un clic sur l'un d'eux
+    -- le guide (ou l'arrete).
+    if page.itineraires then
+        local L0 = NS.L
+        local api = _G.QuestCoreAPI
+        local liste = {}
+        if api and api.Itineraires then
+            local ok, l = pcall(api.Itineraires)
+            if ok and type(l) == "table" then liste = l end
+        end
+        local t0 = Tournee()
+        local tournee = (type(t0) == "table" and type(t0.points) == "table" and #t0.points > 0) and t0 or nil
+        local function Compter(cle, valeur)
+            local n = 0
+            for _, it in ipairs(liste) do if it[cle] == valeur then n = n + 1 end end
+            return n
+        end
+        -- Par defaut : le premier type qui a des itineraires.
+        local filtre = page.filtreItin
+        if not filtre then
+            filtre = (Compter("type", "suite") > 0 and { type = "suite" }) or (Compter("type", "donjon") > 0 and { type = "donjon" })
+                or (tournee and { type = "recolte" }) or { type = "niveau" }
+        end
+        Titre(L0.ROUTES_BY_TYPE)
+        for _, t in ipairs({ { "suite", L0.ROUTES_CHAINS }, { "donjon", L0.ROUTES_DUNGEONS }, { "niveau", L0.ROUTES_LEVEL },
+            { "recolte", L0.ROUTES_FARM } }) do
+            local n = (t[1] == "niveau" and 1) or (t[1] == "recolte" and (tournee and 1 or 0)) or Compter("type", t[1])
+            local cleT = t[1]
+            Ligne(t[2] .. "  |cff8c8c8c" .. n .. "|r", nil, filtre.type == cleT, function()
+                page.filtreItin = { type = cleT }
+                page.Rendre()
+            end)
+        end
+        local zones, ordre = {}, {}
+        for _, it in ipairs(liste) do
+            if it.zone then
+                if not zones[it.zone] then zones[it.zone] = 0 table.insert(ordre, it.zone) end
+                zones[it.zone] = zones[it.zone] + 1
+            end
+        end
+        table.sort(ordre)
+        if #ordre > 0 then
+            y = y + 8
+            Titre(L0.ROUTES_BY_ZONE)
+            for _, z in ipairs(ordre) do
+                local cleZ = z
+                Ligne(z .. "  |cff8c8c8c" .. zones[z] .. "|r", nil, filtre.zone == cleZ, function()
+                    page.filtreItin = { zone = cleZ }
+                    page.Rendre()
+                end)
+            end
+        end
+        -- Les itineraires du type ou de la zone choisis.
+        y = y + 8
+        Titre(filtre.zone or (filtre.type == "suite" and L0.ROUTES_CHAINS) or (filtre.type == "donjon" and L0.ROUTES_DUNGEONS)
+            or (filtre.type == "niveau" and L0.ROUTES_LEVEL) or L0.ROUTES_FARM)
+        local vide = true
+        if filtre.type == "niveau" then
+            vide = false
+            local niv = (UnitLevel and UnitLevel("player") or 0) + 1
+            Ligne(string.format(L0.ROUTES_TO_LEVEL, niv), nil, false, function()
+                if api and api.GuiderNiveau then pcall(api.GuiderNiveau, niv) end
+                page.Rendre()
+            end)
+        elseif filtre.type == "recolte" then
+            if tournee then
+                vide = false
+                Ligne(L0.ROUTES_FARM_ROUND, nil, page.EnGuidage and page.EnGuidage() or false, function() page.BasculerTournee() end)
+            end
+        else
+            for _, it in ipairs(liste) do
+                if (filtre.type and it.type == filtre.type) or (filtre.zone and it.zone == filtre.zone) then
+                    vide = false
+                    local uid = it.uid
+                    Ligne(it.nom .. "  |cff8c8c8c" .. it.faites .. " / " .. it.total .. "|r", nil, it.guide, function()
+                        if api and api.GuiderItineraire then pcall(api.GuiderItineraire, uid) end
+                        page.Rendre()
+                    end, it.guide and { 1, 0.82, 0 } or { 0.9, 0.9, 0.9 }, function(self)
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetText(it.nom, 1, 0.82, 0)
+                        if it.zone then GameTooltip:AddLine(it.zone, 1, 1, 1) end
+                        GameTooltip:AddLine(it.guide and L0.ROUTES_CLICK_STOP or L0.ROUTES_CLICK_GUIDE, 0.6, 0.6, 0.6)
+                        GameTooltip:Show()
+                    end)
+                end
+            end
+        end
+        if vide then Ligne(L0.ROUTES_NONE, nil, false, function() end, { 0.6, 0.6, 0.6 }) end
+        menu.liste:SetHeight(math.max(y, 1))
+        return
+    end
     -- Affichage, en tete : toujours au meme endroit.
     local r = Reglages()
     Titre(NS.L.OPTIONS)
@@ -1815,20 +1907,32 @@ local function RendreOnglets(idCarte)
     local S = NS.suite or _G.CoreSuite
     for _, o in ipairs(f.ongletsContinents) do o:Hide() end
     f.ordreContinents = {}
-    for rang, c in ipairs(Enfants(947, 2)) do
+    -- Azeroth, puis ses continents, puis les itineraires.
+    local cartes = { { mapID = 947, name = NomDeCarte(947) or "Azeroth", azeroth = true } }
+    for _, c in ipairs(Enfants(947, 2)) do table.insert(cartes, c) end
+    table.insert(cartes, { mapID = "itin", name = NS.L.TAB_ROUTES, itin = true })
+    for rang, c in ipairs(cartes) do
         local o = f.ongletsContinents[rang]
         if not o then o = Onglet(f) f.ongletsContinents[rang] = o end
         local id = c.mapID
         o.libelle, o.id = c.name, id
-        o.Icon:SetTexture(IconeContinent(id, c.name))
-        o.choisi = (id == actuel)
+        o.Icon:SetTexture(c.itin and "Interface\\Icons\\Ability_Hunter_Pathfinding"
+            or (c.azeroth and "Interface\\Icons\\INV_Misc_Map02") or IconeContinent(id, c.name))
+        if c.itin then o.choisi = page.itineraires == true
+        else o.choisi = not page.itineraires and (id == actuel or (c.azeroth and carteChoisie == 947)) end
         o:SetChecked(o.choisi)
         local v = o.choisi and 1 or 0.55
         o.Icon:SetVertexColor(v, v, v)
         o:SetScript("OnClick", function(self)
             if PlaySound and SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_TAB then PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB) end
             self:SetChecked(self.choisi)
-            continentChoisi, carteChoisie = id, id
+            if c.itin then
+                -- Les itineraires : le menu de gauche les montre ; la carte reste.
+                page.itineraires = true
+            else
+                page.itineraires = nil
+                continentChoisi, carteChoisie = id, id
+            end
             if menu then menu:SetVerticalScroll(0) end
             page.Rendre()
         end)

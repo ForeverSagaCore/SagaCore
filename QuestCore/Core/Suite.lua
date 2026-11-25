@@ -150,17 +150,68 @@ Suite.ORDRE = {
     -- Mon equipement et les caisses : un add-on a part (servi par CraftCore).
     { cle = "StuffCore", icone = "Interface\\Icons\\INV_Chest_Chain" },
     -- Une petite aide : les add-ons amis (itineraires detailles...).
-    { cle = "FriendsCore", icone = "Interface\\Icons\\Spell_Nature_FarSight", discret = true },
+    { cle = "FriendsCore", icone = "Interface\\Icons\\Spell_Nature_FarSight", discret = true, complement = true },
     -- Discret : montre seulement s'il est installe (pas dans la premiere
     -- version publiee).
-    { cle = "TradeCore", icone = "Interface\\Icons\\INV_Misc_Coin_02", discret = true },
+    { cle = "TradeCore", icone = "Interface\\Icons\\INV_Misc_Coin_02", discret = true, complement = true },
     -- Le JcJ (carte de champ de bataille, honneur) : discret tant qu'il n'est
     -- pas publie (montre seulement s'il est installe).
-    { cle = "PvPCore", icone = "Interface\\Icons\\INV_BannerPVP_02", discret = true },
+    { cle = "PvPCore", icone = "Interface\\Icons\\INV_BannerPVP_02", discret = true, complement = true },
     -- Les hauts faits (finir le jeu, avancement en pourcentage) : discret
     -- tant qu'il n'est pas publie (montre seulement s'il est installe).
-    { cle = "AchievementCore", icone = "Interface\\Icons\\INV_Misc_Ribbon_01", discret = true },
+    { cle = "AchievementCore", icone = "Interface\\Icons\\INV_Misc_Ribbon_01", discret = true, complement = true },
 }
+
+-- ---------------------------------------------------------------------------
+-- Les complements : les outils a part de la suite. Un seul bouton en bas de
+-- la colonne de gauche (au-dessus d'Alliance / Horde) ; dans une fenetre de
+-- complement, la colonne de droite montre tous les complements en onglets.
+-- ---------------------------------------------------------------------------
+Suite.ICONE_COMPLEMENTS = "Interface\\Icons\\INV_Misc_EngGizmos_01"
+function Suite.Complements()
+    local liste = {}
+    local function Ajouter(cle, icone, action)
+        table.insert(liste, { cle = cle, icone = icone, action = action })
+    end
+    local charge = (_G.C_AddOns and _G.C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
+    if Suite.membres.FriendsCore then Ajouter("FriendsCore", "Interface\\Icons\\Spell_Nature_FarSight") end
+    if Suite.membres.AuraCore or (_G.SlashCmdList and _G.SlashCmdList.AURACORE) then
+        Ajouter("AuraCore", "Interface\\Icons\\Spell_Holy_AuraOfLight", function()
+            if Suite.membres.AuraCore then Suite.Ouvrir("AuraCore")
+            elseif SlashCmdList.AURACORE then SlashCmdList.AURACORE("") end
+        end)
+    end
+    if Suite.Prive and Suite.Prive() then Ajouter("Macros", Suite.ICONE_MACROCORE, function() Suite.OuvrirMacros() end) end
+    for _, cle in ipairs({ "TradeCore", "PvPCore", "AchievementCore" }) do
+        if Suite.membres[cle] then
+            for _, info in ipairs(Suite.ORDRE) do if info.cle == cle then Ajouter(cle, info.icone) end end
+        end
+    end
+    return liste
+end
+local CLES_COMPLEMENTS = { FriendsCore = true, AuraCore = true, Macros = true, TradeCore = true, PvPCore = true, AchievementCore = true }
+function Suite.EstComplement(cle) return cle ~= nil and CLES_COMPLEMENTS[cle] == true end
+-- Ouvre un complement (et ferme la fenetre de complement d'ou l'on vient).
+function Suite.OuvrirComplement(cle, depuis)
+    CoreSuiteDB = type(CoreSuiteDB) == "table" and CoreSuiteDB or {}
+    CoreSuiteDB.dernierComplement = cle
+    if depuis and depuis.Hide then depuis:Hide() end
+    for _, c in ipairs(Suite.Complements()) do
+        if c.cle == cle then
+            if c.action then c.action() else Suite.Ouvrir(cle) end
+            return
+        end
+    end
+end
+-- Le bouton Complements : le dernier complement ouvert, sinon le premier.
+function Suite.OuvrirComplements(depuis)
+    local liste = Suite.Complements()
+    if #liste == 0 then return end
+    local cle = type(CoreSuiteDB) == "table" and CoreSuiteDB.dernierComplement
+    local trouve
+    for _, c in ipairs(liste) do if c.cle == cle then trouve = c.cle end end
+    Suite.OuvrirComplement(trouve or liste[1].cle, depuis)
+end
 -- Les add-ons annonces des leur chargement (avant les fenetres).
 Suite.presents = Suite.presents or {}
 function Suite.Annoncer(cle) Suite.presents[cle] = true end
@@ -187,7 +238,10 @@ function Suite.Liste()
     if Suite.Seul() then return {} end
     local liste = {}
     for _, info in ipairs(Suite.ORDRE) do
-        if not info.discret or Suite.presents[info.cle] or Suite.membres[info.cle] then table.insert(liste, info) end
+        -- Les complements ont leur bouton a part, en bas de la colonne.
+        if not info.complement and (not info.discret or Suite.presents[info.cle] or Suite.membres[info.cle]) then
+            table.insert(liste, info)
+        end
     end
     return liste
 end
@@ -237,6 +291,8 @@ local DICO = {
         ["Click: show everything"] = "Clic : tout afficher",
         ["Click: hide everything"] = "Clic : tout masquer",
         ["Faction theme"] = "Thème de faction",
+        ["Add-ons"] = "Compléments",
+        ["The suite's other tools."] = "Les autres outils de la suite.",
         ["Character's faction"] = "Faction du personnage",
         ["Alliance theme"] = "Thème Alliance",
         ["Horde theme"] = "Thème Horde",
@@ -1643,6 +1699,61 @@ local function BoutonReglages(cadre)
     cadre.suiteReglages = b
 end
 
+-- Les complements en onglets sur le bord DROIT d'une fenetre de complement,
+-- comme les metiers dans CraftCore : celui qui est ouvert s'allume.
+function Suite.OngletsComplements(cadre, cleCourante)
+    cadre.suiteComplements = cadre.suiteComplements or {}
+    for _, b in ipairs(cadre.suiteComplements) do b:Hide() end
+    local precedent
+    for rang, c in ipairs(Suite.Complements()) do
+        local b = cadre.suiteComplements[rang]
+        if not b then
+            b = CreateFrame("CheckButton", nil, cadre)
+            b:SetSize(34, 34)
+            -- L'onglet du grimoire du jeu, tel quel pour le bord droit.
+            b.fond = b:CreateTexture(nil, "BACKGROUND")
+            b.fond:SetTexture("Interface\\SpellBook\\SpellBook-SkillLineTab")
+            Suite.TeinteOnglet(b.fond)
+            b.fond:SetSize(68, 68)
+            b.fond:SetPoint("TOPLEFT", b, "TOPLEFT", -3, 12)
+            b.icone = b:CreateTexture(nil, "ARTWORK")
+            b.icone:SetAllPoints()
+            b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+            b:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight")
+            local halo = b:GetCheckedTexture()
+            if halo then halo:SetBlendMode("ADD") end
+            b:HookScript("OnEnter", function(self)
+                self.icone:SetVertexColor(1, 1, 1)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(self.cle, 1, 0.82, 0)
+                GameTooltip:Show()
+            end)
+            b:HookScript("OnLeave", function(self)
+                if self.cle ~= self.courante then self.icone:SetVertexColor(0.55, 0.55, 0.55) end
+                GameTooltip:Hide()
+            end)
+            cadre.suiteComplements[rang] = b
+        end
+        b.cle, b.courante = c.cle, cleCourante
+        b.icone:SetTexture(c.icone)
+        local v = (c.cle == cleCourante) and 1 or 0.55
+        b.icone:SetVertexColor(v, v, v)
+        b:SetChecked(c.cle == cleCourante)
+        b:SetScript("OnClick", function(self)
+            self:SetChecked(self.cle == self.courante)
+            if self.cle ~= self.courante then Suite.OuvrirComplement(self.cle, cadre) end
+        end)
+        b:ClearAllPoints()
+        if precedent then b:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -Suite.ECART_ENTRE_ONGLETS)
+        else
+            local a, point = Suite.AncreHaut(cadre, "droite")
+            b:SetPoint("TOPLEFT", a, point, 0, Suite.HAUT_ONGLET)
+        end
+        b:Show()
+        precedent = b
+    end
+end
+
 -- Les add-ons de la suite en onglets lateraux, sur le bord GAUCHE de la
 -- fenetre : le bord droit reste aux onglets propres a chaque add-on
 -- (metiers, equipement, carte...). LT / RT passent d'un add-on a l'autre au
@@ -1669,49 +1780,16 @@ function Suite.Entete(cadre, cleCourante)
         table.insert(rangee.boutons, b)
         precedent = b
     end
-    -- Sous les blocs : AuraCore (complement, s'il est installe) ; poste de
-    -- l'auteur : les macros.
-    do
-        local extras = {
-            { cle = "AuraCore", icone = "Interface\\Icons\\Spell_Holy_AuraOfLight", nom = "AuraCore",
-              action = function()
-                  if Suite.membres.AuraCore then Suite.Ouvrir("AuraCore")
-                  elseif SlashCmdList.AURACORE then SlashCmdList.AURACORE("") end
-              end,
-              dispo = function() return SlashCmdList.AURACORE ~= nil end },
-        }
-        if Suite.Prive() then
-            table.insert(extras, { cle = "Macros", icone = Suite.ICONE_MACROCORE, action = function() Suite.OuvrirMacros() end })
-        end
-        for _, e in ipairs(extras) do
-            if not e.dispo or e.dispo() then
-                local b = OngletLateral(cadre, { cle = e.cle, icone = e.icone }, e.action)
-                b.courante = cleCourante
-                b.extra = true
-                b:ClearAllPoints()
-                if not precedent then
-                    -- Seul (AuraCore sans la suite) : en tete de colonne.
-                    local a, point = Suite.AncreHaut(cadre, "gauche")
-                    b:SetPoint("TOPRIGHT", a, point, 0, Suite.HAUT_ONGLET)
-                else
-                    b:SetPoint("TOPRIGHT", precedent, "BOTTOMRIGHT", 0, -Suite.ECART_ENTRE_ONGLETS)
-                end
-                precedent = b
-                rangee.extras = rangee.extras or {}
-                table.insert(rangee.extras, b)
-            end
-        end
-    end
     -- L3 au-dessus de la colonne, R3 dessous : add-on precedent / suivant.
     rangee.l3 = cadre:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    rangee.l3:SetPoint("BOTTOM", rangee.boutons[1], "TOP", 0, 12)
+    if rangee.boutons[1] then rangee.l3:SetPoint("BOTTOM", rangee.boutons[1], "TOP", 0, 12) end
     rangee.r3 = cadre:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    rangee.r3:SetPoint("TOP", (rangee.extras and rangee.extras[#rangee.extras]) or rangee.boutons[#rangee.boutons], "BOTTOM", 0, -10)
+    if rangee.boutons[#rangee.boutons] then rangee.r3:SetPoint("TOP", rangee.boutons[#rangee.boutons], "BOTTOM", 0, -10) end
     pcall(BoutonReglages, cadre)
     -- Tout en bas de la colonne : Alliance et Horde, pour le theme.
     rangee.factions = {}
     local dessous
-    for _, faction in ipairs(Suite.Prive() and { "horde", "alliance" } or {}) do
+    for _, faction in ipairs({ "horde", "alliance" }) do
         local b = OngletLateral(cadre, { cle = faction == "horde" and "Horde" or "Alliance",
             icone = faction == "horde" and "Interface\\Icons\\INV_BannerPVP_01" or "Interface\\Icons\\INV_BannerPVP_02" }, function() end)
         b.faction = faction
@@ -1738,6 +1816,30 @@ function Suite.Entete(cadre, cleCourante)
         rangee.r3:ClearAllPoints()
         rangee.r3:SetPoint("TOP", rangee.factions[1], "BOTTOM", 0, -6)
     end
+    -- Au-dessus d'Alliance / Horde : le bouton Complements (les outils a
+    -- part), un peu detache de la faction.
+    do
+        local b = OngletLateral(cadre, { cle = "Complements", icone = Suite.ICONE_COMPLEMENTS }, function()
+            Suite.OuvrirComplements(Suite.EstComplement(rangee.courante) and cadre or nil)
+        end)
+        b.courante = cleCourante
+        b.estComplements = true
+        b:SetScript("OnEnter", function(self)
+            self.survol = true
+            self.icone:SetVertexColor(1, 1, 1)
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetText(TX("Add-ons"), 1, 0.82, 0)
+            GameTooltip:AddLine(TX("The suite's other tools."), 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        b:ClearAllPoints()
+        local haut = rangee.factions[#rangee.factions]
+        if haut then b:SetPoint("BOTTOMRIGHT", haut, "TOPRIGHT", 0, Suite.ECART_ENTRE_ONGLETS + 14)
+        else b:SetPoint("BOTTOMRIGHT", cadre, "BOTTOMLEFT", 0, 46) end
+        rangee.complements = b
+    end
+    -- Dans une fenetre de complement : les complements en onglets a droite.
+    if Suite.EstComplement(cleCourante) then pcall(Suite.OngletsComplements, cadre, cleCourante) end
     rangee.cadre = cadre
     pcall(Suite.LogoDuMenu, cadre)
     cadre.suiteEntete = rangee
@@ -1775,13 +1877,10 @@ function Suite.Voisin(cleCourante, pas)
     for _, info in ipairs(Suite.Liste()) do
         if Suite.Installe(info.cle) then table.insert(liste, { cle = info.cle }) end
     end
-    if Suite.membres.AuraCore then table.insert(liste, { cle = "AuraCore" })
-    elseif SlashCmdList.AURACORE then
-        table.insert(liste, { cle = "AuraCore", action = function() SlashCmdList.AURACORE("") end })
-    end
-    if Suite.Prive() then
-        if Suite.membres.Macros then table.insert(liste, { cle = "Macros" })
-        else table.insert(liste, { cle = "Macros", action = function() Suite.OuvrirMacros() end }) end
+    -- Puis les complements, dans l'ordre de leurs onglets.
+    for _, c in ipairs(Suite.Complements()) do
+        if Suite.membres[c.cle] then table.insert(liste, { cle = c.cle })
+        else table.insert(liste, { cle = c.cle, action = c.action }) end
     end
     if #liste < 2 then return false end
     local index = Suite.dernierVoisin and Suite.dernierVoisin.depuis == cleCourante and Suite.dernierVoisin.rang or nil
@@ -2106,6 +2205,20 @@ function Suite.Actualiser()
                 b.badge:SetText(pastille or "")
                 b.badge:SetShown(pastille ~= nil)
             end
+        end
+        -- Complements : allume dans une fenetre de complement ; cache s'il
+        -- n'y en a aucun.
+        local bc = rangee.complements
+        if bc then
+            local n = #Suite.Complements()
+            bc:SetShown(n > 0)
+            local courant = Suite.EstComplement(rangee.courante)
+            if bc.SetChecked then bc:SetChecked(courant) end
+            local v = (courant or bc.survol) and 1 or 0.55
+            bc.icone:SetVertexColor(v, v, v)
+        end
+        if rangee.cadre and rangee.cadre.suiteComplements and Suite.EstComplement(rangee.courante) then
+            pcall(Suite.OngletsComplements, rangee.cadre, rangee.courante)
         end
         -- AuraCore et Macros : jamais "ouverts", en retrait sauf au survol.
         for _, b in ipairs(rangee.extras or {}) do
@@ -6660,7 +6773,17 @@ function Suite.FenetreAPages(o)
     cadre.fondMenu = fondMenu
 
     w.boutonsMenu = {}
+    local yMenu = 0
     for rang, page in ipairs(o.pages) do
+        -- Un titre par categorie (page.section : texte ou fonction), comme
+        -- dans toute la suite.
+        if page.section then
+            if rang > 1 then yMenu = yMenu + 8 end
+            local t = menu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            t:SetPoint("TOPLEFT", menu, "TOPLEFT", 8, -(yMenu + 2))
+            t:SetText(type(page.section) == "function" and page.section() or tostring(page.section))
+            yMenu = yMenu + 20
+        end
         local b
         local ok, cree = pcall(CreateFrame, "Button", nil, menu, "OptionsListButtonTemplate")
         b = ok and cree or CreateFrame("Button", nil, menu)
@@ -6669,7 +6792,8 @@ function Suite.FenetreAPages(o)
             b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
         end
         b:SetHeight(24)
-        b:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, -(rang - 1) * 26)
+        b:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, -yMenu)
+        yMenu = yMenu + 26
         b:SetPoint("RIGHT", menu, "RIGHT", 0, 0)
         b.fond = b:CreateTexture(nil, "BACKGROUND")
         b.fond:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")

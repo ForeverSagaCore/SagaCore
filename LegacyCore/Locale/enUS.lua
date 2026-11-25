@@ -88,3 +88,6 @@ L.OPEN_LEGACY_FAIL = "Could not open the Legacy window: use its key (Y by defaul
 L.OPEN_LEGACY_KEY = "The game only lets its own interface open the Legacy window: press %s."
 L.UNLOCKED_LEVEL = "Legacy unlocked (level %d)"
 L.OPEN_LEGACY_OTHER = "Log in on %s to spend their points."
+L.MENU_LEGACY = "Legacy"
+L.MENU_FAMILY = "My characters"
+L.MENU_HELP = "Help"
