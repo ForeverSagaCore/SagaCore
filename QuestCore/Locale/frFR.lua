@@ -454,6 +454,7 @@ L.ADJUST_ASK = "QuestCore : une quête terminée en route rend le trajet de nive
 L.ADJUST_SHORTER = "autre ordre"
 L.ADJUST_ADD_ASK = "QuestCore : une quête de votre journal (à faire ou à rendre) est plus proche que la prochaine étape (%s). L'ajouter au trajet ?"
 L.QUEST_GOAL = "Objectif"
+L.QUEST_OBTAIN_ITEM = "%s : il en manque %d"
 L.QUEST_TEXT = "Description"
 L.TRACK_LEVEL_NONE = "Pas de trajet possible : l'XP des quêtes à rendre dont on connaît le lieu ne suffit pas."
 L.ADJUST_LEFT = "%s (encore %d à faire)"

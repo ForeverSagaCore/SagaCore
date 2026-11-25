@@ -392,6 +392,7 @@ L.ADJUST_ASK = "QuestCore：途中完成的任务让升级路径更短（%s）�
 L.ADJUST_SHORTER = "另一种顺序"
 L.ADJUST_ADD_ASK = "QuestCore：日志中的一个任务（待完成或待交付）比下一步更近（%s）。加入路径吗？"
 L.QUEST_GOAL = "目标"
+L.QUEST_OBTAIN_ITEM = "%s : %d missing"
 L.QUEST_TEXT = "描述"
 L.TRACK_LEVEL_NONE = "无法规划路径：有已知地点的待交付任务经验不够。"
 L.ADJUST_LEFT = "%s（还剩 %d 项要做）"

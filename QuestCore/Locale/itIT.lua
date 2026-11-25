@@ -392,6 +392,7 @@ L.ADJUST_ASK = "QuestCore: una missione completata lungo la strada accorcia il t
 L.ADJUST_SHORTER = "un altro ordine"
 L.ADJUST_ADD_ASK = "QuestCore: una missione nel registro (da fare o da consegnare) è più vicina della prossima tappa (%s). Aggiungerla al tragitto?"
 L.QUEST_GOAL = "Obiettivo"
+L.QUEST_OBTAIN_ITEM = "%s : %d missing"
 L.QUEST_TEXT = "Descrizione"
 L.TRACK_LEVEL_NONE = "Nessun tragitto possibile: i PE delle missioni da consegnare con luogo noto non bastano."
 L.ADJUST_LEFT = "%s (ancora %d da fare)"

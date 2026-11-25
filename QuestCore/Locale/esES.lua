@@ -392,6 +392,7 @@ L.ADJUST_ASK = "QuestCore: una misión completada por el camino acorta el camino
 L.ADJUST_SHORTER = "otro orden"
 L.ADJUST_ADD_ASK = "QuestCore: una misión de tu registro (por hacer o por entregar) está más cerca que la siguiente etapa (%s). ¿Añadirla al camino?"
 L.QUEST_GOAL = "Objetivo"
+L.QUEST_OBTAIN_ITEM = "%s : %d missing"
 L.QUEST_TEXT = "Descripción"
 L.TRACK_LEVEL_NONE = "Ningún camino posible: la PX de las misiones por entregar con lugar conocido no basta."
 L.ADJUST_LEFT = "%s (quedan %d por hacer)"

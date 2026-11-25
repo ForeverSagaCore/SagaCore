@@ -385,7 +385,22 @@ function encheres.ObjetsARelever()
             for _, m in ipairs(o.matieres or {}) do if m.manque > 0 then Ajouter(m.objet) end end
         end
     end
+    -- Les objets que demandent les quetes en cours (QuestCore) et qu'aucun
+    -- monstre ne donne : a fabriquer, echanger ou acheter.
+    for objet in pairs(encheres.ObjetsDeQuetes()) do Ajouter(objet) end
     return liste
+end
+
+function encheres.ObjetsDeQuetes()
+    local api = _G.QuestCoreAPI
+    local ok, t = false, nil
+    if api and api.ObjetsAObtenir then ok, t = pcall(api.ObjetsAObtenir) end
+    local res = {}
+    for _, o in ipairs(ok and type(t) == "table" and t or {}) do
+        local objet = tonumber(o.objet) or encheres.IdParNom(o.nom)
+        if objet and (o.manque or 0) > 0 then res[objet] = (res[objet] or 0) + o.manque end
+    end
+    return res
 end
 
 -- Combien il manque de chaque objet a relever (fabrications et progressions).
@@ -405,6 +420,7 @@ function encheres.Manques()
             for _, m in ipairs(o.matieres or {}) do Ajouter(m.objet, m.manque) end
         end
     end
+    for objet, n in pairs(encheres.ObjetsDeQuetes()) do Ajouter(objet, n) end
     return manques
 end
 
@@ -987,4 +1003,105 @@ if NS.recettes and NS.recettes.ReleverNiveaux then
         pcall(avisRang.Verifier)
         return r
     end
+end
+
+-- ---------------------------------------------------------------------------
+-- Comment obtenir un objet : pour les quetes de QuestCore qui demandent un
+-- objet qu'aucun monstre ne donne. Ce que CraftCore sait : qui en a deja, qui
+-- sait le fabriquer, s'il se vend chez un marchand, et son prix au dernier
+-- releve de l'hotel des ventes.
+-- ---------------------------------------------------------------------------
+
+-- L'objet d'apres son nom : un produit de recette connue, un objet deja
+-- releve a l'hotel des ventes, sinon ce que le jeu en sait.
+function encheres.IdParNom(nom)
+    if type(nom) ~= "string" or nom == "" then return nil end
+    local bas = string.lower(nom)
+    local function Pareil(objet)
+        local n = NS.inventaire.NomDObjet(objet)
+        return type(n) == "string" and string.lower(n) == bas
+    end
+    for _, r in pairs(NS.recettes and NS.recettes.Toutes() or {}) do
+        if type(r) == "table" and r.objetProduit and Pareil(r.objetProduit) then return tonumber(r.objetProduit) end
+    end
+    for objet in pairs(Releves() or {}) do
+        if Pareil(objet) then return tonumber(objet) end
+    end
+    local info = NS.Lecture("C_Item.GetItemInfo", "GetItemInfo")
+    local _, lien = NS.Appeler(info, nom)
+    local id = type(lien) == "string" and tonumber(string.match(lien, "item:(%d+)"))
+    return id
+end
+
+-- { possede = texte, fabricants = { "Paltank (Ingenierie)" }, metier = nom,
+--   marchand = bool, prix = cuivre, quand = date, absent = bool }
+function encheres.Obtenir(objet, n)
+    objet = tonumber(objet)
+    if not objet then return nil end
+    local r = {}
+    if (NS.inventaire.TotalPossede(objet) or 0) > 0 then r.possede = NS.inventaire.TexteOuEst(objet) end
+    r.fabricants = {}
+    local vus = {}
+    for _, rec in pairs(NS.recettes and NS.recettes.Toutes() or {}) do
+        if type(rec) == "table" and tonumber(rec.objetProduit) == objet then
+            local ligne = NS.recettes.MetierDe(rec)
+            local metier = ligne and NS.recettes.NomDuMetier(ligne)
+            r.metier = r.metier or metier
+            for _, fiche in ipairs(NS.base.TousLesPersonnages()) do
+                if NS.inventaire.MemeCamp(fiche) and type(fiche.recettesApprises) == "table"
+                    and fiche.recettesApprises[tostring(rec.id)] and not vus[fiche.cle] then
+                    vus[fiche.cle] = true
+                    table.insert(r.fabricants, NS.inventaire.NomCourt(fiche.cle) .. (metier and (" (" .. metier .. ")") or ""))
+                end
+            end
+        end
+    end
+    r.marchand = marchands.Achetable(objet) and true or false
+    r.prix, r.quand, r.absent = encheres.Prix(objet, n)
+    return r
+end
+
+-- Les lignes pour une infobulle : { texte, r, g, b }.
+function encheres.LignesObtenir(objet, n)
+    local L = NS.L
+    local o = encheres.Obtenir(objet, n)
+    if not o then return { { L.OBTAIN_UNKNOWN, 0.6, 0.6, 0.6 } } end
+    local lignes = {}
+    if o.possede then table.insert(lignes, { string.format(L.OBTAIN_OWNED, o.possede), 0.31, 0.82, 0.41 }) end
+    if #o.fabricants > 0 then
+        table.insert(lignes, { string.format(L.OBTAIN_CRAFT, table.concat(o.fabricants, ", ")), 1, 1, 1 })
+    elseif o.metier then
+        table.insert(lignes, { string.format(L.OBTAIN_CRAFT_PROF, o.metier), 0.8, 0.8, 0.8 })
+    end
+    if o.marchand then table.insert(lignes, { L.OBTAIN_VENDOR, 1, 1, 1 }) end
+    if o.prix then
+        table.insert(lignes, { string.format(L.OBTAIN_AH, marchands.Monnaie(o.prix), encheres.DateDe(o.quand)), 1, 1, 1 })
+    elseif o.quand then
+        table.insert(lignes, { string.format(L.OBTAIN_AH_NONE, encheres.DateDe(o.quand)), 0.8, 0.8, 0.8 })
+    else
+        table.insert(lignes, { L.OBTAIN_AH_UNKNOWN, 0.6, 0.6, 0.6 })
+    end
+    return lignes
+end
+
+-- Le plus simple, en quelques mots, pour le guidage : en stock, a fabriquer
+-- par qui, chez un marchand, sinon a l'hotel des ventes.
+function encheres.ObtenirCourt(objet, n)
+    local L = NS.L
+    local o = encheres.Obtenir(objet, n)
+    if not o then return L.OBTAIN_SHORT_AH end
+    if o.possede then return string.format(L.OBTAIN_SHORT_OWNED, o.possede) end
+    if #o.fabricants > 0 then return string.format(L.OBTAIN_SHORT_CRAFT, o.fabricants[1]) end
+    if o.marchand then return L.OBTAIN_SHORT_VENDOR end
+    return L.OBTAIN_SHORT_AH
+end
+
+_G.CraftCoreAPI.IdParNom = function(nom) return encheres.IdParNom(nom) end
+_G.CraftCoreAPI.LignesObtenir = function(objet, nom, n)
+    objet = tonumber(objet) or encheres.IdParNom(nom)
+    return encheres.LignesObtenir(objet, n)
+end
+_G.CraftCoreAPI.ObtenirCourt = function(objet, nom, n)
+    objet = tonumber(objet) or encheres.IdParNom(nom)
+    return encheres.ObtenirCourt(objet, n)
 end

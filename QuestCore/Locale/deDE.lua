@@ -392,6 +392,7 @@ L.ADJUST_ASK = "QuestCore: eine unterwegs abgeschlossene Quest verkürzt den Stu
 L.ADJUST_SHORTER = "andere Reihenfolge"
 L.ADJUST_ADD_ASK = "QuestCore: eine Quest in deinem Log (zu erledigen oder abzugeben) ist näher als der nächste Schritt (%s). Zum Weg hinzufügen?"
 L.QUEST_GOAL = "Ziel"
+L.QUEST_OBTAIN_ITEM = "%s : %d missing"
 L.QUEST_TEXT = "Beschreibung"
 L.TRACK_LEVEL_NONE = "Kein Weg möglich: die EP der abzugebenden Quests mit bekanntem Ort reichen nicht."
 L.ADJUST_LEFT = "%s (noch %d zu erledigen)"

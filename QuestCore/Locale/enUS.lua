@@ -453,6 +453,7 @@ L.ADJUST_ASK = "QuestCore: a quest completed on the way makes the level path sho
 L.ADJUST_SHORTER = "another order"
 L.ADJUST_ADD_ASK = "QuestCore: a quest in your log (to do or to turn in) is closer than the next step (%s). Add it to the path?"
 L.QUEST_GOAL = "Objective"
+L.QUEST_OBTAIN_ITEM = "%s : %d missing"
 L.QUEST_TEXT = "Description"
 L.TRACK_LEVEL_NONE = "No path possible: the XP of the quests to turn in with a known place is not enough."
 L.ADJUST_LEFT = "%s (%d left to do)"

@@ -392,6 +392,7 @@ L.ADJUST_ASK = "QuestCore: задание, выполненное по пути,
 L.ADJUST_SHORTER = "другой порядок"
 L.ADJUST_ADD_ASK = "QuestCore: задание из журнала (выполнить или сдать) ближе, чем следующий этап (%s). Добавить его в путь?"
 L.QUEST_GOAL = "Цель"
+L.QUEST_OBTAIN_ITEM = "%s : %d missing"
 L.QUEST_TEXT = "Описание"
 L.TRACK_LEVEL_NONE = "Путь невозможен: опыта заданий к сдаче с известным местом не хватает."
 L.ADJUST_LEFT = "%s (осталось сделать: %d)"
