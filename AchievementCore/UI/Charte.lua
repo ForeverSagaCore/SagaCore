@@ -264,6 +264,8 @@ end
 -- fs.couleurPropre : jamais encree (nom de classe, meme blanc pour le pretre).
 -- La police d'un nom de personnage, la meme dans toute la suite.
 charte.TAILLE_NOM = 12
+-- Couleurs de classe sur le parchemin : la meme teinte, assombrie.
+charte.PROFONDEUR_CLASSE = 0.72
 function charte.PoliceDeNom(fs)
     local objet = _G.GameFontNormal
     local fichier = objet and objet.GetFont and objet:GetFont()
@@ -283,7 +285,14 @@ local function EncrerTexte(fs, parchemin)
         -- Un nom de personnage (couleur de sa classe) : partout la meme
         -- police du jeu, la meme taille, quelle que soit la fenetre.
         local r0, g0, b0 = fs:GetTextColor()
-        if fs.nomDePerso or (r0 and CouleurDeClasse(r0, g0, b0)) then charte.PoliceDeNom(fs) end
+        local deClasse = r0 and CouleurDeClasse(r0, g0, b0)
+        if fs.nomDePerso or deClasse then charte.PoliceDeNom(fs) end
+        -- Sur le parchemin clair, la couleur de classe est approfondie (meme
+        -- teinte, plus sombre) : un nom rose ou vert pale s'y lit enfin.
+        if parchemin and deClasse then
+            local k = charte.PROFONDEUR_CLASSE
+            fs:SetTextColor(r0 * k, g0 * k, b0 * k)
+        end
         if parchemin then
             if fs.SetShadowColor then fs:SetShadowColor(0, 0, 0, OMBRE_PARCHEMIN) end
             if fs.SetShadowOffset then fs:SetShadowOffset(1, -1) end
@@ -312,8 +321,11 @@ local function EncrerTexte(fs, parchemin)
         end
         if type(texte) == "string" and texte ~= fs.texteEncre and string.find(texte, "|c%x%x") then
             local encre = string.gsub(texte, "|c(%x%x)(%x%x)(%x%x)(%x%x)", function(aa, rr, gg, bb)
-                if CouleurDeClasse(tonumber(rr, 16) / 255, tonumber(gg, 16) / 255, tonumber(bb, 16) / 255) then
-                    return "|c" .. aa .. rr .. gg .. bb
+                local r1, g1, b1 = tonumber(rr, 16) / 255, tonumber(gg, 16) / 255, tonumber(bb, 16) / 255
+                if CouleurDeClasse(r1, g1, b1) then
+                    local k = charte.PROFONDEUR_CLASSE
+                    return "|c" .. aa .. string.format("%02x%02x%02x", math.floor(r1 * k * 255 + 0.5),
+                        math.floor(g1 * k * 255 + 0.5), math.floor(b1 * k * 255 + 0.5))
                 end
                 return "|c" .. aa .. EncreHexa(rr, gg, bb)
             end)
