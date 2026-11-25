@@ -18,6 +18,7 @@ NS.courrier = {}
 local courrier = NS.courrier
 
 local PAUSE = 0.3          -- entre deux deplacements : le jeu verrouille la case un instant
+local PAUSE_PIECE = 0.15   -- entre deux pieces jointes : plus court (une case verrouillee est reessayee)
 local LARGEUR = 300
 local statut               -- resultat de la derniere action, montre dans le panneau
 local panneau
@@ -658,7 +659,7 @@ end
 
 -- Execute les etapes une par une, avec une pause entre deux : chaque objet
 -- deplace verrouille sa case le temps que le serveur reponde.
-local function Enchainer(etapes, fin)
+local function Enchainer(etapes, fin, pause)
     enCours = true
     local plusTard = Lire("C_Timer.After")
     local rang = 0
@@ -678,7 +679,7 @@ local function Enchainer(etapes, fin)
             return
         end
         -- Etape sans deplacement ("vite") : pas de pause, on enchaine.
-        if continuer == "vite" or not plusTard then Suivante() else NS.Appeler(plusTard, PAUSE, Suivante) end
+        if continuer == "vite" or not plusTard then Suivante() else NS.Appeler(plusTard, pause or PAUSE, Suivante) end
     end
     Suivante()
 end
@@ -767,15 +768,17 @@ local function PreparerEnvoi(envoi)
         local essais = 0
         for _ = 1, 16 do
             table.insert(etapes, function()
-                if reste <= 0 then return true end
+                -- Ligne finie : les pas restants passent sans attendre (avant,
+                -- chacun attendait sa pause : 16 pauses par objet).
+                if reste <= 0 then return "vite" end
                 local case = CaseDePieceLibre()
                 if not case then NS.Dire(L().ASSIST_MAIL_FULL) return false end
                 local part = Prendre(sacs, ligne.objet, reste)
                 if part == 0 then
                     -- Case encore verrouillee par le deplacement d'avant : on
-                    -- reessaie au pas suivant, trois fois au plus.
+                    -- reessaie au pas suivant, six fois au plus.
                     essais = essais + 1
-                    if essais >= 3 then nonJoints[ligne.objet] = reste reste = 0 end
+                    if essais >= 6 then nonJoints[ligne.objet] = reste reste = 0 end
                     return true
                 end
                 NS.Appeler(joindre, case)
@@ -783,7 +786,7 @@ local function PreparerEnvoi(envoi)
                     -- Piece refusee : l'objet retourne dans son sac, on continue.
                     Lacher()
                     essais = essais + 1
-                    if essais >= 3 then nonJoints[ligne.objet] = reste reste = 0 end
+                    if essais >= 6 then nonJoints[ligne.objet] = reste reste = 0 end
                     return true
                 end
                 reste = reste - part
@@ -808,7 +811,7 @@ local function PreparerEnvoi(envoi)
         if #manque > 0 then statut = statut .. " " .. string.format(L().ASSIST_NOT_ATTACHED, table.concat(manque, ", ")) end
         NS.Dire(statut)
         courrier.Actualiser()
-    end)
+    end, PAUSE_PIECE)
 end
 
 -- Completer les piles : ce que j'ai dans mes sacs et qui est deja en banque
