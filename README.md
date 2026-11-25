@@ -47,6 +47,10 @@ Si vous aviez déjà installé un des add-ons seul, retirez-le de WowUp avant : 
 
 Ouvrez un ticket dans l'onglet **Issues** avec une capture et ce que vous faisiez juste avant.
 
+## Me croiser en jeu
+
+Mes principaux personnages sont **Beurkman** et **Paltank**, côté Alliance. Côté Horde, à venir. Pour les bugs, passez plutôt par l'onglet **Issues** : c'est là que je peux les suivre.
+
 ## Soutenir le projet
 
 Forever SagaCore est et restera gratuit, sans rien à acheter dans le jeu. Si la suite vous rend service, un café sur Ko-fi m'aide à y passer plus de temps.
