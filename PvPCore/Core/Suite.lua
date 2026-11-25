@@ -5353,7 +5353,18 @@ Finir = function(raison)
     local inst = g.actif
     if not inst then return end
     local def = Def(inst)
-    g.actif, g.calcul, g.arrivee = nil, nil, nil
+    g.actif, g.calcul, g.arrivee, g.atteintDepuis = nil, nil, nil, nil
+    -- Les dernieres fins de guidage (quoi, pourquoi, quand) : pour comprendre
+    -- un arret inattendu.
+    pcall(function()
+        CoreSuiteDB = type(CoreSuiteDB) == "table" and CoreSuiteDB or {}
+        local h = type(CoreSuiteDB.finsDeGuidage) == "table" and CoreSuiteDB.finsDeGuidage or {}
+        CoreSuiteDB.finsDeGuidage = h
+        table.insert(h, { quoi = tostring(inst.proprietaire) .. ":" .. tostring(inst.type) .. " " .. tostring(inst.libelle or ""),
+            raison = tostring(raison), quand = _G.date and _G.date("%Y-%m-%d %H:%M:%S") or "",
+            niveau = _G.UnitLevel and _G.UnitLevel("player") or nil })
+        while #h > 20 do table.remove(h, 1) end
+    end)
     local cle = ClePersoGuidage()
     if cle and Persos()[cle] == inst then Persos()[cle] = nil end
     EcouterEvenements(nil)
@@ -5469,7 +5480,24 @@ Calculer = function()
         etapes, raison, detail, compte = nil, "loin", nil, nil
     end
     if g.actif ~= inst then return nil end
-    if raison == "atteint" then Finir("atteint") return nil end
+    -- « Atteint » doit se confirmer : un etat passager (journal en cours de
+    -- relecture apres un niveau gagne, une quete rendue) ne coupe jamais un
+    -- guidage. Le meme verdict, 3 secondes plus tard, termine l'objectif.
+    if raison == "atteint" then
+        if not g.atteintDepuis then
+            g.atteintDepuis = maintenant
+            if g.calcul then g.calcul.quand = maintenant - 1 return g.calcul end
+            return nil
+        end
+        if maintenant - g.atteintDepuis < 3 then
+            if g.calcul then g.calcul.quand = maintenant - 1 return g.calcul end
+            return nil
+        end
+        g.atteintDepuis = nil
+        Finir("atteint")
+        return nil
+    end
+    g.atteintDepuis = nil
     if def.Libelle then
         local okL, lib = pcall(def.Libelle, inst.params, inst.etat)
         if okL and type(lib) == "string" then inst.libelle = lib end

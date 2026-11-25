@@ -502,7 +502,13 @@ local function EtapesDuKit(moi, pc, etat)
     D.MettreAJourKit(moi, d, pc)
     local ids, phase = D.AGuider(moi, d, pc)
     local faites, total = NS.parcours.AvancementGestes(moi, pc)
-    if #ids == 0 then return true, nil, "atteint" end
+    if #ids == 0 then
+        -- Rien a guider maintenant : fini seulement si toutes les etapes du
+        -- trajet sont faites ; sinon le guidage reste et dit ou aller.
+        local f, t = NS.parcours.Avancement(moi, pc)
+        if t == 0 or f >= t then return true, nil, "atteint" end
+        return true, nil, "loin", OuAller(moi, pc.etapes)
+    end
     -- Nouvelle rubrique : la cible d'avant ne compte plus.
     if etat.phase ~= phase then etat.phase, etat.chaine = phase, {} end
     return true, EtapesDeQuetes(ids, moi, etat, { fait = faites, total = math.max(total, faites + 1) }, true)
