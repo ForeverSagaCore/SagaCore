@@ -3115,9 +3115,11 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                 end, nil, nil, 5)
             contenu.curseurObjectif.surParchemin = function() return NS.charte.Fond and NS.charte.Fond() == "parchemin" end
         end
+        -- Choisir un rang le vise aussitot (la case se coche toute seule) :
+        -- les etapes pour l'atteindre s'affichent dessous, sans clic de plus.
         contenu.etatObjectif.poser = function(v)
             ecran.choixRang[cleObjectif] = v
-            if emp.choix and fiche then
+            if fiche then
                 catalogue.PoserEmplacement(fiche, cleObjectif, "choix", v)
                 if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
             end
