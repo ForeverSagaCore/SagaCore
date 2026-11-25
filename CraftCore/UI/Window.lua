@@ -508,12 +508,13 @@ local function PoserQuantite(ligne, valeur, auMoins, auPlus)
     end
     ligne.plus:SetWidth(18)
     ligne.plus:SetText("+")
-    ligne.moins:ClearAllPoints()
-    ligne.moins:SetPoint("RIGHT", ligne.total, "LEFT", -6, 0)
-    ligne.quantite:ClearAllPoints()
-    ligne.quantite:SetPoint("RIGHT", ligne.moins, "LEFT", -2, 0)
+    -- Dans l'ordre de lecture : moins, la quantite, plus.
     ligne.plus:ClearAllPoints()
-    ligne.plus:SetPoint("RIGHT", ligne.quantite, "LEFT", -2, 0)
+    ligne.plus:SetPoint("RIGHT", ligne.total, "LEFT", -6, 0)
+    ligne.quantite:ClearAllPoints()
+    ligne.quantite:SetPoint("RIGHT", ligne.plus, "LEFT", -2, 0)
+    ligne.moins:ClearAllPoints()
+    ligne.moins:SetPoint("RIGHT", ligne.quantite, "LEFT", -2, 0)
 
     ligne.quantite:SetText("x" .. tostring(valeur))
     ligne.moins:SetScript("OnClick", auMoins)
@@ -522,7 +523,7 @@ local function PoserQuantite(ligne, valeur, auMoins, auPlus)
     ligne.plus:Show()
     ligne.quantite:Show()
     -- Le libelle s'arrete avant les boutons.
-    AncrerLibelle(ligne, ligne.plus)
+    AncrerLibelle(ligne, ligne.moins)
 end
 
 -- Bouton d'action unique sur la ligne. Il porte un libelle plutot qu'un plus :
@@ -538,7 +539,7 @@ local function PoserBoutonFabriquer(ligne, recette, nombre)
     end
     local b = ligne.fabriquer
     b:ClearAllPoints()
-    local voisin = (ligne.plus:IsShown() and ligne.plus) or ligne.total
+    local voisin = (ligne.moins:IsShown() and ligne.moins) or (ligne.plus:IsShown() and ligne.plus) or ligne.total
     b:SetPoint("RIGHT", voisin, "LEFT", voisin == ligne.total and -6 or -4, 0)
     b:SetText(L.CRAFT_BUTTON)
     -- Grise : ce qui manque dans les sacs, ecrit a cote, sans avoir a survoler.
