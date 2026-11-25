@@ -1288,9 +1288,20 @@ end
 -- Menu de gauche : continents, zones, affichage
 -- ---------------------------------------------------------------------------
 
-local function Enfants(carte, genre)
-    local liste = NS.Appeler(Lecture("C_Map.GetMapChildrenInfo"), carte, genre)
-    return type(liste) == "table" and liste or {}
+local function Enfants(carte, genre, tous)
+    local liste = NS.Appeler(Lecture("C_Map.GetMapChildrenInfo"), carte, genre, tous and true or nil)
+    if type(liste) ~= "table" then return {} end
+    if not tous then return liste end
+    -- Toutes profondeurs : une seule fois chaque carte, et seulement celles
+    -- du genre demande.
+    local vues, res = {}, {}
+    for _, z in ipairs(liste) do
+        if z.mapID and not vues[z.mapID] and (not genre or z.mapType == genre) then
+            vues[z.mapID] = true
+            table.insert(res, z)
+        end
+    end
+    return res
 end
 
 local function ContinentDe(carte)
@@ -1365,6 +1376,19 @@ local function NiveauxDeZone(id)
     end
     niveauxVus[id] = mini and { mini, maxi } or false
     return mini, maxi
+end
+
+-- Les zones par niveau : la plus basse d'abord (niveau mini, puis maxi,
+-- puis nom) ; une zone sans niveau connu (capitale...) a la fin.
+local function ParNiveau(a, b)
+    local amin, amax = NiveauxDeZone(a.mapID)
+    local bmin, bmax = NiveauxDeZone(b.mapID)
+    if (amin ~= nil) ~= (bmin ~= nil) then return amin ~= nil end
+    if amin and bmin then
+        if amin ~= bmin then return amin < bmin end
+        if amax ~= bmax then return (amax or 0) < (bmax or 0) end
+    end
+    return tostring(a.name) < tostring(b.name)
 end
 
 -- Couleur de difficulte du jeu, comme dans le journal de quetes : rouge,
@@ -1870,11 +1894,11 @@ local function RendreMenu(idCarte)
         Titre(NS.L.ZONES)
         local trouvees = {}
         for _, c in ipairs(Enfants(947, 2)) do
-            for _, z in ipairs(Enfants(c.mapID, 3)) do
+            for _, z in ipairs(Enfants(c.mapID, 3, true)) do
                 if string.find(string.lower(tostring(z.name)), filtre, 1, true) then table.insert(trouvees, z) end
             end
         end
-        table.sort(trouvees, function(a, b) return tostring(a.name) < tostring(b.name) end)
+        table.sort(trouvees, ParNiveau)
         for _, z in ipairs(trouvees) do LigneZone(z) end
         if #trouvees == 0 then Ligne("   " .. NS.L.SEARCH_NONE, nil, false, nil, { 0.6, 0.6, 0.6 }) end
         menu.liste:SetHeight(math.max(y, 1))
@@ -1884,8 +1908,9 @@ local function RendreMenu(idCarte)
     local continent = continentChoisi or ContinentDe(idCarte)
     if continent then
         Titre(NomDeCarte(continent) or NS.L.ZONES)
-        local zones = Enfants(continent, 3)
-        table.sort(zones, function(a, b) return tostring(a.name) < tostring(b.name) end)
+        -- Toutes les zones du continent, meme rangees sous une autre carte.
+        local zones = Enfants(continent, 3, true)
+        table.sort(zones, ParNiveau)
         for _, z in ipairs(zones) do LigneZone(z) end
     end
     menu.liste:SetHeight(math.max(y, 1))
