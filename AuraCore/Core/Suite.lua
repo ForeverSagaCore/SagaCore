@@ -2179,10 +2179,11 @@ function Suite.Voisin(cleCourante, pas)
     for _, info in ipairs(Suite.Liste()) do
         if Suite.Installe(info.cle) then table.insert(liste, { cle = info.cle }) end
     end
-    -- Les complements n'en font pas partie : L3 / R3 ne parcourent que la
-    -- colonne de gauche (les piliers) ; les complements, a droite, se
-    -- parcourent avec LT / RT, et seulement eux.
+    -- Au bout de la colonne de gauche : le bouton Complements (il ouvre le
+    -- dernier complement). Entre complements, c'est LT / RT, a droite.
+    table.insert(liste, { cle = "Complements", complements = true })
     if #liste < 2 then return false end
+    if Suite.EstComplement(cleCourante) then cleCourante = "Complements" end
     local index = Suite.dernierVoisin and Suite.dernierVoisin.depuis == cleCourante and Suite.dernierVoisin.rang or nil
     if not index then
         index = 1
@@ -2190,6 +2191,11 @@ function Suite.Voisin(cleCourante, pas)
     end
     local rang = ((index - 1 + pas) % #liste) + 1
     local e = liste[rang]
+    if e.complements then
+        Suite.dernierVoisin = nil
+        Suite.OuvrirComplements(nil)
+        return true
+    end
     if e.action then
         -- Une fenetre de reglages : on retient ou l'on en est dans la colonne.
         Suite.dernierVoisin = { depuis = cleCourante, rang = rang }
