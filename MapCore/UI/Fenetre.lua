@@ -381,6 +381,11 @@ local function Traiter(bouton)
         NS.pageCarte.OuvrirOutilDonjon()
         return false
     end
+    -- Itineraires : LB / RB passent d'un type (ou d'une zone) a l'autre.
+    if NS.pageCarte.EnItineraires and NS.pageCarte.EnItineraires() then
+        if bouton == "PADLSHOULDER" then NS.pageCarte.ItinVoisin(-1) return false end
+        if bouton == "PADRSHOULDER" then NS.pageCarte.ItinVoisin(1) return false end
+    end
     if bouton == "PADLSHOULDER" then NS.pageCarte.Zoomer(1 / 1.25) return false end
     if bouton == "PADRSHOULDER" then NS.pageCarte.Zoomer(1.25) return false end
     if bouton == "PAD2" then cadre:Hide() return false end

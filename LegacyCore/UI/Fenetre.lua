@@ -1011,13 +1011,15 @@ local function Construire()
         -- Un titre par categorie, comme dans toute la suite.
         if page.section then
             if rang > 1 then yMenu = yMenu + 8 end
-            local t = menu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local t = menu:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            local S = _G.CoreSuite
+            if S and S.TitreDeMenu then S.TitreDeMenu(t) end
             t:SetPoint("TOPLEFT", menu, "TOPLEFT", 8, -(yMenu + 2))
             t:SetText(L[page.section])
-            yMenu = yMenu + 20
+            yMenu = yMenu + 24
         end
         local b = CreerLigneDeMenu(menu, page.icone)
-        b:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, -yMenu)
+        b:SetPoint("TOPLEFT", menu, "TOPLEFT", 12, -yMenu)
         yMenu = yMenu + 26
         b:SetPoint("RIGHT", menu, "RIGHT", 0, 0)
         local texte = b.text or b.Text or (b.GetFontString and b:GetFontString())

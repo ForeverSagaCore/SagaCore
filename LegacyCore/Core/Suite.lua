@@ -173,8 +173,11 @@ function Suite.Complements()
     local function Ajouter(cle, icone, action)
         table.insert(liste, { cle = cle, icone = icone, action = action })
     end
-    local charge = (_G.C_AddOns and _G.C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
-    if Suite.membres.FriendsCore then Ajouter("FriendsCore", "Interface\\Icons\\Spell_Nature_FarSight") end
+    -- Les vrais outils d'abord (hauts faits, auras, macros, echanges, JcJ),
+    -- FriendsCore, le petit plus, tout en bas.
+    if Suite.membres.AchievementCore then
+        Ajouter("AchievementCore", "Interface\\Icons\\INV_Misc_Ribbon_01")
+    end
     if Suite.membres.AuraCore or (_G.SlashCmdList and _G.SlashCmdList.AURACORE) then
         Ajouter("AuraCore", "Interface\\Icons\\Spell_Holy_AuraOfLight", function()
             if Suite.membres.AuraCore then Suite.Ouvrir("AuraCore")
@@ -182,10 +185,14 @@ function Suite.Complements()
         end)
     end
     if Suite.Prive and Suite.Prive() then Ajouter("Macros", Suite.ICONE_MACROCORE, function() Suite.OuvrirMacros() end) end
-    for _, cle in ipairs({ "TradeCore", "PvPCore", "AchievementCore" }) do
+    for _, cle in ipairs({ "TradeCore", "PvPCore" }) do
         if Suite.membres[cle] then
             for _, info in ipairs(Suite.ORDRE) do if info.cle == cle then Ajouter(cle, info.icone) end end
         end
+    end
+    if Suite.membres.FriendsCore then
+        Ajouter("FriendsCore", "Interface\\Icons\\Spell_Nature_FarSight")
+        liste[#liste].apart = true
     end
     return liste
 end
@@ -195,10 +202,22 @@ function Suite.EstComplement(cle) return cle ~= nil and CLES_COMPLEMENTS[cle] ==
 function Suite.OuvrirComplement(cle, depuis)
     CoreSuiteDB = type(CoreSuiteDB) == "table" and CoreSuiteDB or {}
     CoreSuiteDB.dernierComplement = cle
+    -- La nouvelle fenetre prend exactement la place de celle qu'on quitte.
+    local point
+    if depuis and depuis.GetPoint and depuis:IsShown() then
+        local a, rel, b, x, y = depuis:GetPoint(1)
+        if a then point = { a, rel, b, x, y } end
+    end
     if depuis and depuis.Hide then depuis:Hide() end
     for _, c in ipairs(Suite.Complements()) do
         if c.cle == cle then
             if c.action then c.action() else Suite.Ouvrir(cle) end
+            local m = Suite.membres[cle]
+            local f = m and m.fenetre and m.fenetre()
+            if point and f and f.ClearAllPoints then
+                f:ClearAllPoints()
+                f:SetPoint(point[1], point[2], point[3], point[4], point[5])
+            end
             return
         end
     end
@@ -1744,7 +1763,8 @@ function Suite.OngletsComplements(cadre, cleCourante)
             if self.cle ~= self.courante then Suite.OuvrirComplement(self.cle, cadre) end
         end)
         b:ClearAllPoints()
-        if precedent then b:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -Suite.ECART_ENTRE_ONGLETS)
+        -- Le complement "a part" (FriendsCore) un peu detache des autres.
+        if precedent then b:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 0, -Suite.ECART_ENTRE_ONGLETS - (c.apart and Suite.ECART_ONGLETS or 0))
         else
             local a, point = Suite.AncreHaut(cadre, "droite")
             b:SetPoint("TOPLEFT", a, point, 0, Suite.HAUT_ONGLET)
@@ -2363,9 +2383,13 @@ end
 -- (deux : l'un a cote de l'autre). Positions en pixels a l'ecran, y vers le
 -- bas ; chaque element recoit e.dx, e.dy, le decalage a appliquer.
 -- elements : { { x, y, taille, ordre } } ; ordre : le plus petit a gauche.
+-- Au-dela de ce nombre, un paquet de reperes au meme endroit (une zone vue
+-- de tres loin) ne s'etale plus en cercle : il devient un seul repere, avec
+-- le nombre de ceux qu'il regroupe.
+Suite.ECART_MAX = 5
 function Suite.Ecarter(elements, tailleParDefaut)
     local n = #elements
-    for _, e in ipairs(elements) do e.dx, e.dy = 0, 0 end
+    for _, e in ipairs(elements) do e.dx, e.dy, e.masque, e.groupe = 0, 0, nil, nil end
     if n < 2 then return end
     tailleParDefaut = tailleParDefaut or 22
     local parent = {}
@@ -2407,14 +2431,61 @@ function Suite.Ecarter(elements, tailleParDefaut)
                 if a.x ~= b.x then return a.x < b.x end
                 return a.y < b.y
             end)
-            -- Rayon : voisins qui se touchent a peine.
-            local r = (m == 2) and (t * 0.55) or ((t * 1.05) / (2 * math.sin(math.pi / m)))
-            for k, e in ipairs(p) do
-                local angle = math.pi + (k - 1) * 2 * math.pi / m
-                e.dx = cx + r * math.cos(angle) - e.x
-                e.dy = cy + r * math.sin(angle) - e.y
+            if m > Suite.ECART_MAX then
+                -- Trop pour un cercle lisible : le premier au centre, avec le
+                -- compte ; les autres caches jusqu'a ce qu'on zoome.
+                for k, e in ipairs(p) do
+                    e.dx, e.dy = cx - e.x, cy - e.y
+                    if k == 1 then e.groupe = m else e.masque = true end
+                end
+            else
+                -- Rayon : voisins qui se touchent a peine.
+                local r = (m == 2) and (t * 0.55) or ((t * 1.05) / (2 * math.sin(math.pi / m)))
+                for k, e in ipairs(p) do
+                    local angle = math.pi + (k - 1) * 2 * math.pi / m
+                    e.dx = cx + r * math.cos(angle) - e.x
+                    e.dy = cy + r * math.sin(angle) - e.y
+                end
             end
         end
+    end
+end
+
+-- Titre de categorie d'un menu de gauche, le meme partout : la police
+-- stylisee des titres du parchemin, en or, plus grande que les lignes ;
+-- les lignes de la categorie sont en retrait dessous (Suite.RETRAIT_MENU).
+Suite.RETRAIT_MENU = 12
+Suite.HAUTEUR_TITRE_MENU = 24
+function Suite.TitreDeMenu(fs)
+    if not fs then return end
+    local ok = pcall(fs.SetFontObject, fs, _G.QuestTitleFont and "QuestTitleFont" or "GameFontNormal")
+    local fichier, _, options = fs:GetFont()
+    if fichier then pcall(fs.SetFont, fs, fichier, 15, options) end
+    fs:SetTextColor(1, 0.82, 0)
+    fs:SetShadowColor(0, 0, 0, 1)
+    fs:SetShadowOffset(1, -1)
+    fs:SetJustifyH("LEFT")
+end
+
+-- Pose un repere apres Ecarter : masque s'il est regroupe, le compte du
+-- paquet sur celui qui le represente.
+function Suite.PoserEcarte(b)
+    if not b then return end
+    if b.ecartMasque then
+        if not b.alphaEcart then b.alphaEcart = b:GetAlpha() end
+        b:SetAlpha(0)
+    elseif b.alphaEcart then
+        b:SetAlpha(b.alphaEcart)
+        b.alphaEcart = nil
+    end
+    if b.EnableMouse then b:EnableMouse(not b.ecartMasque) end
+    if b.ecartGroupe and not b.compteGroupe then
+        b.compteGroupe = b:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+        b.compteGroupe:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 4, -2)
+    end
+    if b.compteGroupe then
+        b.compteGroupe:SetText(b.ecartGroupe and tostring(b.ecartGroupe) or "")
+        b.compteGroupe:SetShown(b.ecartGroupe ~= nil)
     end
 end
 
@@ -6779,10 +6850,11 @@ function Suite.FenetreAPages(o)
         -- dans toute la suite.
         if page.section then
             if rang > 1 then yMenu = yMenu + 8 end
-            local t = menu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            local t = menu:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            Suite.TitreDeMenu(t)
             t:SetPoint("TOPLEFT", menu, "TOPLEFT", 8, -(yMenu + 2))
             t:SetText(type(page.section) == "function" and page.section() or tostring(page.section))
-            yMenu = yMenu + 20
+            yMenu = yMenu + Suite.HAUTEUR_TITRE_MENU
         end
         local b
         local ok, cree = pcall(CreateFrame, "Button", nil, menu, "OptionsListButtonTemplate")
@@ -6792,7 +6864,8 @@ function Suite.FenetreAPages(o)
             b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
         end
         b:SetHeight(24)
-        b:SetPoint("TOPLEFT", menu, "TOPLEFT", 0, -yMenu)
+        local avecSections = o.pages[1] and o.pages[1].section ~= nil
+        b:SetPoint("TOPLEFT", menu, "TOPLEFT", avecSections and Suite.RETRAIT_MENU or 0, -yMenu)
         yMenu = yMenu + 26
         b:SetPoint("RIGHT", menu, "RIGHT", 0, 0)
         b.fond = b:CreateTexture(nil, "BACKGROUND")
@@ -6808,6 +6881,9 @@ function Suite.FenetreAPages(o)
         if b.texte then
             b.texte:ClearAllPoints()
             b.texte:SetPoint("LEFT", b.icone, "RIGHT", 6, 0)
+            -- Le texte s'arrete avant la place du glyphe LB / RB.
+            b.texte:SetPoint("RIGHT", b, "RIGHT", -34, 0)
+            b.texte:SetWordWrap(false)
             b.texte:SetJustifyH("LEFT")
         end
         local cle = page.cle
@@ -7206,6 +7282,13 @@ function Suite.FenetreAPages(o)
                 w.page = o.pages[rang].cle
                 defilement:SetVerticalScroll(0)
                 w.Rendre()
+            elseif (bouton == "PADLTRIGGER" or bouton == "PADRTRIGGER") and Suite.EstComplement(o.cle) then
+                -- LT / RT : le complement precedent / suivant (onglets de droite).
+                local liste = Suite.Complements()
+                local rang = 1
+                for i, c in ipairs(liste) do if c.cle == o.cle then rang = i end end
+                local cible = liste[math.max(1, math.min(#liste, rang + (bouton == "PADRTRIGGER" and 1 or -1)))]
+                if cible and cible.cle ~= o.cle then Suite.OuvrirComplement(cible.cle, cadre) end
             elseif bouton == "PADDUP" then Defiler(-1)
             elseif bouton == "PADDDOWN" then Defiler(1)
             elseif bouton == "PAD2" then cadre:Hide() end
