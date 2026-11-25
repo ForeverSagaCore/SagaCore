@@ -3585,7 +3585,13 @@ local function CadreObjectifs()
             -- de trajet n'a plus rien a suivre (une seule fleche a l'ecran).
             -- Toujours effacer la fleche de l'add-on de trajet : sinon elle
             -- reste sous la boussole de la suite (deux affichages superposes).
-            if hub and hub.Effacer and (Suite.guide.envoye or not Suite.guide.effaceSansCible) then
+            -- Pas tout de suite : une cible qui manque un instant (calcul en
+            -- cours, position pas encore lue) ne doit pas effacer le trajet
+            -- de l'add-on, sinon il recalcule sans fin et ne s'affiche jamais.
+            local maintenantSC = (_G.GetTime and _G.GetTime()) or 0
+            Suite.guide.sansCibleDepuis = Suite.guide.sansCibleDepuis or maintenantSC
+            local longtemps = maintenantSC - Suite.guide.sansCibleDepuis > 3
+            if longtemps and hub and hub.Effacer and (Suite.guide.envoye or not Suite.guide.effaceSansCible) then
                 Suite.guide.envoye = nil
                 Suite.guide.effaceSansCible = true
                 pcall(hub.Effacer)
@@ -3601,6 +3607,7 @@ local function CadreObjectifs()
             return
         end
         Suite.guide.effaceSansCible = nil
+        Suite.guide.sansCibleDepuis = nil
         self.titre = cible.titre
         local rang, total = calcul.rang or 1, calcul.total or 1
         if total > 1 then
