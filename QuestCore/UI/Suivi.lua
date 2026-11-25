@@ -254,7 +254,9 @@ end
 local function RondDuJeu(ligne, etat, x, y)
     if not (AtlasExiste("UI-QuestPoi-QuestNumber")) then return nil end
     -- "fait" : le point d'interrogation du rendu, en vert (quete rendue).
-    local symbole = (etat == true or etat == "fait") and "UI-QuestIcon-TurnIn-Normal" or "Quest-In-Progress-Icon-yellow"
+    -- "prendre" : le point d'exclamation jaune d'une quete a prendre.
+    local symbole = (etat == true or etat == "fait") and "UI-QuestIcon-TurnIn-Normal"
+        or (etat == "prendre" and "QuestNormal") or "Quest-In-Progress-Icon-yellow"
     if not AtlasExiste(symbole) then return nil end
     if not ligne.rond then
         local support = CreateFrame("Frame", nil, ligne)
@@ -292,9 +294,9 @@ local function IconeDeQuete(texture, etat)
         texture:SetSize(16, 16)
         return
     end
-    if etat == "suite" then
+    if etat == "suite" or etat == "prendre" then
         texture:SetTexture("Interface\\GossipFrame\\AvailableQuestIcon")
-        texture:SetDesaturated(true)
+        texture:SetDesaturated(etat == "suite")
         texture:SetSize(16, 16)
         return
     end
@@ -987,7 +989,7 @@ local function SuiteRestante(moi, id)
 end
 
 local RendreEtapeBase
-local function RendreAvecChaine(moi, quetes, id, index, y, prefixe)
+local function RendreAvecChaine(moi, quetes, id, index, y, prefixe, opts)
     if dejaRendues[id] then return index, y end
     local chaine = Chaine(moi, id)
     if not chaine then
@@ -1014,21 +1016,29 @@ local function RendreAvecChaine(moi, quetes, id, index, y, prefixe)
     end
     local hauts = {}   -- la ligne de titre de chaque quete de la suite
     local tete, apres = false, 0
+    -- Le numero va a la tete de la suite (la premiere quete montree).
+    local rangTete = prefixe and tonumber(prefixe:match("^(%d+)")) or nil
     for _, c in ipairs(chaine) do
         local fait = moi.faites and moi.faites[c]
-        if c ~= id and dejaRendues[c] then
+        -- Avant d'entrer : les quetes qui se prennent dans le donjon n'y
+        -- sont pas, elles ont leur rubrique.
+        local horsSujet = opts and opts.sansDonjon and c ~= id and not quetes[c]
+            and NS.donjons and NS.donjons.SePrendDedans and NS.donjons.SePrendDedans(c)
+        if horsSujet then
+            -- montree dans sa rubrique du donjon
+        elseif c ~= id and dejaRendues[c] then
             -- deja montree avec une autre suite
         elseif aPart[c] then
             -- montree a part, a sa place
         elseif quetes[c] then
             dejaRendues[c] = true
             table.insert(hauts, index + 1)
-            index, y = RendreQuete(moi, quetes, c, index, y, c == id and prefixe or nil)
+            index, y = RendreQuete(moi, quetes, c, index, y, not tete and prefixe or nil)
             tete = true
         elseif not fait and not tete then
             dejaRendues[c] = true
             table.insert(hauts, index + 1)
-            index, y = RendreEtapeBase(moi, c, nil, NS.parcours.EtatEtape(moi, c), index, y)
+            index, y = RendreEtapeBase(moi, c, rangTete, NS.parcours.EtatEtape(moi, c), index, y)
             tete = true
         elseif not fait then
             dejaRendues[c] = true
@@ -1415,6 +1425,9 @@ RendreEtapeBase = function(moi, id, rang, e, index, y, pion)
     y = Poser(index, y, (rang and (rang .. ". ") or "") .. donjonE .. string.format("|cff%02x%02x%02x[%d]|r %s", math.floor(r * 255),
         math.floor(g * 255), math.floor(b * 255), niveau, NS.ref.NomDeQuete(id, moi)), { uneLigne = true,
         police = Police("ObjectiveTrackerHeaderFont", "GameFontNormal"), titre = true,
+        -- Le rond du jeu comme toute quete : a prendre (point d'exclamation),
+        -- ou en attente d'un prerequis (gris, comme la suite d'une suite).
+        marque = attente and "suite" or "prendre",
         couleur = attente and { 0.6, 0.6, 0.6 } or { 1, 0.82, 0 },
         pion = replieE and pion or nil, voir = replieE and voirE or nil,
         survol = function(tt)
@@ -1651,21 +1664,47 @@ RendreVueParcours = function(moi, index, y)
                     local avant, dedans, retour = {}, {}, {}
                     local function Dedans(id) return NS.donjons.DeQuete(id) ~= nil end
                     for _, t in ipairs(enCours) do table.insert(Dedans(t.id) and dedans or avant, t) end
-                    for _, t in ipairs(aFaire) do table.insert(avant, t) end
+                    -- Une quete qui se prend dans le donjon : sa rubrique.
+                    local function SePrendDedans(id) return NS.donjons.SePrendDedans and NS.donjons.SePrendDedans(id) end
+                    for _, t in ipairs(aFaire) do table.insert(SePrendDedans(t.id) and dedans or avant, t) end
                     -- Au retour : seulement les quetes du donjon ; un maillon
                     -- de suite a rendre se rend avant d'entrer.
                     for _, t in ipairs(aRendre) do table.insert(Dedans(t.id) and retour or avant, t) end
                     table.sort(avant, function(a2, b2) return a2.rang < b2.rang end)
-                    local function Etape(t)
+                    -- Une suite se montre une fois, entiere : par sa quete la plus
+                    -- loin dans le trajet (sa chaine contient toutes les autres).
+                    local chaines = {}
+                    local function ChaineDe(id)
+                        if chaines[id] == nil then chaines[id] = Chaine(moi, id) or false end
+                        return chaines[id] or nil
+                    end
+                    local tous = {}
+                    for _, t in ipairs(avant) do table.insert(tous, t.id) end
+                    local function Racine(id)
+                        local racine, long = id, #(ChaineDe(id) or {})
+                        for _, u in ipairs(tous) do
+                            local ch = u ~= id and ChaineDe(u)
+                            if ch and #ch > long then
+                                for _, c in ipairs(ch) do if c == id then racine, long = u, #ch break end end
+                            end
+                        end
+                        return racine
+                    end
+                    -- Numeros suivis, dans l'ordre affiche, toutes rubriques.
+                    local numero = 0
+                    local function Etape(t, sansDonjon)
                         if dejaRendues[t.id] then return end
+                        numero = numero + 1
                         -- Une quete d'une suite : la presentation des suites
                         -- (la premiere qui reste deroulee, les suivantes en
                         -- gris, reliees par le trait).
-                        if moi.quetes[t.id] or t.suite or Chaine(moi, t.id) then
-                            index, y = RendreAvecChaine(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
+                        if moi.quetes[t.id] or t.suite or ChaineDe(t.id) then
+                            local racine = sansDonjon and Racine(t.id) or t.id
+                            index, y = RendreAvecChaine(moi, moi.quetes, racine, index, y, numero .. ". ",
+                                { sansDonjon = sansDonjon })
                         else
                             local idQ = t.id
-                            index, y = RendreEtapeBase(moi, t.id, t.rang, t.e, index, y, { actif = true, aide = L.ROUTE_STEP_HELP,
+                            index, y = RendreEtapeBase(moi, t.id, numero, t.e, index, y, { actif = true, aide = L.ROUTE_STEP_HELP,
                                 auClic = function()
                                     if suivi.PasserEtape then suivi.PasserEtape(idP, idQ) end
                                     suivi.Rendre()
@@ -1674,7 +1713,7 @@ RendreVueParcours = function(moi, index, y)
                     end
                     if #avant > 0 then
                         Groupe(L.KIT_BEFORE, #avant, { 1, 0.82, 0 })
-                        for _, t in ipairs(avant) do Etape(t) end
+                        for _, t in ipairs(avant) do Etape(t, true) end
                     end
                     if #dedans > 0 then
                         Groupe(L.KIT_INSIDE, #dedans, { 0.4, 0.75, 1 })
@@ -1868,13 +1907,27 @@ function suivi.Rendre()
         -- Ce que montre l'onglet : le parcours choisi, ou les favoris.
         if s.vue == "parcours" and NS.parcours then
             local liste = NS.parcours.Liste(NS.ClePersonnage())
-            local pc = NS.parcours.Trouver(NS.ClePersonnage(), s.parcoursChoisi) or liste[1]
-            if pc and moi then
-                local reste, xp = 0, 0
-                for _, id in ipairs(pc.etapes) do
-                    if NS.parcours.EtatEtape(moi, id) ~= "faite" then reste = reste + 1 xp = xp + XPDe(id) end
+            -- Le bilan de ce qui est affiche : les parcours ouverts (a defaut,
+            -- le parcours choisi), chaque quete comptee une fois.
+            local ouverts = type(s.parcoursOuverts) == "table" and s.parcoursOuverts or {}
+            local montres = {}
+            for _, pc in ipairs(liste) do if ouverts[pc.id] then table.insert(montres, pc) end end
+            if #montres == 0 then
+                local pc = NS.parcours.Trouver(NS.ClePersonnage(), s.parcoursChoisi) or liste[1]
+                if pc then montres = { pc } end
+            end
+            if #montres > 0 and moi then
+                local reste, xp, vus = 0, 0, {}
+                for _, pc in ipairs(montres) do
+                    for _, id in ipairs(pc.etapes) do
+                        if not vus[id] and NS.parcours.EtatEtape(moi, id) ~= "faite" then
+                            vus[id] = true
+                            reste = reste + 1
+                            xp = xp + XPDe(id)
+                        end
+                    end
                 end
-                Titre(L.TRACK_COL_ROUTE .. " : " .. string.format(L.TRACK_N_STEPS, reste), XP(xp))
+                Titre(L.TRACK_COL_ROUTE .. " : " .. string.format(reste > 1 and L.TRACK_N_STEPS or L.TRACK_1_STEP, reste), XP(xp))
             end
         elseif s.vue == "favoris" then
             local n, xp = 0, 0
