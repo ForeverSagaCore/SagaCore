@@ -6851,6 +6851,26 @@ function Suite.FenetreAPages(o)
     fondMenu:Hide()
     cadre.fondMenu = fondMenu
 
+    -- Les rubriques du menu : le contenu sous le nom de l'add-on, puis ses
+    -- reglages a part, en dernier (sauf rubriques donnees par l'add-on).
+    do
+        local donnees = false
+        for _, page in ipairs(o.pages) do if page.section then donnees = true end end
+        if not donnees and #o.pages > 1 then
+            local REGLAGES = { reglages = true, suite = true, parametres = true, options = true }
+            local contenu, reglages = {}, {}
+            for _, page in ipairs(o.pages) do table.insert(REGLAGES[page.cle] and reglages or contenu, page) end
+            if #contenu > 0 and #reglages > 0 then
+                local nom = o.cle
+                contenu[1].section = nom
+                reglages[1].section = function() return TX("Settings") end
+                o.pages = {}
+                for _, page in ipairs(contenu) do table.insert(o.pages, page) end
+                for _, page in ipairs(reglages) do table.insert(o.pages, page) end
+                w.page = o.pages[1].cle
+            end
+        end
+    end
     w.boutonsMenu = {}
     local yMenu = 0
     for rang, page in ipairs(o.pages) do
@@ -6889,8 +6909,7 @@ function Suite.FenetreAPages(o)
         if b.texte then
             b.texte:ClearAllPoints()
             b.texte:SetPoint("LEFT", b.icone, "RIGHT", 6, 0)
-            -- Le texte s'arrete avant la place du glyphe LB / RB.
-            b.texte:SetPoint("RIGHT", b, "RIGHT", -34, 0)
+            b.texte:SetPoint("RIGHT", b, "RIGHT", -6, 0)
             b.texte:SetWordWrap(false)
             b.texte:SetJustifyH("LEFT")
         end
@@ -7231,8 +7250,9 @@ function Suite.FenetreAPages(o)
     barre.texte:SetPoint("LEFT", barre, "LEFT", 12, 0)
     function w.ApresRendu()
         local pad = ManetteActive()
+        -- LB / RB : dits dans la barre du bas, plus sur les lignes du menu.
         for _, b in ipairs({ premier, dernier }) do
-            if b.glyphe then b.glyphe:SetText(Glyphe(b.touche)) b.glyphe:SetShown(pad) end
+            if b.glyphe then b.glyphe:Hide() end
         end
         if not pad then barre:Hide() lisere:Hide() return end
         local esp = "      "

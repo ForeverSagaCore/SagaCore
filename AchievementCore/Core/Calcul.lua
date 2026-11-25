@@ -170,9 +170,10 @@ end
 
 function calcul.NomDePortee(portee, colore)
     local T = NS.T
-    if portee == "Horde" then return T("Horde", "Horde") end
-    if portee == "Alliance" then return T("Alliance", "Alliance") end
-    if portee == "deux" then return T("Horde et Alliance", "Horde and Alliance") end
+    -- Les camps : ce que l'ensemble de ces personnages a fait.
+    if portee == "Horde" then return T("Mes persos Horde", "My Horde characters") end
+    if portee == "Alliance" then return T("Mes persos Alliance", "My Alliance characters") end
+    if portee == "deux" then return T("Tous mes persos", "All my characters") end
     local cle = type(portee) == "string" and portee:match("^perso:(.+)$")
     local p = cle and persos.Par(cle)
     if not p then return "?" end

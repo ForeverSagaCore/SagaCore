@@ -75,8 +75,18 @@ function persos.Liste()
         if not p.faction and p.race and ref.RACE[p.race] then p.faction = ref.RACE[p.race].faction end
     end
     local courant = NS.ClePersonnage()
+    -- Un meme nom sous deux royaumes : une ancienne fiche (royaume vide ou
+    -- provisoire). On garde celle du royaume actuel, sinon la plus complete.
+    local royaume = type(courant) == "string" and courant:match(" %- (.+)$") or nil
+    local parNom = {}
+    for cle, p in pairs(parCle) do
+        local r = cle:match(" %- (.*)$") or ""
+        local note = (r == royaume and 100 or 0) + (r ~= "" and 10 or 0) + (p.niveau or 0) / 100
+        local deja = parNom[p.nom]
+        if not deja or note > deja.note then parNom[p.nom] = { p = p, note = note } end
+    end
     local liste = {}
-    for _, p in pairs(parCle) do table.insert(liste, p) end
+    for _, e in pairs(parNom) do table.insert(liste, e.p) end
     table.sort(liste, function(a, b)
         if (a.cle == courant) ~= (b.cle == courant) then return a.cle == courant end
         return a.cle < b.cle
