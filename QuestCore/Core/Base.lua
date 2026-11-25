@@ -617,17 +617,17 @@ function ref.ConstruireIndexObjetsDeQuetes()
     end)
 end
 
--- Les quetes qui demandent cet objet : { id, nom, niveau, faite } (celles que
--- le personnage peut faire, d'apres sa race, sa classe et son camp).
+-- Les quetes qui demandent cet objet, toutes : { id, nom, niveau, faite }.
 function ref.QuetesDemandant(objet)
     local res = {}
     if not indexObjetsPret then pcall(ref.ConstruireIndexObjetsDeQuetes) return res end
     local cle = NS.ClePersonnage and NS.ClePersonnage()
     local p = cle and NS.base.Perso(cle)
     for _, q in ipairs(quetesParObjet[tonumber(objet) or 0] or {}) do
-        local admise = not (NS.histoire and NS.histoire.Admise) or not p or NS.histoire.Admise(p, q)
+        -- Toutes les quetes du jeu, pas seulement celles du personnage : un
+        -- objet fabrique peut servir a d'autres joueurs (et se vendre).
         local retiree = NS.histoire and NS.histoire.Retiree and NS.histoire.Retiree(q)
-        if admise and not retiree then
+        if not retiree then
             table.insert(res, { id = q, nom = ref.NomDeQuete(q, p), niveau = tonumber(Lire("QuestDB", q, "questLevel")) or 0,
                 faite = p and p.faites and p.faites[q] and true or false })
         end
