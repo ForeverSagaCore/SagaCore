@@ -88,7 +88,7 @@ end
 -- Ligne du menu choisie ou non : meme teinte, meme regle d'estompe.
 local function MarquerLigneDeMenu(bouton, choisi)
     local texte = bouton.text or bouton.Text or (bouton.GetFontString and bouton:GetFontString())
-    if texte then texte:SetFontObject(choisi and "GameFontHighlight" or "GameFontNormal") end
+    if texte then texte:SetFontObject(choisi and "GameFontNormal" or "GameFontHighlight") end
     if bouton.fond then
         bouton.fond:SetVertexColor(CouleurSelection())
         bouton.fond:SetShown(choisi and true or false)
@@ -683,9 +683,9 @@ local function TitreDeSection(contenu, index, y, texte, droite)
         titre:SetHeight(HAUTEUR_LIGNE + 6)
         PoliceDeTitre(titre.nom)
         titre.nom.agrandir = false
-        titre.nom:SetTextColor(0.42, 0.18, 0.02)
+        titre.nom:SetTextColor(0.14, 0.08, 0.03)
         titre.nom:SetText(texte)
-        titre.filet:SetColorTexture(0.42, 0.18, 0.02, 0.45)
+        titre.filet:SetColorTexture(0.14, 0.08, 0.03, 0.45)
         titre.filet:Show()
         return index, y + HAUTEUR_LIGNE + 6 + 6
     end
@@ -715,8 +715,8 @@ local function StyleDeTitre(fs)
     if NS.charte.Fond() == "parchemin" then
         PoliceDeTitre(fs)
         fs.agrandir = false
-        fs:SetTextColor(0.42, 0.18, 0.02)
-        fs.filet:SetColorTexture(0.42, 0.18, 0.02, 0.45)
+        fs:SetTextColor(0.14, 0.08, 0.03)
+        fs.filet:SetColorTexture(0.14, 0.08, 0.03, 0.45)
     else
         fs:SetFontObject("GameFontNormal")
         fs:SetTextColor(1, 0.82, 0)
@@ -1303,8 +1303,8 @@ local function RendreStocks(contenu, tous)
             inter.nom.agrandir = false
             if NS.charte.Fond() == "parchemin" then
                 PoliceDeTitre(inter.nom)
-                inter.nom:SetTextColor(0.42, 0.18, 0.02)
-                inter.filet:SetColorTexture(0.42, 0.18, 0.02, 0.45)
+                inter.nom:SetTextColor(0.14, 0.08, 0.03)
+                inter.filet:SetColorTexture(0.14, 0.08, 0.03, 0.45)
             else
                 inter.nom:SetFontObject("GameFontNormal")
                 inter.nom:SetTextColor(1, 0.82, 0)
@@ -2412,8 +2412,8 @@ local function EnTeteDeBloc(ligne)
     ligne.nom.agrandir = false
     if NS.charte.Fond() == "parchemin" then
         PoliceDeTitre(ligne.nom)
-        ligne.nom:SetTextColor(0.42, 0.18, 0.02)
-        ligne.filet:SetColorTexture(0.42, 0.18, 0.02, 0.45)
+        ligne.nom:SetTextColor(0.14, 0.08, 0.03)
+        ligne.filet:SetColorTexture(0.14, 0.08, 0.03, 0.45)
     else
         ligne.nom:SetFontObject("GameFontNormal")
         ligne.nom:SetTextColor(1, 0.82, 0)

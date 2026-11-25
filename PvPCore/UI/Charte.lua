@@ -201,7 +201,7 @@ end
 local ENCRES = {
     { { 1, 1, 1 },          { 0.20, 0.12, 0.05 } }, -- blanc : encre
     { { 0.8, 0.8, 0.8 },    { 0.25, 0.17, 0.08 } },
-    { { 1, 0.82, 0 },       { 0.42, 0.18, 0.02 } }, -- or du jeu : brun rouge
+    { { 1, 0.82, 0 },       { 0.14, 0.08, 0.03 } }, -- or du jeu : brun rouge
     { { 0.31, 0.82, 0.41 }, { 0.07, 0.36, 0.06 } }, -- vert : dans les sacs
     { { 0.1, 1, 0.1 },      { 0.07, 0.36, 0.06 } },
     { { 0.12, 1, 0 },       { 0.05, 0.38, 0.0 } },  -- qualite inhabituelle
@@ -718,8 +718,8 @@ function charte.TitreDeSection(fs, filet)
         fs:SetFontObject(_G.QuestTitleFont and "QuestTitleFont" or "GameFontNormalLarge")
         local fichier, taille, options = fs:GetFont()
         if fichier and taille and taille > charte.TAILLE_TITRE then fs:SetFont(NS.Police(fichier), charte.TAILLE_TITRE, options) end
-        fs:SetTextColor(0.42, 0.18, 0.02)
-        if filet then filet:SetColorTexture(0.42, 0.18, 0.02, 0.45) end
+        fs:SetTextColor(0.14, 0.08, 0.03)
+        if filet then filet:SetColorTexture(0.14, 0.08, 0.03, 0.45) end
     else
         fs:SetFontObject("GameFontNormal")
         fs:SetTextColor(1, 0.82, 0)

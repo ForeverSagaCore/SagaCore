@@ -548,7 +548,7 @@ function equipement.Rendre(contenu, bandeau)
     -- Un separateur leger entre la poupee et la liste.
     if not vue.separateur then
         vue.separateur = vue:CreateTexture(nil, "ARTWORK")
-        vue.separateur:SetColorTexture(0.42, 0.18, 0.02, 0.18)
+        vue.separateur:SetColorTexture(0.14, 0.08, 0.03, 0.18)
         if vue.separateur.SetSnapToPixelGrid then vue.separateur:SetSnapToPixelGrid(false) vue.separateur:SetTexelSnappingBias(0) end
     end
     vue.separateur:ClearAllPoints()

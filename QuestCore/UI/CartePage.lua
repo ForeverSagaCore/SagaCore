@@ -1299,7 +1299,7 @@ function page.Rendre(parent, basDroite, menuParent, menuHaut)
     -- Le nom de la zone, le meme dans QuestCore et MapCore : encre sur le
     -- parchemin, or sur le fond sombre.
     if NS.charte.Fond() == "parchemin" then
-        vue.titre:SetTextColor(0.42, 0.18, 0.02)
+        vue.titre:SetTextColor(0.14, 0.08, 0.03)
         vue.titre:SetShadowColor(0, 0, 0, 0)
     else
         vue.titre:SetTextColor(1, 0.82, 0)

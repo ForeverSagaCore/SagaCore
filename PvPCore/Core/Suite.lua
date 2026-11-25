@@ -4474,8 +4474,11 @@ local function CadreObjectifs()
             -- Rien a viser pour l'instant (autre continent, aucun lieu
             -- connu...) : le guidage reste, la boussole dit ou aller ; l'add-on
             -- de trajet n'a plus rien a suivre (une seule fleche a l'ecran).
-            if Suite.guide.envoye and hub and hub.Effacer then
+            -- Toujours effacer la fleche de l'add-on de trajet : sinon elle
+            -- reste sous la boussole de la suite (deux affichages superposes).
+            if hub and hub.Effacer and (Suite.guide.envoye or not Suite.guide.effaceSansCible) then
                 Suite.guide.envoye = nil
+                Suite.guide.effaceSansCible = true
                 pcall(hub.Effacer)
             end
             for _, e in ipairs({ self.boussole, self.fondBoussole, self.icone, self.distance, self.temps, self.qui }) do e:Show() end
@@ -4488,6 +4491,7 @@ local function CadreObjectifs()
             self.qui:SetText(type(calcul and calcul.detail) == "string" and calcul.detail or "")
             return
         end
+        Suite.guide.effaceSansCible = nil
         self.titre = cible.titre
         local rang, total = calcul.rang or 1, calcul.total or 1
         if total > 1 then
@@ -4552,10 +4556,14 @@ local function CadreObjectifs()
         end
         -- Plus d'add-on de trajet pour ce guidage : ce qu'on lui avait envoye
         -- s'efface, la fleche de la suite reste seule.
-        if not externe and Suite.guide.envoye and hub and hub.Effacer then
+        -- Une fois au moins, meme sans rien envoye : une fleche restee d'un
+        -- guidage precedent ne doit jamais se superposer a celle-ci.
+        if not externe and hub and hub.Effacer and (Suite.guide.envoye or not Suite.guide.effaceInterne) then
             Suite.guide.envoye = nil
+            Suite.guide.effaceInterne = true
             pcall(hub.Effacer)
         end
+        if externe then Suite.guide.effaceInterne = nil end
         if externe then
             self.fleche:Hide() self.arrivee:Hide()
             -- Un point sous la carte d'une grotte part avec sa zone.
@@ -8382,7 +8390,7 @@ function Suite.FenetreAPages(o)
         for cle, b in pairs(w.boutonsMenu) do
             local choisi = cle == w.page
             for _, p in ipairs(o.pages) do if p.cle == cle and b.texte then b.texte:SetText(p.libelle()) end end
-            if b.texte then b.texte:SetFontObject(choisi and "GameFontHighlight" or "GameFontNormal") end
+            if b.texte then b.texte:SetFontObject(choisi and "GameFontNormal" or "GameFontHighlight") end
             b.fond:SetShown(choisi)
         end
         for _, p in ipairs(o.pages) do p.cadre:SetShown(p == page) end
