@@ -1542,6 +1542,11 @@ function page.DonneesItin()
     end
     local t0 = Tournee()
     local tournee = (type(t0) == "table" and type(t0.points) == "table" and #t0.points > 0) and t0 or nil
+    -- Le guidage de recolte en cours, d'ou qu'il vienne (CraftCore...) : il
+    -- est un itineraire de recolte comme les autres.
+    local S = NS.suite or _G.CoreSuite
+    local actif = S and S.ObjectifActif and S.ObjectifActif()
+    local recolteEnCours = type(actif) == "table" and actif.type == "recolte" and actif or nil
     local function Compter(valeur)
         local n = 0
         for _, it in ipairs(liste) do if it.type == valeur then n = n + 1 end end
@@ -1551,7 +1556,7 @@ function page.DonneesItin()
         { cle = "suite", nom = L0.ROUTES_CHAINS, n = Compter("suite"), icone = "Interface\\Icons\\INV_Scroll_03" },
         { cle = "donjon", nom = L0.ROUTES_DUNGEONS, n = Compter("donjon"), icone = "Interface\\Icons\\INV_Misc_Key_14" },
         { cle = "niveau", nom = L0.ROUTES_LEVEL, n = 1, icone = "Interface\\Icons\\Spell_Holy_SurgeOfLight" },
-        { cle = "recolte", nom = L0.ROUTES_FARM, n = tournee and 1 or 0, icone = "Interface\\Icons\\Trade_Herbalism" },
+        { cle = "recolte", nom = L0.ROUTES_FARM, n = (tournee and 1 or 0) + (recolteEnCours and 1 or 0), icone = "Interface\\Icons\\Trade_Herbalism" },
     }
     local parZone, zones = {}, {}
     for _, it in ipairs(liste) do
@@ -1564,10 +1569,10 @@ function page.DonneesItin()
     -- Par defaut : le premier type qui a des itineraires.
     local filtre = page.filtreItin
     if not filtre then
-        filtre = (types[1].n > 0 and { type = "suite" }) or (types[2].n > 0 and { type = "donjon" })
+        filtre = (recolteEnCours and { type = "recolte" }) or (types[1].n > 0 and { type = "suite" }) or (types[2].n > 0 and { type = "donjon" })
             or (tournee and { type = "recolte" }) or { type = "niveau" }
     end
-    return { liste = liste, tournee = tournee, types = types, zones = zones, filtre = filtre, api = api }
+    return { liste = liste, tournee = tournee, recolteEnCours = recolteEnCours, types = types, zones = zones, filtre = filtre, api = api }
 end
 
 -- LB / RB dans les itineraires : le type ou la zone precedent / suivant.
@@ -1668,6 +1673,16 @@ function page.RendrePanneauItin()
             page.Rendre()
         end)
     elseif f.type == "recolte" then
+        if d.recolteEnCours then
+            local a = d.recolteEnCours
+            local S = NS.suite or _G.CoreSuite
+            local qui = a.proprietaire or ""
+            local libelle = type(a.libelle) == "string" and a.libelle or L0.ROUTES_FARM
+            Ajouter("Interface\\Icons\\Trade_Herbalism", qui .. " : " .. libelle, L0.ROUTES_CLICK_STOP, true, function()
+                if S and S.Arreter then S.Arreter("joueur") end
+                page.Rendre()
+            end)
+        end
         if d.tournee then
             local enCours = page.EnGuidage and page.EnGuidage() or false
             Ajouter("Interface\\Icons\\Trade_Herbalism", L0.ROUTES_FARM_ROUND,
