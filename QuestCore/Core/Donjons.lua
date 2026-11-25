@@ -356,6 +356,26 @@ function donjons.MettreAJourKit(p, d, pc)
                     deja[id] = true
                 end
             end
+            -- Ce qui a deja ete fait pour ce donjon (maillons des suites, quetes
+            -- rendues) reste visible, meme dans un trajet recree.
+            local vus = {}
+            local function Faites(id, prof)
+                prof = prof or 0
+                if not id or vus[id] or prof > 25 then return end
+                vus[id] = true
+                -- Les prealables d'abord, faits ou non : toute la suite.
+                local groupe, une = NS.ref.Prerequis(id)
+                for _, pre in ipairs(groupe or {}) do Faites(pre, prof + 1) end
+                for _, pre in ipairs(une or {}) do
+                    if NS.parcours.EtatEtape(p, pre) == "faite" then Faites(pre, prof + 1) break end
+                end
+                if not deja[id] and not ignorees[id] and NS.parcours.EtatEtape(p, id) == "faite" then
+                    table.insert(etapes, id)
+                    deja[id] = true
+                end
+            end
+            for _, id in ipairs(prep.trajet) do Faites(id) end
+            for _, id in ipairs(d.faitesIds or {}) do Faites(id) end
             for _, id in ipairs(prep.trajet) do
                 if not deja[id] and not ignorees[id] then
                     table.insert(etapes, id)
