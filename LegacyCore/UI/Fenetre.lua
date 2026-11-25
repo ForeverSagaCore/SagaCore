@@ -967,7 +967,7 @@ local function MarquerMenu()
     for cle, b in pairs(cadre.boutonsMenu) do
         local choisi = cle == etat.page
         local texte = b.text or b.Text or (b.GetFontString and b:GetFontString())
-        if texte then texte:SetFontObject(choisi and "GameFontHighlight" or "GameFontNormal") end
+        if texte then texte:SetFontObject(choisi and "GameFontNormal" or "GameFontHighlight") end
         b.fond:SetShown(choisi)
     end
 end

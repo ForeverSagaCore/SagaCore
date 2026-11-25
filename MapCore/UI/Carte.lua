@@ -1324,7 +1324,7 @@ local function LigneMenu(rang)
     local l = menu.lignes[rang]
     if l then return l end
     l = CreateFrame("Button", nil, menu.liste)
-    l:SetHeight(18)
+    l:SetHeight(22)
     l:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
     l.fond = l:CreateTexture(nil, "BACKGROUND")
     l.fond:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
@@ -1337,7 +1337,8 @@ local function LigneMenu(rang)
         case:EnableMouse(false)
         l.case = case
     end
-    l.texte = l:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    -- La meme taille que les lignes des autres menus de la suite.
+    l.texte = l:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     l.texte:SetJustifyH("LEFT")
     l.texte:SetWordWrap(false)
     menu.lignes[rang] = l
@@ -1547,10 +1548,10 @@ function page.DonneesItin()
         return n
     end
     local types = {
-        { cle = "suite", nom = L0.ROUTES_CHAINS, n = Compter("suite") },
-        { cle = "donjon", nom = L0.ROUTES_DUNGEONS, n = Compter("donjon") },
-        { cle = "niveau", nom = L0.ROUTES_LEVEL, n = 1 },
-        { cle = "recolte", nom = L0.ROUTES_FARM, n = tournee and 1 or 0 },
+        { cle = "suite", nom = L0.ROUTES_CHAINS, n = Compter("suite"), icone = "Interface\\Icons\\INV_Scroll_03" },
+        { cle = "donjon", nom = L0.ROUTES_DUNGEONS, n = Compter("donjon"), icone = "Interface\\Icons\\INV_Misc_Key_14" },
+        { cle = "niveau", nom = L0.ROUTES_LEVEL, n = 1, icone = "Interface\\Icons\\Spell_Holy_SurgeOfLight" },
+        { cle = "recolte", nom = L0.ROUTES_FARM, n = tournee and 1 or 0, icone = "Interface\\Icons\\Trade_Herbalism" },
     }
     local parZone, zones = {}, {}
     for _, it in ipairs(liste) do
@@ -1588,17 +1589,23 @@ local function PanneauItin()
     if not vue then return nil end
     local p = vue.panneauItin
     if p then return p end
-    p = CreateFrame("Frame", nil, vue)
+    -- Au-dessus de la carte, hors de l'encrage du parchemin : un fond plein
+    -- et des textes clairs, lisibles quel que soit le theme.
+    p = CreateFrame("Frame", nil, vue:GetParent() or vue)
     p:SetAllPoints(vue.clip)
-    p:SetFrameLevel((vue.clip:GetFrameLevel() or 1) + 50)
+    p:SetFrameStrata(vue:GetFrameStrata() or "MEDIUM")
+    p:SetFrameLevel((vue:GetFrameLevel() or 1) + 200)
     p.fond = p:CreateTexture(nil, "BACKGROUND")
     p.fond:SetAllPoints()
-    p.fond:SetColorTexture(0.05, 0.04, 0.03, 0.88)
+    p.fond:SetColorTexture(0.06, 0.05, 0.04, 0.97)
+    p.sansEncre = true
+    vue:HookScript("OnHide", function() p:Hide() end)
     p.titre = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     p.titre:SetPoint("TOPLEFT", p, "TOPLEFT", 24, -20)
     local S = NS.suite or _G.CoreSuite
     if S and S.TitreDeMenu then S.TitreDeMenu(p.titre) end
-    p.aide = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    p.aide = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p.aide:SetTextColor(0.7, 0.7, 0.7)
     p.aide:SetPoint("TOPLEFT", p.titre, "BOTTOMLEFT", 0, -6)
     p.lignes = {}
     p:EnableMouse(true)
@@ -1730,7 +1737,7 @@ local function RendreMenu(idCarte)
         l:SetScript("OnEnter", survol)
         l:SetScript("OnLeave", survol and function() GameTooltip:Hide() end or nil)
         l:Show()
-        y = y + 19
+        y = y + 23
     end
     -- Onglet Itineraires : a gauche, les itineraires par type puis par zone ;
     -- au centre, ceux du type ou de la zone choisis ; un clic sur l'un d'eux
@@ -1744,7 +1751,7 @@ local function RendreMenu(idCarte)
         for _, t in ipairs(donnees.types) do
             local cleT = t.cle
             table.insert(page.choixItin, { type = cleT })
-            Ligne(t.nom .. "  |cff8c8c8c" .. t.n .. "|r", nil, filtre.type == cleT, function()
+            Ligne("|T" .. t.icone .. ":16|t  " .. t.nom .. "  |cff8c8c8c" .. t.n .. "|r", nil, filtre.type == cleT, function()
                 page.filtreItin = { type = cleT }
                 page.Rendre()
             end)
@@ -1755,7 +1762,7 @@ local function RendreMenu(idCarte)
             for _, z in ipairs(donnees.zones) do
                 local cleZ = z.nom
                 table.insert(page.choixItin, { zone = cleZ })
-                Ligne(z.nom .. "  |cff8c8c8c" .. z.n .. "|r", nil, filtre.zone == cleZ, function()
+                Ligne("|TInterface\\Icons\\INV_Misc_Map_01:16|t  " .. z.nom .. "  |cff8c8c8c" .. z.n .. "|r", nil, filtre.zone == cleZ, function()
                     page.filtreItin = { zone = cleZ }
                     page.Rendre()
                 end)
@@ -2382,6 +2389,8 @@ function page.Rendre(parent, basDroite, menuParent, menuHaut, mere)
         -- Recherche d'une zone par son nom, au-dessus du menu.
         local okR, recherche = pcall(CreateFrame, "EditBox", nil, menuParent, "SearchBoxTemplate")
         if not okR or not recherche then recherche = CreateFrame("EditBox", nil, menuParent, "InputBoxTemplate") end
+        -- Plus de champ de recherche : le menu commence tout en haut.
+        recherche:Hide()
         recherche:SetHeight(20)
         recherche:SetPoint("TOPLEFT", menuParent, "TOPLEFT", 8, 0)
         recherche:SetPoint("RIGHT", menuParent, "RIGHT", -4, 0)
@@ -2397,7 +2406,7 @@ function page.Rendre(parent, basDroite, menuParent, menuHaut, mere)
         recherche:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
         menu = CreateFrame("ScrollFrame", nil, menuParent)
         menu.recherche = recherche
-        menu:SetPoint("TOPLEFT", menuParent, "TOPLEFT", 0, -28)
+        menu:SetPoint("TOPLEFT", menuParent, "TOPLEFT", 0, 0)
         menu:SetPoint("BOTTOMRIGHT", menuParent, "BOTTOMRIGHT", 0, 0)
         menu:EnableMouseWheel(true)
         menu:SetScript("OnMouseWheel", function(self, sens)
@@ -2420,7 +2429,7 @@ function page.Rendre(parent, basDroite, menuParent, menuHaut, mere)
     -- Le nom de la zone, le meme dans QuestCore et MapCore : encre sur le
     -- parchemin, or sur le fond sombre.
     if NS.charte.Fond() == "parchemin" then
-        vue.titre:SetTextColor(0.42, 0.18, 0.02)
+        vue.titre:SetTextColor(0.14, 0.08, 0.03)
         vue.titre:SetShadowColor(0, 0, 0, 0)
     else
         vue.titre:SetTextColor(1, 0.82, 0)
