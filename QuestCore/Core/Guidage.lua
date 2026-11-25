@@ -630,6 +630,8 @@ api.ObjetsAObtenir = function()
     end
     return res
 end
+-- Pour CraftCore : les quetes qui demandent cet objet.
+api.QuetesDemandant = function(objet) return NS.ref.QuetesDemandant(objet) end
 api.GuiderNiveau = function(n) return guidage.Lancer("niveau", { niveau = tonumber(n) }) end
 api.GuiderParcours = function(uid) return guidage.Lancer("parcours", { uid = uid }) end
 -- Ancien appel : guider les quetes a rendre, ou arreter le guidage de QuestCore.

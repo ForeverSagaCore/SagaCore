@@ -73,6 +73,7 @@ evenements:SetScript("OnEvent", function(_, evenement, ...)
         pcall(evenements.RegisterEvent, evenements, "ZONE_CHANGED_NEW_AREA")
         ReleverBientot()
         pcall(NS.ref.ConstruireIndexRecompenses)
+        pcall(NS.ref.ConstruireIndexObjetsDeQuetes)
         local okC, souciC = pcall(NS.courrier.Installer)
         if not okC then NS.base.NoterIncident("courrier", souciC) end
         NS.Dire(string.format(L.LOADED, NS.VERSION))
