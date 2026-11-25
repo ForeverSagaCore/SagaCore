@@ -76,7 +76,14 @@ end
 -- pas meme quand ses objectifs sans lieu connu renvoient au receveur. Un
 -- point dans une instance n'est jamais vise : a la place, l'entree du donjon
 -- (celui de la quete, ou celui de l'instance ou tombe le point).
-local function PointDeQuete(id, moi, continent, jx, jy)
+-- Un point d'objectif deja visite (on y est arrive) ne revient pas tant
+-- que la quete n'est pas finie : un objectif a plusieurs lieux (deux puits,
+-- trois caisses...) mene au suivant au lieu de rester sur le premier.
+local function CleDePoint(id, x, y)
+    return tostring(id) .. ":" .. math.floor((x or 0) * 1000) .. ":" .. math.floor((y or 0) * 1000)
+end
+
+local function PointDeQuete(id, moi, continent, jx, jy, utilises)
     local meilleur, lieu
     local ok, points = pcall(NS.carte.PointsPour, id, moi)
     local q = moi.quetes and moi.quetes[id]
@@ -92,9 +99,12 @@ local function PointDeQuete(id, moi, continent, jx, jy)
             if e and not entreesVues[e] then entreesVues[e] = true table.insert(entrees, e) end
         elseif pt.genre == voulu and not (enCours and donjon and pt.parReceveur) then
             local x, y = NS.carte.Reporter(pt, continent)
-            if x then
+            local deja = voulu == "objectif" and utilises and x and utilises[CleDePoint(id, x, y)]
+            if x and not deja then
                 local d = (x - jx) ^ 2 + (y - jy) ^ 2
-                if not meilleur or d < meilleur then meilleur, lieu = d, { x = x, y = y, qui = pt.quoi } end
+                if not meilleur or d < meilleur then
+                    meilleur, lieu = d, { x = x, y = y, qui = pt.quoi, objectif = voulu == "objectif" or nil }
+                end
             end
         end
     end
@@ -119,7 +129,7 @@ local function PointDeQuete(id, moi, continent, jx, jy)
         end
         if carte and not (_G.issecretvalue and (_G.issecretvalue(gx) or _G.issecretvalue(gy))) then
             local x, y = NS.carte.Reporter({ carte = carte, x = gx, y = gy }, continent)
-            if x then return { x = x, y = y, qui = nil } end
+            if x and not (utilises and utilises[CleDePoint(id, x, y)]) then return { x = x, y = y, qui = nil, objectif = true } end
         end
     end
     -- A defaut : l'entree du donjon. Celui de la quete quand elle est prise
@@ -232,8 +242,15 @@ local function EtapesDeQuetes(ids, moi, etat, compte, suite)
     local secret = _G.issecretvalue
     if not jx or (secret and (secret(jx) or secret(jy))) then return nil, "loin", OuAller(moi, ids) end
     local points, entrees = {}, {}
+    etat.utilises = type(etat.utilises) == "table" and etat.utilises or {}
+    -- Une quete finie (ou sortie du journal) libere ses points visites.
+    for cleU in pairs(etat.utilises) do
+        local idU = tonumber(cleU:match("^(%d+):"))
+        local qU = idU and moi.quetes and moi.quetes[idU]
+        if not qU or qU.complete == true then etat.utilises[cleU] = nil end
+    end
     for _, id in ipairs(ids) do
-        local lieu = PointDeQuete(id, moi, continent, jx, jy)
+        local lieu = PointDeQuete(id, moi, continent, jx, jy, etat.utilises)
         if lieu and lieu.entree then
             -- Plusieurs quetes du meme donjon : une seule etape, son entree.
             if not entrees[lieu.entree] then
@@ -242,8 +259,15 @@ local function EtapesDeQuetes(ids, moi, etat, compte, suite)
                     titre = lieu.entree, qui = string.format(L.GUIDE_ENTER_DUNGEON, lieu.entree), entree = lieu.entree })
             end
         elseif lieu then
-            table.insert(points, { carte = continent, x = lieu.x, y = lieu.y, cle = "q" .. id, id = id,
-                titre = Titre(id, moi), qui = Qui(id, moi, lieu) })
+            local cleP = "q" .. id .. (lieu.objectif and (":" .. CleDePoint(id, lieu.x, lieu.y)) or "")
+            local etatQ = NS.parcours.EtatEtape(moi, id)
+            -- Passee a la main : ignoree tant que sa quete n'a pas change.
+            local sautee = type(etat.sautees) == "table" and etat.sautees[cleP]
+            if sautee and sautee ~= etatQ then etat.sautees[cleP] = nil sautee = nil end
+            if not sautee then
+                table.insert(points, { carte = continent, x = lieu.x, y = lieu.y, cle = cleP, id = id,
+                    titre = Titre(id, moi), qui = Qui(id, moi, lieu), objectif = lieu.objectif, etatQuete = etatQ })
+            end
         end
     end
     if #points == 0 then
@@ -324,6 +348,26 @@ end
 local function Commun(def)
     def.icone = "Interface\\GossipFrame\\AvailableQuestIcon"
     def.AideClic = function() return L.GUIDE_CLICK end
+    -- « Suivante » (bouton du guidage) : la cible visee est passee ; elle ne
+    -- revient que si l'etat de sa quete change.
+    def.Passer = def.Passer or function(_, etat, cible)
+        if type(cible) ~= "table" or type(etat) ~= "table" then return end
+        if cible.objectif and cible.id then
+            etat.utilises = type(etat.utilises) == "table" and etat.utilises or {}
+            etat.utilises[CleDePoint(cible.id, cible.x, cible.y)] = true
+        elseif cible.cle then
+            etat.sautees = type(etat.sautees) == "table" and etat.sautees or {}
+            etat.sautees[cible.cle] = cible.etatQuete or true
+        end
+    end
+    -- Arrive sur un lieu d'objectif : il est fait, le suivant est vise.
+    def.Arrivee = def.Arrivee or function(_, etat, cible)
+        if type(cible) == "table" and cible.objectif and cible.id and type(etat) == "table" then
+            etat.utilises = type(etat.utilises) == "table" and etat.utilises or {}
+            etat.utilises[CleDePoint(cible.id, cible.x, cible.y)] = true
+        end
+        return "suivante"
+    end
     def.Evenements = def.Evenements or { "QUEST_LOG_UPDATE", "QUEST_TURNED_IN", "ZONE_CHANGED_NEW_AREA" }
     def.Clic = function()
         if S() and S().OuvrirPlanDuDonjon and S().OuvrirPlanDuDonjon() then return end

@@ -398,6 +398,7 @@ local DICO = {
         ["Change guide"] = "Changer de guide",
         ["Stop"] = "Arrêter",
         ["Cancel"] = "Annuler",
+        ["Next"] = "Suivante",
         ["Level %d"] = "Niveau %d",
         ["Route add-ons"] = "Add-ons d'itinéraire",
         ["Shortest Path Forever and TomTom draw a detailed route. Install them with CurseForge or WowUp, then restart the game : they become available here."] = "Shortest Path Forever et TomTom tracent un itinéraire détaillé. Installez-les avec CurseForge ou WowUp, puis relancez le jeu : ils deviennent disponibles ici.",
@@ -4838,22 +4839,36 @@ local function CadreObjectifs()
     c.btnChanger:SetSize(130, 20)
     c.btnChanger:SetText(TX("Change guide"))
     c.btnChanger:SetScript("OnClick", function() Suite.ChangerDeGuide() end)
+    c.btnSuivante = CreateFrame("Button", "CoreSuiteGuidageSuivante", c.changer, "UIPanelButtonTemplate")
+    c.btnSuivante:SetSize(90, 20)
+    c.btnSuivante:SetText(TX("Next"))
+    c.btnSuivante:SetScript("OnClick", function() Suite.EtapeSuivante() end)
     c.btnArreter = CreateFrame("Button", "CoreSuiteGuidageArreter", c.changer, "UIPanelButtonTemplate")
     c.btnArreter:SetSize(90, 20)
     c.btnArreter:SetText(TX("Stop"))
     c.btnArreter:SetScript("OnClick", function() Suite.Arreter("joueur") end)
-    function c.changer.Poser(peutChanger)
-        c.btnChanger:ClearAllPoints()
-        c.btnArreter:ClearAllPoints()
-        c.btnChanger:SetShown(peutChanger)
-        if peutChanger then
-            c.btnChanger:SetPoint("LEFT", c.changer, "LEFT", 0, 0)
-            c.btnArreter:SetPoint("RIGHT", c.changer, "RIGHT", 0, 0)
-        else
-            c.btnArreter:SetPoint("CENTER", c.changer, "CENTER", 0, 0)
+    -- Les boutons visibles, cote a cote et centres : Changer de guide (si un
+    -- add-on de trajet est installe), Suivante (s'il y a plusieurs etapes),
+    -- Arreter (toujours).
+    function c.changer.Poser(peutChanger, plusieurs)
+        local vus = {}
+        c.btnChanger:SetShown(peutChanger and true or false)
+        c.btnSuivante:SetShown(plusieurs and true or false)
+        if peutChanger then table.insert(vus, c.btnChanger) end
+        if plusieurs then table.insert(vus, c.btnSuivante) end
+        table.insert(vus, c.btnArreter)
+        local largeur = 0
+        for _, b in ipairs(vus) do largeur = largeur + b:GetWidth() end
+        largeur = largeur + 4 * (#vus - 1)
+        c.changer:SetWidth(largeur)
+        local x = 0
+        for _, b in ipairs(vus) do
+            b:ClearAllPoints()
+            b:SetPoint("LEFT", c.changer, "LEFT", x, 0)
+            x = x + b:GetWidth() + 4
         end
     end
-    c.changer.Poser(false)
+    c.changer.Poser(false, false)
     c.changer:Hide()
     local attente = 0
     c:SetScript("OnUpdate", function(self, ecoule)
@@ -4863,9 +4878,11 @@ local function CadreObjectifs()
         local inst = Suite.guide.actif
         if not inst then self:Hide() return end
         local peutChanger = Suite.PeutChangerDeGuide and Suite.PeutChangerDeGuide() or false
-        if self.changer.peut ~= peutChanger then
-            self.changer.peut = peutChanger
-            self.changer.Poser(peutChanger)
+        local calculVu = Suite.guide.calcul
+        local plusieurs = type(calculVu) == "table" and (calculVu.total or 0) > 1 and Def(inst) and Def(inst).Passer ~= nil or false
+        if self.changer.peut ~= peutChanger or self.changer.plusieurs ~= plusieurs then
+            self.changer.peut, self.changer.plusieurs = peutChanger, plusieurs
+            self.changer.Poser(peutChanger, plusieurs)
         end
         self.changer:Show()
         -- En marche, le bouton s'efface presque (10 %) : on sait qu'il est
@@ -4879,6 +4896,7 @@ local function CadreObjectifs()
             self.changer:SetAlpha(a)
         end
         self.btnChanger:EnableMouse(not enMarche)
+        self.btnSuivante:EnableMouse(not enMarche)
         self.btnArreter:EnableMouse(not enMarche)
         local calcul = Calculer()
         -- Objectif atteint pendant le calcul : tout est deja range.
@@ -5354,6 +5372,20 @@ Finir = function(raison)
     elseif M and M.Dire and raison == "joueur" then
         pcall(M.Dire, "MapCore", "arret")
     end
+end
+
+-- « Suivante » : la cible visee est passee a la main (le type dit comment),
+-- la suivante est calculee tout de suite.
+function Suite.EtapeSuivante()
+    local inst = Suite.guide.actif
+    local def = inst and Def(inst)
+    local calcul = Suite.guide.calcul
+    local cible = type(calcul) == "table" and type(calcul.etapes) == "table" and calcul.etapes[1] or nil
+    if not (def and def.Passer and cible) then return end
+    pcall(def.Passer, inst.params, inst.etat, cible)
+    Suite.guide.envoye = nil
+    Suite.guide.arrivee = nil
+    if Suite.Invalider then Suite.Invalider() end
 end
 
 -- Arreter le guidage : "joueur" (par defaut), "atteint" ou "remplace".
