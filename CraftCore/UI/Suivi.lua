@@ -1928,11 +1928,11 @@ function suivi.Dessiner()
     cadreSuivi.tout:SetShown(#deLOnglet > 1)
     -- Guidage possible si une matiere qui manque aux objectifs de l'onglet,
     -- et que le personnage sait recolter, a un lieu connu.
-    local enGuidage = suivi.EnGuidage(suivi.ParamsOnglet())
-    local guidable = enGuidage or #suivi.LieuxRecoltables(deLOnglet) > 0
-    cadreSuivi.guider:SetShown(guidable)
-    cadreSuivi.guider:SetText(enGuidage and L.GUIDE_GOALS_STOP or L.GUIDE_GOALS)
-    if guidable or #deLOnglet > 1 then y = y + 26 end
+    -- Un seul moyen de guider : la petite carte de chaque fabrication (un
+    -- objectif precis). Plus de bouton Guider pour tout l'onglet, qui
+    -- faisait doublon et brouillait lequel etait en cours.
+    cadreSuivi.guider:Hide()
+    if #deLOnglet > 1 then y = y + 26 end
     cadreSuivi:SetHeight(24 + NS.charte.MARGE + y + NS.charte.MARGE + 4)
 end
 
