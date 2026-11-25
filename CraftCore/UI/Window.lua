@@ -134,19 +134,19 @@ local METIERS = {
 -- l'atelier ; ce qui suit le metier choisi a droite ; ce qui couvre tous
 -- les metiers ; puis les parametres. "filet" : un filet au-dessus.
 local PAGES = {
-    { cle = "atelier",     libelle = "NAV_DASHBOARD",    icone = "Interface\\Icons\\INV_Misc_Gear_01" },
+    { cle = "atelier",     libelle = "NAV_DASHBOARD",    icone = "Interface\\Icons\\INV_Misc_Gear_01", section = "NAV_SEC_WORKSHOP" },
     -- Le metier choisi a droite.
-    { cle = "projets",     libelle = "NAV_PROJECTS",     icone = "Interface\\Icons\\INV_Scroll_03", filet = true },
+    { cle = "projets",     libelle = "NAV_PROJECTS",     icone = "Interface\\Icons\\INV_Scroll_03", section = "NAV_SEC_PROFESSION" },
     { cle = "commandes",   libelle = "NAV_ORDERS",       icone = "Interface\\Icons\\INV_Letter_15" },
     { cle = "recettes",    libelle = "NAV_RECIPES",      icone = "Interface\\Icons\\INV_Misc_Book_09" },
     { cle = "stocks",      libelle = "NAV_STOCKS",       icone = "Interface\\Icons\\INV_Misc_Bag_08" },
     { cle = "monter",      libelle = "NAV_LEVEL_UP_THIS", icone = "Interface\\Icons\\INV_Misc_Book_11" },
     -- Tous les metiers.
-    { cle = "stocksTous",  libelle = "NAV_STOCKS_ALL",   icone = "Interface\\Icons\\INV_Misc_Bag_10", filet = true },
+    { cle = "stocksTous",  libelle = "NAV_STOCKS_ALL",   icone = "Interface\\Icons\\INV_Misc_Bag_10", section = "NAV_SEC_ALL" },
     { cle = "banquiers",   libelle = "NAV_BANKERS",      icone = "Interface\\Icons\\INV_Misc_Coin_02" },
     { cle = "progression", libelle = "NAV_LEVEL_UP",     icone = "Interface\\Icons\\INV_Misc_Book_11" },
     -- L'equipement et les caisses ont leur onglet a droite, sous les metiers.
-    { cle = "reglages",    libelle = "NAV_SETTINGS",     icone = "Interface\\Icons\\Trade_Engineering", filet = true },
+    { cle = "reglages",    libelle = "NAV_SETTINGS",     icone = "Interface\\Icons\\Trade_Engineering", section = "NAV_SEC_ADDON" },
 }
 
 -- ---------------------------------------------------------------------------
@@ -5322,25 +5322,16 @@ local function Construire()
         local bouton = CreerLigneDeMenu(menu, page.icone)
         bouton:SetPoint("LEFT", menu, "LEFT", 0, 0)
         bouton:SetPoint("RIGHT", menu, "RIGHT", 0, 0)
-        if precedent and page.filet then
-            -- Filet entre deux groupes, avec de l'air de part et d'autre.
-            -- Un pixel d'ecran exact, cale sur la grille : tous les filets
-            -- ont la meme epaisseur, ou qu'ils tombent.
-            local filet = menu:CreateTexture(nil, "ARTWORK")
-            table.insert(win.filetsMenu, filet)
-            PeindreFilet(filet, 0.8, 0.65, 0.35, 0.35)
-            if filet.SetSnapToPixelGrid then filet:SetSnapToPixelGrid(false) filet:SetTexelSnappingBias(0) end
-            local PU = _G.PixelUtil
-            if PU and PU.SetHeight and PU.SetPoint then
-                PU.SetHeight(filet, 1, 1)
-                PU.SetPoint(filet, "TOPLEFT", precedent, "BOTTOMLEFT", 6, -6)
-                PU.SetPoint(filet, "TOPRIGHT", precedent, "BOTTOMRIGHT", -6, -6)
-            else
-                filet:SetHeight(1)
-                filet:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 6, -6)
-                filet:SetPoint("TOPRIGHT", precedent, "BOTTOMRIGHT", -6, -6)
-            end
-            bouton:SetPoint("TOP", precedent, "BOTTOM", 0, -13)
+        if page.section then
+            -- Un titre par categorie, comme dans QuestCore : la petite
+            -- police doree, de l'air au-dessus quand ce n'est pas la premiere.
+            local titre = menu:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            table.insert(win.filetsMenu, titre)
+            titre:SetText(L[page.section])
+            titre:SetJustifyH("LEFT")
+            if precedent then titre:SetPoint("TOPLEFT", precedent, "BOTTOMLEFT", 8, -10)
+            else titre:SetPoint("TOPLEFT", menu, "TOPLEFT", 8, -2) end
+            bouton:SetPoint("TOP", titre, "BOTTOM", 0, -3)
         elseif precedent then
             bouton:SetPoint("TOP", precedent, "BOTTOM", 0, -2)
         else

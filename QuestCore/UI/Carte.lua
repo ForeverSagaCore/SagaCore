@@ -638,6 +638,37 @@ _G.QuestCoreAPI = {
     CreerRepere = function(parent) return carte.CreerRepere(parent) end,
     Habiller = function(b, genre, icone, attente) return carte.Habiller(b, genre, icone, attente) end,
     NiveauDeCarte = function(idCarte) return carte.NiveauDeCarte(idCarte) end,
+    -- Les itineraires de quetes du personnage connecte, pour l'onglet
+    -- Itineraires de MapCore : { uid, nom, type ("suite" | "donjon" |
+    -- "parcours"), faites, total, zone (de la prochaine etape), guide }.
+    Itineraires = function()
+        local cle = NS.ClePersonnage()
+        local p = cle and NS.base.PersoParCle(cle)
+        local res = {}
+        if not (p and NS.parcours) then return res end
+        local S = NS.suite or _G.CoreSuite
+        for _, pc in ipairs(NS.parcours.Liste(cle)) do
+            local faites, total = NS.parcours.Avancement(p, pc)
+            if faites < total then
+                local _, id = NS.parcours.Prochaine(p, pc)
+                local zone = id and tonumber(NS.ref.Lire("QuestDB", id, "zoneOrSort")) or 0
+                local nomZone = zone > 0 and NS.Appeler(NS.Lecture("C_Map.GetAreaInfo"), zone) or nil
+                local genre = (pc.genre == "kit" and "donjon") or "suite"
+                local guide = NS.guidage and NS.guidage.EstActif and NS.guidage.EstActif("parcours", { uid = pc.uid }) or false
+                table.insert(res, { uid = pc.uid, nom = pc.nom, type = genre, faites = faites, total = total,
+                    zone = nomZone, guide = guide })
+            end
+        end
+        return res
+    end,
+    -- Guider un itineraire (ou l'arreter s'il est deja guide).
+    GuiderItineraire = function(uid)
+        if not (NS.guidage and NS.guidage.Lancer) then return false end
+        if NS.guidage.EstActif and NS.guidage.EstActif("parcours", { uid = uid }) then
+            return pcall(NS.guidage.Basculer, "parcours", { uid = uid })
+        end
+        return pcall(NS.guidage.Lancer, "parcours", { uid = uid })
+    end,
     -- Parcours de progression vers le niveau suivant, pour le personnage
     -- connecte, puis ouverture de la page Parcours. Rend le parcours ou nil
     -- et la raison ("rien", "aucune"). (Les boutons guident plutot vers un
