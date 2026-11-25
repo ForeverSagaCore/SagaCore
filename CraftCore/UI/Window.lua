@@ -4199,7 +4199,7 @@ local function RendreBanquiers(contenu)
         mesure:SetText(t.nouveau and L.BK_NEW or NS.inventaire.NomCourt(t.banquier.cle))
         largeurO = math.max(largeurO, mesure:GetStringWidth() or 60)
     end
-    largeurO = math.floor(largeurO + 44 + 18)
+    largeurO = math.floor(largeurO + 44)
     local precedent
     for i, t in ipairs(onglets) do
         local o = z.onglets[i]
@@ -4243,9 +4243,9 @@ local function RendreBanquiers(contenu)
         end
         o:SetWidth(largeurO)
         local fs = o.GetFontString and o:GetFontString()
-        local decal = t.nouveau and 0 or 9
+        local decal = 0
         if fs then
-            fs:SetWidth(largeurO - 16 - 18) fs:SetWordWrap(false)
+            fs:SetWidth(largeurO - 16) fs:SetWordWrap(false)
             fs:ClearAllPoints()
             fs:SetPoint("CENTER", o, "BOTTOM", decal, actif and 15 or 11)
             if t.nouveau then fs:SetTextColor(0.6, 0.6, 0.6)
@@ -4256,29 +4256,13 @@ local function RendreBanquiers(contenu)
         end
         o.classe:Hide() o.portrait:Hide() o.anneau:Hide()
         if t.banquier then
+            -- Un onglet comme ceux de StuffCore : le nom seul, centre, a la
+            -- couleur de sa classe ; pas d'icone collee dedans.
             local b = t.banquier
-            local tex = o.classe
-            if NS.PortraitDepose(o.portrait, b.fiche) then tex = o.portrait
-            else
-                local coords = CLASS_ICON_TCOORDS and b.fiche.jetonClasse and CLASS_ICON_TCOORDS[b.fiche.jetonClasse]
-                if coords then
-                    o.classe:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
-                    pcall(o.classe.SetTexCoord, o.classe, coords[1], coords[2], coords[3], coords[4])
-                else
-                    PoserVisage(o.classe, b.fiche, false)
-                end
-            end
-            -- L'icone et le nom, centres ensemble dans l'onglet, a la hauteur
-            -- du texte.
-            o.cercle:ClearAllPoints()
             if fs then
-                local largeurT = math.min(fs:GetStringWidth() or 40, largeurO - 40)
                 fs:ClearAllPoints()
-                fs:SetPoint("CENTER", o, "BOTTOM", 12, actif and 15 or 11)
-                o.cercle:SetPoint("RIGHT", fs, "CENTER", -largeurT / 2 - 9, 0)
-            else o.cercle:SetPoint("LEFT", o, "LEFT", 10, 0) end
-            o.anneau:Show()
-            tex:Show()
+                fs:SetPoint("CENTER", o, "BOTTOM", 0, actif and 15 or 11)
+            end
             local cle = b.cle
             o:SetScript("OnClick", function() ecran.banquierChoisi = cle ecran.Montrer("banquiers") end)
             o:SetScript("OnEnter", function(self)

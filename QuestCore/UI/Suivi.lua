@@ -1658,7 +1658,10 @@ RendreVueParcours = function(moi, index, y)
                     table.sort(avant, function(a2, b2) return a2.rang < b2.rang end)
                     local function Etape(t)
                         if dejaRendues[t.id] then return end
-                        if moi.quetes[t.id] or t.suite then
+                        -- Une quete d'une suite : la presentation des suites
+                        -- (la premiere qui reste deroulee, les suivantes en
+                        -- gris, reliees par le trait).
+                        if moi.quetes[t.id] or t.suite or Chaine(moi, t.id) then
                             index, y = RendreAvecChaine(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
                         else
                             local idQ = t.id
@@ -1703,7 +1706,7 @@ RendreVueParcours = function(moi, index, y)
                     Groupe(L.ROUTE_GROUP_TODO, #aFaire, { 1, 0.82, 0 })
                     for _, t in ipairs(aFaire) do
                         local idQ = t.id
-                        if t.suite then
+                        if t.suite or Chaine(moi, t.id) then
                             index, y = RendreAvecChaine(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
                         else
                         index, y = RendreEtapeBase(moi, t.id, t.rang, t.e, index, y, { actif = true, aide = L.ROUTE_STEP_HELP,
