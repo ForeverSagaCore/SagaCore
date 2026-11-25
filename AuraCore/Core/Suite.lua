@@ -3027,6 +3027,9 @@ local function FlecheExterne()
     if ok and trouve then flecheExterne = trouve end
     return flecheExterne
 end
+-- La marge fixe entre nos lignes et le haut du cadre de l'add-on de trajet.
+local MARGE_FLECHE_EXTERNE = 24
+
 -- Ce que l'add-on de trajet pose a la place de sa fleche quand l'etape est
 -- un objet a utiliser (Shortest Path Forever : l'icone de l'objet et son
 -- action, « Utiliser Pierre de foyer »). Cree tard : cherche toutes les 5 s.
@@ -3034,7 +3037,7 @@ local invite, dernierEssaiInvite = nil, 0
 local function InviteExterne()
     if invite then return invite end
     local maintenant = GetTime and GetTime() or 0
-    if maintenant - dernierEssaiInvite < 5 then return nil end
+    if maintenant - dernierEssaiInvite < 1 then return nil end
     dernierEssaiInvite = maintenant
     if not _G.EnumerateFrames then return nil end
     local ok, trouve = pcall(function()
@@ -3287,8 +3290,10 @@ local function CadreObjectifs()
         local maintenant = (_G.GetTime and _G.GetTime()) or 0
         if not externe then self.debutExterne = nil
         elseif not self.debutExterne then self.debutExterne = maintenant end
-        local enAttenteFleche = externe and #vus == 0
-            and maintenant - (self.debutExterne or maintenant) < 2
+        -- Plus d'attente : la place de nos lignes est connue d'avance (le
+        -- haut du cadre de l'add-on, montre ou pas), elles s'y posent tout
+        -- de suite et n'en bougent plus quand ses elements paraissent.
+        local enAttenteFleche = false
         self.etape:ClearAllPoints()
         self.compte:ClearAllPoints()
         self.changer:ClearAllPoints()
@@ -3307,6 +3312,20 @@ local function CadreObjectifs()
                     h = h and math.max(h, h2) or h2
                 end
             end
+            -- La place reservee : le cadre de la fleche et celui de l'invite
+            -- d'objet, meme caches (tout ce que l'add-on dessine pend sous
+            -- leur haut), plus une marge fixe. Toujours la meme hauteur.
+            for _, f in ipairs({ FlecheExterne() or false, InviteExterne() or false }) do
+                if f and f.GetTop and f:GetTop() and f:GetLeft() and f:GetRight() then
+                    local k = f.GetEffectiveScale and f:GetEffectiveScale() or 1
+                    local t, l, r, bo = f:GetTop() * k, f:GetLeft() * k, f:GetRight() * k, (f:GetBottom() or f:GetTop()) * k
+                    t = t + MARGE_FLECHE_EXTERNE * k
+                    g = g and math.min(g, l) or l
+                    d = d and math.max(d, r) or r
+                    b = b and math.min(b, bo) or bo
+                    h = h and math.max(h, t) or t
+                end
+            end
             local kU = UIParent.GetEffectiveScale and UIParent:GetEffectiveScale() or 1
             local kC = self.changer.GetEffectiveScale and self.changer:GetEffectiveScale() or kU
             if g then
@@ -3319,7 +3338,7 @@ local function CadreObjectifs()
                     self.etape:SetPoint("TOP", UIParent, "BOTTOMLEFT", x / kC, (b - 8 * kC) / kC)
                 end
             else
-                self.changer:SetPoint("BOTTOM", self, "CENTER", 0, 0)
+                self.changer:SetPoint("BOTTOM", self, "TOP", 0, MARGE_FLECHE_EXTERNE)
             end
             local nomP = Def(inst) and Def(inst).nomProprietaire or inst.proprietaire
             local quoi = inst.libelle
