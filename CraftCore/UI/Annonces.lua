@@ -168,7 +168,7 @@ end)
 
 -- Nom de la touche (Echap, Options, Raccourcis, Add-ons).
 BINDING_HEADER_CRAFTCORE = "CraftCore"
-BINDING_NAME_CRAFTCORE_PILOTER_SUIVI = (GetLocale and GetLocale() == "frFR") and "Naviguer dans le suivi" or "Navigate the tracker"
+BINDING_NAME_CRAFTCORE_PILOTER_SUIVI = (GetLocale and GetLocale() == "frFR") and "Naviguer dans la fenêtre CraftCore (suivi, banque, courrier, hôtel des ventes)" or "Navigate the CraftCore window (tracker, bank, mail, auction house)"
 
 -- Reglages de CraftCore dans Options, Add-ons, Forever SagaCore.
 do

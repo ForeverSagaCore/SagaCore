@@ -4755,7 +4755,14 @@ function Suite.Piloter(oui, nom)
     -- Depuis la fenetre des macros : elle reste ouverte, et reprendra la main.
     local retour = (p:IsShown() and (p.nom == "CoreSuiteMacros" or p.nom == "CoreSuiteMacroCore") and nom ~= p.nom) and p.nom or nil
     if p:IsShown() then p.retour = nil Suite.Piloter(false) end
-    -- Sans nom : le premier suivi ouvert.
+    -- Sans nom : d'abord une petite fenetre de la suite ouverte (question,
+    -- consigne, panneau de la banque, du courrier ou de l'hotel des ventes),
+    -- puis le premier suivi ouvert. La meme touche entre partout.
+    if not nom then
+        for _, n in ipairs({ "CraftCoreNouveauPlan", "CraftCoreConsigne", "CraftCoreAssistant" }) do
+            if _G[n] and _G[n]:IsShown() then nom = n break end
+        end
+    end
     if not nom then
         for _, n in ipairs(SUIVIS) do if _G[n] and _G[n]:IsShown() then nom = n break end end
         nom = nom or SUIVIS[1]
