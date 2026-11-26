@@ -351,7 +351,26 @@ end
 -- Recettes connues du catalogue, pour un metier donne. Si le client n'a jamais
 -- su dire a quel metier appartient une recette, elles sont toutes rendues
 -- plutot qu'aucune.
+-- Gardee quelques secondes (meme regle que les plans) : elle parcourt tout
+-- le catalogue et etait demandee des dizaines de fois par rafraichissement.
+local memoPour = {}
+local PourCalcul
 function recettes.Pour(ligneDeMetier)
+    local k = tostring(ligneDeMetier)
+    local maintenant = NS.Appeler(_G.GetTime) or 0
+    local m = memoPour[k]
+    if not (m and m.catalogue == Catalogue() and m.version == (recettes.VersionDesPlans and recettes.VersionDesPlans() or 0)
+        and maintenant - m.quand < 5) then
+        local liste, connu = PourCalcul(ligneDeMetier)
+        m = { liste = liste, connu = connu, quand = maintenant, catalogue = Catalogue(),
+            version = recettes.VersionDesPlans and recettes.VersionDesPlans() or 0 }
+        memoPour[k] = m
+    end
+    local copie = {}
+    for i, r in ipairs(m.liste) do copie[i] = r end
+    return copie, m.connu
+end
+PourCalcul = function(ligneDeMetier)
     local catalogue = Catalogue()
     if not catalogue then return {}, false end
     local liste = {}
@@ -1112,7 +1131,43 @@ end
 -- Les rangs vises d'un metier, a la suite : chacun part du precedent, et ce
 -- que le precedent prend dans les stocks n'est pas compte deux fois.
 -- Rend { { vise, de, plan }, ... }, du plus bas au plus haut.
+-- Les plans coutent cher (des milliers de recettes essayees) et etaient
+-- recalcules a chaque rafraichissement, pour chaque personnage : a l'hotel
+-- des ventes, une rafale d'evenements bloquait le jeu. Un plan calcule est
+-- garde tant que rien ne change (sacs, banque, courrier, recettes, rangs,
+-- plan fige), et au plus quelques secondes.
+local memoPlans, versionPlans = {}, 0
+local DUREE_MEMO = 5
+function recettes.OublierPlans() versionPlans = versionPlans + 1 memoPlans = {} end
+function recettes.VersionDesPlans() return versionPlans end
+do
+    local f = CreateFrame("Frame")
+    for _, e in ipairs({ "BAG_UPDATE_DELAYED", "PLAYERBANKSLOTS_CHANGED", "MAIL_INBOX_UPDATE", "SKILL_LINES_CHANGED",
+        "NEW_RECIPE_LEARNED", "TRADE_SKILL_LIST_UPDATE", "LEARNED_SPELL_IN_TAB", "PLAYER_LEVEL_UP" }) do
+        pcall(f.RegisterEvent, f, e)
+    end
+    f:SetScript("OnEvent", function()
+        recettes.OublierPlans()
+        -- Le releve des sacs suit l'evenement de peu : on oublie encore apres.
+        local apres = _G.C_Timer and _G.C_Timer.After
+        if apres then apres(1, recettes.OublierPlans) end
+    end)
+end
+local PlansVisesCalcul
 function recettes.PlansVises(fiche, cle, rang, rangMax, liste, apprendreTout)
+    if liste ~= nil or type(fiche) ~= "table" then return PlansVisesCalcul(fiche, cle, rang, rangMax, liste, apprendreTout) end
+    local okV, vises = pcall(recettes.RangsVises, fiche, cle)
+    local e = Emplacements(fiche, cle) or {}
+    local k = table.concat({ tostring(fiche.cle), tostring(cle), tostring(rang), tostring(rangMax), tostring(apprendreTout),
+        okV and type(vises) == "table" and table.concat(vises, ",") or "?", tostring(e.choix) }, ":")
+    local maintenant = NS.Appeler(_G.GetTime) or 0
+    local m = memoPlans[k]
+    if m and m.version == versionPlans and maintenant - m.quand < DUREE_MEMO then return m.res end
+    local res = PlansVisesCalcul(fiche, cle, rang, rangMax, liste, apprendreTout)
+    memoPlans[k] = { res = res, quand = maintenant, version = versionPlans }
+    return res
+end
+PlansVisesCalcul = function(fiche, cle, rang, rangMax, liste, apprendreTout)
     local res, pris, de = {}, {}, rang
     -- Le rang choisi aux fleches : le vrai guide, recettes a apprendre comprises.
     local e = Emplacements(fiche, cle)
@@ -1185,6 +1240,7 @@ function recettes.PhotoDuStock(cle)
 end
 function recettes.FigerPlan(fiche, cle, vise, plan, photo)
     if type(fiche) ~= "table" then return end
+    if recettes.OublierPlans then recettes.OublierPlans() end
     local ids = recettes.IdsDuPlan(plan)
     if not next(ids) then return end
     fiche.plansFiges = type(fiche.plansFiges) == "table" and fiche.plansFiges or {}
