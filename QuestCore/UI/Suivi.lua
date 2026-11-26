@@ -781,7 +781,16 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
         police = Police("ObjectiveTrackerHeaderFont", "GameFontNormal"), couleur = { 1, 0.82, 0 }, titre = true,
         marque = (q.complete == true) and true or (q.complete == -1 and -1 or false), idQuete = id,
         droite = pourcent and (pourcent .. " %") or nil,
-        survol = function(tt) NS.ref.InfobulleDeQuete(tt, q, idQuete, moi) end,
+        survol = function(tt)
+            NS.ref.InfobulleDeQuete(tt, q, idQuete, moi)
+            -- Pendant un guidage : comment ajouter ce rendu a l'itineraire.
+            local G = NS.guidage
+            if q.complete == true and G and G.Objectif and G.Objectif() and not G.DansLObjectif(idQuete) then
+                tt:AddLine(" ")
+                tt:AddLine(G.EstDetour(idQuete) and L.ROUTE_DETOUR_IN or L.ROUTE_DETOUR_TIP, 0.31, 0.82, 0.41, true)
+                tt:Show()
+            end
+        end,
         couleurDroite = pourcent and (pourcent >= 100 and { 0.31, 0.82, 0.41 } or { 0.8, 0.8, 0.8 }) or nil,
         auClic = function(_, bouton)
             if bouton == "RightButton" then
