@@ -598,7 +598,7 @@ local function PoserBoutonLigne(ligne, libelle, auClic, actif)
     AncrerLibelle(ligne, b)
 end
 
-local function PoserBoutonFabriquer(ligne, recette, nombre)
+local function PoserBoutonFabriquer(ligne, recette, nombre, sansManque)
     if not ligne.fabriquer then
         ligne.fabriquer = CreateFrame("Button", nil, ligne, "UIPanelButtonTemplate")
         ligne.fabriquer:SetSize(58, 18)
@@ -636,7 +636,7 @@ local function PoserBoutonFabriquer(ligne, recette, nombre)
     local montre, pret, manques = NS.actions.PreparerBoutonFabriquer(b, recette, nombre)
     if montre then
         local butee = b
-        if pret == false and type(manques) == "table" and #manques > 0 then
+        if pret == false and type(manques) == "table" and #manques > 0 and not sansManque then
             local noms = {}
             for _, m in ipairs(manques) do
                 table.insert(noms, NS.inventaire.NomDObjet(m.objet) .. (m.manque > 1 and (" x" .. m.manque) or ""))
@@ -4633,10 +4633,25 @@ local function RendreRecettes(contenu)
             for k = #ordre, 1, -1 do if ordre[k] == "AUTRES" then table.remove(ordre, k) end end
         end
     end
+    -- Dans chaque groupe : ce qui fait monter le metier a coup sur, puis
+    -- probablement, puis un peu, puis plus du tout ; les non apprises a la fin.
+    local ORDRE_PALIER = { sur = 1, probable = 2, peu = 3, rien = 4 }
+    local ordrePalier = {}
+    local function RangPalier(r)
+        local v = ordrePalier[r]
+        if v then return v end
+        if not catalogue.EstApprise(r.id) then v = 9
+        else
+            local okP, palier = pcall(PalierDeProgression, r)
+            v = okP and palier and ORDRE_PALIER[palier] or 5
+        end
+        ordrePalier[r] = v
+        return v
+    end
     for _, groupe in pairs(groupes) do
         table.sort(groupe.recettes, function(a, b)
-            local aa, ab = catalogue.EstApprise(a.id), catalogue.EstApprise(b.id)
-            if aa ~= ab then return aa end
+            local pa, pb = RangPalier(a), RangPalier(b)
+            if pa ~= pb then return pa < pb end
             return (a.nom or "") < (b.nom or "")
         end)
     end
@@ -4763,7 +4778,8 @@ local function RendreRecettes(contenu)
                 ecran.Montrer(ecran.page)
             end, 22, L.RECIPES_ADD_TIP)
             -- Creer : tout ce que les sacs permettent, pour tous les metiers.
-            PoserBoutonFabriquer(ligne, recette, "tout")
+            -- Ce qui manque se lit au survol (et a la manette), pas sur la ligne.
+            PoserBoutonFabriquer(ligne, recette, "tout", true)
         end
         PoserUsages(ligne, recette.objetProduit)
         -- Au survol : l'objet fabrique, et pour une recette non apprise, comment
@@ -4834,11 +4850,7 @@ local function RendreRecettes(contenu)
             y = PoserChoixDeProjet(contenu, idRecette, recette.nom, y, retraitRecette + 22)
         end
 
-        if deplie and appris and NS.encheres then
-            -- Ce qu'elle rapporte, d'apres le dernier releve de l'hotel des ventes.
-            local texte = NS.encheres.TexteDeValeur(NS.encheres.Valeur(recette))
-            if texte then y = Paragraphe(contenu, y + 2, texte, "GameFontHighlightSmall") end
-        end
+        -- Ce qu'elle rapporte a l'hotel des ventes : dans l'infobulle.
         if deplie then
             -- Les stocks de tous les personnages servent au calcul : c'est le
             -- besoin reel qui compte, pas seulement ce qu'on a sous la main.
@@ -4850,7 +4862,13 @@ local function RendreRecettes(contenu)
             if arbre then
                 -- La recette est deja au premier retrait, sous son emplacement :
                 -- ses composants commencent donc au deuxieme.
+                local avant = index
                 index, y = RendreNoeud(contenu, arbre, 2, index, y)
+                -- Le detail, d'une taille sous la recette : jamais plus gros.
+                for k = avant + 1, index do
+                    local l = contenu.lignes and contenu.lignes[k]
+                    if l then l.nom.agrandir = false end
+                end
             end
             y = y + 6
         end
