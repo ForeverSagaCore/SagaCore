@@ -236,9 +236,31 @@ Ailleurs = function(ids, moi)
     return nil
 end
 
+-- Detours : des quetes a rendre ajoutees par le joueur a l'itineraire en
+-- cours (petite carte sur la quete). Gardes par personnage, ils s'ajoutent
+-- aux etapes de l'objectif guide, quel qu'il soit, et partent quand la quete
+-- est rendue, quand le joueur les retire ou quand le guidage s'arrete.
+local function Detours(moi)
+    if type(moi) ~= "table" then return {} end
+    moi.detours = type(moi.detours) == "table" and moi.detours or {}
+    return moi.detours
+end
+
 -- Les etapes d'une liste de quetes, la plus proche d'abord, puis la plus
 -- proche de la precedente.
 local function EtapesDeQuetes(ids, moi, etat, compte, suite)
+    -- Les detours encore a rendre s'ajoutent (une seule fois chacun).
+    local d = Detours(moi)
+    if next(d) then
+        local deja, avec = {}, {}
+        for _, id in ipairs(ids) do deja[id] = true table.insert(avec, id) end
+        for id in pairs(d) do
+            local q = moi.quetes and moi.quetes[id]
+            if not q or q.complete ~= true then d[id] = nil
+            elseif not deja[id] then table.insert(avec, id) end
+        end
+        ids = avec
+    end
     if #ids == 0 then return nil, "loin" end
     local continent = Continent()
     if not continent then return nil, "loin", OuAller(moi, ids) end
@@ -381,6 +403,9 @@ local function Commun(def)
         if NS.pageCarte and NS.pageCarte.Filigrane then pcall(NS.pageCarte.Filigrane) end
     end
     def.Fin = function()
+        -- Les detours etaient pour cet itineraire : ils partent avec lui.
+        local moi = Moi()
+        if moi then moi.detours = nil end
         if NS.carte then NS.carte.Invalider() end
         if NS.pageCarte and NS.pageCarte.EnFiligrane and NS.pageCarte.EnFiligrane() then
             pcall(NS.pageCarte.Filigrane, false)
@@ -614,6 +639,38 @@ function guidage.Etapes()
     if not guidage.Objectif() then return nil end
     local e = S().EtatGuidage()
     return e and e.etapes
+end
+
+-- Detours : une quete a rendre ajoutee a l'itineraire en cours, ou retiree.
+function guidage.EstDetour(id)
+    local moi = Moi()
+    return moi ~= nil and Detours(moi)[tonumber(id)] == true
+end
+-- La quete fait-elle deja partie de l'objectif guide (hors detour) ?
+function guidage.DansLObjectif(id)
+    local a = guidage.Objectif()
+    if not a then return false end
+    if a.type == "rendus" then return true end
+    id = tonumber(id)
+    if guidage.EstDetour(id) then return false end
+    for _, e in ipairs(guidage.Etapes() or {}) do
+        if e.id == id then return true end
+    end
+    if a.type == "quetes" then
+        for _, x in ipairs(a.params.ids or {}) do if tonumber(x) == id then return true end end
+    end
+    return false
+end
+function guidage.BasculerDetour(id)
+    local moi = Moi()
+    id = tonumber(id)
+    if not (moi and id and guidage.Objectif()) then return false end
+    local d = Detours(moi)
+    d[id] = (not d[id]) or nil
+    S().Invalider()
+    if NS.carte then NS.carte.Invalider() end
+    if NS.suivi and NS.suivi.Rendre then pcall(NS.suivi.Rendre) end
+    return d[id] == true
 end
 
 _G.QuestCoreAPI = _G.QuestCoreAPI or {}
