@@ -270,6 +270,36 @@ TYPES.maitreMetier = (function()
 end)()
 
 -- ---------------------------------------------------------------------------
+-- PNJ du commerce des caisses : remise, vendeurs de patrons, intendant.
+-- ---------------------------------------------------------------------------
+
+TYPES.pnjCommerce = (function()
+    local t = S().TypePoint({ icone = "Interface\\Minimap\\Tracking\\Reagents" })
+    t.Cle = function(p) return tostring(p.id) end
+    t.Libelle = function(p)
+        local n = NS.commerceDonnees and NS.commerceDonnees.PNJ[tonumber(p.id)]
+        return string.format(L().TRADEHUB_GUIDE_WHAT or "%s", n and n.nom or "?")
+    end
+    t.Preparer = function(p, etat)
+        local D = NS.commerceDonnees
+        local n = D and D.PNJ[tonumber(p.id)]
+        local faction = n and D.FACTIONS[n.camp]
+        if not (n and faction) then return false end
+        etat.point = { carte = faction.carte, x = n.x, y = n.y, nom = n.nom }
+        return true
+    end
+    t.Reprendre = function(p, etat) return type(etat.point) == "table" and etat.point.carte ~= nil end
+    t.Etapes = function(p, etat)
+        local pt = etat.point
+        if type(pt) ~= "table" then return nil, "atteint" end
+        local quoi = t.Libelle(p)
+        return { { carte = pt.carte, x = pt.x, y = pt.y, titre = quoi, guidage = quoi,
+            qui = tostring(pt.nom or "?") .. "\n|cffb3b3b3" .. quoi .. "|r", cle = "pnjCommerce" } }
+    end
+    return t
+end)()
+
+-- ---------------------------------------------------------------------------
 -- Service : la banque ou la boite aux lettres la plus proche (lieux de
 -- MapCore), pour une etape de la feuille de route.
 -- ---------------------------------------------------------------------------
@@ -317,6 +347,7 @@ function guidage.Lancer(params)
     if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
     return r
 end
+function guidage.PNJCommerce(id) return S().LancerObjectif("CraftCore", "pnjCommerce", { id = id }) end
 function guidage.MaitreDeMetier(ligne, nom, rangMax, cible)
     local c = type(cible) == "table" and { id = cible.id, carte = cible.carte, x = cible.x, y = cible.y, nom = cible.nom } or nil
     return S().LancerObjectif("CraftCore", "maitreMetier", { ligne = ligne, nom = nom, rangMax = rangMax, cible = c })
