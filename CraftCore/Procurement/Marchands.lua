@@ -783,6 +783,23 @@ function encheres.PrixDeVente(objet)
     local prix = math.floor(plus / 100) * 100
     return math.max(100, prix), r.quand
 end
+-- Le depot que le jeu prendra pour cette vente, s'il le dit.
+function encheres.DepotDeVente(v)
+    local ah = AH()
+    local Loc = _G.ItemLocation
+    if not (ah and Loc and Loc.CreateFromBagAndSlot) then return nil end
+    local okL, loc = pcall(Loc.CreateFromBagAndSlot, Loc, v.sac, v.case)
+    if not okL or not loc then return nil end
+    local statut = ah.GetItemCommodityStatus and NS.Appeler(ah.GetItemCommodityStatus, loc)
+    local enum = _G.Enum and _G.Enum.ItemCommodityStatus
+    if enum and statut == enum.Commodity and ah.CalculateCommodityDeposit then
+        return tonumber(NS.Appeler(ah.CalculateCommodityDeposit, v.objet, DUREE_24H, v.nombre))
+    elseif ah.CalculateItemDeposit then
+        return tonumber(NS.Appeler(ah.CalculateItemDeposit, loc, DUREE_24H, v.nombre))
+    end
+    return nil
+end
+
 function encheres.Vendre(v)
     local ah = AH()
     local Loc = _G.ItemLocation
