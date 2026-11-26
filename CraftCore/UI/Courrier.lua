@@ -1261,8 +1261,12 @@ local function Remplir(plan)
             l.icone = l:CreateTexture(nil, "ARTWORK")
             l.icone:SetSize(16, 16)
             l.icone:SetPoint("LEFT", l, "LEFT", 2, 0)
+            -- Le petit bouton Vendre, au bout de la ligne.
+            l.vendre = CreateFrame("Button", "CraftCoreAssistantVendre" .. nv, l, "UIPanelButtonTemplate")
+            l.vendre:SetSize(64, 18)
+            l.vendre:SetPoint("RIGHT", l, "RIGHT", 0, 0)
             l.prix = l:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            l.prix:SetPoint("RIGHT", l, "RIGHT", -2, 0)
+            l.prix:SetPoint("RIGHT", l.vendre, "LEFT", -6, 0)
             l.prix:SetJustifyH("RIGHT")
             l.prix:SetWordWrap(false)
             l.nom = l:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -1286,14 +1290,31 @@ local function Remplir(plan)
         end
         l.prix:SetWidth(math.min(120, (l.prix:GetStringWidth() or 60) + 4))
         local vv = v
-        l:SetScript("OnClick", function()
-            if NS.encheres.MettreEnVente(vv.sac, vv.case) then
-                statut = string.format(L().AH_SELL_READY, NS.inventaire.NomDObjet(vv.objet))
+        -- La ligne : rien a cliquer (le survol montre l'objet) ; le bouton vend.
+        l:SetScript("OnClick", nil)
+        local prixVente = NS.encheres.PrixDeVente(v.objet)
+        l.vendre:SetText(L().AH_SELL_BUTTON)
+        l.vendre:SetEnabled(prixVente ~= nil and not enCours)
+        if l.vendre.SetMotionScriptsWhileDisabled then pcall(l.vendre.SetMotionScriptsWhileDisabled, l.vendre, true) end
+        l.vendre:SetScript("OnClick", function()
+            local ok, detail = NS.encheres.Vendre(vv)
+            if ok then
+                statut = string.format(L().AH_SOLD, NS.inventaire.NomDObjet(vv.objet), NS.marchands.Monnaie(detail))
             else
                 statut = L().AH_SELL_FAIL
             end
             courrier.Actualiser()
         end)
+        l.vendre:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            if prixVente then
+                GameTooltip:SetText(string.format(L().AH_SELL_AT, vv.nombre, NS.marchands.Monnaie(prixVente)), 1, 1, 1, 1, true)
+            else
+                GameTooltip:SetText(L().AH_SELL_NEED_SCAN, 1, 1, 1, 1, true)
+            end
+            GameTooltip:Show()
+        end)
+        l.vendre:SetScript("OnLeave", function() GameTooltip:Hide() end)
         l:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             if GameTooltip.SetItemByID then pcall(GameTooltip.SetItemByID, GameTooltip, vv.objet) end
@@ -1303,7 +1324,7 @@ local function Remplir(plan)
         end)
         l:SetScript("OnLeave", function() GameTooltip:Hide() end)
         l:Show()
-        table.insert(elements, { cadre = l, cle = "vente:" .. tostring(v.objet) })
+
         y = y + 20
     end
 
@@ -1571,6 +1592,8 @@ local function Remplir(plan)
                 o:SetPoint("BOTTOMLEFT", panneau, "BOTTOMRIGHT", -2, 24)
             end
             precedent = o
+            -- A la manette : LB / RB d'un onglet a l'autre.
+            o.ongletPilote = 1
             local choisi = OngletHV() == d.cle
             o.choisi = choisi
             o:SetChecked(choisi)
