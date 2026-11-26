@@ -3,7 +3,7 @@
 ## Notes: Your class made simple : every class quest chain done or still to do, spells to learn at the trainer, reagents on you and in the bank, a class badge under your portrait, and for hunters the full pet catalogue.
 ## Notes-frFR: Votre classe simplement : chaque chaîne de quêtes de classe faite ou à faire, les sorts à apprendre chez le maître, les réactifs sur vous et en banque, une pastille de classe sous le portrait, et pour les chasseurs le catalogue complet des familiers.
 ## Author: ForeverSagaCore
-## Version: 2.5.3
+## Version: 2.5.4
 ## IconTexture: Interface\Icons\INV_Misc_Book_09
 ## X-Category: Class
 ## X-Website: https://github.com/ForeverSagaCore/SagaCore
