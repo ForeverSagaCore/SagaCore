@@ -701,6 +701,39 @@ end
 -- gris, ni objet de quete, et rien dont un projet ou un rang vise a besoin.
 -- { objet, nombre, sac, case, unite (net, au dernier releve), marchand,
 --   releve (prix deja cherche) }, les plus rentables d'abord.
+-- Onglet Recettes : les plans (recette, formule, patron...) des metiers du
+-- personnage, pas encore appris, qu'il pourrait apprendre tout de suite
+-- (rang du metier suffisant), et qu'il n'a pas deja en main. Le plus haut
+-- rang d'abord. { objet, recette, rang, metier }.
+function encheres.PlansAApprendre()
+    local R = NS.recettes
+    local fiche = NS.base.Personnage and NS.base.Personnage()
+    if not (R and fiche and type(fiche.metiers) == "table") then return {} end
+    local res, vus = {}, {}
+    for _, r in pairs(R.Toutes() or {}) do
+        if type(r) == "table" and r.id and not R.EstApprise(r.id) then
+            local ligne = R.MetierDe and R.MetierDe(r)
+            local sien = ligne and fiche.metiers[tostring(ligne)]
+            local requis = R.RangRequis and R.RangRequis(r)
+            if type(sien) == "table" and tonumber(sien.rang) and requis and requis <= sien.rang then
+                local okO, objet = pcall(R.ObjetDuPlan, r)
+                if okO and objet and not vus[objet] then
+                    vus[objet] = true
+                    local okP, possede = pcall(R.PlanPossede, r)
+                    if not (okP and possede) then
+                        table.insert(res, { objet = objet, recette = r, rang = requis, metier = ligne })
+                    end
+                end
+            end
+        end
+    end
+    table.sort(res, function(a, b)
+        if a.rang ~= b.rang then return a.rang > b.rang end
+        return tostring(a.recette.nom) < tostring(b.recette.nom)
+    end)
+    return res
+end
+
 function encheres.AVendre()
     local C = function(nom) return NS.Lecture("C_Container." .. nom, nom) end
     local nbCases, contenu, idObjet = C("GetContainerNumSlots"), C("GetContainerItemInfo"), C("GetContainerItemID")
