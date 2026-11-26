@@ -1628,7 +1628,9 @@ local function Remplir(plan)
     LierManetteBientot(#actifs > 0)
     -- Hauteur : a l'hotel des ventes, toute la sienne ; ailleurs, celle du
     -- contenu, sans depasser la fenetre accompagnee. Au-dela, ca defile.
-    local voulu = HAUT_DU_CONTENU + y + BAS_DU_CONTENU
+    -- Jamais plus petit que ce que le cadre du jeu demande : en dessous,
+    -- ses bords debordaient.
+    local voulu = math.max(120, HAUT_DU_CONTENU + y + BAS_DU_CONTENU)
     local cible = panneau.hauteurCible
     local hauteur = voulu
     if cible and cible > 120 then
