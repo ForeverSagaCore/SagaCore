@@ -143,6 +143,11 @@ local function ObjectifsDeProgression(liste)
             -- Un objectif par rang vise, a la suite (82, puis 90...).
             for _, seg in ipairs(catalogue.PlansVises(fiche, cle, sien.rang, sien.rangMax)) do
             local vise, plan = seg.vise, seg.plan
+            -- Un meilleur plan existe (recette apprise entre-temps) : il est
+            -- seulement propose ; rien ne change sans l'accord du joueur.
+            if seg.autre and suivi.ProposerPlan then
+                pcall(suivi.ProposerPlan, fiche, cle, nom, vise, plan, seg.autre)
+            end
             local requis = {}
             for _, etape in ipairs(plan.etapes or {}) do
                 for _, comp in ipairs(etape.recette.composants or {}) do
@@ -253,6 +258,78 @@ local function ObjectifsDeProgression(liste)
             end
         end
     end
+end
+
+-- Proposition d'un autre plan : une petite fenetre, deux choix. Une fois
+-- par plan propose et par session ; « Garder mon plan » ne la fait plus
+-- revenir pour ce plan-la.
+local proposes, fenetrePlan = {}, nil
+local function ResumeDuPlan(plan)
+    local fois, manque = 0, 0
+    for _, e in ipairs(plan and plan.etapes or {}) do if not e.apprendre then fois = fois + (e.fois or 0) end end
+    for _, n in pairs(plan and plan.manques or {}) do manque = manque + n end
+    return fois, manque
+end
+function suivi.ProposerPlan(fiche, cle, nomMetier, vise, actuel, autre)
+    local L = NS.L
+    if InCombatLockdown and InCombatLockdown() then return end
+    local sig = NS.recettes.SignatureDuPlan(autre)
+    local fige = NS.recettes.PlanFige(fiche, cle, vise)
+    if not fige or (fige.refus and fige.refus[sig]) then return end
+    local k = tostring(fiche.cle) .. ":" .. tostring(cle) .. ":" .. tostring(vise) .. ":" .. sig
+    if proposes[k] then return end
+    proposes[k] = true
+    if not fenetrePlan then
+        local f = NS.charte.Fenetre("CraftCoreNouveauPlan", 400, 200, { portrait = false, strate = "DIALOG" })
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+        if f.titre then f.titre:SetText("CraftCore") end
+        f.textes = {}
+        for i = 1, 5 do
+            local t = f:CreateFontString(nil, "OVERLAY", i == 1 and "GameFontNormal" or "GameFontHighlightSmall")
+            t:SetJustifyH("LEFT")
+            t:SetWordWrap(false)
+            t:SetWidth(364)
+            t:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -40 - (i - 1) * 20 - (i > 1 and 4 or 0))
+            f.textes[i] = t
+        end
+        f.garder = NS.charte.BoutonDePied(f, L.PLAN_KEEP, 150)
+        f.changer = NS.charte.BoutonDePied(f, L.PLAN_SWITCH, 150, f.garder)
+        f:SetHeight(40 + 5 * 20 + 48)
+        table.insert(UISpecialFrames, "CraftCoreNouveauPlan")
+        fenetrePlan = f
+    end
+    local f = fenetrePlan
+    local foisA, manqueA = ResumeDuPlan(actuel)
+    local foisN, manqueN = ResumeDuPlan(autre)
+    local function Detail(fois, manque, plan)
+        local t = string.format(L.PLAN_CRAFTS, fois)
+        t = t .. "  |cffb3b3b3" .. (manque > 0 and string.format(L.PLAN_TO_GATHER, manque) or L.PLAN_ALL_THERE) .. "|r"
+        if plan and plan.estime then t = t .. "  |cffb3b3b3" .. L.PLAN_LUCK .. "|r" end
+        return t
+    end
+    f.textes[1]:SetText(L.PLAN_OTHER_TITLE)
+    f.textes[2]:SetText(string.format(L.GOAL_PROG, nomMetier or "?", vise))
+    f.textes[3]:SetText(L.PLAN_CURRENT .. " : " .. Detail(foisA, manqueA, actuel))
+    f.textes[4]:SetText(L.PLAN_NEW .. " : " .. Detail(foisN, manqueN, autre))
+    f.textes[5]:SetText("|cffb3b3b3" .. L.PLAN_CHOICE_NOTE .. "|r")
+    -- Deux boutons, au milieu du pied.
+    local total = f.garder:GetWidth() + 8 + f.changer:GetWidth()
+    f.changer:ClearAllPoints()
+    f.changer:SetPoint("LEFT", f.pied, "CENTER", -total / 2, 0)
+    f.garder:ClearAllPoints()
+    f.garder:SetPoint("LEFT", f.changer, "RIGHT", 8, 0)
+    f.changer:SetScript("OnClick", function()
+        NS.recettes.FigerPlan(fiche, cle, vise, autre)
+        f:Hide()
+        if suivi.Dessiner then pcall(suivi.Dessiner) end
+        if NS.ecran and NS.ecran.Actualiser then pcall(NS.ecran.Actualiser) end
+    end)
+    f.garder:SetScript("OnClick", function()
+        local p = NS.recettes.PlanFige(fiche, cle, vise)
+        if p then p.refus = type(p.refus) == "table" and p.refus or {} p.refus[sig] = true end
+        f:Hide()
+    end)
+    f:Show()
 end
 
 -- Projets en cours : ce qu'il faut recolter au bout de la chaine.
