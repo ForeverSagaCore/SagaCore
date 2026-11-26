@@ -473,6 +473,7 @@ local function PoserLigne(ligne, retrait, depliable, deplie, auClic)
     ligne.moins:Hide()
     ligne.plus:Hide()
     if ligne.fabriquer then ligne.fabriquer:Hide() end
+    if ligne.guider then ligne.guider:Hide() end
     if ligne.barreFab then ligne.barreFab:Hide() end
     if ligne.quete then ligne.quete:Hide() end
     for _, p in ipairs(ligne.usages or {}) do p:Hide() end
@@ -548,6 +549,41 @@ end
 -- Bouton Creer, le meme partout ou l'on peut fabriquer : a gauche des autres
 -- boutons de la ligne, ou de la colonne d'etat s'il n'y en a pas. Grise
 -- quand il manque des composants dans les sacs, et le survol dit lesquels.
+-- Un bouton « Me guider » au bout d'une ligne de recette a apprendre : vers
+-- le formateur (celui de son palier, le plus proche) ou le marchand qui vend
+-- son plan. Rien a guider : pas de bouton.
+local function PoserBoutonGuider(ligne, recette, nature)
+    local action
+    if nature == "RECIPES_HOW_TRAINER" and NS.avisRang and NS.avisRang.FormateurPour and NS.guidage and NS.guidage.MaitreDeMetier then
+        local f = NS.avisRang.FormateurPour(recette)
+        if f then
+            action = function()
+                NS.guidage.MaitreDeMetier(f.ligne, NS.recettes.NomDuMetier and NS.recettes.NomDuMetier(f.ligne) or "", f.palier, f)
+            end
+        end
+    elseif nature == "RECIPES_HOW_VENDOR" and NS.guidage and NS.guidage.Marchand then
+        local okO, objet = pcall(NS.recettes.ObjetDuPlan, recette)
+        if okO and objet and NS.marchands and NS.marchands.Localisable and NS.marchands.Localisable(objet) then
+            action = function() NS.guidage.Marchand(objet) end
+        end
+    end
+    if not action then return end
+    if not ligne.guider then
+        ligne.guider = CreateFrame("Button", nil, ligne, "UIPanelButtonTemplate")
+        ligne.guider:SetSize(86, 18)
+    end
+    local b = ligne.guider
+    b:ClearAllPoints()
+    b:SetPoint("RIGHT", ligne.total, "LEFT", -6, 0)
+    b:SetText(L.RANK_MAX_GUIDE or "")
+    b:SetScript("OnClick", function()
+        action()
+        if NS.ecran and NS.ecran.Montrer then NS.ecran.Montrer(NS.ecran.page) end
+    end)
+    b:Show()
+    AncrerLibelle(ligne, b)
+end
+
 local function PoserBoutonFabriquer(ligne, recette, nombre)
     if not ligne.fabriquer then
         ligne.fabriquer = CreateFrame("Button", nil, ligne, "UIPanelButtonTemplate")
@@ -3700,19 +3736,12 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                     l.total:SetTextColor(0.31, 0.82, 0.41)
                     l:EnableMouse(true)
                     local titreA = etape.recette.nom
-                    -- Chez un formateur : un clic guide jusqu'a lui.
-                    local formateur = nature == "RECIPES_HOW_TRAINER" and NS.avisRang and NS.avisRang.FormateurPour
-                        and NS.avisRang.FormateurPour(etape.recette) or nil
-                    l:SetScript("OnMouseUp", formateur and NS.guidage and NS.guidage.MaitreDeMetier and function()
-                        NS.guidage.MaitreDeMetier(formateur.ligne, catalogue.NomDuMetier and catalogue.NomDuMetier(formateur.ligne) or "",
-                            formateur.palier, formateur)
-                        ecran.Montrer(ecran.page)
-                    end or nil)
+                    -- Un vrai bouton « Me guider » (formateur ou marchand).
+                    if not etape.faite then PoserBoutonGuider(l, etape.recette, nature) end
                     l:SetScript("OnEnter", function(self)
                         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                         GameTooltip:SetText(titreA or "", 1, 0.82, 0)
                         for _, t in ipairs(lignesSrc or {}) do GameTooltip:AddLine(t, 1, 1, 1, true) end
-                        if formateur then GameTooltip:AddLine(L.RECIPES_CLICK_GUIDE or "", 0.31, 0.82, 0.41, true) end
                         GameTooltip:Show()
                     end)
                     l:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -4006,19 +4035,12 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                     l.total:SetTextColor(0.31, 0.82, 0.41)
                     l:EnableMouse(true)
                     local titreA = etape.recette.nom
-                    -- Chez un formateur : un clic guide jusqu'a lui.
-                    local formateur = nature == "RECIPES_HOW_TRAINER" and NS.avisRang and NS.avisRang.FormateurPour
-                        and NS.avisRang.FormateurPour(etape.recette) or nil
-                    l:SetScript("OnMouseUp", formateur and NS.guidage and NS.guidage.MaitreDeMetier and function()
-                        NS.guidage.MaitreDeMetier(formateur.ligne, catalogue.NomDuMetier and catalogue.NomDuMetier(formateur.ligne) or "",
-                            formateur.palier, formateur)
-                        ecran.Montrer(ecran.page)
-                    end or nil)
+                    -- Un vrai bouton « Me guider » (formateur ou marchand).
+                    if not etape.faite then PoserBoutonGuider(l, etape.recette, nature) end
                     l:SetScript("OnEnter", function(self)
                         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                         GameTooltip:SetText(titreA or "", 1, 0.82, 0)
                         for _, t in ipairs(lignesSrc or {}) do GameTooltip:AddLine(t, 1, 1, 1, true) end
-                        if formateur then GameTooltip:AddLine(L.RECIPES_CLICK_GUIDE or "", 0.31, 0.82, 0.41, true) end
                         GameTooltip:Show()
                     end)
                     l:SetScript("OnLeave", function() GameTooltip:Hide() end)
