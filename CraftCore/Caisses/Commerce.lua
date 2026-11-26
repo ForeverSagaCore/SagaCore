@@ -34,7 +34,8 @@ local function Base()
     -- Ce que l'infobulle dit d'un patron, par langue du client.
     local langue = NS.Appeler(GetLocale) or "?"
     -- Version 2 : le niveau requis du personnage est lu aussi.
-    if b.langue ~= langue or b.version ~= 2 then b.langue = langue b.version = 2 b.patrons = {} end
+    -- Version 3 : un patron sans rang requis lu n'est plus garde tel quel.
+    if b.langue ~= langue or b.version ~= 3 then b.langue = langue b.version = 3 b.patrons = {} end
     b.patrons = type(b.patrons) == "table" and b.patrons or {}
     b.prix = type(b.prix) == "table" and b.prix or {}
     return b
@@ -158,7 +159,7 @@ local function PalierDuLibelle(libelle)
     return nil
 end
 
-local demandes = {}
+local demandes, essais = {}, {}
 local function Demander(objet)
     if demandes[objet] then return end
     demandes[objet] = true
@@ -193,6 +194,13 @@ local function Lire(objet)
         if palier and not p.palier then p.palier = PalierDuLibelle(palier) or 4 end
     end
     p.palier = p.palier or 4
+    -- Le rang requis manque : l'infobulle n'etait pas complete (objet
+    -- fabrique pas encore charge). On relira, trois fois au plus.
+    if not p.rang then
+        essais[objet] = (essais[objet] or 0) + 1
+        Demander(objet)
+        if essais[objet] < 3 then return p end
+    end
     b.patrons[objet] = p
     return p
 end
@@ -274,6 +282,19 @@ function C.Patrons(fiche, metier)
             else
                 local r = Recette(objet, metier)
                 e.recette = r
+                -- La recette connue du catalogue : rang requis (si l'infobulle
+                -- ne l'a pas dit) et chance de faire monter le metier.
+                local rec = r and CraftCoreDB.recettes[tostring(r)]
+                local R2 = NS.recettes
+                if type(rec) == "table" then
+                    if e.rang == 0 and R2.RangRequis then e.rang = tonumber(R2.RangRequis(rec)) or 0 end
+                    if R2.FinDuOrange and R2.FinDuOrange(rec) and R2.ChanceDePoint and rangMetier > 0 then
+                        local ok, chance = pcall(R2.ChanceDePoint, rec, rangMetier)
+                        if ok and chance then
+                            e.point = (chance >= 1 and "sur") or (chance >= 0.5 and "probable") or (chance > 0 and "peu") or "rien"
+                        end
+                    end
+                end
                 if r and type(fiche.recettesApprises) == "table" and fiche.recettesApprises[tostring(r)] then
                     e.etat = "appris"
                 elseif Possede(fiche, objet) > 0 then
@@ -282,7 +303,7 @@ function C.Patrons(fiche, metier)
                     e.etat = "palier"
                 elseif e.prix and e.prix > faveur then
                     e.etat = "faveur"
-                elseif (p.rang or 0) > rangMetier then
+                elseif e.rang > rangMetier then
                     e.etat = "rang"
 
                 else
@@ -294,6 +315,7 @@ function C.Patrons(fiche, metier)
     end
     table.sort(liste, function(a, b)
         if a.rang ~= b.rang then return a.rang < b.rang end
+        if a.niveau ~= b.niveau then return a.niveau < b.niveau end
         return a.objet < b.objet
     end)
     return liste
