@@ -2137,7 +2137,8 @@ end
 
 local COULEURS_ETAT = {
     appris = { 0.31, 0.82, 0.41 }, possede = { 1, 0.82, 0 }, achetable = { 1, 1, 1 },
-    faveur = { 0.55, 0.55, 0.55 }, palier = { 0.55, 0.55, 0.55 }, rang = { 0.55, 0.55, 0.55 }, inconnu = { 0.55, 0.55, 0.55 },
+    faveur = { 0.55, 0.55, 0.55 }, palier = { 0.55, 0.55, 0.55 }, rang = { 0.55, 0.55, 0.55 }, niveau = { 0.55, 0.55, 0.55 },
+    inconnu = { 0.55, 0.55, 0.55 },
 }
 local function TexteEtat(e)
     local C = NS.commerce
@@ -2251,11 +2252,24 @@ function RendreCommerceBas(contenu, index, y, fiche, gardees)
         index, y = TitreDeSection(contenu, index, y, string.format(L.TRADEHUB_PATTERNS, m.nom, pnj and pnj.nom or "?"),
             string.format(L.TRADEHUB_LEARNED, appris, #patrons))
         y = BoutonGuiderPNJ(contenu, gardees, y, id)
+        -- En-tete des colonnes : rang du metier, niveau du personnage, prix.
+        local entete
+        index, y, entete = LigneCommerce(contenu, index, y, nil)
+        entete.icone:Hide()
+        entete:EnableMouse(false)
+        ColonneCourrier(entete, true)
+        for _, c in ipairs({ entete.sacs, entete.banque, entete.courrier, entete.total }) do c:SetFontObject("GameFontDisableSmall") end
+        entete.sacs:SetText(L.TRADEHUB_COL_RANK)
+        entete.banque:SetText(L.TRADEHUB_COL_LEVEL)
+        entete.courrier:SetText(L.TRADEHUB_COL_PRICE)
+        entete.total:SetText(L.TRADEHUB_COL_STATE)
         for _, p in ipairs(patrons) do
             local l
             index, y, l = LigneCommerce(contenu, index, y, p.objet)
+            ColonneCourrier(l, true)
             l.sacs:SetText(p.rang > 0 and tostring(p.rang) or "")
-            l.banque:SetText(TextePrix(p.prix, p.estime))
+            l.banque:SetText(p.niveau > 0 and tostring(p.niveau) or "")
+            l.courrier:SetText(TextePrix(p.prix, p.estime))
             PoserEtat(l, p)
         end
     end
@@ -2325,6 +2339,8 @@ local function RendreCaisses(contenu)
         index, y = RendreCommerceHaut(contenu, index, y, fiche, gardees)
     end
     index, y = TitreDeSection(contenu, index, y, L.TRADEHUB_MY_CRATES)
+    -- La regle d'abord : un seul lot par caisse.
+    y = Paragraphe(contenu, y, L.CRATES_NO_FILL, "GameFontDisableSmall")
     if #liste == 0 then
         y = Paragraphe(contenu, y, string.format(L.CRATES_NONE_FOR, nomDe(cle)), "GameFontDisableSmall")
     end
@@ -2374,8 +2390,7 @@ local function RendreCaisses(contenu)
                     NS.caisses.NePlusSuivre(caisseP.proprietaire, caisseP.id)
                 else
                     local fait, qui = NS.caisses.CreerProjet(caisseP)
-                    if fait then NS.Dire(string.format(L.CRATES_PROJECT_MADE, fait.pack, nomDe(qui)))
-                    else NS.Dire(L.CRATES_PROJECT_NONE) end
+                    if fait then NS.Dire(string.format(L.CRATES_PROJECT_MADE, caisseP.nom or "", nomDe(qui))) end
                 end
                 ecran.Montrer(ecran.page)
             end)
@@ -2447,11 +2462,7 @@ local function RendreCaisses(contenu)
                 -- Le nom toujours a l'encre ordinaire : l'etat se lit a la
                 -- coche et au compte, jamais a une couleur de nom.
                 l2.nom:SetTextColor(1, 1, 1)
-                -- Le pack vise par le projet de la caisse.
-                local suivieP = NS.caisses.ProjetDe and NS.caisses.ProjetDe(caisse)
-                if suivieP and suivieP.pack == pack.libelle then
-                    l2.nom:SetText(pack.libelle .. "  |cff8c8c8c" .. (L.CRATES_PROJECT_PACK or "") .. "|r")
-                end
+
                 l2.total:SetWordWrap(false)
                 local objetSurvol = objet
                 l2:EnableMouse(true)
@@ -2480,18 +2491,6 @@ local function RendreCaisses(contenu)
         end
     end
 
-    index = index + 1
-    local avis = LigneDeTableau(contenu, index)
-    avis:ClearAllPoints()
-    avis:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -(y + 6))
-    avis:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -(y + 6))
-    PoserLigne(avis, 0, false, false, nil)
-    avis.icone:Hide()
-    avis.nom:SetFontObject("GameFontDisableSmall")
-    avis.nom:SetText(L.CRATES_NO_FILL)
-    avis.sacs:SetText("") avis.banque:SetText("") avis.total:SetText("")
-    avis:Show()
-    y = y + HAUTEUR_LIGNE + 6
 
     if NS.commerce and fiche then
         index, y = RendreCommerceBas(contenu, index, y, fiche, gardees)

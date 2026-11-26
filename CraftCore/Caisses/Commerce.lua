@@ -33,7 +33,8 @@ local function Base()
     local b = d.commerce
     -- Ce que l'infobulle dit d'un patron, par langue du client.
     local langue = NS.Appeler(GetLocale) or "?"
-    if b.langue ~= langue then b.langue = langue b.patrons = {} end
+    -- Version 2 : le niveau requis du personnage est lu aussi.
+    if b.langue ~= langue or b.version ~= 2 then b.langue = langue b.version = 2 b.patrons = {} end
     b.patrons = type(b.patrons) == "table" and b.patrons or {}
     b.prix = type(b.prix) == "table" and b.prix or {}
     return b
@@ -177,8 +178,12 @@ local function Lire(objet)
     -- Une infobulle incomplete (objet pas encore charge) n'est pas gardee.
     if #lignes < 2 then Demander(objet) return nil end
     local p = { nom = nom }
-    local mCompetence, mReputation = Motif(_G.ITEM_REQ_SKILL), Motif(_G.ITEM_REQ_REPUTATION)
+    local mCompetence, mReputation, mNiveau = Motif(_G.ITEM_REQ_SKILL), Motif(_G.ITEM_REQ_REPUTATION), Motif(_G.ITEM_MIN_LEVEL)
     for _, texte in ipairs(lignes) do
+        if mNiveau and not p.niveau then
+            local n = texte:match(mNiveau)
+            if n then p.niveau = tonumber(n) end
+        end
         if mCompetence and not p.rang then
             local _, rang = texte:match(mCompetence)
             if rang then p.rang = tonumber(rang) end
@@ -262,7 +267,7 @@ function C.Patrons(fiche, metier)
     for objet, m in pairs(D.PATRONS) do
         if m == metier and (not D.PATRONS_CAMP[objet] or D.PATRONS_CAMP[objet] == camp) then
             local p = Lire(objet)
-            local e = { objet = objet, p = p, rang = p and p.rang or 0, palier = p and p.palier or 4 }
+            local e = { objet = objet, p = p, rang = p and p.rang or 0, palier = p and p.palier or 4, niveau = p and p.niveau or 0 }
             e.prix, e.estime = C.Prix(objet, metier, p)
             if not p then
                 e.etat = "inconnu"
@@ -279,6 +284,7 @@ function C.Patrons(fiche, metier)
                     e.etat = "faveur"
                 elseif (p.rang or 0) > rangMetier then
                     e.etat = "rang"
+
                 else
                     e.etat = "achetable"
                 end

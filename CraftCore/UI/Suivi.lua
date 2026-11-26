@@ -128,14 +128,19 @@ end
 local function ObjectifsDeCaisses(liste, cle)
     if not (NS.caisses and NS.caisses.Suivies) then return end
     for _, c in ipairs(NS.caisses.Suivies(cle)) do
-        local total = NS.inventaire.TotalPossede(c.objet) or 0
-        local requis = c.requis or 1
-        local manque = math.max(0, requis - total)
-        local pct = math.min(1, total / requis)
+        -- Tous les packs, en alternatives : la caisse est prete des qu'un
+        -- seul est complet. Le pourcentage est celui du pack le plus avance.
+        local matieres, pct = {}, 0
+        for _, p in ipairs(c.packs) do
+            local total = NS.inventaire.TotalPossede(p.objet) or 0
+            local manque = math.max(0, p.requis - total)
+            table.insert(matieres, { objet = p.objet, requis = p.requis, manque = manque, possede = p.requis - manque })
+            pct = math.max(pct, math.min(1, total / p.requis))
+        end
         table.insert(liste, { groupe = "caisses", genre = "caisse", caisse = c.caisse, cle = "caisse" .. tostring(c.caisse),
-            nom = NS.inventaire.NomDObjet(c.caisse), titreAnnonce = NS.inventaire.NomDObjet(c.caisse), pack = c.pack,
-            pct = pct, atteint = pct >= 1, fabriquer = {}, nLignes = 0, lignes = {},
-            matieres = { { objet = c.objet, requis = requis, manque = manque, possede = requis - manque } } })
+            nom = c.nom or NS.inventaire.NomDObjet(c.caisse), titreAnnonce = c.nom or NS.inventaire.NomDObjet(c.caisse),
+            pct = pct, atteint = pct >= 1, fabriquer = {}, nLignes = 0, lignes = {}, alternatives = true,
+            matieres = matieres })
     end
 end
 
@@ -2000,8 +2005,16 @@ local function DessinerObjectifs(y, objectifs, vue)
                 -- Regle ferme, rang vise compris : Creer ne s'active qu'a 100 %,
                 -- tout reuni et dans les sacs.
                 local toutEnSacs = (o.pct or 0) >= 1
-                for _, m in ipairs(toutEnSacs and o.matieres or {}) do
-                    if (NS.inventaire.DisponibleDansLesSacs(m.objet) or 0) < (m.requis or 0) then toutEnSacs = false break end
+                if o.alternatives then
+                    -- Caisse : un seul pack complet dans les sacs suffit.
+                    toutEnSacs = false
+                    for _, m in ipairs(o.matieres or {}) do
+                        if (NS.inventaire.DisponibleDansLesSacs(m.objet) or 0) >= (m.requis or 0) then toutEnSacs = true break end
+                    end
+                else
+                    for _, m in ipairs(toutEnSacs and o.matieres or {}) do
+                        if (NS.inventaire.DisponibleDansLesSacs(m.objet) or 0) < (m.requis or 0) then toutEnSacs = false break end
+                    end
                 end
                 for objet, n in pairs(toutEnSacs and type(o.achats) == "table" and o.achats or {}) do
                     if (NS.inventaire.DisponibleDansLesSacs(objet) or 0) < (tonumber(n) or 0) then toutEnSacs = false break end

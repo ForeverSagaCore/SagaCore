@@ -532,33 +532,13 @@ function caisses.MeilleurPack(caisse)
     return meilleur
 end
 
-function caisses.CreerProjet(caisse, pack, objet)
-    pack = pack or caisses.MeilleurPack(caisse)
-    objet = objet or (pack and pack.objet)
-    if not pack then return nil end
+-- Projet de caisse : la caisse entiere, tous ses packs en alternatives.
+-- Des qu'un pack est complet, la caisse peut etre assemblee.
+function caisses.CreerProjet(caisse)
     local fiche = FicheDe(caisse.proprietaire)
-    if not (fiche and objet) then return nil end
-    local s = { caisse = caisse.id, pack = pack.libelle, objet = tonumber(objet), requis = pack.requis or 1,
-        cree = NS.Appeler(time) }
+    if not fiche then return nil end
+    local s = { caisse = caisse.id, cree = NS.Appeler(time) }
     Suivies(fiche)[tostring(caisse.id)] = s
-    -- L'objet se fabrique et le compte n'en a pas assez : sa fabrication
-    -- part aussi en projet, chez qui sait la faire.
-    local total = NS.inventaire.TotalPossede(s.objet) or 0
-    local recette, fabricant = caisses.RecettePour(s.objet, caisse.proprietaire)
-    if recette and total < s.requis then
-        local nom = string.format(NS.L.CRATES_PROJECT_NAME or "%s", pack.libelle)
-        local projet
-        if fabricant == caisse.proprietaire then
-            NS.base.AvecPersonnage(fabricant, function()
-                projet = NS.projets.Creer(nom)
-                if projet then NS.projets.Ajouter(projet.id, recette, s.requis) end
-            end)
-        else
-            projet = NS.projets.CreerTransverse(fabricant, caisse.proprietaire, recette, nom)
-            if projet and projet.objets and projet.objets[1] then projet.objets[1].quantite = s.requis end
-        end
-        if projet then s.projet, s.fabricant = projet.id, fabricant end
-    end
     if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
     return s, caisse.proprietaire
 end
@@ -575,23 +555,30 @@ function caisses.NePlusSuivre(cle, idCaisse)
     if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
 end
 
--- Les caisses suivies d'un personnage, qu'il a encore : { caisse, pack,
--- objet, requis, total (compte), sacs (lui) }. Une caisse utilisee (scellee)
--- quitte la liste.
+-- Les caisses suivies d'un personnage, qu'il a encore : { caisse, nom,
+-- packs = { { objet, libelle, requis, lui } } }. Une caisse utilisee
+-- (scellee) quitte la liste.
 function caisses.Suivies(cle)
     local fiche = FicheDe(cle)
     local liste = {}
     if not fiche then return liste end
     local stocks = NS.base.StocksDe(fiche)
+    local connues = {}
+    for _, c in ipairs(caisses.Connues(cle, false) or {}) do connues[tostring(c.id)] = c end
     for id, s in pairs(Suivies(fiche)) do
         local ligne = stocks[tostring(id)]
         local encore = type(ligne) == "table" and (tonumber(ligne.total) or 0) > 0
+        local caisse = connues[tostring(id)]
         if not encore and next(stocks) ~= nil then
             fiche.caissesSuivies[id] = nil
-        else
-            local sien = stocks[tostring(s.objet)]
-            table.insert(liste, { caisse = tonumber(id) or id, pack = s.pack, objet = s.objet, requis = s.requis,
-                lui = type(sien) == "table" and tonumber(sien.total) or 0 })
+        elseif caisse then
+            local packs = {}
+            for _, pack in ipairs(caisses.Etat(caisse)) do
+                if pack.objet then
+                    table.insert(packs, { objet = pack.objet, libelle = pack.libelle, requis = pack.requis or 1, lui = pack.possede or 0 })
+                end
+            end
+            table.insert(liste, { caisse = tonumber(id) or id, nom = caisse.nom, packs = packs, objet = caisse })
         end
     end
     table.sort(liste, function(a, b) return tostring(a.caisse) < tostring(b.caisse) end)
@@ -601,10 +588,17 @@ end
 -- Ce que les caisses suivies d'un personnage doivent recevoir des autres :
 -- objet -> quantite.
 function caisses.BesoinsDe(cle)
+    -- Un seul pack par caisse a faire venir : celui que le compte fournit le
+    -- mieux (MeilleurPack). Rien si un pack est deja complet chez lui.
     local besoins = {}
     for _, s in ipairs(caisses.Suivies(cle)) do
-        local manque = (s.requis or 0) - (s.lui or 0)
-        if manque > 0 and s.objet then besoins[s.objet] = (besoins[s.objet] or 0) + manque end
+        local complet = false
+        for _, p in ipairs(s.packs) do if p.lui >= p.requis then complet = true end end
+        local pack = not complet and caisses.MeilleurPack(s.objet)
+        if pack and pack.objet then
+            local manque = (pack.requis or 0) - (pack.possede or 0)
+            if manque > 0 then besoins[pack.objet] = (besoins[pack.objet] or 0) + manque end
+        end
     end
     return besoins
 end
