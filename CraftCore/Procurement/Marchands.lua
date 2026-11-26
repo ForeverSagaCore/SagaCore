@@ -1193,6 +1193,7 @@ end
 
 local enCours           -- le metier montre
 local rappelLe = {}     -- dernier rappel, par metier (pres d'un maitre)
+local LireMaitres       -- plus bas : la lecture des maitres de chaque metier
 
 local function Montrer(m, pres)
     Construire()
@@ -1239,7 +1240,7 @@ end
 
 -- Les maitres de chaque metier, d'apres QuestieDB (lus une fois, par lots).
 local maitres, lectureMaitres
-local function LireMaitres()
+LireMaitres = function()
     if maitres or lectureMaitres then return end
     local base = _G.NpcDB
     if type(base) ~= "table" or type(base.GetAllIds) ~= "function" then return end
@@ -1297,6 +1298,15 @@ local function MaitreProche(ligne, jx, jy, jc)
             end
         end
     end
+end
+
+-- Le palier suivant d'un metier bloque a son rang maximum : { rang (le
+-- nouveau maximum), niveau (niveau du personnage requis pour l'apprendre) },
+-- ou nil si c'est deja le dernier palier.
+function avisRang.PalierSuivant(rangMax)
+    rangMax = tonumber(rangMax)
+    if not rangMax or rangMax >= Plafond() then return nil end
+    return { rang = rangMax + 75, niveau = PALIERS[rangMax] }
 end
 
 -- Le maitre d'un metier le plus proche, sur le continent du personnage :
