@@ -34,6 +34,7 @@ local RendreChoixDeRecettes
 local PoserChoixDeProjet
 local PalierDeProgression, COULEURS_PALIER
 local BoutonAction
+local RendreCommandesDuGroupe
 
 -- Repere de selection, le meme partout : personnage, section et onglet.
 -- Ce qui est choisi est eclaire de la couleur des titres du jeu, tout le
@@ -129,6 +130,8 @@ local PAGES = {
     { cle = "stocksTous",  libelle = "NAV_STOCKS_ALL",   icone = "Interface\\Icons\\INV_Misc_Bag_10", section = "NAV_SEC_ALL" },
     { cle = "banquiers",   libelle = "NAV_BANKERS",      icone = "Interface\\Icons\\INV_Misc_Coin_02" },
     { cle = "progression", libelle = "NAV_LEVEL_UP",     icone = "Interface\\Icons\\INV_Misc_Book_11" },
+    -- Avec les joueurs du groupe : ce qu'ils savent fabriquer.
+    { cle = "groupe",      libelle = "NAV_GROUP",        icone = "Interface\\Icons\\INV_Misc_GroupNeedMore", section = "NAV_SEC_GROUP" },
     -- L'equipement et les caisses ont leur onglet a droite, sous les metiers.
     { cle = "reglages",    libelle = "NAV_SETTINGS",     icone = "Interface\\Icons\\Trade_Engineering", section = "NAV_SEC_ADDON" },
 }
@@ -465,6 +468,7 @@ local function PoserLigne(ligne, retrait, depliable, deplie, auClic)
     ligne.plus:Hide()
     if ligne.fabriquer then ligne.fabriquer:Hide() end
     if ligne.guider then ligne.guider:Hide() end
+    if ligne.boutonLigne then ligne.boutonLigne:Hide() end
     if ligne.barreFab then ligne.barreFab:Hide() end
     if ligne.quete then ligne.quete:Hide() end
     for _, p in ipairs(ligne.usages or {}) do p:Hide() end
@@ -571,6 +575,23 @@ local function PoserBoutonGuider(ligne, recette, nature)
         action()
         if NS.ecran and NS.ecran.Montrer then NS.ecran.Montrer(NS.ecran.page) end
     end)
+    b:Show()
+    AncrerLibelle(ligne, b)
+end
+
+-- Un bouton au bout d'une ligne, a gauche de la colonne d'etat.
+local function PoserBoutonLigne(ligne, libelle, auClic, actif)
+    if not ligne.boutonLigne then
+        ligne.boutonLigne = CreateFrame("Button", nil, ligne, "UIPanelButtonTemplate")
+        ligne.boutonLigne:SetSize(86, 18)
+    end
+    local b = ligne.boutonLigne
+    b:ClearAllPoints()
+    b:SetPoint("RIGHT", ligne.total, "LEFT", -6, 0)
+    b:SetText(libelle or "")
+    b:SetWidth(math.max(86, (b:GetTextWidth() or 60) + 20))
+    b:SetScript("OnClick", auClic)
+    b:SetEnabled(actif ~= false)
     b:Show()
     AncrerLibelle(ligne, b)
 end
@@ -1771,6 +1792,18 @@ local function RendreReglages(contenu)
             if NS.suite and NS.suite.PoserAncre then NS.suite.PoserAncre("CraftCoreSuivi", self:GetChecked() and true or false) end
         end)
 
+        -- Groupe : partager ce que je sais fabriquer avec les joueurs du
+        -- groupe (actif par defaut) ; un groupe simule avec mes autres
+        -- personnages, pour essayer seul.
+        contenu.titreGroupe = contenu:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        contenu.titreGroupe:SetText(L.SETTING_GROUP)
+        contenu.casePartage = Case(contenu.caseAncre, L.SETTING_SHARE_SHOWCASE, "partageVitrine")
+        contenu.casePartage:HookScript("OnClick", function(self)
+            if self:GetChecked() and NS.groupe then NS.groupe.EnvoyerVitrineBientot() end
+        end)
+        contenu.caseSimule = Case(contenu.casePartage, L.SETTING_GROUP_SIMULATED, "groupeSimule")
+        contenu.caseSimule:HookScript("OnClick", function() ecran.Montrer("reglages") end)
+
         -- Fond de la fenetre : deux boutons, celui en place est grise.
         local libelleFond = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         libelleFond:SetPoint("TOPLEFT", contenu.caseAncre, "BOTTOMLEFT", 4, -10)
@@ -1804,6 +1837,11 @@ local function RendreReglages(contenu)
     contenu.caseAncre:SetChecked(NS.suite and NS.suite.Ancree and NS.suite.Ancree("CraftCoreSuivi") or false)
     contenu.caseAncre:Show()
     contenu.caseAncre.libelle:Show()
+    contenu.titreGroupe:Show()
+    StyleDeTitre(contenu.titreGroupe)
+    contenu.casePartage:SetChecked(generaux.partageVitrine ~= false)
+    contenu.caseSimule:SetChecked(generaux.groupeSimule == true)
+    for _, c in ipairs({ contenu.casePartage, contenu.caseSimule }) do c:Show() c.libelle:Show() end
     contenu.libelleFond:Show()
     -- Les deux fonds : la liste deroulante commune de la suite.
     local S = _G.CoreSuite
@@ -1955,6 +1993,19 @@ local function RendreReglages(contenu)
             l:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 6))
             l:SetWidth(math.max(200, largeur - RETRAIT_PAR_NIVEAU - 60))
             -- Le texte fait partie de la case : cliquer dessus coche aussi.
+            c:SetHitRectInsets(-(largeur - RETRAIT_PAR_NIVEAU - 40), 0, 0, 0)
+            yy = yy + 30
+        end
+        -- Section Groupe.
+        contenu.titreGroupe:ClearAllPoints()
+        contenu.titreGroupe:SetPoint("TOPLEFT", contenu, "TOPLEFT", 2, -(yy + 18))
+        yy = yy + 18 + 40
+        for _, c in ipairs({ contenu.casePartage, contenu.caseSimule }) do
+            c:ClearAllPoints()
+            c:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", -10, -yy)
+            c.libelle:ClearAllPoints()
+            c.libelle:SetPoint("TOPLEFT", contenu, "TOPLEFT", RETRAIT_PAR_NIVEAU, -(yy + 6))
+            c.libelle:SetWidth(math.max(200, largeur - RETRAIT_PAR_NIVEAU - 60))
             c:SetHitRectInsets(-(largeur - RETRAIT_PAR_NIVEAU - 40), 0, 0, 0)
             yy = yy + 30
         end
@@ -5040,6 +5091,203 @@ local function RendreBanquiers(contenu)
     contenu:SetHeight(math.max(y, 1))
 end
 
+-- ---------------------------------------------------------------------------
+-- Avec mon groupe
+-- ---------------------------------------------------------------------------
+
+local function NomDeJoueur(nom, classe)
+    local seul = NS.groupe.NomSeul(nom)
+    local c = classe and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[classe]
+    if c and c.colorStr then return "|c" .. c.colorStr .. seul .. "|r" end
+    return seul
+end
+
+-- Les commandes passees aux joueurs du groupe ou recues d'eux. Deux boutons
+-- au plus par commande : la reponse suggeree et Refuser, puis Echanger et
+-- Retirer.
+function RendreCommandesDuGroupe(contenu, index, y, gardees)
+    local groupe = NS.groupe
+    if not groupe then return index, y end
+    local liste = groupe.Commandes()
+    if #liste == 0 then return index, y end
+    y = y + ESPACE_SECTION
+    index, y = TitreDeSection(contenu, index, y, string.format(L.GROUP_ORDERS, #liste))
+    local finies = 0
+    for _, c in ipairs(liste) do
+        local commande = c
+        index = index + 1
+        local l = LigneDeTableau(contenu, index)
+        l:ClearAllPoints()
+        l:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
+        l:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
+        PoserLigne(l, RETRAIT_PAR_NIVEAU, false, false, nil)
+        local icone = NS.Appeler(NS.jeu.iconeObjet, c.objet)
+        if icone then l.icone:SetTexture(icone) l.icone:Show() else l.icone:Hide() end
+        Marquer(l, false, "GameFontHighlightSmall", c.objet)
+        local v = groupe.recues[c.qui]
+        l.nom:SetText(string.format(c.sens == "recue" and L.GROUP_ORDER_FROM or L.GROUP_ORDER_TO,
+            NS.inventaire.NomDObjet(c.objet), c.nombre or 1, NomDeJoueur(c.qui, v and v.classe)))
+        l.sacs:SetText("") l.banque:SetText("")
+        l.total:SetText(groupe.TexteEtat(c))
+        l:Show()
+        y = y + HAUTEUR_LIGNE
+        -- Ce qui manque, quand le fabricant l'a dit.
+        if c.etat == "manque" then
+            local morceaux = {}
+            for objet, n in pairs(c.manques or {}) do
+                table.insert(morceaux, n .. " " .. NS.inventaire.NomDObjet(objet))
+            end
+            table.sort(morceaux)
+            if #morceaux > 0 then
+                y = Paragraphe(contenu, y, string.format(c.sens == "recue" and L.GROUP_THEY_BRING or L.GROUP_I_BRING,
+                    table.concat(morceaux, ", ")), "GameFontDisableSmall", nil, RETRAIT_PAR_NIVEAU + 24)
+            end
+        end
+        local boutons = {}
+        local function Bouton(cle, libelle, auClic)
+            local b = BoutonAction(contenu, cle .. ":" .. c.id, libelle)
+            b:SetScript("OnClick", function() auClic() ecran.Montrer(ecran.page) end)
+            gardees[cle .. ":" .. c.id] = true
+            table.insert(boutons, b)
+        end
+        if c.etat == "livree" or c.etat == "non" then
+            finies = finies + 1
+        elseif c.sens == "recue" and c.etat == "attente" then
+            local s = c.suggestion or "non"
+            local libelle = s == "peut" and L.GROUP_ACCEPT or s == "manque" and L.GROUP_ACCEPT_MISSING or nil
+            if libelle then Bouton("gaccepter", libelle, function() groupe.Repondre(commande, s) end) end
+            Bouton("grefuser", L.GROUP_REFUSE, function() groupe.Repondre(commande, "non") end)
+        else
+            if c.etat ~= "attente" then
+                Bouton("gechanger", L.GROUP_TRADE, function() groupe.Echanger(commande) end)
+            end
+            Bouton("gretirer", L.GROUP_REMOVE, function() groupe.Retirer(commande) end)
+        end
+        if #boutons > 0 then y = RangeeDeBoutons(contenu, boutons, y + 2, RETRAIT_PAR_NIVEAU) end
+    end
+    if finies > 0 then
+        local effacer = BoutonAction(contenu, "geffacer", L.ORDERS_CLEAR)
+        effacer:SetScript("OnClick", function() groupe.EffacerTerminees() ecran.Montrer(ecran.page) end)
+        gardees.geffacer = true
+        y = RangeeDeBoutons(contenu, { effacer }, y + 4, RETRAIT_PAR_NIVEAU)
+    end
+    return index, y
+end
+
+-- Mon groupe : ce que chaque joueur du groupe sait fabriquer, par metier ;
+-- Commander lui envoie la demande, il repond depuis son CraftCore.
+local function RendreGroupe(contenu)
+    CacherLignesAuDela(contenu, 1)
+    ecran.deplie = ecran.deplie or {}
+    local groupe = NS.groupe
+    local index, y = 0, 0
+    local gardees = {}
+    y = Paragraphe(contenu, y, L.GROUP_INTRO, "GameFontDisableSmall")
+    y = y + 6
+    -- La commande en preparation : combien, puis Commander.
+    local choix = ecran.commandeGroupe
+    if choix then
+        index, y = TitreDeSection(contenu, index, y, string.format(L.GROUP_ORDER_NEW, NomDeJoueur(choix.membre.nom, choix.classe)))
+        index = index + 1
+        local l = LigneDeTableau(contenu, index)
+        l:ClearAllPoints()
+        l:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
+        l:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
+        PoserLigne(l, RETRAIT_PAR_NIVEAU, false, false, nil)
+        local icone = NS.Appeler(NS.jeu.iconeObjet, choix.objet)
+        if icone then l.icone:SetTexture(icone) l.icone:Show() else l.icone:Hide() end
+        Marquer(l, true, "GameFontHighlightSmall", choix.objet)
+        l.nom:SetText(NS.inventaire.NomDObjet(choix.objet))
+        l.sacs:SetText("") l.banque:SetText("") l.total:SetText("")
+        PoserQuantite(l, choix.nombre,
+            function() choix.nombre = math.max(1, choix.nombre - 1) ecran.Montrer(ecran.page) end,
+            function() choix.nombre = choix.nombre + 1 ecran.Montrer(ecran.page) end)
+        l:Show()
+        y = y + HAUTEUR_LIGNE + 4
+        local commander = BoutonAction(contenu, "gcommander", L.ORDER_PLACE)
+        commander:SetScript("OnClick", function()
+            groupe.Commander(choix.membre, choix.rid, choix.objet, choix.nombre)
+            ecran.commandeGroupe = nil
+            ecran.Montrer(ecran.page)
+        end)
+        local renoncer = BoutonAction(contenu, "grenoncer", L.ORDER_CANCEL_NEW)
+        renoncer:SetScript("OnClick", function() ecran.commandeGroupe = nil ecran.Montrer(ecran.page) end)
+        gardees.gcommander, gardees.grenoncer = true, true
+        y = RangeeDeBoutons(contenu, { commander, renoncer }, y + 2, RETRAIT_PAR_NIVEAU)
+        y = y + ESPACE_SECTION
+    end
+    local membres = groupe and groupe.Membres() or {}
+    if #membres == 0 then
+        y = Paragraphe(contenu, y, groupe and groupe.Simulation() and L.GROUP_NONE_SIMULATED or L.GROUP_NONE, "GameFontDisableSmall")
+    end
+    for _, membre in ipairs(membres) do
+        local v = membre.vitrine
+        local cleDepli = "groupe:" .. membre.nom
+        if ecran.deplie[cleDepli] == nil then ecran.deplie[cleDepli] = true end
+        local deplie = ecran.deplie[cleDepli] == true
+        index = index + 1
+        local ligne = LigneDeTableau(contenu, index)
+        PoserLigne(ligne, 0, true, deplie, function()
+            ecran.deplie[cleDepli] = not deplie
+            ecran.Montrer(ecran.page)
+        end)
+        y = y + 6
+        ligne:ClearAllPoints()
+        ligne:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
+        ligne:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
+        local hauteur = EnTeteDeBloc(ligne)
+        ligne.nom:SetText(NomDeJoueur(membre.nom, v.classe))
+        ligne.sacs:SetText("") ligne.banque:SetText("")
+        local n = 0
+        for _, m in pairs(v.metiers or {}) do for _ in pairs(m.recettes or {}) do n = n + 1 end end
+        ligne.total:SetText(string.format(L.GROUP_RECIPES_COUNT, n))
+        ligne:Show()
+        y = y + hauteur
+        if deplie then
+            -- Les metiers par nom, les objets par nom.
+            local metiers = {}
+            for ligneM, m in pairs(v.metiers or {}) do
+                table.insert(metiers, { ligne = ligneM, m = m,
+                    nom = m.nom or (NS.recettes.NomDuMetier and NS.recettes.NomDuMetier(tonumber(ligneM))) or tostring(ligneM) })
+            end
+            table.sort(metiers, function(a, b) return a.nom < b.nom end)
+            for _, e in ipairs(metiers) do
+                local rang = (e.m.rang and e.m.rang > 0) and string.format("  |cffffffff%d / %d|r", e.m.rang, e.m.rangMax or 0) or ""
+                y = Paragraphe(contenu, y + 4, e.nom .. rang, "GameFontNormalSmall", nil, RETRAIT_PAR_NIVEAU)
+                local objets = {}
+                for rid, objet in pairs(e.m.recettes or {}) do table.insert(objets, { rid = rid, objet = objet, nom = NS.inventaire.NomDObjet(objet) }) end
+                table.sort(objets, function(a, b) return a.nom < b.nom end)
+                for _, o in ipairs(objets) do
+                    index = index + 1
+                    local l = LigneDeTableau(contenu, index)
+                    l:ClearAllPoints()
+                    l:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
+                    l:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
+                    PoserLigne(l, RETRAIT_PAR_NIVEAU * 2, false, false, nil)
+                    local icone = NS.Appeler(NS.jeu.iconeObjet, o.objet)
+                    if icone then l.icone:SetTexture(icone) l.icone:Show() else l.icone:Hide() end
+                    Marquer(l, false, "GameFontHighlightSmall", o.objet)
+                    l.nom:SetText(o.nom)
+                    l.sacs:SetText("") l.banque:SetText("") l.total:SetText("")
+                    local cible, rid, objet = membre, o.rid, o.objet
+                    PoserBoutonLigne(l, L.GROUP_ORDER_BUTTON, function()
+                        ecran.commandeGroupe = { membre = cible, classe = v.classe, rid = rid, objet = objet, nombre = 1 }
+                        ecran.Montrer(ecran.page)
+                        if fenetre and fenetre.defilement then pcall(fenetre.defilement.SetVerticalScroll, fenetre.defilement, 0) end
+                    end)
+                    l:Show()
+                    y = y + HAUTEUR_LIGNE
+                end
+            end
+        end
+    end
+    -- Les commandes avec le groupe, ici aussi.
+    index, y = RendreCommandesDuGroupe(contenu, index, y, gardees)
+    CacherActions(contenu, gardees)
+    CacherLignesAuDela(contenu, index + 1)
+    contenu:SetHeight(math.max(y + 20, 1))
+end
+
 local function RendreCommandes(contenu)
     CacherLignesAuDela(contenu, 1)
     ecran.deplie = ecran.deplie or {}
@@ -5167,6 +5415,9 @@ local function RendreCommandes(contenu)
         gardees.commander, gardees.renoncer = true, true
         y = RangeeDeBoutons(contenu, { commander, renoncer }, y + 2, RETRAIT_PAR_NIVEAU)
     end
+
+    -- Les commandes avec les joueurs du groupe.
+    index, y = RendreCommandesDuGroupe(contenu, index, y, gardees)
 
     -- En cours, puis terminees.
     local enCours, finies = {}, {}
@@ -6315,9 +6566,13 @@ function ecran.Montrer(cle)
         end
         if fenetre.contenu.caseGuide and ecran.page ~= "reglages" then
             for _, c in ipairs({ fenetre.contenu.caseInfobulles, fenetre.contenu.caseAssistant, fenetre.contenu.caseSuivi,
-                fenetre.contenu.casePermanent, fenetre.contenu.caseAncre }) do
+                fenetre.contenu.casePermanent, fenetre.contenu.caseAncre, fenetre.contenu.casePartage, fenetre.contenu.caseSimule }) do
                 c:Hide()
                 c.libelle:Hide()
+            end
+            if fenetre.contenu.titreGroupe then
+                fenetre.contenu.titreGroupe:Hide()
+                if fenetre.contenu.titreGroupe.filet then fenetre.contenu.titreGroupe.filet:Hide() end
             end
         end
         if ecran.page == "stocks" or ecran.page == "stocksTous" then
@@ -6346,6 +6601,9 @@ function ecran.Montrer(cle)
         elseif ecran.page == "commandes" then
             LargeurDesColonnes(fenetre.contenu, 0, 330)
             RendreCommandes(fenetre.contenu)
+        elseif ecran.page == "groupe" then
+            LargeurDesColonnes(fenetre.contenu, 0, 150)
+            RendreGroupe(fenetre.contenu)
         elseif ecran.page == "caisses" then
             LargeurDesColonnes(fenetre.contenu, 0, 150)
             RendreCaisses(fenetre.contenu)

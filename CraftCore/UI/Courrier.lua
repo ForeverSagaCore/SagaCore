@@ -1119,8 +1119,9 @@ local FENETRES = {
     courrier = { "MailFrame", "OpenMailFrame" },
     encheres = { "AuctionHouseFrame" },
     marchand = { "MerchantFrame" },
+    echange = { "TradeFrame" },
 }
-local ECART = { banque = 48, courrier = 8, encheres = 8, marchand = 8 }
+local ECART = { banque = 48, courrier = 8, encheres = 8, marchand = 8, echange = 8 }
 
 local function Construire()
     -- La charte commune, sans portrait ni pied : un panneau.
@@ -2053,6 +2054,27 @@ local function Remplir(plan)
             end
         end
     end
+    -- A l'echange : les commandes ouvertes avec ce joueur, et ce que j'y
+    -- apporte. Poser met les objets dans la fenetre d'echange ; on valide
+    -- soi-meme, dans la fenetre du jeu.
+    if lieu == "echange" and NS.groupe then
+        local qui = NS.groupe.partenaire
+        local okC, liste = pcall(NS.groupe.AvecJoueur, qui)
+        liste = okC and liste or {}
+        if qui and #liste > 0 then
+            vide = false
+            Section(string.format(L().TRADE_TITLE or "%s", NS.groupe.NomSeul(qui)))
+            EnTete(L().GROUP_COL_ORDER, { { L().AH_COL_QTY, COL_QTE }, { L().GROUP_COL_STATE, COL_PRIX } }, true)
+            for _, c in ipairs(liste) do
+                local commande = c
+                local apporter = NS.groupe.AApporter(c)
+                local n = 0
+                for _, o in ipairs(apporter) do n = n + o.nombre end
+                LigneTableau(c.objet, { { "x" .. c.nombre, COL_QTE }, { NS.groupe.TexteEtat(c), COL_PRIX } },
+                    { libelle = L().TRADE_PUT, actif = n > 0, cle = c.id, auClic = function() NS.groupe.Poser(commande) end })
+            end
+        end
+    end
     -- Les onglets de l'hotel des ventes, sur le bord droit, en bas.
     if panneau.onglets then for _, o in pairs(panneau.onglets) do o:Hide() end end
     if lieu == "encheres" and NS.CreerOngletLateral then
@@ -2243,7 +2265,7 @@ local function Pertinent()
         local envoi = _G.SendMailFrame
         return envoi and envoi.IsVisible and envoi:IsVisible()
     end
-    return lieu == "banque" or lieu == "encheres" or lieu == "marchand"
+    return lieu == "banque" or lieu == "encheres" or lieu == "marchand" or lieu == "echange"
 end
 
 -- Redessine le panneau, ou le cache s'il n'y a rien a faire ici.

@@ -370,6 +370,8 @@ local function ObjectifsDeProjets(liste)
     local moiCle = NS.ClePersonnage and NS.ClePersonnage()
     local function DemandeurDe(projet)
         if projet.rapides then return nil end
+        -- Commande d'un joueur du groupe : son nom, sans le royaume.
+        if projet.pourJoueur then return projet.pourJoueur end
         if projet.commande ~= nil then
             local c = NS.commandes and NS.commandes.Par and NS.commandes.Par(projet.commande)
             return (c and c.demandeur) or "?"
@@ -447,7 +449,7 @@ local function ObjectifsDeProjets(liste)
             if commande then
                 local noms = {}
                 for _, cleP in ipairs(e.pour) do
-                    local nom = NS.inventaire.NomCourt(cleP)
+                    local nom = NS.groupe and tostring(cleP):find(" %- ") == nil and NS.groupe.NomSeul(cleP) or NS.inventaire.NomCourt(cleP)
                     local fiche
                     for _, f in ipairs(NS.base.TousLesPersonnages()) do if f.cle == cleP then fiche = f end end
                     local jeton = type(fiche) == "table" and fiche.jetonClasse
