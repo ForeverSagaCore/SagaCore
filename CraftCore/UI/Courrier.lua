@@ -2432,3 +2432,31 @@ function courrier.Ferme(ancienLieu)
         LierManette(false)
     end
 end
+
+-- Diagnostic de l'onglet À acheter : /cchv dans la discussion. Dit ce que le
+-- panneau lit (personnage, metiers vises, manques) et le garde pour analyse.
+SLASH_CRAFTCOREHV1 = "/cchv"
+SlashCmdList["CRAFTCOREHV"] = function()
+    local lignes = {}
+    local function Noter(t) table.insert(lignes, t) print("|cffffd100CraftCore|r " .. t) end
+    local moi = NS.base.Personnage and NS.base.Personnage()
+    Noter("personnage : " .. tostring(moi and moi.cle) .. " ; affiche : " .. tostring(CraftCoreDB and CraftCoreDB.personnageAffiche)
+        .. " ; royaume : " .. tostring(NS.Appeler(NS.jeu.nomDuRoyaume)))
+    local okM, metiers = pcall(NS.recettes.MetiersVises, moi)
+    Noter("metiers vises : " .. (okM and table.concat(metiers, ", ") or ("erreur " .. tostring(metiers))))
+    for _, cle in ipairs(okM and metiers or {}) do
+        local sien = type(moi.metiers) == "table" and moi.metiers[tostring(cle)] or {}
+        local okV, vises = pcall(NS.recettes.RangsVises, moi, cle)
+        local okP, segs = pcall(NS.recettes.PlansVises, moi, cle, sien.rang, sien.rangMax)
+        Noter(tostring(cle) .. " rang " .. tostring(sien.rang) .. " vises " .. (okV and table.concat(vises, ",") or tostring(vises))
+            .. " plans " .. (okP and #segs or ("erreur " .. tostring(segs))))
+        for _, seg in ipairs(okP and segs or {}) do
+            local t = {}
+            for objet, n in pairs(seg.plan.manques or {}) do
+                table.insert(t, NS.inventaire.NomDObjet(objet) .. " " .. n .. (NS.marchands.VenduPartout(objet) and " (vendu partout)" or ""))
+            end
+            Noter("   manques vers " .. tostring(seg.vise) .. " : " .. (#t > 0 and table.concat(t, ", ") or "aucun"))
+        end
+    end
+    if type(CraftCoreDB) == "table" then CraftCoreDB.diagHV = { quand = NS.Horodatage(), lignes = lignes } end
+end
