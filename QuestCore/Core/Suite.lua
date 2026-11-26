@@ -6018,6 +6018,44 @@ local TP = Paresseux({
 })
 
 -- Touche du jeu (Echap, Options, Raccourcis, Add-ons) : piloter un suivi.
+-- Entrer dans une petite fenetre de la suite a la manette, sans rien
+-- regler : tant qu'elle est ouverte, le double carre (bouton Vue, libre par
+-- defaut) y entre ; on y navigue ensuite comme dans les autres fenetres.
+-- Une seule touche, posee a l'ouverture et retiree a la fermeture, jamais
+-- en combat ; A, B et les autres restent au jeu.
+function Suite.ToucheDEntree(f, nom)
+    if not f or f.toucheDEntree then return end
+    f.toucheDEntree = true
+    f.nomDEntree = nom or (f.GetName and f:GetName())
+    local relais = _G.CoreSuiteEntrer
+    if not relais then
+        relais = CreateFrame("Button", "CoreSuiteEntrer", UIParent)
+        relais:Hide()
+        pcall(relais.RegisterForClicks, relais, "AnyDown")
+        relais:SetScript("OnClick", function(self)
+            local nom = self.cible
+            if nom and _G[nom] and _G[nom]:IsShown() then Suite.Piloter(nil, nom) end
+        end)
+    end
+    local function Poser(self)
+        if InCombatLockdown and InCombatLockdown() then return end
+        local gp = _G.C_GamePad
+        local ok, actif = pcall(gp and gp.IsEnabled or function() return false end)
+        if not (ok and actif) then return end
+        relais.cible = (self.GetName and self:GetName()) or self.nomDEntree
+        pcall(SetOverrideBindingClick, self, true, "PADBACK", "CoreSuiteEntrer", "LeftButton")
+        self.toucheDEntreePosee = true
+    end
+    f:HookScript("OnShow", Poser)
+    f:HookScript("OnHide", function(self)
+        if self.toucheDEntreePosee and not (InCombatLockdown and InCombatLockdown()) then
+            pcall(ClearOverrideBindings, self)
+            self.toucheDEntreePosee = nil
+        end
+    end)
+    if f:IsShown() then Poser(f) end
+end
+
 function CoreSuite_PiloterSuivi(nom)
     local S = _G.CoreSuite
     if S and S.Piloter then S.Piloter(nil, nom) end
