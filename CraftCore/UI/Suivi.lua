@@ -1233,16 +1233,48 @@ local function Consigne()
         local service = self.guideService
         if (e == "BANKFRAME_OPENED" and service == "banque") or (e == "MAIL_SHOW" and service ~= "banque") then
             self.guider:Hide()
+            self:PoserBoutons()
+            self:Lier()
         end
     end)
-    -- Manette : A ferme, Y guide.
-    if f.EnableGamePadButton then
-        pcall(f.EnableGamePadButton, f, true)
-        f:SetScript("OnGamePadButtonDown", function(self, bouton)
-            if bouton == "PAD1" or bouton == "PAD2" then self:Hide()
-            elseif bouton == "PAD4" and self.guider:IsShown() then self.guider:Click() end
-        end)
+    -- Les boutons au milieu du pied, comme les fenetres de dialogue du jeu.
+    f.PoserBoutons = function(self)
+        self.ok:ClearAllPoints()
+        self.guider:ClearAllPoints()
+        if self.guider:IsShown() then
+            local total = self.ok:GetWidth() + 8 + self.guider:GetWidth()
+            self.guider:SetPoint("LEFT", self.pied or self, "CENTER", -total / 2, 0)
+            self.ok:SetPoint("LEFT", self.guider, "RIGHT", 8, 0)
+        else
+            self.ok:SetPoint("CENTER", self.pied or self, "CENTER", 0, 0)
+        end
     end
+    -- Une touche suffit pour fermer : A, B ou Entree (Echap aussi, comme
+    -- toute fenetre) ; Y guide quand le bouton est la. Par des liaisons
+    -- prioritaires posees a l'ouverture et retirees a la fermeture, jamais
+    -- en combat : pas de manette prise directement par la fenetre (le jeu
+    -- reagissait en bloquant une de ses propres actions).
+    local fermerRelais = CreateFrame("Button", "CraftCoreConsigneFermer", UIParent)
+    fermerRelais:Hide()
+    pcall(fermerRelais.RegisterForClicks, fermerRelais, "AnyDown")
+    fermerRelais:SetScript("OnClick", function() f:Hide() end)
+    local guiderRelais = CreateFrame("Button", "CraftCoreConsigneGuider", UIParent)
+    guiderRelais:Hide()
+    pcall(guiderRelais.RegisterForClicks, guiderRelais, "AnyDown")
+    guiderRelais:SetScript("OnClick", function() if f.guider:IsShown() then f.guider:Click() end end)
+    f.Lier = function(self)
+        if InCombatLockdown and InCombatLockdown() then return end
+        pcall(ClearOverrideBindings, self)
+        for _, t in ipairs({ "PAD1", "PAD2", "ENTER" }) do
+            pcall(SetOverrideBindingClick, self, true, t, "CraftCoreConsigneFermer", "LeftButton")
+        end
+        if self.guider:IsShown() then
+            pcall(SetOverrideBindingClick, self, true, "PAD4", "CraftCoreConsigneGuider", "LeftButton")
+        end
+    end
+    f:HookScript("OnHide", function(self)
+        if not (InCombatLockdown and InCombatLockdown()) then pcall(ClearOverrideBindings, self) end
+    end)
     table.insert(UISpecialFrames, "CraftCoreConsigne")
     f:Hide()
     consigne = f
@@ -1295,7 +1327,9 @@ local function Montrer(titre, lignes, guide)
         end)
     end
     f:SetHeight(y + 48)
+    f:PoserBoutons()
     f:Show()
+    f:Lier()
 end
 
 -- Ce que le personnage connecte detient encore d'un objet (sacs, banque,
