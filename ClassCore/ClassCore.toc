@@ -17,8 +17,11 @@ UI\Charte.lua
 Data\Classes.lua
 Data\Familiers.lua
 Data\Dresseurs.lua
+Data\Betes.lua
+Data\SortsMaitre.lua
 Core\Etat.lua
 Core\Quetes.lua
+Core\Sorts.lua
 UI\Badge.lua
 UI\Familiers.lua
 UI\Fenetre.lua

@@ -285,6 +285,16 @@ function Q.Chaines(p, connecte)
             c.niveau = math.min(c.niveau, f.requis > 0 and f.requis or f.niveau)
             if not titre and NS.classes.CHAINES[id] then titre = NS.classes.CHAINES[id]() end
         end
+        -- Une etape bloquee dit laquelle attendre : « Apres l'etape 2 ».
+        local rang = {}
+        for k, e in ipairs(c.etapes) do e.numero = k rang[e.id] = k end
+        for _, e in ipairs(c.etapes) do
+            if e.etat == "bloquee" then
+                local f = miennes[e.id]
+                for _, pre in ipairs(f.groupe) do if rang[pre] and not faites[pre] then e.apres = math.min(e.apres or 99, rang[pre]) end end
+                for _, pre in ipairs(f.une) do if rang[pre] and not faites[pre] then e.apres = math.min(e.apres or 99, rang[pre]) end end
+            end
+        end
         c.titre = titre or c.etapes[#c.etapes].nom
         if c.faites >= c.total then c.etat = "faite"
         else
@@ -352,7 +362,8 @@ function Q.LibelleEtat(e)
     if e.etat == "cours" then return T("En cours", "In progress") end
     if e.etat == "prendre" then return T("À prendre", "Available") end
     if e.etat == "niveau" then return string.format(T("Niveau %d", "Level %d"), e.requis or 0) end
-    return T("Après l'étape d'avant", "After the previous step")
+    if e.apres then return string.format(T("Après l'étape %d", "After step %d"), e.apres) end
+    return T("Après une autre quête", "After another quest")
 end
 
 -- Resume : chaines finies sur le total, et les chaines a faire maintenant.
@@ -382,4 +393,51 @@ do
         if ev == "QUEST_TURNED_IN" and moi and index and index[tonumber(id) or 0] then moi.faites[tonumber(id)] = true end
         if NS.fenetre and NS.fenetre.Actualiser then pcall(NS.fenetre.Actualiser) end
     end)
+end
+
+-- ---------------------------------------------------------------------------
+-- Le profil d'un personnage, connecte ou non : ce que ClassCore et QuestCore
+-- ont releve (classe, race, camp, niveau, quetes faites, sorts appris,
+-- objets). Le connecte est lu en direct.
+-- ---------------------------------------------------------------------------
+
+function Q.Profil(cle)
+    local moiCle = NS.ClePersonnage()
+    cle = cle or moiCle
+    if not cle then return nil end
+    local E = NS.etat
+    if cle == moiCle then
+        local p = Q.Moi() or {}
+        local pr = { cle = cle, connecte = true, classe = p.classe, race = p.race, camp = p.camp, niveau = p.niveau or E.Niveau(),
+            faites = p.faites or {}, releve = true }
+        pr.connait = function(id) return E.SortConnu(id) end
+        pr.compte = function(id) return E.Compte(id) end
+        return pr
+    end
+    local cc = Persos()[cle] or {}
+    local qcdb = type(_G.QuestCoreDB) == "table" and type(_G.QuestCoreDB.persos) == "table" and _G.QuestCoreDB.persos[cle] or {}
+    local faites = {}
+    for id in pairs(type(qcdb.faites) == "table" and qcdb.faites or {}) do faites[tonumber(id) or id] = true end
+    for id in pairs(type(cc.faites) == "table" and cc.faites or {}) do faites[id] = true end
+    local niveau = math.max(tonumber(cc.niveau) or 0, tonumber(qcdb.niveau) or 0)
+    if niveau == 0 then
+        local liste = _G.CoreSuite and _G.CoreSuite.ListePersos and _G.CoreSuite.ListePersos() or {}
+        for _, x in ipairs(liste) do if x.cle == cle then niveau = tonumber(x.niveau) or 0 end end
+    end
+    local classe = cc.classe or qcdb.classe
+    if not classe then
+        local liste = _G.CoreSuite and _G.CoreSuite.ListePersos and _G.CoreSuite.ListePersos() or {}
+        for _, x in ipairs(liste) do if x.cle == cle then classe = x.classe end end
+    end
+    local sorts = type(cc.sorts) == "table" and cc.sorts or nil
+    local objets = type(cc.objets) == "table" and cc.objets or nil
+    local pr = { cle = cle, connecte = false, classe = classe, race = cc.race or qcdb.race, camp = cc.camp or qcdb.faction,
+        niveau = niveau > 0 and niveau or 1, faites = faites, releve = sorts ~= nil }
+    pr.connait = function(id) return sorts ~= nil and sorts[id] == true end
+    pr.compte = function(id)
+        local o = objets and objets[id]
+        if type(o) == "table" then return tonumber(o[1]) or 0, tonumber(o[2]) or 0 end
+        return 0, 0
+    end
+    return pr
 end
