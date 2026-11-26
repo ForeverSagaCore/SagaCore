@@ -178,6 +178,14 @@ local function PointsDeVente(objet)
 end
 
 -- Un marchand le vend-il ? (QuestieDB, ou la liste des objets vendus partout.)
+-- A l'hotel des ventes, on ne laisse de cote que ce qui se vend partout
+-- (fioles, fils, epices) : un objet vendu par un marchand rare, ou en
+-- quantite limitee, s'y achete aussi.
+local function VenduPartout(objet)
+    return NS.recettes and NS.recettes.EstVenduPartout and NS.recettes.EstVenduPartout(objet) or false
+end
+marchands.VenduPartout = VenduPartout
+
 function marchands.Achetable(objet)
     if NS.recettes and NS.recettes.EstVenduPartout and NS.recettes.EstVenduPartout(objet) then return true end
     local vendeurs = Lire("ItemDB", tonumber(objet), "vendors")
@@ -396,7 +404,7 @@ function encheres.ObjetsARelever()
     local vus, liste = {}, {}
     local function Ajouter(objet)
         objet = tonumber(objet)
-        if objet and not vus[objet] and not marchands.Achetable(objet) then
+        if objet and not vus[objet] and not VenduPartout(objet) then
             vus[objet] = true
             table.insert(liste, objet)
         end
@@ -547,7 +555,7 @@ function encheres.Manques()
     local manques = {}
     local function Ajouter(objet, n)
         objet = tonumber(objet)
-        if objet and n and n > 0 and not marchands.Achetable(objet) then manques[objet] = (manques[objet] or 0) + n end
+        if objet and n and n > 0 and not VenduPartout(objet) then manques[objet] = (manques[objet] or 0) + n end
     end
     if NS.approvisionnement then
         local ok, l = pcall(NS.approvisionnement.Liste)
@@ -813,7 +821,7 @@ function encheres.ObjetsDeToutesMesFabrications()
     local vus, liste = {}, {}
     local function Ajouter(objet)
         objet = tonumber(objet)
-        if objet and not vus[objet] and not marchands.Achetable(objet) then
+        if objet and not vus[objet] and not VenduPartout(objet) then
             vus[objet] = true
             table.insert(liste, objet)
         end
@@ -851,7 +859,7 @@ function encheres.ObjetsDesFabrications()
     local vus, liste = {}, {}
     local function Ajouter(objet)
         objet = tonumber(objet)
-        if objet and not vus[objet] and not marchands.Achetable(objet) then
+        if objet and not vus[objet] and not VenduPartout(objet) then
             vus[objet] = true
             table.insert(liste, objet)
         end

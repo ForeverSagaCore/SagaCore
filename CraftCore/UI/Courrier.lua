@@ -1809,34 +1809,26 @@ local function Remplir(plan)
             local lignes = {}
             for objet, n in pairs(paires) do
                 objet = tonumber(objet)
-                if objet and (n or 0) > 0 and not NS.marchands.Achetable(objet) then
+                if objet and (n or 0) > 0 and not NS.marchands.VenduPartout(objet) then
                     table.insert(lignes, { objet = objet, n = n })
                     if not vus[objet] then vus[objet] = true table.insert(tous, objet) end
                 end
             end
             if #lignes > 0 then table.insert(groupes, { titre = titre, lignes = lignes }) end
         end
-        -- 1. Les rangs vises de TOUS mes personnages du meme camp, lus dans
-        --    leur plan fige (la meme source que le suivi et le guide) : ce qui
-        --    s'achete ici s'envoie ensuite a qui en a besoin. Le personnage
-        --    connecte d'abord, son nom a la couleur de sa classe.
+        -- 1. Les rangs vises du personnage connecte, lus dans leur plan fige
+        --    (la meme source que le suivi et le guide).
         local moi = NS.base.Personnage and NS.base.Personnage()
         local okR, souciR = pcall(function()
-            local fiches = {}
-            if moi then table.insert(fiches, moi) end
-            for _, f in ipairs(NS.base.TousLesPersonnages() or {}) do
-                if f ~= moi and NS.inventaire.MemeCamp(f) then table.insert(fiches, f) end
-            end
-            for _, fiche in ipairs(fiches) do
-                local qui = NS.inventaire.NomCourt(fiche.cle) or "?"
-                local c = fiche.jetonClasse and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[fiche.jetonClasse]
-                if c and c.colorStr then qui = "|c" .. c.colorStr .. qui .. "|r" end
+            -- Seulement le personnage connecte : on ne melange pas les
+            -- personnages a l'hotel des ventes.
+            for _, fiche in ipairs({ moi }) do
                 for _, cle in ipairs(NS.recettes.MetiersVises(fiche)) do
                     local sien = type(fiche.metiers) == "table" and fiche.metiers[tostring(cle)]
                     if type(sien) == "table" and sien.rang then
                         for _, seg in ipairs(NS.recettes.PlansVises(fiche, cle, sien.rang, sien.rangMax)) do
                             local nom = sien.nom or (NS.recettes.NomDuMetier and NS.recettes.NomDuMetier(tonumber(cle))) or "?"
-                            local titre = qui .. "  " .. nom .. " : " .. ((seg.plan.probable and NS.ICONE_CHANCE) or "")
+                            local titre = nom .. " : " .. ((seg.plan.probable and NS.ICONE_CHANCE) or "")
                                 .. string.format(L().GUIDE_TARGET_ONE or "rang %d", seg.vise)
                             Groupe(titre, seg.plan.manques or {})
                         end
@@ -1963,7 +1955,7 @@ local function Remplir(plan)
                 end
                 for _, c in ipairs(f.recette.composants or {}) do
                     local o = tonumber(c.objet)
-                    if o and not vusR[o] and not NS.marchands.Achetable(o) then vusR[o] = true table.insert(aRelever, o) end
+                    if o and not vusR[o] and not NS.marchands.VenduPartout(o) then vusR[o] = true table.insert(aRelever, o) end
                 end
             end
             Section(nom, { libelle = string.format(L().AH_SCAN_SHORT or "%d", #aRelever), actif = #aRelever > 0 and not NS.encheres.EnCours(),
