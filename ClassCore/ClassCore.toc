@@ -19,9 +19,12 @@ Data\Familiers.lua
 Data\Dresseurs.lua
 Data\Betes.lua
 Data\SortsMaitre.lua
+Data\Maitres.lua
+Data\Modeles.lua
 Core\Etat.lua
 Core\Quetes.lua
 Core\Sorts.lua
+Core\Maitres.lua
 UI\Badge.lua
 UI\Familiers.lua
 UI\Talents.lua

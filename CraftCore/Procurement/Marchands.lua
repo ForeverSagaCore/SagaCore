@@ -741,6 +741,12 @@ function encheres.PlansAApprendre()
     return res
 end
 
+-- Les objets propres a une classe (munitions, carquois, composants de sorts) :
+-- jamais proposes a la vente.
+local DE_CLASSE = {}
+for _, id in ipairs({ 17033, 21177, 17029, 17028, 17056, 17030, 17020, 17031, 17032, 6265, 5565, 16583,
+    17026, 17021, 17034, 17035, 17036, 17037, 17038, 5175, 5176, 5177, 5178, 5140, 5530, 17057, 17058 }) do DE_CLASSE[id] = true end
+
 function encheres.AVendre()
     local C = function(nom) return NS.Lecture("C_Container." .. nom, nom) end
     local nbCases, contenu, idObjet = C("GetContainerNumSlots"), C("GetContainerItemInfo"), C("GetContainerItemID")
@@ -774,7 +780,8 @@ function encheres.AVendre()
                 local v = parObjet[objet]
                 if not v then
                     local ok, _, _, qualite, _, _, _, _, _, _, _, prixMarchand, classe = pcall(info, objet)
-                    local vendable = ok and (tonumber(qualite) or 0) >= 1 and classe ~= 12 and not Lie(objet)
+                    local vendable = ok and (tonumber(qualite) or 0) >= 1 and classe ~= 12 and classe ~= 6 and classe ~= 11
+                        and not DE_CLASSE[objet] and not Lie(objet)
                     if vendable then
                         v = { objet = objet, nombre = 0, sac = sac, case = case, marchand = tonumber(prixMarchand) or 0 }
                         parObjet[objet] = v

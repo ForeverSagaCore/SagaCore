@@ -801,6 +801,7 @@ local function PreparerEnvoi(envoi)
     local nonJoints = {}
     for _, ligne in ipairs(envoi.lignes) do
         local reste = ligne.quantite - (ligne.enBanque or 0)
+        if not courrier.ObjetEnvoye(envoi, ligne.objet) then reste = 0 end
         local essais = 0
         for _ = 1, 16 do
             table.insert(etapes, function()
@@ -830,7 +831,7 @@ local function PreparerEnvoi(envoi)
                 return true
             end)
         end
-        if (ligne.enBanque or 0) > 0 then nonJoints[ligne.objet] = (nonJoints[ligne.objet] or 0) + ligne.enBanque end
+        if (ligne.enBanque or 0) > 0 and courrier.ObjetEnvoye(envoi, ligne.objet) then nonJoints[ligne.objet] = (nonJoints[ligne.objet] or 0) + ligne.enBanque end
     end
     Enchainer(etapes, function(souci)
         if souci then NS.base.NoterIncident("preparation d'envoi", souci) end
@@ -854,6 +855,15 @@ end
 -- (sauf ce que mes projets me font sortir). Un objet par ligne, avec la
 -- quantite dans les sacs ; choisi par defaut.
 local pilesChoisies = {}
+
+-- Envoi a un autre personnage : chaque objet est coche par defaut ; decoche,
+-- il ne se joint pas (le temps de la session).
+local envoiExclus = {}
+local function CleEnvoi(envoi, objet) return tostring(envoi and envoi.cle) .. ":" .. tostring(objet) end
+function courrier.ObjetEnvoye(envoi, objet) return envoiExclus[CleEnvoi(envoi, objet)] ~= true end
+function courrier.ChoisirObjetEnvoye(envoi, objet, oui)
+    if oui then envoiExclus[CleEnvoi(envoi, objet)] = nil else envoiExclus[CleEnvoi(envoi, objet)] = true end
+end
 function courrier.PilesACompleter(plan)
     local enBanque = {}
     for _, id in ipairs(ConteneursDeBanque()) do
@@ -1363,16 +1373,18 @@ local function Remplir(plan)
     end
 
     -- Une ligne avec sa case a cocher (completer les piles).
-    local function LigneACocher(objet, droite)
+    local function LigneACocher(objet, droite, coche, auClic)
         nc, nt = nc + 1, nt + 1
         local c = Case(nc)
         c:ClearAllPoints()
         c:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 + -2, -(y - 2))
-        c:SetChecked(courrier.PileChoisie(objet))
+        if coche == nil then coche = courrier.PileChoisie(objet) end
+        c:SetChecked(coche)
         c:UnlockHighlight()
         Choisissable(c, "pile:" .. tostring(objet))
         c:SetScript("OnClick", function(self)
-            courrier.ChoisirPile(objet, self:GetChecked() and true or false)
+            if auClic then auClic(self:GetChecked() and true or false)
+            else courrier.ChoisirPile(objet, self:GetChecked() and true or false) end
             courrier.Actualiser()
         end)
         ni = ni + 1
@@ -1422,8 +1434,14 @@ local function Remplir(plan)
         local preparables = {}
         for _, envoi in ipairs(plan.envois) do
             local enSacs = 0
-            for _, l in ipairs(envoi.lignes) do enSacs = enSacs + math.max(0, l.quantite - (l.enBanque or 0)) end
+            local coches = 0
+            for _, l in ipairs(envoi.lignes) do
+                local n = math.max(0, l.quantite - (l.enBanque or 0))
+                enSacs = enSacs + n
+                if courrier.ObjetEnvoye(envoi, l.objet) then coches = coches + n end
+            end
             envoi.enSacs = enSacs
+            envoi.coches = coches
             if enSacs > 0 then table.insert(preparables, envoi) end
         end
         local cleChoisie = courrier.envoiChoisi
@@ -1439,7 +1457,9 @@ local function Remplir(plan)
             Titre(string.format(L().ASSIST_SEND_TO, envoi.nom))
             local titre = panneau.textes[nt]
             if titre and #preparables > 1 and not estChoisi then titre:SetFontObject("GameFontDisable") end
-            Lignes(envoi.lignes, function(l)
+            -- Chaque objet a joindre : une case, cochee par defaut ; decochee,
+            -- l'objet reste dans les sacs.
+            for _, l in ipairs(envoi.lignes) do
                 local enSacs = math.max(0, l.quantite - (l.enBanque or 0))
                 local droite = enSacs > 0 and ("x" .. enSacs) or ""
                 if (l.enBanque or 0) > 0 then
@@ -1447,8 +1467,13 @@ local function Remplir(plan)
                 end
                 if l.caisse then droite = droite .. "  |cff8c8c8c" .. L().ASSIST_FOR_CRATE .. "|r" end
                 if l.commande then droite = droite .. "  |cff8c8c8c" .. L().ASSIST_FOR_ORDER .. "|r" end
-                return droite
-            end)
+                if enSacs > 0 then
+                    local e, objet = envoi, l.objet
+                    LigneACocher(objet, droite, courrier.ObjetEnvoye(e, objet), function(oui) courrier.ChoisirObjetEnvoye(e, objet, oui) end)
+                else
+                    Ligne(l.objet, droite)
+                end
+            end
             if envoi.enSacs > 0 and Lire("ClickSendMailItemButton") then
                 local e = envoi
                 Action(L().ASSIST_PREPARE, function()
@@ -1456,6 +1481,7 @@ local function Remplir(plan)
                     courrier.PreparerEnvoi(e)
                 end, "envoi:" .. tostring(e.cle))
                 elements[#elements].envoi = e.cle
+                if (envoi.coches or 0) == 0 then panneau.boutons[nb]:SetEnabled(false) end
                 if #preparables > 1 and not estChoisi then panneau.boutons[nb]:SetAlpha(0.6) end
             elseif envoi.enSacs == 0 then
                 nt = nt + 1
@@ -1479,8 +1505,31 @@ local function Remplir(plan)
     if lieu == "encheres" and NS.encheres and NS.encheres.Disponible() and OngletHV() == "acheter" then
         -- Hotel des ventes : le releve des prix de ce qui manque.
         vide = false
-        Titre(L().AH_TITLE)
         local objets = NS.encheres.ObjetsARelever()
+        -- Les releves en haut, sous la main : ce qui manque, puis ce qu'on
+        -- peut fabriquer.
+        local aFabriquer = NS.encheres.ObjetsDesFabrications()
+        if NS.encheres.EnCours() then
+            local r, total = NS.encheres.Avancement()
+            Action(string.format(L().AH_SCANNING, math.min(r, total), total), function() end)
+            panneau.boutons[nb]:SetEnabled(false)
+        else
+            if #objets > 0 then
+                Action(string.format(L().AH_SCAN, #objets), function()
+                    statut = nil
+                    NS.encheres.Relever()
+                    courrier.Actualiser()
+                end)
+            end
+            if #aFabriquer > 0 then
+                Action(string.format(L().AH_SCAN_CRAFTS, #aFabriquer), function()
+                    statut = nil
+                    NS.encheres.Relever(NS.encheres.ObjetsDesFabrications())
+                    courrier.Actualiser()
+                end)
+            end
+        end
+        Titre(L().AH_TITLE)
         if #objets == 0 then
             nt = nt + 1
             local t = Texte(nt, "GameFontDisableSmall")
@@ -1542,36 +1591,30 @@ local function Remplir(plan)
                 return "x" .. l.r.n .. "  " .. string.format(L().AH_SELLS, NS.marchands.Monnaie(v.vente))
             end)
         end
-        -- Les releves : ce qui manque, puis ce qu'on peut fabriquer.
-        local aFabriquer = NS.encheres.ObjetsDesFabrications()
-        if NS.encheres.EnCours() then
-            local r, total = NS.encheres.Avancement()
-            Action(string.format(L().AH_SCANNING, math.min(r, total), total), function() end)
-            panneau.boutons[nb]:SetEnabled(false)
-        else
-            if #objets > 0 then
-                Action(string.format(L().AH_SCAN, #objets), function()
-                    statut = nil
-                    NS.encheres.Relever()
-                    courrier.Actualiser()
-                end)
-            end
-            if #aFabriquer > 0 then
-                Action(string.format(L().AH_SCAN_CRAFTS, #aFabriquer), function()
-                    statut = nil
-                    NS.encheres.Relever(NS.encheres.ObjetsDesFabrications())
-                    courrier.Actualiser()
-                end)
-            end
-        end
 
     end
     if lieu == "encheres" and NS.encheres and NS.encheres.Disponible() and OngletHV() == "vendre" then
         -- Onglet Vendre : ce que j'ai dans mes sacs et qui peut se vendre.
         vide = false
-        Titre(L().AH_SELL_TITLE)
         local okV, aVendre = pcall(NS.encheres.AVendre)
         aVendre = okV and aVendre or {}
+        -- Le prix de ce qui n'a pas encore ete releve : le bouton en haut.
+        do
+            local sansPrix = {}
+            for _, v in ipairs(aVendre) do if not v.unite and not v.releve then table.insert(sansPrix, v.objet) end end
+            if #sansPrix > 0 and not NS.encheres.EnCours() then
+                Action(string.format(L().AH_SCAN_BAGS, #sansPrix), function()
+                    statut = nil
+                    NS.encheres.Relever(sansPrix)
+                    courrier.Actualiser()
+                end)
+            elseif NS.encheres.EnCours() then
+                local r, total = NS.encheres.Avancement()
+                Action(string.format(L().AH_SCANNING, math.min(r, total), total), function() end)
+                panneau.boutons[nb]:SetEnabled(false)
+            end
+        end
+        Titre(L().AH_SELL_TITLE)
         if #aVendre == 0 then
             nt = nt + 1
             local t = Texte(nt, "GameFontDisableSmall")
@@ -1584,45 +1627,19 @@ local function Remplir(plan)
             for rang, v in ipairs(aVendre) do
                 LigneVente(v)
             end
-            -- Le prix de ce qui n'a pas encore ete releve.
-            local sansPrix = {}
-            for _, v in ipairs(aVendre) do if not v.unite and not v.releve then table.insert(sansPrix, v.objet) end end
-            if #sansPrix > 0 and not NS.encheres.EnCours() then
-                Action(string.format(L().AH_SCAN_BAGS, #sansPrix), function()
-                    statut = nil
-                    NS.encheres.Relever(sansPrix)
-                    courrier.Actualiser()
-                end)
-            end
         end
     end
     if lieu == "encheres" and NS.encheres and NS.encheres.Disponible() and OngletHV() == "recettes" then
         -- Onglet Recettes : les plans a apprendre tout de suite, leur prix
         -- releve, et un bouton pour les chercher dans l'hotel des ventes.
         vide = false
-        Titre(L().AH_RECIPES_TITLE)
         local okP, plans = pcall(NS.encheres.PlansAApprendre)
         plans = okP and plans or {}
-        if #plans == 0 then
-            nt = nt + 1
-            local t = Texte(nt, "GameFontDisableSmall")
-            t:ClearAllPoints()
-            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0, -y)
-            t:SetWidth(largeur)
-            t:SetText(L().AH_RECIPES_NONE)
-            y = y + 16
-        else
+        do
             local sansPrix = {}
-            for k, p in ipairs(plans) do
-                local prix, quand, absent = NS.encheres.Prix(p.objet, 1)
+            for _, p in ipairs(plans) do
+                local prix, _, absent = NS.encheres.Prix(p.objet, 1)
                 if not prix and not absent then table.insert(sansPrix, p.objet) end
-                do
-                    local droite = string.format(L().AH_RECIPES_RANK, p.rang)
-                    if prix then droite = droite .. "  " .. NS.marchands.Monnaie(prix)
-                    elseif absent then droite = droite .. "  |cff8c8c8c" .. L().AH_RECIPES_ABSENT .. "|r" end
-                    local o = p.objet
-                    LigneAvecBouton(o, droite, L().AH_FIND_SHORT, function() NS.encheres.Chercher(o) end)
-                end
             end
             if #sansPrix > 0 and not NS.encheres.EnCours() then
                 Action(string.format(L().AH_RECIPES_SCAN, #sansPrix), function()
@@ -1634,6 +1651,27 @@ local function Remplir(plan)
                 local r, total = NS.encheres.Avancement()
                 Action(string.format(L().AH_SCANNING, math.min(r, total), total), function() end)
                 panneau.boutons[nb]:SetEnabled(false)
+            end
+        end
+        Titre(L().AH_RECIPES_TITLE)
+        if #plans == 0 then
+            nt = nt + 1
+            local t = Texte(nt, "GameFontDisableSmall")
+            t:ClearAllPoints()
+            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0, -y)
+            t:SetWidth(largeur)
+            t:SetText(L().AH_RECIPES_NONE)
+            y = y + 16
+        else
+            for k, p in ipairs(plans) do
+                local prix, quand, absent = NS.encheres.Prix(p.objet, 1)
+                do
+                    local droite = string.format(L().AH_RECIPES_RANK, p.rang)
+                    if prix then droite = droite .. "  " .. NS.marchands.Monnaie(prix)
+                    elseif absent then droite = droite .. "  |cff8c8c8c" .. L().AH_RECIPES_ABSENT .. "|r" end
+                    local o = p.objet
+                    LigneAvecBouton(o, droite, L().AH_FIND_SHORT, function() NS.encheres.Chercher(o) end)
+                end
             end
         end
     end

@@ -207,14 +207,53 @@ local function Apercu(page)
     return m
 end
 
+-- Colonnes alignees a droite (largeurs donnees par le bloc) : une police
+-- par colonne, creee a la demande.
+local function Colonne(porteur, cle, i)
+    porteur[cle] = porteur[cle] or {}
+    local fs = porteur[cle][i]
+    if fs then return fs end
+    local parent = porteur.CreateFontString and porteur or porteur.zone
+    fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fs:SetJustifyH("RIGHT")
+    fs:SetWordWrap(false)
+    porteur[cle][i] = fs
+    return fs
+end
+
+-- Place les colonnes de droite a gauche ; rend la position x (depuis la
+-- droite) ou s'arrete le texte de gauche.
+local ECART_COL = 12
+local function PoserColonnes(ancre, fontes, defs, textes, couleur)
+    local x = -8
+    for i = #defs, 1, -1 do
+        local fs = fontes[i]
+        fs:ClearAllPoints()
+        fs:SetPoint("RIGHT", ancre, "RIGHT", x, 0)
+        fs:SetWidth(defs[i].largeur)
+        local t = textes[i]
+        fs:SetText(type(t) == "table" and (t[1] or "") or (t or ""))
+        local c = (type(t) == "table" and t[2]) or couleur or NORMAL
+        fs:SetTextColor(c[1], c[2], c[3])
+        fs.couleurPropre = nil
+        fs:Show()
+        x = x - defs[i].largeur - ECART_COL
+    end
+    return x
+end
+
 -- blocs : { { titre, droite, lignes = { ligne }, vide, apercu = { display, id, lignes = { textes } } } }
+--         colonnes = { { titre, largeur } } : en-tete sous le titre, et
+--         chaque ligne donne ses textes dans ligne.colonnes (texte ou { texte, couleur }).
 -- ligne : { quete = etat | icone | coche, texte, droite, couleur, couleurDroite,
 --           infobulle(tt), bouton = { texte, action }, clic, retrait }
 local function Rendre(page, blocs)
     local zone = page.zone
     local largeur = zone:GetWidth() or 780
     for _, t in ipairs(page.titres or {}) do t.fs:Hide() t.filet:Hide() t.droite:Hide() end
-    for _, l in ipairs(page.lignes or {}) do l:Hide() end
+    for _, l in ipairs(page.lignes or {}) do l:Hide() for _, fs in ipairs(l.cols or {}) do fs:Hide() end end
+    page.entetes = page.entetes or {}
+    for _, e in ipairs(page.entetes) do e.pris = false for _, fs in ipairs(e.cols or {}) do fs:Hide() end end
     if page.apercu then page.apercu:Hide() end
     for _, t in ipairs(page.textesApercu or {}) do t:Hide() end
     local y, nT, nL = 0, 0, 0
@@ -238,6 +277,22 @@ local function Rendre(page, blocs)
             else t.filet:SetColorTexture(0.8, 0.65, 0.35, 0.35) end
             t.fs:Show() t.filet:Show() t.droite:Show()
             y = y + 30
+        end
+        if b.colonnes then
+            -- L'en-tete des colonnes : en legende, au-dessus des valeurs.
+            local k2 = #page.entetes + 1
+            for i2, e2 in ipairs(page.entetes) do if not e2.pris then k2 = i2 break end end
+            local e = page.entetes[k2] or { zone = page.zone, ancre = CreateFrame("Frame", nil, page.zone) }
+            page.entetes[k2] = e
+            e.pris = true
+            e.ancre:ClearAllPoints()
+            e.ancre:SetPoint("TOPLEFT", zone, "TOPLEFT", 0, -y)
+            e.ancre:SetPoint("RIGHT", zone, "RIGHT", -10, 0)
+            e.ancre:SetHeight(16)
+            local textes = {}
+            for i, c in ipairs(b.colonnes) do Colonne(e, "cols", i) textes[i] = c.titre end
+            PoserColonnes(e.ancre, e.cols, b.colonnes, textes, GRIS)
+            y = y + 18
         end
         if b.apercu then
             local m = Apercu(page)
@@ -318,9 +373,14 @@ local function Rendre(page, blocs)
             else
                 l.bouton:Hide()
             end
+            if b.colonnes and e.colonnes then
+                for i = 1, #b.colonnes do Colonne(l, "cols", i) end
+                droiteX = PoserColonnes(l, l.cols, b.colonnes, e.colonnes, e.couleur)
+            end
             l.droite:ClearAllPoints()
             l.droite:SetPoint("RIGHT", l, "RIGHT", droiteX, 0)
-            l.droite:SetWidth(e.largeurDroite or 260)
+            -- Sans texte a droite, le nom va jusqu'aux colonnes.
+            l.droite:SetWidth((e.droite and e.droite ~= "") and (e.largeurDroite or 260) or 1)
             l.droite:SetText(e.droite or "")
             local cd = e.couleurDroite or e.couleur or NORMAL
             l.droite:SetTextColor(cd[1], cd[2], cd[3])
@@ -467,49 +527,44 @@ end
 -- Sorts
 -- ---------------------------------------------------------------------------
 
-local function LigneDeSort(g, p)
+-- Une ligne par rang, dans l'ordre d'apprentissage : niveau, cout,
+-- maniere de l'apprendre et etat, en colonnes.
+local COLONNES_SORTS = {
+    { titre = T("Niveau", "Level"), largeur = 50 },
+    { titre = T("Coût", "Cost"), largeur = 100 },
+    { titre = T("Apprentissage", "Learned from"), largeur = 110 },
+    { titre = T("État", "Status"), largeur = 90 },
+}
+
+local function LignesDeSort(g, p, sortie)
     local nom, icone = NS.sorts.NomIcone(g)
-    if not nom then return nil end
-    local etat, appris, total, prochain, cout = NS.sorts.Etat(g, p)
-    local droite, couleur
-    if etat == "appris" then
-        droite = total > 1 and string.format(T("Appris, rang %d", "Learned, rank %d"), appris) or T("Appris", "Learned")
-        couleur = VERT
-    elseif etat == "apprendre" then
-        droite = (total > 1 and string.format(T("Rang %d : ", "Rank %d : "), prochain.rang > 0 and prochain.rang or appris + 1) or "")
-            .. NS.sorts.Cout(prochain.cout)
-        couleur = NORMAL
-    elseif etat == "quete" then
-        droite = T("Par une quête de classe", "From a class quest")
-        couleur = NORMAL
-    elseif etat == "talent" then
-        droite = T("Talent", "Talent")
-        couleur = GRIS
-    else
-        if prochain and total > 1 then
-            droite = string.format(T("Rang %d au niveau %d", "Rank %d at level %d"), prochain.rang > 0 and prochain.rang or appris + 1, prochain.niveau)
-        elseif prochain then
-            droite = string.format(T("Niveau %d", "Level %d"), prochain.niveau)
-        else
-            droite = ""
-        end
-        couleur = (appris > 0) and VERT or GRIS
+    if not nom then return 0, 0, 0 end
+    local total = #g.rangs
+    -- Un rang superieur connu vaut pour les rangs d'avant.
+    local dernierConnu = 0
+    for i, r in ipairs(g.rangs) do if p.connait(r.id) then dernierConnu = i end end
+    local appris, aApprendre, cout = 0, 0, 0
+    for i, r in ipairs(g.rangs) do
+        local connu = i <= dernierConnu
+        local niveauOk = (p.niveau or 1) >= r.niveau
+        local etat, couleur
+        if connu then etat, couleur = T("Appris", "Learned"), VERT appris = appris + 1
+        elseif niveauOk then etat, couleur = T("À apprendre", "To learn"), NORMAL aApprendre = aApprendre + 1
+            if not r.quete then cout = cout + (r.cout or 0) end
+        else etat, couleur = T("Plus tard", "Later"), GRIS end
+        local parTalent = r.talent and (tonumber(r.cout) or 0) == 0
+        local source = parTalent and T("Talent", "Talent") or (r.quete and T("Quête de classe", "Class quest")) or T("Maître", "Trainer")
+        local prix = (parTalent or r.quete) and "" or NS.sorts.Cout(r.cout)
+        local rangN = r.rang and r.rang > 0 and r.rang or i
+        local texte = total > 1 and string.format(T("%s (rang %d)", "%s (rank %d)"), nom, rangN) or nom
+        table.insert(sortie, { icone = icone, gris = not connu, texte = texte, couleur = couleur, niveau = r.niveau, nomTri = nom, rangTri = rangN,
+            colonnes = { tostring(r.niveau), prix, source, etat },
+            infobulle = function(tt)
+                if tt.SetSpellByID then pcall(tt.SetSpellByID, tt, r.id) end
+                if tt:NumLines() == 0 then tt:AddLine(texte) end
+            end })
     end
-    return { icone = icone, gris = etat ~= "appris" and appris == 0, texte = nom, couleur = couleur,
-        couleurDroite = (etat == "plus tard") and GRIS or couleur, droite = droite, largeurDroite = 300,
-        infobulle = function(tt)
-            if tt.SetSpellByID and prochain == nil then pcall(tt.SetSpellByID, tt, g.rangs[#g.rangs].id)
-            else tt:AddLine(nom) end
-            tt:AddLine(NS.sorts.NomArbre(g.arbre), 0.8, 0.8, 0.8)
-            for _, r in ipairs(g.rangs) do
-                local connu = p.connait(r.id)
-                local gauche = (total > 1 and string.format(T("Rang %d", "Rank %d"), r.rang > 0 and r.rang or 1) .. ", " or "")
-                    .. string.format(T("niveau %d", "level %d"), r.niveau)
-                local d = connu and T("appris", "learned") or (r.talent and T("talent", "talent")) or (r.quete and T("quête de classe", "class quest")) or NS.sorts.Cout(r.cout)
-                local c = connu and VERT or (((p.niveau or 1) >= r.niveau) and NORMAL or GRIS)
-                tt:AddDoubleLine(gauche, d, c[1], c[2], c[3], c[1], c[2], c[3])
-            end
-        end }, etat, cout
+    return appris, total, cout
 end
 
 local function BlocsSorts()
@@ -526,25 +581,46 @@ local function BlocsSorts()
     for _, g in ipairs(liste) do
       if NS.sorts.PourProfil(g, p) then
         local a = g.arbre or "General"
-        if not parArbre[a] then parArbre[a] = { lignes = {}, appris = 0, total = 0, cout = 0 } table.insert(ordre, a) end
-        local l, etat, cout = LigneDeSort(g, p)
-        if l then
-            local b = parArbre[a]
-            table.insert(b.lignes, l)
-            b.total = b.total + 1
-            if etat == "appris" then b.appris = b.appris + 1 end
-            b.cout = b.cout + (cout or 0)
-        end
+        if not parArbre[a] then parArbre[a] = { lignes = {}, appris = 0, total = 0 } table.insert(ordre, a) end
+        local b = parArbre[a]
+        local ap, tot = LignesDeSort(g, p, b.lignes)
+        b.appris, b.total = b.appris + ap, b.total + tot
       end
     end
     -- Le general (armures, armes) en dernier.
     for i, a in ipairs(ordre) do if a == "General" then table.remove(ordre, i) table.insert(ordre, a) break end end
     local blocs = {}
+    -- Les maitres les plus proches (connecte seulement) : sur la carte de
+    -- MapCore s'il est la, sinon le guidage de la suite.
+    if p.connecte and NS.maitres then
+        local M = NS.maitres
+        local lignes = {}
+        for _, c in ipairs({ p.classe, p.classe == "HUNTER" and "PET" or nil }) do
+            local pt = M.PlusProche(c)
+            local libelle = c == "PET" and T("Maître des familiers le plus proche", "Nearest pet trainer") or T("Maître de classe le plus proche", "Nearest class trainer")
+            local bouton
+            if pt and M.AvecMapCore() then
+                bouton = { texte = T("Voir sur la carte", "Show on map"), action = function() M.Montrer(pt) end }
+            elseif pt then
+                bouton = { texte = M.EstGuide(c) and T("Arrêter", "Stop") or T("Guider", "Guide"), action = function() M.Basculer(c) end }
+            end
+            local icone = c == "PET" and "Interface\\Icons\\Ability_Hunter_BeastCall" or (NS.classes.ICONE and NS.classes.ICONE[c]) or "Interface\\Icons\\INV_Misc_Book_09"
+            table.insert(lignes, { icone = icone, texte = libelle, couleur = NORMAL,
+                droite = pt and (pt.nom .. (pt.zone and (", " .. pt.zone) or "")) or T("Aucun sur ce continent", "None on this continent"),
+                couleurDroite = pt and NORMAL or GRIS, largeurDroite = 260, bouton = bouton })
+        end
+        table.insert(blocs, { titre = T("Où apprendre", "Where to learn"), lignes = lignes })
+    end
     for _, a in ipairs(ordre) do
         local b = parArbre[a]
+        table.sort(b.lignes, function(x, y)
+            if x.niveau ~= y.niveau then return x.niveau < y.niveau end
+            if x.nomTri ~= y.nomTri then return x.nomTri < y.nomTri end
+            return x.rangTri < y.rangTri
+        end)
         if #b.lignes > 0 then
-            table.insert(blocs, { titre = NS.sorts.NomArbre(a), lignes = b.lignes,
-                droite = string.format(T("%d appris sur %d", "%d of %d learned"), b.appris, b.total) })
+            table.insert(blocs, { titre = NS.sorts.NomArbre(a), lignes = b.lignes, colonnes = COLONNES_SORTS,
+                droite = string.format(b.appris > 1 and T("%d rangs appris sur %d", "%d of %d ranks learned") or T("%d rang appris sur %d", "%d of %d rank learned"), b.appris, b.total) })
         end
     end
     return blocs
@@ -731,8 +807,8 @@ local function PageSorts()
     return Page("sorts", "Interface\\Icons\\INV_Misc_Book_11",
         function() return T("Sorts de classe", "Class spells") end,
         function() return string.format(T("Les sorts de %s", "%s's spells"), NomDuPerso()) end,
-        function() return T("Tous les sorts du maître, par arbre. En vert : appris. Texte normal : à apprendre maintenant, avec le coût. En gris : plus tard. Le survol donne chaque rang.",
-            "Every trainer spell, by tree. Green : learned. Normal text : to learn now, with the cost. Grey : later. Hover for every rank.") end,
+        function() return T("Chaque rang de sort, par arbre, dans l'ordre où il s'apprend. En vert : appris. Texte normal : à apprendre maintenant. En gris : plus tard.",
+            "Every spell rank, by tree, in learning order. Green : learned. Normal text : to learn now. Grey : later.") end,
         BlocsSorts)
 end
 
@@ -844,7 +920,7 @@ function F.Construire()
     local S = Su()
     if F.w or not (S and S.FenetreAPages) then return F.w end
     local pages = { PageClasse(), PageQuetes(), PageSorts() }
-    if NS.talents then table.insert(pages, NS.talents.Page()) end
+    if NS.talents then table.insert(pages, NS.talents.Page()) table.insert(pages, NS.talents.PageSimulateur()) end
     table.insert(pages, PageObjets())
     if NS.familiers and AvecChasseur() then table.insert(pages, NS.familiers.Page(Page)) end
     table.insert(pages, PageReglages())
