@@ -960,12 +960,25 @@ function courrier.Acheter(lignes)
 end
 
 do
+    local attente = false
     local f = CreateFrame("Frame")
     for _, e in ipairs({ "MERCHANT_SHOW", "MERCHANT_CLOSED", "MERCHANT_UPDATE", "BAG_UPDATE_DELAYED" }) do pcall(f.RegisterEvent, f, e) end
     f:SetScript("OnEvent", function(_, e)
         if e == "MERCHANT_SHOW" then courrier.Ouvert("marchand")
         elseif e == "MERCHANT_CLOSED" then courrier.Ferme("marchand")
-        elseif lieu == "marchand" and not achatEnCours then courrier.Actualiser() end
+        elseif lieu == "marchand" and not achatEnCours then
+            -- Le marchand envoie ses mises a jour en rafale (stocks, objets
+            -- qui finissent de charger) : un seul recalcul, une demi-seconde
+            -- apres la derniere, au lieu d'un par evenement.
+            if attente then return end
+            local plusTard = Lire("C_Timer.After")
+            if not plusTard then courrier.Actualiser() return end
+            attente = true
+            NS.Appeler(plusTard, 0.5, function()
+                attente = false
+                if lieu == "marchand" and not achatEnCours then courrier.Actualiser() end
+            end)
+        end
     end)
 end
 
