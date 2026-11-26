@@ -1816,18 +1816,30 @@ local function Remplir(plan)
             end
             if #lignes > 0 then table.insert(groupes, { titre = titre, lignes = lignes }) end
         end
-        -- 1. Les rangs vises du personnage, lus directement dans leur plan fige
-        --    (la meme source que le suivi et le guide).
+        -- 1. Les rangs vises de TOUS mes personnages du meme camp, lus dans
+        --    leur plan fige (la meme source que le suivi et le guide) : ce qui
+        --    s'achete ici s'envoie ensuite a qui en a besoin. Le personnage
+        --    connecte d'abord, son nom a la couleur de sa classe.
         local moi = NS.base.Personnage and NS.base.Personnage()
         local okR, souciR = pcall(function()
-            for _, cle in ipairs(moi and NS.recettes.MetiersVises(moi) or {}) do
-                local sien = type(moi.metiers) == "table" and moi.metiers[tostring(cle)]
-                if type(sien) == "table" and sien.rang then
-                    for _, seg in ipairs(NS.recettes.PlansVises(moi, cle, sien.rang, sien.rangMax)) do
-                        local nom = sien.nom or (NS.recettes.NomDuMetier and NS.recettes.NomDuMetier(tonumber(cle))) or "?"
-                        local titre = nom .. " : " .. ((seg.plan.probable and NS.ICONE_CHANCE) or "")
-                            .. string.format(L().GUIDE_TARGET_ONE or "rang %d", seg.vise)
-                        Groupe(titre, seg.plan.manques or {})
+            local fiches = {}
+            if moi then table.insert(fiches, moi) end
+            for _, f in ipairs(NS.base.TousLesPersonnages() or {}) do
+                if f ~= moi and NS.inventaire.MemeCamp(f) then table.insert(fiches, f) end
+            end
+            for _, fiche in ipairs(fiches) do
+                local qui = NS.inventaire.NomCourt(fiche.cle) or "?"
+                local c = fiche.jetonClasse and _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[fiche.jetonClasse]
+                if c and c.colorStr then qui = "|c" .. c.colorStr .. qui .. "|r" end
+                for _, cle in ipairs(NS.recettes.MetiersVises(fiche)) do
+                    local sien = type(fiche.metiers) == "table" and fiche.metiers[tostring(cle)]
+                    if type(sien) == "table" and sien.rang then
+                        for _, seg in ipairs(NS.recettes.PlansVises(fiche, cle, sien.rang, sien.rangMax)) do
+                            local nom = sien.nom or (NS.recettes.NomDuMetier and NS.recettes.NomDuMetier(tonumber(cle))) or "?"
+                            local titre = qui .. "  " .. nom .. " : " .. ((seg.plan.probable and NS.ICONE_CHANCE) or "")
+                                .. string.format(L().GUIDE_TARGET_ONE or "rang %d", seg.vise)
+                            Groupe(titre, seg.plan.manques or {})
+                        end
                     end
                 end
             end
