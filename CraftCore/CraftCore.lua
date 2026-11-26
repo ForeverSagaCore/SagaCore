@@ -35,6 +35,19 @@ local base = NS.base
 local inventaire = NS.inventaire
 
 local ecran = NS.ecran
+
+-- Toute relecture des sacs, de la banque ou de la boite rend caducs les
+-- plans gardes en memoire : ils sont recalcules a partir des vrais stocks.
+for _, nom in ipairs({ "Relever", "ReleverBoite" }) do
+    local origine = inventaire[nom]
+    if type(origine) == "function" then
+        inventaire[nom] = function(...)
+            local r1, r2, r3, r4 = origine(...)
+            if NS.recettes and NS.recettes.OublierPlans then pcall(NS.recettes.OublierPlans) end
+            return r1, r2, r3, r4
+        end
+    end
+end
 local releveEnAttente = false
 
 -- Definie plus bas, appelee des le premier releve differe. Declaree ici pour
@@ -52,6 +65,9 @@ end
 -- Apres chaque releve : les infobulles et l'assistant de banque et de
 -- courrier se recalculent sur les nouveaux stocks.
 local function ApresReleve()
+    -- Les sacs viennent d'etre relus : les plans gardes en memoire l'avaient
+    -- ete avec les anciens stocks (un achat restait a 0 sur 3).
+    if NS.recettes and NS.recettes.OublierPlans then NS.recettes.OublierPlans() end
     -- Banquier connecte, banque ouverte : ses mouvements vont au registre.
     if NS.banquiers and NS.banquiers.ApresReleve then pcall(NS.banquiers.ApresReleve, BanqueOuverte()) end
     if NS.infobulles then NS.infobulles.Invalider() end
@@ -344,6 +360,7 @@ cadre:SetScript("OnEvent", function(_, evenement, argument1)
         -- comptent dans les stocks.
         if ecran.courrierOuvert and inventaire.ReleverBoite then
             pcall(inventaire.ReleverBoite)
+            if NS.recettes and NS.recettes.OublierPlans then NS.recettes.OublierPlans() end
             RedessinerBientot()
         end
     elseif evenement == "MAIL_SHOW" then
