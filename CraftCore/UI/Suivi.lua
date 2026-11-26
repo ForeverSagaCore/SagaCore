@@ -1656,6 +1656,31 @@ end
 -- groupes (comme les zones) separes d'un filet, qui se replient ; dedans,
 -- chaque objectif comme une quete, son pourcentage a droite ; deplie, ses
 -- matieres comme des objectifs de quete.
+-- Ce qui a deja ete montre d'un objectif (etapes, matieres), dans l'ordre :
+-- une etape ou une matiere qui sort du calcul (consommee, faite) reste a sa
+-- place, en vert, jusqu'a ce que l'objectif soit atteint. La fenetre ne
+-- saute plus a chaque fabrication.
+local memoEtapes, memoMatieres = {}, {}
+
+local function Fusion(memo, cle, actuels, champ, quantite)
+    local m = memo[cle] or {}
+    memo[cle] = m
+    local parObjet = {}
+    for _, e in ipairs(actuels) do parObjet[e[champ]] = e end
+    local connus = {}
+    for _, x in ipairs(m) do connus[x.objet] = true end
+    for _, e in ipairs(actuels) do
+        if not connus[e[champ]] then table.insert(m, { objet = e[champ], quantite = e[quantite], ref = e }) connus[e[champ]] = true end
+    end
+    local rendu = {}
+    for _, x in ipairs(m) do
+        local e = parObjet[x.objet]
+        if e then x.quantite = math.max(x.quantite or 0, e[quantite] or 0) x.ref = e table.insert(rendu, { e = e })
+        else table.insert(rendu, { e = x.ref, fini = true, quantite = x.quantite }) end
+    end
+    return rendu
+end
+
 local function DessinerObjectifs(y, objectifs, vue)
     local L = NS.L
     local zone = cadreSuivi.zone
@@ -2010,10 +2035,15 @@ local function DessinerObjectifs(y, objectifs, vue)
                 y = y + 20
                 -- Tout est reuni et il y a plusieurs etapes : elles s'affichent
                 -- dessous, dans l'ordre, chacune avec son etat.
-                if (o.pct or 0) >= 1 and etapes and #etapes > 1 then
+                local vues = (((o.pct or 0) >= 1 and etapes and #etapes > 1) or (memoEtapes[o.cle] and #memoEtapes[o.cle] > 1))
+                    and Fusion(memoEtapes, o.cle, etapes or {}, "objet", "besoin") or nil
+                if vues and #vues > 1 then
                     -- De l'air sous la ligne (et son bouton) avant les etapes.
                     y = y + 4
-                    for rangE, e in ipairs(etapes) do
+                    local objetProchain = etapes and rangP and etapes[rangP] and etapes[rangP].objet
+                    for rangE, v in ipairs(vues) do
+                        local e = v.e or {}
+                        if v.fini then e = { objet = e.objet, recette = e.recette, finale = false, faite = true, avoir = v.quantite, besoin = v.quantite } end
                         local t = T(LIGNE, TAILLE_LIGNE - 1)
                         t:ClearAllPoints()
                         t:SetPoint("TOPLEFT", zone, "TOPLEFT", 24, -(y - 2))
@@ -2046,7 +2076,7 @@ local function DessinerObjectifs(y, objectifs, vue)
                             t:SetTextColor(0.31, 0.82, 0.41)
                             etat:SetText(L.GUIDE_DONE)
                             etat:SetTextColor(0.31, 0.82, 0.41)
-                        elseif rangE == rangP then
+                        elseif e.objet == objetProchain then
                             t:SetTextColor(1, 1, 1)
                             etat:SetText(L.CRAFT_STEP_NOW)
                             etat:SetTextColor(1, 1, 1)
@@ -2162,7 +2192,9 @@ local function DessinerObjectifs(y, objectifs, vue)
                         t:SetTextColor(0.8, 0.8, 0.8)
                         y = y + 16
                     end
-                    for _, m in ipairs(o.matieres or {}) do
+                    for _, v in ipairs(Fusion(memoMatieres, o.cle, o.matieres or {}, "objet", "requis")) do
+                        local m = v.e
+                        if v.fini then m = { objet = m.objet, requis = v.quantite, possede = v.quantite, manque = 0, fini = true } end
                         local icone = Icone()
                         icone:SetPoint("TOPLEFT", zone, "TOPLEFT", 28, -y)
                         icone:SetTexture(NS.Appeler(NS.jeu.iconeObjet, m.objet) or "Interface\\Icons\\INV_Misc_QuestionMark")
@@ -2185,7 +2217,11 @@ local function DessinerObjectifs(y, objectifs, vue)
                         compte:SetJustifyH("RIGHT")
                         compte:SetWordWrap(false)
                         compte:SetText(math.min(m.possede, m.requis) .. " / " .. m.requis)
-                        if m.manque == 0 and (NS.inventaire.DisponibleDansLesSacs(m.objet) or 0) < m.requis then
+                        if m.fini then
+                            -- Deja utilisee : faite, en vert, a sa place.
+                            nom:SetTextColor(0.31, 0.82, 0.41)
+                            compte:SetTextColor(0.31, 0.82, 0.41)
+                        elseif m.manque == 0 and (NS.inventaire.DisponibleDansLesSacs(m.objet) or 0) < m.requis then
                             -- Reunie, mais pas toute dans les sacs : en gris.
                             nom:SetTextColor(0.85, 0.85, 0.85)
                             compte:SetTextColor(0.7, 0.7, 0.7)
@@ -2223,6 +2259,13 @@ function suivi.Dessiner()
     TAILLE_LIGNE = TailleDesQuetes()
     producteurs = nil
     local objectifs = suivi.Objectifs()
+    -- Les objectifs disparus (atteints, retires) : leur memoire s'efface.
+    do
+        local presents = {}
+        for _, o in ipairs(objectifs or {}) do presents[o.cle] = true end
+        for cle in pairs(memoEtapes) do if not presents[cle] then memoEtapes[cle] = nil end end
+        for cle in pairs(memoMatieres) do if not presents[cle] then memoMatieres[cle] = nil end end
+    end
     local g = NS.base.ReglagesGeneraux()
     cadreSuivi.replier:SetNormalTexture(g.suiviReplie and "Interface\\Buttons\\UI-PlusButton-Up"
         or "Interface\\Buttons\\UI-MinusButton-Up")
@@ -2269,7 +2312,23 @@ function suivi.Dessiner()
     -- faisait doublon et brouillait lequel etait en cours.
     cadreSuivi.guider:Hide()
     if #deLOnglet > 1 then y = y + 26 end
-    cadreSuivi:SetHeight(24 + NS.charte.MARGE + y + NS.charte.MARGE + 4)
+    -- Hauteur figee tant qu'un objectif est deplie et que les memes objectifs
+    -- sont la : elle peut grandir, jamais retrecir. Un objectif atteint (ou
+    -- un autre onglet) libere la hauteur.
+    local h = 24 + NS.charte.MARGE + y + NS.charte.MARGE + 4
+    local cles = { vue }
+    local deplie = false
+    for _, o in ipairs(deLOnglet) do
+        table.insert(cles, tostring(o.cle))
+        if ouverts[o.cle] then deplie = true end
+    end
+    local signature = table.concat(cles, "|")
+    if deplie and cadreSuivi.hauteurFigee and cadreSuivi.signatureFigee == signature then
+        h = math.max(h, cadreSuivi.hauteurFigee)
+    end
+    cadreSuivi.hauteurFigee = deplie and h or nil
+    cadreSuivi.signatureFigee = signature
+    cadreSuivi:SetHeight(h)
 end
 
 -- Affichage permanent (reglage) : le suivi se montre des la connexion, meme
