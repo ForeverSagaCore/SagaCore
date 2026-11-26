@@ -766,6 +766,36 @@ local function AvecZone(entree)
     return zone and (nom .. " (" .. zone .. ")") or nom
 end
 
+-- L'objet « plan » d'une recette (Recette : ..., Formule : ...) dans la base
+-- QuestieDB, par son nom apres les deux-points. Index lu une fois.
+local indexPlans
+function recettes.ObjetDuPlan(recette)
+    if type(recette) ~= "table" or type(recette.nom) ~= "string" then return nil end
+    if not indexPlans then
+        local base = _G.ItemDB
+        if not (type(base) == "table" and base.GetAllIds and base.Get) then return nil end
+        local ok, ids = pcall(base.GetAllIds)
+        if not ok or type(ids) ~= "table" then return nil end
+        indexPlans = {}
+        for _, id in ipairs(ids) do
+            local okN, nom = pcall(base.Get, id, "name")
+            if okN and type(nom) == "string" and string.find(nom, ":", 1, true) then
+                local apres = Cle(string.match(nom, ":%s*(.+)$"))
+                if apres and not indexPlans[apres] then indexPlans[apres] = id end
+            end
+        end
+    end
+    return indexPlans[Cle(recette.nom) or ""]
+end
+
+-- Un marchand vend-il le plan, a guider sur ce continent ? Rend l'objet.
+function recettes.PlanGuidable(recette)
+    local id = recettes.ObjetDuPlan(recette)
+    local m = NS.marchands
+    if id and m and m.Localisable and m.Localisable(id) and m.PlusProche and m.PlusProche(id) then return id end
+    return nil
+end
+
 -- Le plan (recette, formule, patron...) d'une recette deja en possession :
 -- dans les sacs, la banque ou le courrier d'un personnage du meme camp.
 -- Cherche par le nom (« Recette : Potion de ... »). Rend l'identifiant de
@@ -779,6 +809,10 @@ function recettes.PlanPossede(recette)
     local base = NS.base
     if not (inv and base and base.TousLesPersonnages and base.StocksDe) then return nil end
     local trouve = planCache[cherche]
+    if not trouve then
+        local id = recettes.ObjetDuPlan(recette)
+        if id and inv.TotalPossede and (inv.TotalPossede(id) or 0) > 0 then trouve = id end
+    end
     if not trouve then
         for _, fiche in ipairs(base.TousLesPersonnages()) do
             for id in pairs(base.StocksDe(fiche) or {}) do

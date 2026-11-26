@@ -834,6 +834,7 @@ L.PROG_LEARN_NEEDED = "Nothing you know gives points anymore : to learn, orange 
 L.PROG_LEARN_MORE = "To learn, orange right now"
 L.PROG_LEARN_WHERE = "rank %d, %s"
 L.GUIDE_LEARN_FIRST = "Learn first (trainer or vendor)"
+L.GUIDE_LEARN_VENDOR = "Guide to the vendor"
 L.GUIDE_PROPOSED = "Suggestion : the way to rank %d. Tick the chosen rank to follow it."
 L.OBTAIN_UNKNOWN = "Item unknown to CraftCore : auction house or trade"
 L.OBTAIN_OWNED = "Already owned : %s"

@@ -3544,6 +3544,25 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                     l:SetScript("OnLeave", function() GameTooltip:Hide() end)
                 end
             end
+            -- Un plan a acheter chez un marchand : un seul bouton, vers le
+            -- marchand le plus proche qui vend le premier plan manquant.
+            local aGuider
+            for _, etape in ipairs(maintenant) do
+                if not aGuider and not catalogue.EstApprise(etape.recette.id) then
+                    local okP, possede = pcall(catalogue.PlanPossede, etape.recette)
+                    if not (okP and possede) then
+                        local okG, objet = pcall(catalogue.PlanGuidable, etape.recette)
+                        if okG and objet then aGuider = objet end
+                    end
+                end
+            end
+            if aGuider then
+                local objet = aGuider
+                BoutonDEtape("progApprendre", L.GUIDE_LEARN_VENDOR, function()
+                    if NS.guidage and NS.guidage.Marchand then NS.guidage.Marchand(objet) end
+                    ecran.Montrer(ecran.page)
+                end)
+            end
         end
     end
 
