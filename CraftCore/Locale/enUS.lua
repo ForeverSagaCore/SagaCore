@@ -860,6 +860,7 @@ L.AH_SELL_TIP = "Click : picks the item up, to drop in the auction house sell sl
 L.AH_SCAN_BAGS = "Check prices of my bags (%d)"
 L.RECIPES_USED_IN = "Used as a reagent in"
 L.GOAL_LEARN_WHERE = "Where to learn"
+L.GOAL_LEARN_HAVE = "Recipe : %s"
 L.RECIPES_LEGEND_USES = "Used for :"
 L.RECIPES_LEGEND_QUEST = "quests"
 L.TIP_MORE_ITEMS = "and %d more"

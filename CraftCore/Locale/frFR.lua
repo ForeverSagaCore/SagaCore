@@ -859,6 +859,7 @@ L.AH_SELL_TIP = "Vendre : met en vente à l'hôtel des ventes, au prix le plus b
 L.AH_SCAN_BAGS = "Relever les prix de mes sacs (%d)"
 L.RECIPES_USED_IN = "Sert de composant en"
 L.GOAL_LEARN_WHERE = "Où apprendre"
+L.GOAL_LEARN_HAVE = "Plan : %s"
 L.RECIPES_LEGEND_USES = "Sert pour :"
 L.RECIPES_LEGEND_QUEST = "des quêtes"
 L.TIP_MORE_ITEMS = "et %d autres"
