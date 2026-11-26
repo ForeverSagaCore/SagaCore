@@ -851,6 +851,116 @@ local function PreparerEnvoi(envoi)
     end, PAUSE_PIECE)
 end
 
+-- ---------------------------------------------------------------------------
+-- Chez un marchand : ce que mes objectifs demandent d'acheter et qu'il vend
+-- (fioles, plans...), a la quantite exacte qui manque dans les sacs. L'achat
+-- se fait sur clic, un lot apres l'autre, en recomptant les sacs a chaque fois.
+-- ---------------------------------------------------------------------------
+
+local function BesoinsDAchat()
+    local besoins = {}
+    local ok, objectifs = pcall(NS.suivi.Objectifs)
+    for _, o in ipairs(ok and objectifs or {}) do
+        for objet, n in pairs(type(o.achats) == "table" and o.achats or {}) do
+            objet = tonumber(objet)
+            if objet then besoins[objet] = (besoins[objet] or 0) + (tonumber(n) or 0) end
+        end
+        -- Les plans a apprendre maintenant, pas encore en main : un chacun.
+        for _, a in ipairs(o.aApprendre or {}) do
+            if not a.appris and not a.plusTard then
+                local okO, plan = pcall(NS.recettes.ObjetDuPlan, a.recette)
+                local okP, _, possede = pcall(NS.recettes.PlanPossede, a.recette)
+                plan = okO and tonumber(plan)
+                if plan and not (okP and possede) then besoins[plan] = math.max(besoins[plan] or 0, 1) end
+            end
+        end
+    end
+    return besoins
+end
+
+-- { { index, objet, reste (objets), lot (objets par achat), prix (par lot) } }
+function courrier.AchatsMarchand()
+    local liste = {}
+    local nombre, idDe, infoDe = Lire("GetMerchantNumItems"), Lire("GetMerchantItemID"), Lire("GetMerchantItemInfo")
+    if not (nombre and idDe and infoDe) then return liste end
+    local besoins = BesoinsDAchat()
+    for i = 1, tonumber(NS.Appeler(nombre)) or 0 do
+        local objet = tonumber(NS.Appeler(idDe, i))
+        local besoin = objet and besoins[objet]
+        if besoin and besoin > 0 then
+            local ok, _, _, prix, lot, dispo, achetable, _, coutSpecial = pcall(infoDe, i)
+            prix, lot = tonumber(prix), math.max(1, tonumber(lot) or 1)
+            if ok and prix and not coutSpecial and achetable ~= false then
+                local reste = besoin - (NS.inventaire.DisponibleDansLesSacs(objet) or 0)
+                if reste > 0 then
+                    table.insert(liste, { index = i, objet = objet, reste = reste, lot = lot, prix = prix,
+                        lots = math.ceil(reste / lot), dispo = tonumber(dispo) })
+                end
+            end
+        end
+    end
+    return liste
+end
+
+local achatEnCours = false
+function courrier.Acheter(lignes)
+    if achatEnCours or lieu ~= "marchand" then return end
+    if EnCombat() then NS.Dire(L().ASSIST_COMBAT) return end
+    local acheter = Lire("BuyMerchantItem")
+    local plusTard = Lire("C_Timer.After")
+    if not (acheter and plusTard) then return end
+    -- Un lot a la fois : file des achats a faire.
+    -- Vendu a l'unite : par piles entieres (le maximum que le jeu accepte
+    -- d'un coup) ; vendu par lots : un lot a la fois.
+    local file = {}
+    local pileMax = Lire("GetMerchantItemMaxStack")
+    for _, l in ipairs(lignes) do
+        if l.lot == 1 then
+            local maxi = math.max(1, tonumber(pileMax and NS.Appeler(pileMax, l.index)) or 1)
+            local reste = l.lots
+            while reste > 0 do
+                local q = math.min(reste, maxi)
+                table.insert(file, { index = l.index, q = q, prix = l.prix * q })
+                reste = reste - q
+            end
+        else
+            for _ = 1, l.lots do table.insert(file, { index = l.index, q = 1, prix = l.prix }) end
+        end
+    end
+    if #file == 0 then return end
+    achatEnCours = true
+    local faits = 0
+    local function Suivant()
+        local l = table.remove(file, 1)
+        if not l or lieu ~= "marchand" then
+            achatEnCours = false
+            NS.Dire(string.format(L().MERCHANT_BOUGHT or "%d", faits))
+            courrier.Actualiser()
+            return
+        end
+        if (tonumber(NS.Appeler(_G.GetMoney)) or 0) < l.prix then
+            file = {}
+            NS.Dire(L().MERCHANT_NO_MONEY or "")
+        else
+            NS.Appeler(acheter, l.index, l.q)
+            faits = faits + l.q
+        end
+        NS.Appeler(plusTard, 0.25, Suivant)
+    end
+    Suivant()
+    courrier.Actualiser()
+end
+
+do
+    local f = CreateFrame("Frame")
+    for _, e in ipairs({ "MERCHANT_SHOW", "MERCHANT_CLOSED", "MERCHANT_UPDATE", "BAG_UPDATE_DELAYED" }) do pcall(f.RegisterEvent, f, e) end
+    f:SetScript("OnEvent", function(_, e)
+        if e == "MERCHANT_SHOW" then courrier.Ouvert("marchand")
+        elseif e == "MERCHANT_CLOSED" then courrier.Ferme("marchand")
+        elseif lieu == "marchand" and not achatEnCours then courrier.Actualiser() end
+    end)
+end
+
 -- Completer les piles : ce que j'ai dans mes sacs et qui est deja en banque
 -- (sauf ce que mes projets me font sortir). Un objet par ligne, avec la
 -- quantite dans les sacs ; choisi par defaut.
@@ -983,8 +1093,9 @@ local FENETRES = {
     banque = { "BankFrame", "BankPanel", "AccountBankPanel", "BankSlotsFrame", "ReagentBankFrame" },
     courrier = { "MailFrame", "OpenMailFrame" },
     encheres = { "AuctionHouseFrame" },
+    marchand = { "MerchantFrame" },
 }
-local ECART = { banque = 48, courrier = 8, encheres = 8 }
+local ECART = { banque = 48, courrier = 8, encheres = 8, marchand = 8 }
 
 local function Construire()
     -- La charte commune, sans portrait ni pied : un panneau.
@@ -1542,6 +1653,8 @@ local function Remplir(plan)
             local liste = {}
             for _, objet in ipairs(objets) do table.insert(liste, { objet = objet }) end
             Lignes(liste, function(l)
+                local enRoute = NS.encheres.EnRoute and NS.encheres.EnRoute(l.objet) or 0
+                if enRoute > 0 then return "|cff4fd16a" .. string.format(L().AH_IN_MAIL or "%d", enRoute) .. "|r" end
                 local prix, quand, absent = NS.encheres.Prix(l.objet, 1)
                 if prix then return string.format(L().AH_UNIT, NS.marchands.Monnaie(prix)) .. "  |cff8c8c8c" .. NS.encheres.DateDe(quand) .. "|r" end
                 if absent then return "|cff8c8c8c" .. string.format(L().AH_ABSENT, NS.encheres.DateDe(quand)) .. "|r" end
@@ -1672,6 +1785,27 @@ local function Remplir(plan)
                     local o = p.objet
                     LigneAvecBouton(o, droite, L().AH_FIND_SHORT, function() NS.encheres.Chercher(o) end)
                 end
+            end
+        end
+    end
+    if lieu == "marchand" then
+        local okA, achats = pcall(courrier.AchatsMarchand)
+        achats = okA and achats or {}
+        if #achats > 0 then
+            vide = false
+            local total = 0
+            for _, a in ipairs(achats) do total = total + a.lots * a.prix end
+            -- L'action en haut, sous la main : tout acheter, juste ce qui manque.
+            Action(string.format(L().MERCHANT_BUY_ALL or "%s", NS.marchands.Monnaie(total)), function() courrier.Acheter(achats) end)
+            if achatEnCours then panneau.boutons[nb]:SetEnabled(false) end
+            Titre(L().MERCHANT_TITLE or "")
+            for _, a in ipairs(achats) do
+                local ligne = a
+                local n = a.lots * a.lot
+                LigneAvecBouton(a.objet, "x" .. n .. "  " .. NS.marchands.Monnaie(a.lots * a.prix), L().MERCHANT_BUY or "", function()
+                    courrier.Acheter({ ligne })
+                end)
+                if achatEnCours then panneau.boutons[nb]:SetEnabled(false) end
             end
         end
     end
@@ -1861,7 +1995,7 @@ local function Pertinent()
         local envoi = _G.SendMailFrame
         return envoi and envoi.IsVisible and envoi:IsVisible()
     end
-    return lieu == "banque" or lieu == "encheres"
+    return lieu == "banque" or lieu == "encheres" or lieu == "marchand"
 end
 
 -- Redessine le panneau, ou le cache s'il n'y a rien a faire ici.

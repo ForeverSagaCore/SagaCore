@@ -920,7 +920,7 @@ function F.Construire()
     local S = Su()
     if F.w or not (S and S.FenetreAPages) then return F.w end
     local pages = { PageClasse(), PageQuetes(), PageSorts() }
-    if NS.talents then table.insert(pages, NS.talents.Page()) table.insert(pages, NS.talents.PageSimulateur()) end
+    if NS.talents then table.insert(pages, NS.talents.Page()) end
     table.insert(pages, PageObjets())
     if NS.familiers and AvecChasseur() then table.insert(pages, NS.familiers.Page(Page)) end
     table.insert(pages, PageReglages())

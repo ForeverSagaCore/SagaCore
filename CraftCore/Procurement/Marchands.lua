@@ -410,7 +410,108 @@ function encheres.ObjetsDeQuetes()
     return res
 end
 
+-- ---------------------------------------------------------------------------
+-- En route : ce qui est achete a l'hotel des ventes et attend au courrier.
+-- Un achat compte des la confirmation ; a l'ouverture de la boite, son
+-- contenu remplace ce compte (ce qui en est sorti est dans les sacs).
+-- CraftCoreDB.enRoute[perso] = { [objet] = { n, quand } }
+-- ---------------------------------------------------------------------------
+
+local function EnRouteDuPerso()
+    local d = CraftCoreDB
+    local cle = NS.ClePersonnage and NS.ClePersonnage()
+    if type(d) ~= "table" or not cle then return nil end
+    d.enRoute = type(d.enRoute) == "table" and d.enRoute or {}
+    d.enRoute[cle] = type(d.enRoute[cle]) == "table" and d.enRoute[cle] or {}
+    return d.enRoute[cle]
+end
+
+-- Combien d'un objet attend au courrier (achats recents compris).
+function encheres.EnRoute(objet)
+    local t = EnRouteDuPerso()
+    local e = t and t[tonumber(objet) or 0]
+    if type(e) ~= "table" then return 0 end
+    -- Le courrier garde 30 jours ; au-dela, on oublie.
+    local maintenant = NS.Appeler(_G.time) or 0
+    if maintenant - (tonumber(e[2]) or 0) > 30 * 86400 then return 0 end
+    return tonumber(e[1]) or 0
+end
+
+local function AjouterEnRoute(objet, n)
+    objet, n = tonumber(objet), tonumber(n)
+    local t = EnRouteDuPerso()
+    if not (t and objet and n and n > 0) then return end
+    local e = type(t[objet]) == "table" and t[objet] or { 0, 0 }
+    t[objet] = { (tonumber(e[1]) or 0) + n, NS.Appeler(_G.time) or 0 }
+    if NS.courrier and NS.courrier.Actualiser then pcall(NS.courrier.Actualiser) end
+end
+
+-- La boite ouverte : son contenu exact remplace le compte.
+local function LireBoite()
+    local nb, piece = NS.Lecture("GetInboxNumItems"), NS.Lecture("GetInboxItem")
+    if not (nb and piece) then return end
+    local n = tonumber(NS.Appeler(nb)) or 0
+    local maxi = tonumber(_G.ATTACHMENTS_MAX_RECEIVE) or 16
+    local compte = {}
+    for i = 1, n do
+        for j = 1, maxi do
+            local ok, _, objet, _, quantite = pcall(piece, i, j)
+            objet = ok and tonumber(objet)
+            if objet then compte[objet] = (compte[objet] or 0) + (tonumber(quantite) or 1) end
+        end
+    end
+    local t = EnRouteDuPerso()
+    if not t then return end
+    local maintenant = NS.Appeler(_G.time) or 0
+    for objet in pairs(t) do t[objet] = nil end
+    for objet, q in pairs(compte) do t[objet] = { q, maintenant } end
+end
+
+do
+    local f = CreateFrame("Frame")
+    for _, e in ipairs({ "MAIL_INBOX_UPDATE", "COMMODITY_PURCHASE_SUCCEEDED", "COMMODITY_PURCHASE_FAILED", "ITEM_SEARCH_RESULTS_UPDATED" }) do
+        pcall(f.RegisterEvent, f, e)
+    end
+    local attente      -- achat de marchandise confirme, en attente du succes
+    local derniereCle  -- la derniere recherche d'objet (pour un achat d'objet)
+    f:SetScript("OnEvent", function(_, evenement, a1)
+        if evenement == "MAIL_INBOX_UPDATE" then pcall(LireBoite)
+        elseif evenement == "COMMODITY_PURCHASE_SUCCEEDED" then
+            if attente then AjouterEnRoute(attente[1], attente[2]) attente = nil end
+        elseif evenement == "COMMODITY_PURCHASE_FAILED" then attente = nil
+        elseif evenement == "ITEM_SEARCH_RESULTS_UPDATED" then
+            if type(a1) == "table" then derniereCle = a1 end
+        end
+    end)
+    -- On regarde les achats du joueur (sans rien changer a ses gestes).
+    local ah = _G.C_AuctionHouse
+    if type(ah) == "table" and _G.hooksecurefunc then
+        if ah.ConfirmCommoditiesPurchase then
+            pcall(hooksecurefunc, ah, "ConfirmCommoditiesPurchase", function(objet, quantite)
+                attente = { objet, quantite }
+            end)
+        end
+        if ah.PlaceBid then
+            pcall(hooksecurefunc, ah, "PlaceBid", function(enchere, montant)
+                if not derniereCle then return end
+                local n = tonumber(NS.Appeler(ah.GetNumItemSearchResults, derniereCle)) or 0
+                for i = 1, n do
+                    local info = NS.Appeler(ah.GetItemSearchResultInfo, derniereCle, i)
+                    if type(info) == "table" and info.auctionID == enchere then
+                        -- Un achat immediat seulement (une offre peut etre depassee).
+                        if tonumber(info.buyoutAmount) and tonumber(montant) and montant >= info.buyoutAmount then
+                            AjouterEnRoute(type(info.itemKey) == "table" and info.itemKey.itemID or derniereCle.itemID, info.quantity or 1)
+                        end
+                        break
+                    end
+                end
+            end)
+        end
+    end
+end
+
 -- Combien il manque de chaque objet a relever (fabrications et progressions).
+-- Ce qui attend au courrier n'y manque plus.
 function encheres.Manques()
     local manques = {}
     local function Ajouter(objet, n)
@@ -428,6 +529,10 @@ function encheres.Manques()
         end
     end
     for objet, n in pairs(encheres.ObjetsDeQuetes()) do Ajouter(objet, n) end
+    for objet, n in pairs(manques) do
+        local reste = n - encheres.EnRoute(objet)
+        manques[objet] = reste > 0 and reste or nil
+    end
     return manques
 end
 
