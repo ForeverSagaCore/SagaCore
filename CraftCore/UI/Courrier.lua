@@ -858,14 +858,15 @@ end
 -- ---------------------------------------------------------------------------
 
 local function BesoinsDAchat()
+    -- Ce qui manque encore a chaque objectif (matieres, achats compris), et
+    -- les plans a apprendre maintenant pas encore en main.
     local besoins = {}
     local ok, objectifs = pcall(NS.suivi.Objectifs)
     for _, o in ipairs(ok and objectifs or {}) do
-        for objet, n in pairs(type(o.achats) == "table" and o.achats or {}) do
-            objet = tonumber(objet)
-            if objet then besoins[objet] = (besoins[objet] or 0) + (tonumber(n) or 0) end
+        for _, m in ipairs(o.matieres or {}) do
+            local objet = tonumber(m.objet)
+            if objet and (m.manque or 0) > 0 then besoins[objet] = (besoins[objet] or 0) + m.manque end
         end
-        -- Les plans a apprendre maintenant, pas encore en main : un chacun.
         for _, a in ipairs(o.aApprendre or {}) do
             if not a.appris and not a.plusTard then
                 local okO, plan = pcall(NS.recettes.ObjetDuPlan, a.recette)
@@ -891,7 +892,7 @@ function courrier.AchatsMarchand()
             local ok, _, _, prix, lot, dispo, achetable, _, coutSpecial = pcall(infoDe, i)
             prix, lot = tonumber(prix), math.max(1, tonumber(lot) or 1)
             if ok and prix and not coutSpecial and achetable ~= false then
-                local reste = besoin - (NS.inventaire.DisponibleDansLesSacs(objet) or 0)
+                local reste = besoin
                 if reste > 0 then
                     table.insert(liste, { index = i, objet = objet, reste = reste, lot = lot, prix = prix,
                         lots = math.ceil(reste / lot), dispo = tonumber(dispo) })
