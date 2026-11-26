@@ -1193,6 +1193,50 @@ end
 
 local enCours           -- le metier montre
 local rappelLe = {}     -- dernier rappel, par metier (pres d'un maitre)
+
+-- Les maitres qui enseignent les paliers Expert (au-dela de 150) et Artisan
+-- (au-dela de 225) dans WoW Forever : tous les maitres ne les enseignent
+-- pas. Source : Warcraft Tavern, maitres de metier de Forever. Par numero de
+-- PNJ et camp ("A", "H", "AH"). Recolte (herboristerie, minage, depecage) :
+-- les maitres hors des zones de depart enseignent tous les paliers.
+local PALIERS_MAITRES = {
+    [171] = { expert = { { 4160, "A" }, { 246795, "A" }, { 275322, "A" }, { 11042, "A" }, { 4611, "H" } },
+              artisan = { { 1386, "H" }, { 259585, "AH" } } },
+    [164] = { expert = { { 28694, "A" }, { 4258, "A" }, { 3355, "H" } }, artisan = { { 2836, "AH" } } },
+    [333] = { expert = { { 11072, "A" }, { 259287, "A" }, { 251978, "A" }, { 11074, "H" } }, artisan = {} },
+    [202] = { expert = { { 5174, "A" }, { 11017, "H" } }, artisan = { { 8736, "AH" } } },
+    [165] = { expert = { { 4212, "A" }, { 3007, "H" } }, artisan = { { 11098, "H" } } },
+    [197] = { expert = { { 251972, "A" }, { 1346, "A" }, { 1300, "A" }, { 4576, "H" } }, artisan = { { 2399, "H" } } },
+}
+do
+    local recolte = {
+        [182] = { { 812, "A" }, { 3965, "A" }, { 275321, "A" }, { 4204, "A" }, { 908, "AH" }, { 257021, "AH" }, { 1218, "A" },
+            { 1473, "A" }, { 3604, "A" }, { 12025, "AH" }, { 5137, "A" }, { 5502, "A" }, { 254345, "AH" }, { 5566, "A" },
+            { 1458, "A" }, { 2856, "H" }, { 2390, "H" }, { 2114, "H" }, { 3404, "H" }, { 3013, "H" }, { 4614, "H" }, { 3185, "H" }, { 8146, "H" } },
+        [186] = { { 1681, "A" }, { 1701, "A" }, { 5513, "A" }, { 4254, "A" }, { 255891, "AH" }, { 252388, "AH" }, { 6297, "A" }, { 3137, "A" },
+            { 257022, "AH" }, { 8128, "AH" }, { 5392, "A" }, { 3001, "H" }, { 4598, "H" }, { 3555, "H" }, { 3175, "H" }, { 3357, "H" } },
+        [393] = { { 6291, "A" }, { 6292, "A" }, { 6306, "A" }, { 257003, "AH" }, { 6288, "A" }, { 1292, "A" }, { 257024, "AH" }, { 6287, "A" },
+            { 6295, "A" }, { 6387, "H" }, { 7087, "H" }, { 8144, "H" }, { 12030, "H" }, { 7089, "H" }, { 6289, "H" }, { 7088, "H" }, { 6290, "H" } },
+    }
+    for ligne, liste in pairs(recolte) do PALIERS_MAITRES[ligne] = { expert = liste, artisan = liste } end
+end
+-- Cuisine, peche, secourisme : un livre ou une quete, pas un maitre.
+local PALIERS_LIVRES = { [185] = true, [356] = true, [129] = true }
+
+-- Les maitres qui peuvent apprendre le palier au-dela de rangMax : leurs
+-- numeros (nil : n'importe quel maitre du metier).
+local function MaitresDuPalier(ligne, rangMax)
+    local t = PALIERS_MAITRES[ligne]
+    if not t or not rangMax or rangMax < 150 then return nil end
+    local liste = rangMax >= 225 and t.artisan or t.expert
+    local camp = MonCamp()
+    local ids = {}
+    for _, e in ipairs(liste or {}) do
+        if string.find(e[2], camp, 1, true) then table.insert(ids, e[1]) end
+    end
+    return ids
+end
+function avisRang.PalierParLivre(ligne) return PALIERS_LIVRES[tonumber(ligne) or 0] == true end
 local LireMaitres       -- plus bas : la lecture des maitres de chaque metier
 
 local function Montrer(m, pres)
@@ -1207,7 +1251,7 @@ local function Montrer(m, pres)
     LireMaitres()
     cadreA.guider:SetText(L.RANK_MAX_GUIDE or "Guide me")
     cadreA.guider:SetScript("OnClick", function()
-        local ok = NS.guidage and NS.guidage.MaitreDeMetier and NS.guidage.MaitreDeMetier(m.ligne, m.nom)
+        local ok = NS.guidage and NS.guidage.MaitreDeMetier and NS.guidage.MaitreDeMetier(m.ligne, m.nom, m.rangMax)
         if ok then
             Memoire()[tostring(m.ligne)] = m.rangMax
             cadreA:Hide()
@@ -1283,8 +1327,8 @@ LireMaitres = function()
 end
 
 -- Le maitre le plus proche d'un metier, s'il est a moins de 60 metres.
-local function MaitreProche(ligne, jx, jy, jc)
-    for _, id in ipairs((maitres and maitres[ligne]) or {}) do
+local function MaitreProche(ligne, jx, jy, jc, rangMax)
+    for _, id in ipairs(MaitresDuPalier(ligne, rangMax) or (maitres and maitres[ligne]) or {}) do
         local spawns = LireDB("NpcDB", id, "spawns")
         for zone, points in pairs(type(spawns) == "table" and spawns or {}) do
             local carte = CarteDeZone(zone)
@@ -1311,16 +1355,19 @@ end
 
 -- Le maitre d'un metier le plus proche, sur le continent du personnage :
 -- { carte, x (0-1), y (0-1), nom }, ou nil (maitres pas encore lus, aucun).
-function avisRang.MaitrePlusProche(ligne)
-    LireMaitres()
-    if not maitres then return nil end
+function avisRang.MaitrePlusProche(ligne, rangMax)
+    local duPalier = MaitresDuPalier(ligne, rangMax)
+    if not duPalier then
+        LireMaitres()
+        if not maitres then return nil end
+    end
     local carteJ = NS.Appeler(NS.Lecture("C_Map.GetBestMapForUnit"), "player")
     local pos = carteJ and NS.Appeler(NS.Lecture("C_Map.GetPlayerMapPosition"), carteJ, "player")
     if type(pos) ~= "table" or not pos.GetXY then return nil end
     local jx, jy, jc = Monde(carteJ, pos:GetXY())
     if not jx then return nil end
     local meilleur, cible
-    for _, id in ipairs(maitres[ligne] or {}) do
+    for _, id in ipairs(duPalier or maitres[ligne] or {}) do
         local spawns = LireDB("NpcDB", id, "spawns")
         for zone, points in pairs(type(spawns) == "table" and spawns or {}) do
             local carte = CarteDeZone(zone)
@@ -1364,7 +1411,7 @@ do
         local maintenant = NS.Appeler(_G.GetTime) or 0
         for _, m in ipairs(bloques) do
             if maintenant - (rappelLe[m.ligne] or -1e9) > 600 then
-                local okP, nom = pcall(MaitreProche, m.ligne, jx, jy, jc)
+                local okP, nom = pcall(MaitreProche, m.ligne, jx, jy, jc, m.rangMax)
                 if okP and nom then
                     rappelLe[m.ligne] = maintenant
                     Montrer(m, nom)

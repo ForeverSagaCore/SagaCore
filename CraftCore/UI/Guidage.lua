@@ -252,7 +252,7 @@ TYPES.maitreMetier = (function()
     t.Libelle = function(p) return string.format(L().RANK_MAX_GUIDE_WHAT or "%s", tostring(p.nom or "?")) end
     t.Preparer = function(p, etat)
         local a = NS.avisRang
-        local pt = a and a.MaitrePlusProche and a.MaitrePlusProche(tonumber(p.ligne))
+        local pt = a and a.MaitrePlusProche and a.MaitrePlusProche(tonumber(p.ligne), tonumber(p.rangMax))
         if not pt then Dire(L().RANK_MAX_GUIDE_NONE) return false end
         etat.point = { carte = pt.carte, x = pt.x, y = pt.y, nom = pt.nom }
         return true
@@ -316,8 +316,8 @@ function guidage.Lancer(params)
     if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
     return r
 end
-function guidage.MaitreDeMetier(ligne, nom)
-    return S().LancerObjectif("CraftCore", "maitreMetier", { ligne = ligne, nom = nom })
+function guidage.MaitreDeMetier(ligne, nom, rangMax)
+    return S().LancerObjectif("CraftCore", "maitreMetier", { ligne = ligne, nom = nom, rangMax = rangMax })
 end
 
 function guidage.Marchand(objet)

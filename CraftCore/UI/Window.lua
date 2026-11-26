@@ -3414,8 +3414,11 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         if palier then
             local niveau = tonumber(NS.Appeler(NS.Lecture("UnitLevel"), "player")) or 1
             y = Paragraphe(contenu, y, string.format(L.CAP_NEXT, rangMax, palier.rang), POLICE, OR, aligne)
-            local pt = NS.avisRang.MaitrePlusProche and NS.avisRang.MaitrePlusProche(ligneMetier)
-            if pt then
+            local parLivre = NS.avisRang.PalierParLivre and NS.avisRang.PalierParLivre(ligneMetier)
+            local pt = (not parLivre) and NS.avisRang.MaitrePlusProche and NS.avisRang.MaitrePlusProche(ligneMetier, rangMax)
+            if parLivre then
+                y = Paragraphe(contenu, y, L.CAP_BOOK, POLICE, GRIS, aligne)
+            elseif pt then
                 local zone
                 local okZ, info = pcall(C_Map.GetMapInfo, pt.carte)
                 zone = okZ and type(info) == "table" and info.name or nil
@@ -3432,7 +3435,7 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                     bp:ClearAllPoints()
                     bp:SetPoint("TOPLEFT", contenu, "TOPLEFT", aligne, -y)
                     bp:SetScript("OnClick", function()
-                        NS.guidage.MaitreDeMetier(ligneMetier, nomM)
+                        NS.guidage.MaitreDeMetier(ligneMetier, nomM, rangMax)
                         ecran.Montrer(ecran.page)
                     end)
                     bp:Show()

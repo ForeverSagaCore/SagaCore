@@ -627,6 +627,7 @@ L.CAP_NEXT = "Rang maximum %d atteint : le palier suivant (jusqu'au rang %d) s'a
 L.CAP_TRAINER = "Le plus proche : %s"
 L.CAP_LEVEL_OK = "Niveau requis : %d, tu l'as."
 L.CAP_LEVEL_LOW = "Niveau requis : %d (tu es niveau %d)."
+L.CAP_BOOK = "Ce palier s'apprend avec un livre ou une quête, pas chez un maître."
 L.RANK_MAX_OK = "J'ai compris"
 L.PAD_ORIGINS = "Origines"
 L.PAD_SELECT = "Sélectionner"

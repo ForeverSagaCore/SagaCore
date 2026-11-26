@@ -628,6 +628,7 @@ L.CAP_NEXT = "Maximum rank %d reached : the next tier (up to rank %d) is learned
 L.CAP_TRAINER = "Nearest : %s"
 L.CAP_LEVEL_OK = "Level required : %d, you have it."
 L.CAP_LEVEL_LOW = "Level required : %d (you are level %d)."
+L.CAP_BOOK = "This tier is learned from a book or a quest, not from a trainer."
 L.RANK_MAX_OK = "Got it"
 L.PAD_ORIGINS = "Sources"
 L.PAD_SELECT = "Select"

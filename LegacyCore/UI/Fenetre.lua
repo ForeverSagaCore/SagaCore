@@ -367,14 +367,91 @@ local function Fleche(l, depuis, vers, actif)
     end
 end
 
+-- La charte des talents de la suite (ClassCore) : cadres carres du jeu
+-- (jaune au maximum, vert ouvert ou en cours, gris ferme), le rang en
+-- chiffre du jeu au coin, les fleches du jeu, un titre de rubrique par arbre.
+local BOUTON_T, ICONE_T, PAS_T, HAUT_TITRE_T = 40, 36, 56, 34
+local JAUNE_T, VERT_T, GRIS_T = { 1, 0.82, 0 }, { 0.12, 1, 0.12 }, { 0.5, 0.5, 0.5 }
+
+local function GrilleTalents(contenu)
+    if contenu.grilleTalents then return contenu.grilleTalents end
+    local g = CreateFrame("Frame", nil, contenu)
+    g:SetFrameLevel(contenu:GetFrameLevel() + 2)
+    g.boutons, g.lignes, g.pointes, g.titres = {}, {}, {}, {}
+    contenu.grilleTalents = g
+    return g
+end
+
+local function TitreTalents(contenu, g, i)
+    local t = g.titres[i]
+    if t then return t end
+    t = { fs = contenu:CreateFontString(nil, "OVERLAY", "GameFontNormal"), filet = contenu:CreateTexture(nil, "ARTWORK"),
+          droite = contenu:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall") }
+    t.fs:SetJustifyH("LEFT") t.fs:SetWordWrap(false)
+    t.droite:SetJustifyH("RIGHT") t.droite:SetWordWrap(false)
+    g.titres[i] = t
+    return t
+end
+
+local function BoutonTalent(g, i)
+    local b = g.boutons[i]
+    if b then return b end
+    b = CreateFrame("Button", nil, g)
+    b:SetSize(BOUTON_T, BOUTON_T)
+    b.icone = b:CreateTexture(nil, "BACKGROUND", nil, 1)
+    b.icone:SetSize(ICONE_T, ICONE_T)
+    b.icone:SetPoint("CENTER")
+    b.voile = b:CreateTexture(nil, "BORDER", nil, 1)
+    b.voile:SetSize(ICONE_T, ICONE_T)
+    b.voile:SetPoint("CENTER")
+    b.voile:SetColorTexture(0, 0, 0, 1)
+    b.bord = b:CreateTexture(nil, "ARTWORK")
+    b.bord:SetPoint("CENTER")
+    b.survol = b:CreateTexture(nil, "HIGHLIGHT")
+    b.survol:SetPoint("CENTER")
+    b.survol:SetBlendMode("ADD")
+    b.survol:SetAlpha(0.5)
+    b:SetHighlightTexture(b.survol)
+    b.chiffre = b:CreateFontString(nil, "OVERLAY")
+    b.chiffre:SetFontObject(_G.SystemFont16_Shadow_ThickOutline or _G.NumberFontNormal)
+    b.chiffre.couleurPropre = true
+    b.chiffre:SetPoint("BOTTOM", b, "BOTTOM", 11, 4)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:SetScript("OnClick", function() end)
+    g.boutons[i] = b
+    return b
+end
+
+local function HabillerTalent(b, etat, choix)
+    local atlas = Atlas(choix and "choice" or "square", etat == "max" and "yellow" or (etat == "ouvert" and "green" or "gray"))
+    if atlas then
+        b.bord:SetAtlas(atlas, true)
+        b.survol:SetAtlas(atlas, true)
+    else
+        b.bord:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+        b.bord:SetSize(64, 64)
+        b.survol:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+        b.survol:SetSize(ICONE_T, ICONE_T)
+    end
+    local ferme = etat == "ferme"
+    b.icone:SetDesaturated(ferme)
+    b.voile:SetShown(ferme)
+    b.voile:SetAlpha(ferme and 0.55 or 0)
+end
+
 DessinerArbres = function(contenu, arbres, y, disponibles)
+    local g = GrilleTalents(contenu)
+    for _, b in ipairs(g.boutons) do b:Hide() end
+    for _, l in ipairs(g.lignes) do l:Hide() end
+    for _, p in ipairs(g.pointes) do p:Hide() end
+    for _, t in ipairs(g.titres) do t.fs:Hide() t.filet:Hide() t.droite:Hide() end
     local largeur = (contenu:GetWidth() or 760) - 8
     -- Dans l'ordre du jeu, sans les arbres vides.
     local ORDRE = { aventure = 1, ressources = 2, metiers = 3 }
     local tries = {}
     for _, a in ipairs(arbres) do if #(a.noeuds or {}) > 0 then table.insert(tries, a) end end
     table.sort(tries, function(p, q) return (ORDRE[p.genre] or 9) < (ORDRE[q.genre] or 9) end)
-    if #tries == 0 then return y end
+    if #tries == 0 then g:Hide() return y end
     -- Colonnes et rangees de chaque arbre.
     local plans, maxCol, maxRang = {}, 1, 1
     for _, a in ipairs(tries) do
@@ -390,103 +467,118 @@ DessinerArbres = function(contenu, arbres, y, disponibles)
         maxCol, maxRang = math.max(maxCol, #xs), math.max(maxRang, #ys)
         table.insert(plans, { arbre = a, colonne = colonne, rangee = rangee, nCol = #xs, nRang = #ys })
     end
-    -- Une colonne de page par arbre ; la taille des talents suit la place,
-    -- l'espace entre eux reste celui du jeu.
     local nb = #plans
     local colonnePage = math.floor((largeur - (nb - 1) * ECART_ARBRES) / nb)
-    local taille = math.min(TAILLE_MAX, math.floor((colonnePage - 20) / (ESPACE * (maxCol - 1) + 1)))
-    local pas = math.floor(taille * ESPACE + 0.5)
-    local nCase, nTitre, nLien = 0, 0, 0
-    local haut = y + 50
+    -- 80 % de la taille du jeu, moins si les arbres ne tiennent pas.
+    local pas = math.min(PAS_T * 0.8, math.floor((colonnePage - 24 - BOUTON_T * 0.8) / math.max(maxCol - 1, 1)))
+    local k = pas / PAS_T
+    local hauteur = HAUT_TITRE_T + 10 + (maxRang - 1) * PAS_T * k + BOUTON_T * k + 14
+    g:SetScale(k)
+    g:SetSize(largeur / k, hauteur / k)
+    g:ClearAllPoints()
+    g:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y / k)
+    local n0, nl = 0, 0
     for rang, pl in ipairs(plans) do
         local a, parId = pl.arbre, {}
         local gauche = (rang - 1) * (colonnePage + ECART_ARBRES)
-        local larg = (pl.nCol - 1) * pas + taille
-        local x0 = gauche + math.floor((colonnePage - larg) / 2)
-        nTitre = nTitre + 1
-        local t = TitreDArbre(contenu, nTitre)
-        t:ClearAllPoints()
-        t:SetPoint("BOTTOM", contenu, "TOPLEFT", gauche + colonnePage / 2, -(y + 20))
-        -- Un peu plus petit que le titre de section (Mes arbres).
-        t:SetFontObject("GameFontNormal")
-        local fichier, _, options = t:GetFont()
-        if fichier then t:SetFont(NS.Police(fichier), (NS.charte.TAILLE_TITRE or 15) - 2, options) end
-        t:SetText((a.nom or L[NOMS_ARBRES[a.genre] or ""] or "?") .. "  |cffffffff" .. NS.base.Depenses(a) .. "|r")
-        t:Show()
-        if t.bandeau then t.bandeau:Hide() end
+        -- Le titre de l'arbre et ses points, comme une rubrique.
+        local t = TitreTalents(contenu, g, rang)
+        t.fs:ClearAllPoints()
+        t.fs:SetPoint("TOPLEFT", contenu, "TOPLEFT", gauche, -y)
+        t.fs:SetWidth(colonnePage - 70)
+        t.fs:SetText(a.nom or L[NOMS_ARBRES[a.genre] or ""] or "?")
+        t.droite:ClearAllPoints()
+        t.droite:SetPoint("TOPRIGHT", contenu, "TOPLEFT", gauche + colonnePage, -(y + 3))
+        t.droite:SetWidth(70)
+        t.droite:SetText((string.gsub(string.format(L.TREE_SPENT or "%d", NS.base.Depenses(a)), "^%s*%((.-)%)%s*$", "%1")))
+        t.filet:ClearAllPoints()
+        t.filet:SetPoint("TOPLEFT", t.fs, "TOPLEFT", 0, -22)
+        t.filet:SetSize(colonnePage, 1)
+        if NS.charte and NS.charte.TitreDeSection then pcall(NS.charte.TitreDeSection, t.fs, t.filet) end
+        t.fs:Show() t.filet:Show() t.droite:Show()
+        local largeurGrille = (pl.nCol - 1) * PAS_T * k + BOUTON_T * k
+        local xg = gauche + math.floor((colonnePage - largeurGrille) / 2)
         for _, n in ipairs(a.noeuds) do
-            nCase = nCase + 1
-            local c = Case(contenu, nCase)
-            Dimensionner(c, taille)
-            c.gx, c.gy = pl.colonne[n.x], pl.rangee[n.y]
-            c:ClearAllPoints()
-            c:SetPoint("TOPLEFT", contenu, "TOPLEFT", x0 + (c.gx - 1) * pas, -(haut + (c.gy - 1) * pas))
+            n0 = n0 + 1
+            local b = BoutonTalent(g, n0)
+            local gx, gy = pl.colonne[n.x], pl.rangee[n.y]
+            b.gx, b.gy = gx, gy
+            b:ClearAllPoints()
+            b:SetPoint("CENTER", g, "TOPLEFT", (xg + BOUTON_T * k / 2 + (gx - 1) * PAS_T * k) / k,
+                -(HAUT_TITRE_T + 10 + BOUTON_T * k / 2 + (gy - 1) * PAS_T * k) / k)
             local r, maxi = tonumber(n.rang) or 0, tonumber(n.maxi) or 1
             local icone = n.icone or NS.IconeDeSort(n.sort)
-            c.icone:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-            if icone then
-                c.icone:SetTexture(icone)
-            elseif not (n.atlas and pcall(c.icone.SetAtlas, c.icone, n.atlas)) then
-                c.icone:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+            b.icone:SetTexCoord(0, 1, 0, 1)
+            if icone then b.icone:SetTexture(icone)
+            elseif not (n.atlas and pcall(b.icone.SetAtlas, b.icone, n.atlas)) then
+                b.icone:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
             end
-            -- Comme dans le jeu : un talent sans point reste gris et sombre.
-            local pris = r > 0
-            local ouvrable = not pris and (disponibles or 0) > 0 and not (n.dispo == false or n.verrou)
-            c.icone:SetDesaturated(not pris)
-            if pris then c.icone:SetVertexColor(1, 1, 1) else c.icone:SetVertexColor(0.55, 0.55, 0.55) end
-            -- Pris : le cadre gris du jeu teinte du vert des validations
-            -- (plus dense que le vert vif du jeu).
-            local etat = (ouvrable and "yellow") or "gray"
-            local atlas = Atlas(n.choix and "choice" or "square", etat)
-            if atlas then
-                c.cadre:SetAtlas(atlas)
-                if pris then c.cadre:SetVertexColor(VERT_VALIDE[1], VERT_VALIDE[2], VERT_VALIDE[3])
-                else c.cadre:SetVertexColor(1, 1, 1) end
-                c.cadre:Show()
-                c.bord:Hide()
+            local ouvrable = r == 0 and (disponibles or 0) > 0 and not (n.dispo == false or n.verrou)
+            local etat = (r >= maxi) and "max" or ((r > 0 or ouvrable) and "ouvert" or "ferme")
+            b.etat, b.rang = etat, r
+            HabillerTalent(b, etat, n.choix)
+            if etat == "ferme" and r == 0 then b.chiffre:SetText("")
             else
-                c.cadre:Hide()
-                if pris then c.bord:SetColorTexture(VERT_VALIDE[1], VERT_VALIDE[2], VERT_VALIDE[3], 1)
-                elseif ouvrable then c.bord:SetColorTexture(1, 0.82, 0, 1)
-                else c.bord:SetColorTexture(0.38, 0.38, 0.38, 1) end
-                c.bord:Show()
-            end
-            c.rang:SetText(r .. "/" .. maxi)
-            -- Case du rang : grise (texte et contour) sans point, verte comme
-            -- le cadre du talent quand il en a.
-            if pris then
-                c.rang:SetTextColor(0.45, 0.9, 0.5)
-                if c.caseRang.SetBackdropBorderColor then c.caseRang:SetBackdropBorderColor(VERT_VALIDE[1], VERT_VALIDE[2], VERT_VALIDE[3], 1) end
-            else
-                -- Le gris du cadre du talent (relevé sur la capture : 159/255).
-                c.rang:SetTextColor(GRIS_CADRE, GRIS_CADRE, GRIS_CADRE)
-                if c.caseRang.SetBackdropBorderColor then c.caseRang:SetBackdropBorderColor(GRIS_CADRE, GRIS_CADRE, GRIS_CADRE, 1) end
+                b.chiffre:SetText(tostring(r))
+                local c = etat == "max" and JAUNE_T or VERT_T
+                b.chiffre:SetTextColor(c[1], c[2], c[3])
             end
             local noeud = n
-            c:SetScript("OnEnter", function(self)
+            b:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(noeud.nom or "?", 1, 0.82, 0)
                 GameTooltip:AddLine(string.format(L.RANK_OF, tonumber(noeud.rang) or 0, tonumber(noeud.maxi) or 1), 1, 1, 1)
                 if noeud.description then GameTooltip:AddLine(noeud.description, 0.9, 0.9, 0.9, true) end
                 GameTooltip:Show()
             end)
-            if n.id then parId[n.id] = c end
-            c:Show()
+            if n.id then parId[n.id] = b end
+            b:Show()
         end
+        -- Les fleches du jeu : jaunes depuis un talent pris, grises sinon,
+        -- sombres vers un talent ferme.
         for _, n in ipairs(a.noeuds) do
-            local depuis = n.id and parId[n.id]
+            local b1 = n.id and parId[n.id]
             for _, cible in ipairs(n.liens or {}) do
-                local vers = parId[cible]
-                if depuis and vers then
-                    nLien = nLien + 1
-                    local l = Lien(contenu, nLien)
-                    if l then Fleche(l, depuis, vers, (tonumber(n.rang) or 0) > 0) end
+                local b2 = parId[cible]
+                if b1 and b2 and g.CreateLine then
+                    nl = nl + 1
+                    local l = g.lignes[nl]
+                    if not l then
+                        l = g:CreateLine(nil, "BORDER", nil, 2)
+                        if l then l:SetThickness(6) end
+                        g.lignes[nl] = l
+                    end
+                    local pt = g.pointes[nl]
+                    if not pt then pt = g:CreateTexture(nil, "BORDER", nil, 3) g.pointes[nl] = pt end
+                    if l then
+                        local actif = (b1.rang or 0) > 0
+                        local style = actif and "yellow" or (b2.etat == "ferme" and "locked" or "gray")
+                        if AtlasExiste("talents-arrow-line-" .. style) then
+                            l:SetAtlas("talents-arrow-line-" .. style)
+                            pt:SetAtlas("talents-arrow-head-" .. style, true)
+                        else
+                            local c = actif and JAUNE_T or GRIS_T
+                            l:SetColorTexture(c[1], c[2], c[3], 1)
+                            pt:SetColorTexture(c[1], c[2], c[3], 1)
+                            pt:SetSize(10, 10)
+                        end
+                        local angle = math.atan2((b2.gy or 1) - (b1.gy or 1), (b1.gx or 1) - (b2.gx or 1))
+                        local dx, dy = math.cos(angle) * (BOUTON_T / 2 + 2), math.sin(angle) * (BOUTON_T / 2 + 2)
+                        l:SetStartPoint("CENTER", b1)
+                        l:SetEndPoint("CENTER", b2, dx, dy)
+                        pt:ClearAllPoints()
+                        pt:SetPoint("CENTER", b2, "CENTER", dx, dy)
+                        pt:SetRotation(angle - math.pi / 2)
+                        l:Show() pt:Show()
+                    end
                 end
             end
         end
     end
-    return haut + (maxRang - 1) * pas + taille + 30
+    g:Show()
+    return y + hauteur + 10
 end
+NS.DessinerArbres = function(...) return DessinerArbres(...) end
 
 -- ---------------------------------------------------------------------------
 -- Pages
@@ -542,6 +634,9 @@ local function RendreArbres(contenu, p, index, y)
     end or nil)
     bouton:SetScript("OnLeave", function() GameTooltip:Hide() end)
     if bouton.SetMotionScriptsWhileDisabled then bouton:SetMotionScriptsWhileDisabled(true) end
+    -- Au clic de souris : un bouton securise du jeu pose par-dessus, qui
+    -- clique le bouton Heritage du micro-menu, exactement comme le jeu.
+    if NS.PoserHeritageSecurise then NS.PoserHeritageSecurise(bouton, moi and (disponibles or 0) > 0) end
     index = index + 1
     y = Poser(contenu, index, y, { texte = releve and releve.quand and string.format(L.READ_ON, releve.quand)
         or ((p.cle == NS.ClePersonnage()) and L.NO_DATA_HERE or L.NO_DATA_OTHER), couleur = SECONDAIRE, apres = 4 })
@@ -1045,6 +1140,11 @@ function fen.Rendre()
         for _, c in ipairs(contenu.cases or {}) do c:Hide() end
         for _, l in ipairs(contenu.liens or {}) do CacherLien(l) end
         for _, t in ipairs(contenu.titresArbres or {}) do t:Hide() if t.bandeau then t.bandeau:Hide() end end
+        if contenu.grilleTalents then
+            local g = contenu.grilleTalents
+            g:Hide()
+            for _, t in ipairs(g.titres) do t.fs:Hide() t.filet:Hide() t.droite:Hide() end
+        end
         if contenu.histo then contenu.histo:Hide() end
         if contenu.boutonHeritage then contenu.boutonHeritage:Hide() end
         local p = etat.cle and NS.base.Personnage(etat.cle)
