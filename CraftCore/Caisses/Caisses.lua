@@ -466,3 +466,126 @@ function caisses.PacksPrets(caisse)
     end
     return prets, total
 end
+
+-- ---------------------------------------------------------------------------
+-- Projet pour un pack : la recette qui fabrique son objet, au nombre demande
+-- par la caisse, dans Mes fabrications de qui la connait (le proprietaire de
+-- la caisse d'abord ; sinon un autre personnage, qui la fabrique pour lui).
+-- ---------------------------------------------------------------------------
+
+function caisses.RecettePour(objet, proprietaire)
+    objet = tonumber(objet)
+    local catalogue = CraftCoreDB and CraftCoreDB.recettes
+    if not (objet and type(catalogue) == "table") then return nil end
+    local trouvee, fabricant
+    for id, r in pairs(catalogue) do
+        if type(r) == "table" and tonumber(r.objetProduit) == objet then
+            for _, fiche in ipairs(NS.base.TousLesPersonnages()) do
+                local sait = type(fiche.recettesApprises) == "table" and fiche.recettesApprises[tostring(id)]
+                if sait and NS.inventaire.MemeCamp(fiche) then
+                    if fiche.cle == proprietaire then return tonumber(id) or id, fiche.cle end
+                    if not trouvee then trouvee, fabricant = tonumber(id) or id, fiche.cle end
+                end
+            end
+        end
+    end
+    return trouvee, fabricant
+end
+
+-- Caisses suivies : rangees chez le proprietaire de la caisse, une par
+-- caisse (une caisse ne prend qu'un seul pack ; en choisir un autre remplace
+-- le precedent). Elles apparaissent dans Mes fabrications, onglet Caisses, et
+-- leurs besoins passent dans les envois du courrier : les autres personnages
+-- savent quoi lui envoyer.
+local function Suivies(fiche)
+    if type(fiche) ~= "table" then return {} end
+    fiche.caissesSuivies = type(fiche.caissesSuivies) == "table" and fiche.caissesSuivies or {}
+    return fiche.caissesSuivies
+end
+
+local function FicheDe(cle)
+    for _, fiche in ipairs(NS.base.TousLesPersonnages()) do
+        if fiche.cle == cle then return fiche end
+    end
+    return nil
+end
+
+-- La caisse est-elle suivie, et avec ce pack ?
+function caisses.ProjetDe(caisse, pack)
+    local s = Suivies(FicheDe(caisse.proprietaire))[tostring(caisse.id)]
+    return s and s.pack == pack.libelle and s or nil
+end
+
+function caisses.CreerProjet(caisse, pack, objet)
+    local fiche = FicheDe(caisse.proprietaire)
+    if not (fiche and objet) then return nil end
+    local s = { caisse = caisse.id, pack = pack.libelle, objet = tonumber(objet), requis = pack.requis or 1,
+        cree = NS.Appeler(time) }
+    Suivies(fiche)[tostring(caisse.id)] = s
+    -- L'objet se fabrique et le compte n'en a pas assez : sa fabrication
+    -- part aussi en projet, chez qui sait la faire.
+    local total = NS.inventaire.TotalPossede(s.objet) or 0
+    local recette, fabricant = caisses.RecettePour(s.objet, caisse.proprietaire)
+    if recette and total < s.requis then
+        local nom = string.format(NS.L.CRATES_PROJECT_NAME or "%s", pack.libelle)
+        local projet
+        if fabricant == caisse.proprietaire then
+            NS.base.AvecPersonnage(fabricant, function()
+                projet = NS.projets.Creer(nom)
+                if projet then NS.projets.Ajouter(projet.id, recette, s.requis) end
+            end)
+        else
+            projet = NS.projets.CreerTransverse(fabricant, caisse.proprietaire, recette, nom)
+            if projet and projet.objets and projet.objets[1] then projet.objets[1].quantite = s.requis end
+        end
+        if projet then s.projet, s.fabricant = projet.id, fabricant end
+    end
+    if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
+    return s, caisse.proprietaire
+end
+
+function caisses.NePlusSuivre(cle, idCaisse)
+    local fiche = FicheDe(cle)
+    local liste = Suivies(fiche)
+    local s = liste[tostring(idCaisse)]
+    if not s then return end
+    -- Le projet de fabrication qui allait avec, s'il est encore la.
+    local fab = s.fabricant and FicheDe(s.fabricant)
+    if fab and type(fab.projets) == "table" and s.projet then fab.projets[tostring(s.projet)] = nil end
+    liste[tostring(idCaisse)] = nil
+    if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
+end
+
+-- Les caisses suivies d'un personnage, qu'il a encore : { caisse, pack,
+-- objet, requis, total (compte), sacs (lui) }. Une caisse utilisee (scellee)
+-- quitte la liste.
+function caisses.Suivies(cle)
+    local fiche = FicheDe(cle)
+    local liste = {}
+    if not fiche then return liste end
+    local stocks = NS.base.StocksDe(fiche)
+    for id, s in pairs(Suivies(fiche)) do
+        local ligne = stocks[tostring(id)]
+        local encore = type(ligne) == "table" and (tonumber(ligne.total) or 0) > 0
+        if not encore and next(stocks) ~= nil then
+            fiche.caissesSuivies[id] = nil
+        else
+            local sien = stocks[tostring(s.objet)]
+            table.insert(liste, { caisse = tonumber(id) or id, pack = s.pack, objet = s.objet, requis = s.requis,
+                lui = type(sien) == "table" and tonumber(sien.total) or 0 })
+        end
+    end
+    table.sort(liste, function(a, b) return tostring(a.caisse) < tostring(b.caisse) end)
+    return liste
+end
+
+-- Ce que les caisses suivies d'un personnage doivent recevoir des autres :
+-- objet -> quantite.
+function caisses.BesoinsDe(cle)
+    local besoins = {}
+    for _, s in ipairs(caisses.Suivies(cle)) do
+        local manque = (s.requis or 0) - (s.lui or 0)
+        if manque > 0 and s.objet then besoins[s.objet] = (besoins[s.objet] or 0) + manque end
+    end
+    return besoins
+end

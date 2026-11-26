@@ -2422,6 +2422,22 @@ local function RendreCaisses(contenu)
                     l2.total:SetText(texte)
                 end
                 l2.total:SetWordWrap(false)
+                -- Projet : la caisse, avec ce pack, part dans Mes fabrications
+                -- (onglet Caisses) ; ses besoins passent dans les envois des
+                -- autres personnages. Retirer l'annule.
+                if objet and NS.caisses.CreerProjet then
+                    local deja = NS.caisses.ProjetDe(caisse, pack)
+                    local caisseP, packP = caisse, pack
+                    PoserBoutonLigne(l2, deja and L.CRATES_PROJECT_REMOVE or L.CRATES_PROJECT, function()
+                        if NS.caisses.ProjetDe(caisseP, packP) then
+                            NS.caisses.NePlusSuivre(caisseP.proprietaire, caisseP.id)
+                        else
+                            local fait, qui = NS.caisses.CreerProjet(caisseP, packP, objet)
+                            if fait then NS.Dire(string.format(L.CRATES_PROJECT_MADE, packP.libelle, nomDe(qui))) end
+                        end
+                        ecran.Montrer(ecran.page)
+                    end)
+                end
                 local objetSurvol = objet
                 l2:EnableMouse(true)
                 l2:SetScript("OnEnter", function(self)
