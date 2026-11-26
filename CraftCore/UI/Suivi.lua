@@ -1914,11 +1914,20 @@ local function DessinerObjectifs(y, objectifs, vue)
                 local serieIci = serie and serie.lancee and recettePrete and tostring(serie.recette) == tostring(recettePrete.id)
                     and (serie.reussis or 0) < (serie.total or 1)
                 if b.barreFab then b.barreFab:Hide() end
+                -- Bouton et barre a une place fixe, quel que soit le pourcentage :
+                -- la place de « 100 % » est gardee a droite, tous s'alignent.
+                if not b.mesurePct then
+                    b.mesurePct = b:CreateFontString(nil, "OVERLAY", TITRE)
+                    b.mesurePct:Hide()
+                end
+                b.mesurePct:SetFontObject(b.droite:GetFontObject() or TITRE)
+                b.mesurePct:SetText("100 %")
+                local placePct = math.ceil(b.mesurePct:GetStringWidth() or 36) + 8
                 if serieIci then
                     if not b.barreFab then b.barreFab = NS.actions.BarreDeSerie(b) end
                     local barre = b.barreFab
                     barre:ClearAllPoints()
-                    barre:SetPoint("RIGHT", b.droite, "LEFT", -8, 0)
+                    barre:SetPoint("RIGHT", b, "RIGHT", -placePct, 0)
                     barre:SetSize(52, 10)
                     barre:Poser(serie.reussis, serie.total)
                     barre:SetFrameLevel(b:GetFrameLevel() + 3)
@@ -1931,7 +1940,7 @@ local function DessinerObjectifs(y, objectifs, vue)
                         b.creer:SetSize(52, 16)
                     end
                     b.creer:ClearAllPoints()
-                    b.creer:SetPoint("RIGHT", b.droite, "LEFT", -6, 0)
+                    b.creer:SetPoint("RIGHT", b, "RIGHT", -placePct, 0)
                     b.creer:SetSize(60, 16)
                     b.creer:SetText((etapes and #etapes > 1) and L.CRAFT_STEP_NOW or L.CRAFT_BUTTON)
                     local cleO, idRec = o.cle, recettePrete.id
