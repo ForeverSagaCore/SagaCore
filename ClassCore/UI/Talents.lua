@@ -1,11 +1,10 @@
 local _, NS = ...
 
--- Les talents, dans ClassCore, comme la fenetre de talents du jeu (WoW
--- Forever) : les trois arbres cote a cote sur le fond de la classe, chaque
--- talent a sa place exacte, avec les cadres, couleurs, chiffres et fleches
--- du jeu. Onglets Principale / Secondaire. Dessous : les modeles conseilles
--- (montee de niveau, groupe). Une seconde page, le simulateur, permet de
--- placer des points pour essayer, sans rien toucher au personnage.
+-- Les talents, dans ClassCore : les trois arbres cote a cote sur le
+-- parchemin, chaque talent a sa place, avec les cadres, chiffres et fleches
+-- de la fenetre de talents du jeu. En haut a droite, une liste : Principale,
+-- Secondaire (une fois debloquee), Simulation (un essai sur le meme arbre).
+-- Dessous : les modeles conseilles qui vont a l'arbre du jeu.
 --
 -- WoW Forever donne les talents par le systeme des traits (C_Traits), comme
 -- l'interface du jeu (Blizzard_PlayerSpells, version camelot).
@@ -16,7 +15,6 @@ local T = NS.T
 
 local BOUTON = 40
 local ICONE = 36
-local MARGE_X, HAUT_ENTETE, MARGE_BAS = 34, 92, 26
 local JAUNE = { 1, 0.82, 0 }
 local VERT = { 0.12, 1, 0.12 }
 local GRIS = { 0.5, 0.5, 0.5 }
@@ -159,9 +157,26 @@ function Ta.Lire(groupe)
             end
         end
     end
-    -- Rangees et colonnes de la grille du jeu (4 colonnes par arbre).
+    -- Rangees et colonnes de la grille du jeu (4 colonnes par arbre). Les
+    -- noeuds isoles, loin de leur arbre (noeuds techniques du jeu), sont
+    -- ecartes : ils ne sont pas des talents a placer.
     local _, pasX = Grille(xs)
-    local y0, pasY = Grille(ys)
+    local _, pasY = Grille(ys)
+    local pas = math.max(pasX, pasY)
+    for _, a in ipairs(s.arbres) do
+        local gardes = {}
+        for _, t in ipairs(a.talents) do
+            local proche = false
+            for _, u in ipairs(a.talents) do
+                if u ~= t and math.sqrt((u.x - t.x) ^ 2 + (u.y - t.y) ^ 2) <= 2.3 * pas then proche = true break end
+            end
+            if proche then table.insert(gardes, t) end
+        end
+        a.talents = gardes
+    end
+    local y0
+    for _, a in ipairs(s.arbres) do for _, t in ipairs(a.talents) do if not y0 or t.y < y0 then y0 = t.y end end end
+    y0 = y0 or 0
     for _, a in ipairs(s.arbres) do
         local x0
         for _, t in ipairs(a.talents) do if not x0 or t.x < x0 then x0 = t.x end end
@@ -328,9 +343,11 @@ function Ta.Decoder(s, code)
         if k then arbre = k
         else
             local i = tonumber(c, 36)
-            if not i then return nil end
-            local t = parCase[arbre .. ":" .. (math.floor(i / 4) + 1) .. ":" .. (i % 4 + 1)]
-            if not t or not Ta.Ajouter(s, rangs, t) then return nil end
+            if not i then return nil, "caractere " .. c end
+            local case = arbre .. ":" .. (math.floor(i / 4) + 1) .. ":" .. (i % 4 + 1)
+            local t = parCase[case]
+            if not t then return nil, "point " .. (#suite + 1) .. " case vide " .. case end
+            if not Ta.Ajouter(s, rangs, t) then return nil, "point " .. (#suite + 1) .. " refuse " .. case .. " " .. tostring(t.nom) end
             table.insert(suite, t)
         end
     end
@@ -346,8 +363,10 @@ local ACTIVITES = {
 function Ta.Modeles(classe, s)
     local liste = {}
     if not s then return liste end
+    local diag = {}
     for _, m in ipairs(NS.MODELES and NS.MODELES[classe or ""] or {}) do
         local suite, rangs = Ta.Decoder(s, m.code)
+        if not suite then table.insert(diag, m.code:sub(1, 12) .. " : " .. tostring(rangs)) end
         if suite then
             local _, parArbre = Ta.Depenses(s, rangs)
             local rep = {}
@@ -358,6 +377,16 @@ function Ta.Modeles(classe, s)
             table.insert(liste, { nom = nom, icone = a.icone, suite = suite, rangs = rangs,
                 repartition = table.concat(rep, "/"), modele = m })
         end
+    end
+    -- Ce qui n'a pas pu se lire, garde pour corriger (sauvegardes).
+    if #diag > 0 then
+        local db = Base()
+        db.diagModeles = type(db.diagModeles) == "table" and db.diagModeles or {}
+        local grille = {}
+        for _, a in ipairs(s.arbres) do
+            for _, t in ipairs(a.talents) do table.insert(grille, a.rangArbre .. ":" .. t.rangee .. ":" .. t.colonne .. "=" .. tostring(t.nom) .. "/" .. tostring(t.max)) end
+        end
+        db.diagModeles[classe or "?"] = { echecs = diag, grille = table.concat(grille, ", ") }
     end
     return liste
 end
@@ -372,8 +401,11 @@ function Ta.Prochain(modele, rangs)
     return nil
 end
 
+
 -- ---------------------------------------------------------------------------
--- Le plateau : les arbres dessines comme dans le jeu
+-- Les arbres, sur le parchemin : un titre par arbre (comme les rubriques de
+-- la suite), puis ses talents a leur place, avec les cadres, chiffres et
+-- fleches de la fenetre de talents du jeu.
 -- ---------------------------------------------------------------------------
 
 local function Police(fs, nom, repli)
@@ -382,75 +414,33 @@ local function Police(fs, nom, repli)
     fs.couleurPropre = true
 end
 
-local function Plateau(page)
-    if page.plateau then return page.plateau end
-    local p = CreateFrame("Frame", nil, page.zone)
-    p.fond = p:CreateTexture(nil, "BACKGROUND", nil, 0)
-    p.fond:SetAllPoints()
-    p.voile = p:CreateTexture(nil, "BACKGROUND", nil, 1)
-    p.voile:SetAllPoints()
-    p.voile:SetColorTexture(0, 0, 0, 0.25)
-    local okC, c = pcall(CreateFrame, "Frame", nil, p, "BackdropTemplate")
-    if okC and c and c.SetBackdrop then
-        c:SetPoint("TOPLEFT", p, "TOPLEFT", -6, 6)
-        c:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", 6, -6)
-        c:SetBackdrop({ edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border", edgeSize = 24 })
-        c:EnableMouse(false)
-        p.cadre = c
-    end
-    -- Les points restants, en haut a droite, comme dans le jeu.
-    p.boite = p:CreateTexture(nil, "ARTWORK")
-    if Atlas("Talents-Square-Box-c60") then p.boite:SetAtlas("Talents-Square-Box-c60", true) else p.boite:SetSize(64, 46) p.boite:SetColorTexture(0, 0, 0, 0.5) end
-    p.boite:SetPoint("TOPRIGHT", p, "TOPRIGHT", -14, -12)
-    p.restants = p:CreateFontString(nil, "OVERLAY")
-    Police(p.restants, "Game32Font_Shadow2", "GameFontNormalHuge")
-    p.restants:SetPoint("CENTER", p.boite, "CENTER", 0, 0)
-    p.libRestants = p:CreateFontString(nil, "OVERLAY")
-    Police(p.libRestants, "SystemFont_Shadow_Med1", "GameFontHighlight")
-    p.libRestants:SetPoint("RIGHT", p.boite, "LEFT", -8, 0)
-    p.entetes, p.boutons, p.lignes, p.pointes, p.separateurs = {}, {}, {}, {}, {}
-    page.plateau = p
-    return p
+local PAS = 56        -- ecart entre deux talents, comme dans le jeu
+local HAUT_TITRE = 34 -- titre de l'arbre et son filet
+
+local function Grille2(page)
+    if page.grille then return page.grille end
+    local g = CreateFrame("Frame", nil, page.zone)
+    g:SetPoint("TOPLEFT", page.zone, "TOPLEFT", 0, 0)
+    g.boutons, g.lignes, g.pointes, g.titres = {}, {}, {}, {}
+    page.grille = g
+    return g
 end
 
-local function Entete(p, i)
-    local e = p.entetes[i]
-    if e then return e end
-    e = CreateFrame("Frame", nil, p)
-    e:SetSize(48, 48)
-    e.icone = e:CreateTexture(nil, "BORDER")
-    e.icone:SetSize(36, 36)
-    e.icone:SetPoint("CENTER", -3, 3)
-    if e.CreateMaskTexture then
-        local m = e:CreateMaskTexture()
-        if m then m:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        m:SetSize(40, 40)
-        m:SetPoint("CENTER", -2, 2)
-        e.icone:AddMaskTexture(m) end
-    end
-    e.anneau = e:CreateTexture(nil, "OVERLAY", nil, 1)
-    if Atlas("Talents-Main-Ring-c60") then e.anneau:SetAtlas("Talents-Main-Ring-c60", true)
-    else e.anneau:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder") e.anneau:SetSize(54, 54) end
-    e.anneau:SetPoint("CENTER", e.icone, "CENTER", 0, 0)
-    e.boite = e:CreateTexture(nil, "OVERLAY", nil, 2)
-    if Atlas("talents-main-ring-box-c60") then e.boite:SetAtlas("talents-main-ring-box-c60", true) else e.boite:SetSize(26, 18) e.boite:SetColorTexture(0, 0, 0, 0.8) end
-    e.boite:SetPoint("CENTER", 14, -12)
-    e.points = e:CreateFontString(nil, "OVERLAY")
-    e.points:SetDrawLayer("OVERLAY", 3)
-    Police(e.points, "GameFontNormal", "GameFontNormal")
-    e.points:SetPoint("CENTER", e.boite, "CENTER", 0, 0)
-    e.nom = e:CreateFontString(nil, "OVERLAY")
-    Police(e.nom, "GameFontHighlightLarge", "GameFontHighlightLarge")
-    e.nom:SetPoint("LEFT", e, "LEFT", 54, 2)
-    e.nom:SetWordWrap(false)
-    p.entetes[i] = e
-    return e
+local function TitreArbre(page, g, i)
+    local t = g.titres[i]
+    if t then return t end
+    t = { fs = page.zone:CreateFontString(nil, "OVERLAY", "GameFontNormal"), filet = page.zone:CreateTexture(nil, "ARTWORK"),
+          droite = page.zone:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall") }
+    t.fs:SetJustifyH("LEFT") t.fs:SetWordWrap(false)
+    t.droite:SetJustifyH("RIGHT") t.droite:SetWordWrap(false)
+    g.titres[i] = t
+    return t
 end
 
-local function BoutonTalent(p, i)
-    local b = p.boutons[i]
+local function BoutonTalent(g, i)
+    local b = g.boutons[i]
     if b then return b end
-    b = CreateFrame("Button", nil, p)
+    b = CreateFrame("Button", nil, g)
     b:SetSize(BOUTON, BOUTON)
     pcall(b.RegisterForClicks, b, "LeftButtonUp", "RightButtonUp")
     b.icone = b:CreateTexture(nil, "BACKGROUND", nil, 1)
@@ -482,14 +472,14 @@ local function BoutonTalent(p, i)
     end)
     b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
     b:SetScript("OnClick", function(self, souris) if self.auClic then self.auClic(self.t, souris == "RightButton") end end)
-    p.boutons[i] = b
+    g.boutons[i] = b
     return b
 end
 
 local ART = {
     max = "talents-node-square-yellow",
     ouvert = "talents-node-square-green",
-    ferme = "talents-node-square-locked",
+    ferme = "talents-node-square-gray",
 }
 
 local function Habiller(b, etat)
@@ -506,98 +496,74 @@ local function Habiller(b, etat)
     local ferme = etat == "ferme"
     b.icone:SetDesaturated(ferme)
     b.voile:SetShown(ferme)
-    b.voile:SetAlpha(ferme and 0.7 or 0)
+    b.voile:SetAlpha(ferme and 0.55 or 0)
 end
 
--- Dessine une structure : rangs { [id] = rang }, o = { restants, auClic, aide }.
--- Rend la hauteur occupee dans la zone.
+-- Dessine une structure dans la zone de la page. o = { auClic, aide }.
+-- Rend la hauteur occupee.
 local function Dessiner(page, s, rangs, o)
     o = o or {}
     local zone = page.zone
-    local p = Plateau(page)
-    for _, b in ipairs(p.boutons) do b:Hide() end
-    for _, e in ipairs(p.entetes) do e:Hide() end
-    for _, l in ipairs(p.lignes) do l:Hide() end
-    for _, a in ipairs(p.pointes) do a:Hide() end
-    for _, d in ipairs(p.separateurs) do d:Hide() end
-    if not s then p:Hide() return 0 end
+    local g = Grille2(page)
+    for _, b in ipairs(g.boutons) do b:Hide() end
+    for _, l in ipairs(g.lignes) do l:Hide() end
+    for _, a in ipairs(g.pointes) do a:Hide() end
+    for _, t in ipairs(g.titres) do t.fs:Hide() t.filet:Hide() t.droite:Hide() end
+    if not s or #s.arbres == 0 then g:Hide() return 0 end
 
-    local minX, maxX, minY, maxY
+    local largeur = (zone:GetWidth() or 780)
+    local nA = #s.arbres
+    local colonneL = math.floor(largeur / nA)
+    local maxRangee, maxCol = 1, 4
     for _, a in ipairs(s.arbres) do
         for _, t in ipairs(a.talents) do
-            minX = math.min(minX or t.x, t.x) maxX = math.max(maxX or t.x, t.x)
-            minY = math.min(minY or t.y, t.y) maxY = math.max(maxY or t.y, t.y)
+            maxRangee = math.max(maxRangee, t.rangee or 1)
+            maxCol = math.max(maxCol, t.colonne or 1)
         end
     end
-    if not minX then p:Hide() return 0 end
-    local largeur = (maxX - minX) + BOUTON + 2 * MARGE_X
-    local hauteur = (maxY - minY) + BOUTON + HAUT_ENTETE + MARGE_BAS
-    local dispo = (zone:GetWidth() or 780) - 12
-    local k = math.min(1, dispo / largeur)
-    p:SetScale(k)
-    p:SetSize(largeur, hauteur)
-    p:ClearAllPoints()
-    p:SetPoint("TOPLEFT", zone, "TOPLEFT", 6 / k, -8 / k)
+    -- Le pas du jeu, reduit seulement si les arbres ne tiennent pas.
+    local pas = math.min(PAS, math.floor((colonneL - 24 - BOUTON) / math.max(maxCol - 1, 1)))
+    local k = math.min(1, pas / PAS)
+    g:SetScale(k)
+    local hauteur = HAUT_TITRE + 10 + (maxRangee - 1) * PAS * k + BOUTON * k + 12
+    g:SetSize(largeur / k, hauteur / k)
+    g:ClearAllPoints()
+    g:SetPoint("TOPLEFT", zone, "TOPLEFT", 0, 0)
 
-    -- Le fond de la classe, comme la fenetre du jeu.
-    local classe = (o.classe or ""):lower()
-    if classe ~= "" and Atlas("talent-background-" .. classe) then
-        p.fond:SetAtlas("talent-background-" .. classe)
-        p.fond:SetTexCoord(0, 1, 0, 1)
-    else
-        p.fond:SetColorTexture(0.06, 0.05, 0.04, 1)
-    end
-
-    local function Place(t) return (t.x - minX) + MARGE_X + BOUTON / 2, (t.y - minY) + HAUT_ENTETE + BOUTON / 2 end
-
-    -- Les en-tetes : icone dans l'anneau, points, nom ; un separateur entre
-    -- deux arbres.
-    local bornes = {}
+    local _, parArbre = Ta.Depenses(s, rangs)
+    local parId, n = {}, 0
     for i, a in ipairs(s.arbres) do
-        local g, d
-        for _, t in ipairs(a.talents) do local x = Place(t) g = math.min(g or x, x) d = math.max(d or x, x) end
-        bornes[i] = { g = g or 0, d = d or 0 }
-        local e = Entete(p, i)
-        e.icone:SetTexture(a.icone or "Interface\\Icons\\INV_Misc_QuestionMark")
-        e.nom:SetText(a.nom or "")
-        e.nom:SetTextColor(1, 1, 1)
-        local _, parArbre = Ta.Depenses(s, rangs)
-        e.points:SetText(tostring(parArbre[i] or 0))
-        e.points:SetTextColor(JAUNE[1], JAUNE[2], JAUNE[3])
-        local largeurNom = (e.nom:GetStringWidth() or 100)
-        local centre = ((g or 0) + (d or 0)) / 2
-        e:ClearAllPoints()
-        e:SetPoint("TOPLEFT", p, "TOPLEFT", centre - (54 + largeurNom) / 2, -26)
-        e:Show()
-    end
-    for i = 1, #s.arbres - 1 do
-        local sep = p.separateurs[i]
-        if not sep then
-            sep = p:CreateTexture(nil, "BORDER")
-            if Atlas("Talents-divider-vertical-c60") then sep:SetAtlas("Talents-divider-vertical-c60") sep:SetWidth(16)
-            else sep:SetColorTexture(0.8, 0.65, 0.35, 0.35) sep:SetWidth(2) end
-            p.separateurs[i] = sep
-        end
-        local x = (bornes[i].d + bornes[i + 1].g) / 2
-        sep:ClearAllPoints()
-        sep:SetPoint("TOP", p, "TOPLEFT", x, -8)
-        sep:SetPoint("BOTTOM", p, "BOTTOMLEFT", x, 8)
-        sep:Show()
-    end
-
-    -- Les talents.
-    local n, parId = 0, {}
-    for _, a in ipairs(s.arbres) do
-        for _, t in ipairs(a.talents) do
+        local x0 = (i - 1) * colonneL
+        -- Le titre de l'arbre et ses points, comme une rubrique.
+        local t = TitreArbre(page, g, i)
+        t.fs:ClearAllPoints()
+        t.fs:SetPoint("TOPLEFT", zone, "TOPLEFT", x0, 0)
+        t.fs:SetWidth(colonneL - 90)
+        t.fs:SetText(a.nom or "")
+        t.droite:ClearAllPoints()
+        t.droite:SetPoint("TOPRIGHT", zone, "TOPLEFT", x0 + colonneL - 16, -3)
+        t.droite:SetWidth(80)
+        local pts = parArbre[i] or 0
+        t.droite:SetText(string.format(pts > 1 and T("%d points", "%d points") or T("%d point", "%d point"), pts))
+        t.filet:ClearAllPoints()
+        t.filet:SetPoint("TOPLEFT", t.fs, "TOPLEFT", 0, -22)
+        t.filet:SetSize(colonneL - 16, 1)
+        if NS.charte and NS.charte.TitreDeSection then pcall(NS.charte.TitreDeSection, t.fs, t.filet) end
+        t.fs:Show() t.filet:Show() t.droite:Show()
+        -- Les talents, centres dans la colonne de l'arbre.
+        local largeurGrille = (maxCol - 1) * PAS * k + BOUTON * k
+        local xg = x0 + math.floor((colonneL - 16 - largeurGrille) / 2)
+        for _, ta in ipairs(a.talents) do
             n = n + 1
-            local b = BoutonTalent(p, n)
-            local x, y = Place(t)
+            local b = BoutonTalent(g, n)
             b:ClearAllPoints()
-            b:SetPoint("CENTER", p, "TOPLEFT", x, -y)
-            b.t, b.rang, b.auClic, b.aide = t, rangs[t.id] or 0, o.auClic, o.aide
-            b.icone:SetTexture(t.icone or "Interface\\Icons\\INV_Misc_QuestionMark")
-            local r = rangs[t.id] or 0
-            local etat = (r >= (t.max or 1)) and "max" or (Ta.Ouvert(s, rangs, t) and "ouvert" or "ferme")
+            local x = (xg + BOUTON * k / 2 + (ta.colonne - 1) * PAS * k) / k
+            local y = (HAUT_TITRE + 10 + BOUTON * k / 2 + (ta.rangee - 1) * PAS * k) / k
+            b:SetPoint("CENTER", g, "TOPLEFT", x, -y)
+            b.t, b.rang, b.auClic, b.aide = ta, rangs[ta.id] or 0, o.auClic, o.aide
+            b.icone:SetTexture(ta.icone or "Interface\\Icons\\INV_Misc_QuestionMark")
+            local r = rangs[ta.id] or 0
+            local etat = (r >= (ta.max or 1)) and "max" or (Ta.Ouvert(s, rangs, ta) and "ouvert" or "ferme")
             b.etat = etat
             Habiller(b, etat)
             if etat == "ferme" and r == 0 then b.chiffre:SetText("")
@@ -607,67 +573,58 @@ local function Dessiner(page, s, rangs, o)
                 b.chiffre:SetTextColor(c[1], c[2], c[3])
             end
             b:Show()
-            parId[t.id] = b
+            parId[ta.id] = b
         end
     end
 
-    -- Les fleches : jaunes une fois le depart au maximum, grises sinon,
-    -- sombres vers un talent ferme.
+    -- Les fleches du jeu : jaunes une fois le depart au maximum, grises sinon.
     local nl = 0
     for _, e in ipairs(s.aretes or {}) do
         local b1, b2 = parId[e.de], parId[e.vers]
-        if b1 and b2 and p.CreateLine then
+        if b1 and b2 and g.CreateLine then
             nl = nl + 1
-            local l = p.lignes[nl]
+            local l = g.lignes[nl]
             if not l then
-                l = p:CreateLine(nil, "BORDER", nil, 2)
-                l:SetThickness(6)
-                p.lignes[nl] = l
+                l = g:CreateLine(nil, "BORDER", nil, 2)
+                if l then l:SetThickness(6) end
+                g.lignes[nl] = l
             end
-            local pt = p.pointes[nl]
+            local pt = g.pointes[nl]
             if not pt then
-                pt = p:CreateTexture(nil, "BORDER", nil, 3)
-                p.pointes[nl] = pt
+                pt = g:CreateTexture(nil, "BORDER", nil, 3)
+                g.pointes[nl] = pt
             end
-            local actif = (b1.rang or 0) >= (b1.t.max or 1)
-            local style = (b2.etat == "ferme" and not actif) and "locked" or (actif and "yellow" or "gray")
-            if Atlas("talents-arrow-line-" .. style) then
-                l:SetAtlas("talents-arrow-line-" .. style)
-                pt:SetAtlas("talents-arrow-head-" .. style, true)
-            else
-                local c = actif and JAUNE or GRIS
-                l:SetColorTexture(c[1], c[2], c[3], 1)
-                pt:SetColorTexture(c[1], c[2], c[3], 1)
-                pt:SetSize(10, 10)
+            if l then
+                local actif = (b1.rang or 0) >= (b1.t.max or 1)
+                local style = actif and "yellow" or (b2.etat == "ferme" and "locked" or "gray")
+                if Atlas("talents-arrow-line-" .. style) then
+                    l:SetAtlas("talents-arrow-line-" .. style)
+                    pt:SetAtlas("talents-arrow-head-" .. style, true)
+                else
+                    local c = actif and JAUNE or GRIS
+                    l:SetColorTexture(c[1], c[2], c[3], 1)
+                    pt:SetColorTexture(c[1], c[2], c[3], 1)
+                    pt:SetSize(10, 10)
+                end
+                local dc = (b1.t.colonne or 1) - (b2.t.colonne or 1)
+                local dr = (b2.t.rangee or 1) - (b1.t.rangee or 1)
+                local angle = math.atan2(dr, dc) -- de la fin vers le depart (haut positif)
+                local dx, dy = math.cos(angle) * (BOUTON / 2 + 2), math.sin(angle) * (BOUTON / 2 + 2)
+                l:SetStartPoint("CENTER", b1)
+                l:SetEndPoint("CENTER", b2, dx, dy)
+                pt:ClearAllPoints()
+                pt:SetPoint("CENTER", b2, "CENTER", dx, dy)
+                pt:SetRotation(angle - math.pi / 2)
+                l:Show() pt:Show()
             end
-            local x1, y1 = Place(b1.t)
-            local x2, y2 = Place(b2.t)
-            local angle = math.atan2(y2 - y1, x1 - x2) -- de la fin vers le depart (haut positif)
-            local dx, dy = math.cos(angle) * (BOUTON / 2 + 2), math.sin(angle) * (BOUTON / 2 + 2)
-            l:SetStartPoint("CENTER", b1)
-            l:SetEndPoint("CENTER", b2, dx, dy)
-            pt:ClearAllPoints()
-            pt:SetPoint("CENTER", b2, "CENTER", dx, dy)
-            pt:SetRotation(angle - math.pi / 2)
-            l:Show() pt:Show()
         end
     end
-
-    if o.restants then
-        p.restants:SetText(tostring(o.restants))
-        p.restants:SetTextColor(VERT[1], VERT[2], VERT[3])
-        p.libRestants:SetText(o.libRestants or T("Talents restants", "Talents left"))
-        p.libRestants:SetTextColor(1, 1, 1)
-        p.boite:Show() p.restants:Show() p.libRestants:Show()
-    else
-        p.boite:Hide() p.restants:Hide() p.libRestants:Hide()
-    end
-    p:Show()
-    return (hauteur + 14) * k + 8
+    g:Show()
+    return hauteur
 end
 
 -- ---------------------------------------------------------------------------
--- Les modeles, sous l'arbre (lignes communes de ClassCore)
+-- Les modeles, sous les arbres (lignes communes de ClassCore)
 -- ---------------------------------------------------------------------------
 
 Ta.sim = Ta.sim or { niveau = 60, rangs = {} }
@@ -680,32 +637,31 @@ local function Sous(page)
     return page.sous
 end
 
-local function BlocModeles(s, classe, rangs, simulateur)
+local function ChargerModele(m, classe)
+    local budget = math.max(0, (Ta.sim.niveau or 60) - 9)
+    Ta.sim.classe, Ta.sim.rangs = classe, {}
+    for i, t in ipairs(m.suite) do
+        if i > budget then break end
+        Ta.sim.rangs[t.id] = (Ta.sim.rangs[t.id] or 0) + 1
+    end
+end
+
+-- nil quand aucun modele ne va a cet arbre : rien n'est montre.
+local function BlocModeles(page, s, classe, rangs, simulation)
     local lignes = {}
     for _, m in ipairs(Ta.Modeles(classe, s)) do
         local droite
-        if not simulateur then
+        if not simulation then
             local t = Ta.Prochain(m, rangs)
-            droite = t and string.format(T("Prochain : %s", "Next : %s"), t.nom) or T("Suivi en entier", "Fully followed")
-        else
-            droite = m.repartition
+            droite = t and string.format(T("Prochain point : %s", "Next point : %s"), t.nom) or T("Suivi en entier", "Fully followed")
         end
-        table.insert(lignes, { icone = m.icone, texte = m.nom .. "  (" .. m.repartition .. ")", droite = droite, largeurDroite = 220,
-            bouton = { texte = simulateur and T("Charger", "Load") or T("Simuler", "Simulate"), action = function()
-                local budget = math.max(0, (Ta.sim.niveau or 60) - 9)
-                Ta.sim.classe, Ta.sim.rangs = classe, {}
-                for i, t in ipairs(m.suite) do
-                    if i > budget then break end
-                    Ta.sim.rangs[t.id] = (Ta.sim.rangs[t.id] or 0) + 1
-                end
-                local F = NS.fenetre
-                if F and F.w then F.w.page = "simulateur" end
+        table.insert(lignes, { icone = m.icone, texte = m.nom .. "  (" .. m.repartition .. ")", droite = droite, largeurDroite = 240,
+            bouton = { texte = simulation and T("Charger", "Load") or T("Essayer", "Try"), action = function()
+                ChargerModele(m, classe)
+                page.mode = "simulation"
             end } })
     end
-    if #lignes == 0 then
-        return { titre = T("Modèles conseillés", "Suggested builds"),
-            vide = T("Pas encore de modèle pour cette classe.", "No build yet for this class.") }
-    end
+    if #lignes == 0 then return nil end
     return { titre = T("Modèles conseillés", "Suggested builds"), lignes = lignes }
 end
 
@@ -715,29 +671,33 @@ local function RendreSous(page, y, bloc)
     sous.zone:SetPoint("TOPLEFT", page.zone, "TOPLEFT", 0, -y)
     sous.zone:SetWidth(page.zone:GetWidth() or 780)
     local F = NS.fenetre
-    local h = (F and F.RendreBlocs) and F.RendreBlocs(sous, { bloc }) or 0
+    local h = (F and F.RendreBlocs) and F.RendreBlocs(sous, bloc and { bloc } or {}) or 0
     sous.zone:SetHeight(math.max(h, 1))
     return h
 end
 
 -- ---------------------------------------------------------------------------
--- Page Talents
+-- La page Talents : une liste en haut a droite (Principale, Secondaire
+-- quand elle est debloquee, Simulation). La simulation se fait sur le meme
+-- arbre : clic pour un point, clic droit pour le retirer.
 -- ---------------------------------------------------------------------------
 
-local function Onglet(O, page, groupe)
-    local b = O.Bouton(page.cadre, 90, function() page.groupe = groupe end)
-    b:SetScript("OnEnter", function(self)
-        if self:IsEnabled() or not GameTooltip then return end
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:AddLine(T("Se débloque avec la double spécialisation.", "Unlocks with dual specialisation."))
-        GameTooltip:Show()
-    end)
-    b:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
-    pcall(b.SetMotionScriptsWhileDisabled, b, true)
-    return b
+-- Moins de points (niveau baisse) : les derniers talents partent, du haut de l'arbre.
+local function Ajuster(s, budget)
+    local garde = 0
+    while Ta.Depenses(s, Ta.sim.rangs) > budget and garde < 200 do
+        garde = garde + 1
+        local retire = false
+        for k = #s.arbres, 1, -1 do
+            local liste = s.arbres[k].talents
+            for i = #liste, 1, -1 do
+                if Ta.Retirer(s, Ta.sim.rangs, liste[i]) then retire = true break end
+            end
+            if retire then break end
+        end
+        if not retire then break end
+    end
 end
-
-local COCHE = "|TInterface\\Buttons\\UI-CheckBox-Check:14:14:0:0|t"
 
 function Ta.Page()
     local F = NS.fenetre
@@ -745,11 +705,35 @@ function Ta.Page()
         libelle = function() return T("Talents", "Talents") end,
         construire = function(page, O)
             page.t1 = O.Section()
-            page.o2 = Onglet(O, page, 2)
-            page.o2:SetPoint("TOPRIGHT", page.cadre, "TOPRIGHT", -10, 2)
-            page.o1 = Onglet(O, page, 1)
-            page.o1:SetPoint("RIGHT", page.o2, "LEFT", -6, 0)
+            -- La liste sur la ligne du titre, calee a droite.
+            local r = CreateFrame("Frame", nil, page.cadre)
+            r:SetSize(O.LARGEUR - 10, 22)
+            r:SetPoint("TOPLEFT", page.cadre, "TOPLEFT", 0, 2)
+            page.choix = O.Segments(r, function()
+                local p = NS.fenetre.Profil() or {}
+                local l = { { "principale", T("Principale", "Primary") } }
+                if Ta.GroupesDuProfil(p) > 1 then table.insert(l, { "secondaire", T("Secondaire", "Secondary") }) end
+                table.insert(l, { "simulation", T("Simulation", "Simulation") })
+                return l
+            end, function() return page.mode or "principale" end, function(v) page.mode = v end)
             page.intro = O.Detail(36)
+            page.yAvant = page.y
+            -- Simulation seulement : le niveau, puis les points et deux actions.
+            page.rNiveau = O.Rangee(24)
+            O.Curseur(page.rNiveau, 10, 60, 1, function() return Ta.sim.niveau or 60 end, function(v)
+                Ta.sim.niveau = math.floor(tonumber(v) or 60)
+                if Ta.sim.structure then Ajuster(Ta.sim.structure, Ta.sim.niveau - 9) end
+            end)
+            page.rPoints = O.Rangee(24)
+            page.vider = O.Bouton(page.rPoints, 90, function() Ta.sim.rangs = {} end)
+            page.vider:SetPoint("RIGHT", page.rPoints, "RIGHT", -10, 0)
+            page.miens = O.Bouton(page.rPoints, 90, function()
+                local p = NS.fenetre.Profil() or {}
+                Ta.sim.rangs = Ta.Rangs(Ta.Structure(p, 1))
+                Ta.sim.classe = p.classe
+                if Ta.sim.structure then Ajuster(Ta.sim.structure, (Ta.sim.niveau or 60) - 9) end
+            end)
+            page.miens:SetPoint("RIGHT", page.vider, "LEFT", -6, 0)
             page.zone = O.Rangee(20)
             page.yZone = page.y - 20
         end,
@@ -759,118 +743,71 @@ function Ta.Page()
             local nom = (F.Cle() or ""):match("^(.-) %- ") or ""
             page.t1:SetText(string.format(T("Les talents de %s", "%s's talents"), nom))
             local groupes = Ta.GroupesDuProfil(p)
-            if (page.groupe or 1) > groupes then page.groupe = 1 end
-            local actif = p.connecte and Ta.GroupeActif() or 1
-            page.groupe = page.groupe or actif
-            page.o1:SetText(T("Principale", "Primary") .. (actif == 1 and (" " .. COCHE) or ""))
-            page.o2:SetText(T("Secondaire", "Secondary") .. (actif == 2 and (" " .. COCHE) or ""))
-            page.o2:SetEnabled(groupes > 1)
-            page.o1:SetEnabled(page.groupe ~= 1)
-            if groupes > 1 then page.o2:SetEnabled(page.groupe ~= 2) end
-            page.o1:SetPoint("RIGHT", page.o2, "LEFT", -6, 0)
-            local s = Ta.Structure(p, page.groupe)
-            local rangs = Ta.Rangs(s)
-            if s then
-                local _, parArbre = Ta.Depenses(s, rangs)
-                local spe, maxi = nil, -1
-                for k, a in ipairs(s.arbres) do if (parArbre[k] or 0) > maxi then spe, maxi = a.nom, parArbre[k] or 0 end end
-                local rep = {}
-                for k = 1, #s.arbres do table.insert(rep, tostring(parArbre[k] or 0)) end
-                page.intro:SetText(maxi > 0
-                    and string.format(T("Spécialisation : %s (%s). Le survol d'un talent le décrit. Pour essayer d'autres choix : le simulateur.",
-                        "Specialisation : %s (%s). Hover a talent to read it. To try other choices : the simulator."), spe, table.concat(rep, " / "))
-                    or T("Les trois arbres de la classe. Le survol d'un talent le décrit.", "The class's three trees. Hover a talent to read it."))
+            if page.mode == "secondaire" and groupes < 2 then page.mode = "principale" end
+            page.mode = page.mode or "principale"
+            local simulation = page.mode == "simulation"
+            page.rNiveau:SetShown(simulation)
+            page.rPoints:SetShown(simulation)
+            -- Hors simulation, les arbres montent a la place des deux rangees.
+            local yZone = simulation and page.yZone or page.yAvant + 6
+            page.zone:ClearAllPoints()
+            page.zone:SetPoint("TOPLEFT", page.cadre, "TOPLEFT", 0, -yZone)
+
+            local s, rangs, o
+            if simulation then
+                local classe = p.classe
+                if Ta.sim.classe ~= classe then Ta.sim.classe, Ta.sim.rangs = classe, {} end
+                s = Ta.ArbreDeClasse(classe, p)
+                Ta.sim.structure = s
+                rangs = Ta.sim.rangs
+                local budget = math.max(0, (Ta.sim.niveau or 60) - 9)
+                local depenses = s and Ta.Depenses(s, rangs) or 0
+                page.rNiveau.nom:SetText(T("Niveau du personnage", "Character level"))
+                page.rPoints.nom:SetText(string.format(T("%d points placés sur %d, niveau %d requis", "%d points placed of %d, level %d needed"),
+                    depenses, budget, depenses > 0 and depenses + 9 or 10))
+                page.vider:SetText(T("Tout effacer", "Clear all"))
+                page.miens:SetText(T("Mes talents", "My talents"))
+                page.miens:SetEnabled(Ta.Structure(p, 1) ~= nil)
+                page.intro:SetText(s and T("Un essai, sans rien apprendre : clic pour placer un point, clic droit pour le retirer.",
+                    "A trial, nothing is learned : click to place a point, right-click to remove it.")
+                    or T("Connecte une fois un personnage de cette classe pour relever son arbre.", "Log in a character of this class once to read its tree."))
+                o = { aide = T("Clic : un point. Clic droit : le retirer.", "Click : one point. Right-click : remove it."),
+                    auClic = function(t, droit)
+                        if not s then return end
+                        if droit then Ta.Retirer(s, Ta.sim.rangs, t) else Ta.Ajouter(s, Ta.sim.rangs, t, budget) end
+                        if F.w then F.w.Rendre() end
+                    end }
             else
-                page.intro:SetText(p.connecte and T("Le jeu ne donne pas encore les talents de ce personnage.", "The game does not give this character's talents yet.")
-                    or T("Connecte ce personnage une fois pour relever ses talents.", "Log in this character once to read its talents."))
-            end
-            local restants = s and (s.restants or (p.connecte and nil))
-            local h = Dessiner(page, s, rangs, { classe = p.classe, restants = restants })
-            local h2 = s and RendreSous(page, h + 6, BlocModeles(s, p.classe, rangs, false)) or 0
-            if not s and page.sous then RendreSous(page, 0, { lignes = {} }) end
-            local total = h + (s and (h2 + 6) or 0)
-            page.zone:SetHeight(math.max(total, 20))
-            page.hauteur = page.yZone + math.max(total, 20)
-        end }
-end
-
--- ---------------------------------------------------------------------------
--- Page Simulateur
--- ---------------------------------------------------------------------------
-
-function Ta.PageSimulateur()
-    local F = NS.fenetre
-    return { cle = "simulateur", icone = "Interface\\Icons\\INV_Misc_Book_11",
-        libelle = function() return T("Simulateur", "Simulator") end,
-        construire = function(page, O)
-            page.t1 = O.Section()
-            page.vider = O.Bouton(page.cadre, 90, function() Ta.sim.rangs = {} end)
-            page.vider:SetPoint("TOPRIGHT", page.cadre, "TOPRIGHT", -10, 2)
-            page.miens = O.Bouton(page.cadre, 90, function()
-                local p = NS.fenetre.Profil() or {}
-                local s = Ta.Structure(p, 1)
-                Ta.sim.rangs = Ta.Rangs(s)
-                Ta.sim.classe = p.classe
-            end)
-            page.miens:SetPoint("RIGHT", page.vider, "LEFT", -6, 0)
-            page.intro = O.Detail(36)
-            page.rNiveau = O.Rangee(24)
-            O.Curseur(page.rNiveau, 10, 60, 1, function() return Ta.sim.niveau or 60 end, function(v)
-                Ta.sim.niveau = math.floor(tonumber(v) or 60)
-                -- Moins de points : on retire les derniers talents, du haut de l'arbre.
-                local s = Ta.sim.structure
+                s = Ta.Structure(p, page.mode == "secondaire" and 2 or 1)
+                rangs = Ta.Rangs(s)
                 if s then
-                    local budget = Ta.sim.niveau - 9
-                    local guard = 0
-                    while Ta.Depenses(s, Ta.sim.rangs) > budget and guard < 200 do
-                        guard = guard + 1
-                        local retire = false
-                        for k = #s.arbres, 1, -1 do
-                            local liste = s.arbres[k].talents
-                            for i = #liste, 1, -1 do
-                                if Ta.Retirer(s, Ta.sim.rangs, liste[i]) then retire = true break end
-                            end
-                            if retire then break end
-                        end
-                        if not retire then break end
+                    local _, parArbre = Ta.Depenses(s, rangs)
+                    local spe, maxi = nil, -1
+                    for k, a in ipairs(s.arbres) do if (parArbre[k] or 0) > maxi then spe, maxi = a.nom, parArbre[k] or 0 end end
+                    local rep = {}
+                    for k = 1, #s.arbres do table.insert(rep, tostring(parArbre[k] or 0)) end
+                    local texte = maxi > 0 and string.format(T("Spécialisation : %s (%s).", "Specialisation : %s (%s)."), spe, table.concat(rep, " / "))
+                        or T("Aucun point placé.", "No point placed.")
+                    if s.restants and s.restants > 0 then
+                        texte = texte .. " " .. string.format(s.restants > 1 and T("%d points à placer.", "%d points to place.") or T("%d point à placer.", "%d point to place."), s.restants)
                     end
+                    page.intro:SetText(texte .. " " .. T("Le survol d'un talent le décrit.", "Hover a talent to read it."))
+                else
+                    page.intro:SetText(p.connecte and T("Le jeu ne donne pas encore les talents de ce personnage.", "The game does not give this character's talents yet.")
+                        or T("Connecte ce personnage une fois pour relever ses talents.", "Log in this character once to read its talents."))
                 end
-            end)
-            page.zone = O.Rangee(20)
-            page.yZone = page.y - 20
-        end,
-        rendre = function(page)
-            F = NS.fenetre
-            local p = F.Profil() or {}
-            page.t1:SetText(T("Simulateur de talents", "Talent simulator"))
-            page.vider:SetText(T("Tout effacer", "Clear all"))
-            page.miens:SetText(T("Mes talents", "My talents"))
-            page.rNiveau.nom:SetText(T("Niveau du personnage", "Character level"))
-            local classe = p.classe
-            if Ta.sim.classe ~= classe then Ta.sim.classe, Ta.sim.rangs = classe, {} end
-            local s = Ta.ArbreDeClasse(classe, p)
-            Ta.sim.structure = s
-            local budget = math.max(0, (Ta.sim.niveau or 60) - 9)
-            local depenses = s and Ta.Depenses(s, Ta.sim.rangs) or 0
-            page.intro:SetText(s and string.format(T("Clic : un point. Clic droit : le retirer. Rien n'est appris : c'est un essai. %d points placés sur %d, niveau %d requis.",
-                "Click : one point. Right-click : remove it. Nothing is learned : it is a trial. %d points placed of %d, level %d needed."),
-                depenses, budget, depenses > 0 and depenses + 9 or 10)
-                or T("Connecte une fois un personnage de cette classe pour relever son arbre.", "Log in a character of this class once to read its tree."))
-            page.miens:SetEnabled(Ta.Structure(p, 1) ~= nil)
-            local h = Dessiner(page, s, Ta.sim.rangs, { classe = classe, restants = s and (budget - depenses) or nil,
-                libRestants = T("Points restants", "Points left"),
-                aide = T("Clic : un point. Clic droit : le retirer.", "Click : one point. Right-click : remove it."),
-                auClic = function(t, droit)
-                    if not s then return end
-                    if droit then Ta.Retirer(s, Ta.sim.rangs, t) else Ta.Ajouter(s, Ta.sim.rangs, t, budget) end
-                    if F.w then F.w.Rendre() end
-                end })
-            local h2 = s and RendreSous(page, h + 6, BlocModeles(s, classe, Ta.sim.rangs, true)) or 0
-            local total = h + (s and (h2 + 6) or 0)
+                o = {}
+            end
+            local h = Dessiner(page, s, rangs, o)
+            local h2 = RendreSous(page, h + 10, s and BlocModeles(page, s, p.classe, rangs, simulation) or nil)
+            local total = h + (h2 > 0 and (h2 + 10) or 0)
             page.zone:SetHeight(math.max(total, 20))
-            page.hauteur = page.yZone + math.max(total, 20)
+            page.hauteur = yZone + math.max(total, 20)
         end }
 end
+
+-- L'ancienne page a part n'existe plus : tout est sur la page Talents.
+function Ta.PageSimulateur() return nil end
 
 do
     local f = CreateFrame("Frame")
