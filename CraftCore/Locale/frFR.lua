@@ -833,6 +833,7 @@ L.PROG_LEARN_NEEDED = "Rien de ce que vous connaissez ne fait plus monter : à a
 L.PROG_LEARN_MORE = "À apprendre, orange dès maintenant"
 L.PROG_LEARN_WHERE = "rang %d, %s"
 L.GUIDE_LEARN_FIRST = "Apprendre d'abord (chez le formateur ou le marchand)"
+L.GUIDE_LEARN_VENDOR = "Guider vers le marchand"
 L.GUIDE_PROPOSED = "Proposition : rang %d (cochez « rang au choix » pour le suivre)"
 L.OBTAIN_UNKNOWN = "Objet inconnu de CraftCore : hôtel des ventes ou échange"
 L.OBTAIN_OWNED = "Déjà en stock : %s"
