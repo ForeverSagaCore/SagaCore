@@ -1509,7 +1509,6 @@ local function Remplir(plan)
                 y = y + 4
                 Titre(L().AH_BUY_TITLE)
                 for k, objet in ipairs(aChercher) do
-                    if k > 6 then Reste(#aChercher - 6) break end
                     local o = objet
                     LigneAvecBouton(o, string.format(L().AH_MISSING, manques[o]), L().AH_FIND_SHORT, function()
                         NS.encheres.Chercher(o)
@@ -1583,7 +1582,6 @@ local function Remplir(plan)
             y = y + 16
         else
             for rang, v in ipairs(aVendre) do
-                if rang > 40 then Reste(#aVendre - 40) break end
                 LigneVente(v)
             end
             -- Le prix de ce qui n'a pas encore ete releve.
@@ -1618,7 +1616,7 @@ local function Remplir(plan)
             for k, p in ipairs(plans) do
                 local prix, quand, absent = NS.encheres.Prix(p.objet, 1)
                 if not prix and not absent then table.insert(sansPrix, p.objet) end
-                if k <= 30 then
+                do
                     local droite = string.format(L().AH_RECIPES_RANK, p.rang)
                     if prix then droite = droite .. "  " .. NS.marchands.Monnaie(prix)
                     elseif absent then droite = droite .. "  |cff8c8c8c" .. L().AH_RECIPES_ABSENT .. "|r" end
@@ -1626,7 +1624,6 @@ local function Remplir(plan)
                     LigneAvecBouton(o, droite, L().AH_FIND_SHORT, function() NS.encheres.Chercher(o) end)
                 end
             end
-            if #plans > 30 then Reste(#plans - 30) end
             if #sansPrix > 0 and not NS.encheres.EnCours() then
                 Action(string.format(L().AH_RECIPES_SCAN, #sansPrix), function()
                     statut = nil

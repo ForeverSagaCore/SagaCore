@@ -3526,11 +3526,27 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
             end
         end
         if #maintenant > 0 and Etape(L.GUIDE_LEARN_FIRST, false) then
+            local g = NS.base.ReglagesGeneraux()
+            g.plansARelever = type(g.plansARelever) == "table" and g.plansARelever or {}
             for _, etape in ipairs(maintenant) do
                 local nature, lignesSrc = catalogue.CommentApprendre(etape.recette)
+                -- A droite : le plan deja en main, sinon comment l'obtenir et
+                -- son prix releve a l'hotel des ventes (releve a chaque passage).
+                local droite = L[nature or ""] or ""
+                local okP, _, possede = pcall(catalogue.PlanPossede, etape.recette)
+                if okP and possede then
+                    droite = string.format(L.GOAL_LEARN_HAVE, possede)
+                elseif not catalogue.EstApprise(etape.recette.id) then
+                    local okO, objet = pcall(catalogue.ObjetDuPlan, etape.recette)
+                    if okO and objet then
+                        g.plansARelever[tostring(objet)] = true
+                        local prix = NS.encheres and NS.encheres.Prix and NS.encheres.Prix(objet, 1)
+                        if prix then droite = droite .. "  " .. NS.marchands.Monnaie(prix) end
+                    end
+                end
                 local l
                 index, y, l = LigneSimple(contenu, index, y, "Interface\\Icons\\INV_Misc_Book_09",
-                    tostring(etape.recette.nom or "?"), L[nature or ""] or "")
+                    tostring(etape.recette.nom or "?"), droite)
                 if l then
                     l.total:SetTextColor(0.31, 0.82, 0.41)
                     l:EnableMouse(true)
@@ -3562,6 +3578,82 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                     if NS.guidage and NS.guidage.Marchand then NS.guidage.Marchand(objet) end
                     ecran.Montrer(ecran.page)
                 end)
+            end
+        end
+    end
+
+    -- Une autre voie, seulement proposee : des recettes pas encore apprises
+    -- (a acheter a l'hotel des ventes ou chez un marchand) qui feraient
+    -- atteindre le meme rang avec moins de fabrications ou moins a recolter.
+    -- Rien ne change sans le choix du joueur : une fois la recette apprise,
+    -- le plan propose de changer (plan actuel contre nouveau plan).
+    do
+        local okA, alt = pcall(catalogue.Progression, ligneMetier, rang, rangMax, objectif, nil, true)
+        -- Au moins aussi haut que le plan actuel.
+        local atteintActuel = objectif
+        for _, seg in ipairs(segments) do atteintActuel = math.min(atteintActuel, seg.plan.atteint or seg.vise) end
+        if okA and type(alt) == "table" and (alt.atteint or 0) >= atteintActuel then
+            local function Compte(etapes, manques)
+                local f, m = 0, 0
+                for _, e in ipairs(etapes or {}) do if not e.apprendre then f = f + (e.fois or 1) end end
+                for _, n in pairs(manques or {}) do m = m + n end
+                return f, m
+            end
+            local etapesActuelles = {}
+            for _, seg in ipairs(segments) do for _, e in ipairs(seg.plan.etapes or {}) do table.insert(etapesActuelles, e) end end
+            local fA, mA = Compte(etapesActuelles, plan.manques)
+            local fB, mB = Compte(alt.etapes, alt.manques)
+            local nouvelles, vus = {}, {}
+            for _, e in ipairs(alt.etapes or {}) do
+                local r = e.apprendre and e.recette
+                if r and r.id and not vus[r.id] and not catalogue.EstApprise(r.id) then
+                    vus[r.id] = true
+                    local okO, objet = pcall(catalogue.ObjetDuPlan, r)
+                    if okO and objet then table.insert(nouvelles, { recette = r, objet = objet }) end
+                end
+            end
+            if #nouvelles > 0 and (fB < fA or mB < mA) then
+                -- Ces plans se relevent a chaque passage a l'hotel des ventes.
+                local g = NS.base.ReglagesGeneraux()
+                g.plansARelever = type(g.plansARelever) == "table" and g.plansARelever or {}
+                for _, n in ipairs(nouvelles) do g.plansARelever[tostring(n.objet)] = true end
+                index, y = TitreDeSection(contenu, index, y, L.GUIDE_ALT_TITLE, nil)
+                y = Paragraphe(contenu, y, string.format(L.GUIDE_ALT_GAIN, fB, fA, mB, mA), POLICE, nil, aligne)
+                local total, tousPrix = 0, true
+                for _, n in ipairs(nouvelles) do
+                    local prix, _, absent = nil, nil, nil
+                    if NS.encheres and NS.encheres.Prix then prix, _, absent = NS.encheres.Prix(n.objet, 1) end
+                    local okP, _, possede = pcall(catalogue.PlanPossede, n.recette)
+                    local droite
+                    if okP and possede then droite = string.format(L.GOAL_LEARN_HAVE, possede)
+                    elseif prix then droite = NS.marchands.Monnaie(prix) total = total + prix
+                    elseif absent then droite = L.AH_RECIPES_ABSENT tousPrix = false
+                    else
+                        tousPrix = false
+                        local okC, nature = pcall(catalogue.CommentApprendre, n.recette)
+                        droite = (okC and nature and L[nature]) or L.GUIDE_ALT_NO_PRICE
+                    end
+                    local l
+                    index, y, l = LigneSimple(contenu, index, y, NS.Appeler(NS.jeu.iconeObjet, n.objet) or "Interface\\Icons\\INV_Scroll_03",
+                        tostring(n.recette.nom or "?"), droite)
+                    if l then
+                        l:EnableMouse(true)
+                        local rr = n.recette
+                        l:SetScript("OnEnter", function(self)
+                            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                            GameTooltip:SetText(rr.nom or "", 1, 0.82, 0)
+                            local okC, _, lignesSrc = pcall(catalogue.CommentApprendre, rr)
+                            for _, t in ipairs(okC and lignesSrc or {}) do GameTooltip:AddLine(t, 1, 1, 1, true) end
+                            GameTooltip:Show()
+                        end)
+                        l:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                    end
+                end
+                if total > 0 then
+                    y = Paragraphe(contenu, y + 2, string.format(tousPrix and L.GUIDE_ALT_COST or L.GUIDE_ALT_COST_PART,
+                        NS.marchands.Monnaie(total)), "GameFontDisableSmall", nil, aligne)
+                end
+                y = Paragraphe(contenu, y, L.GUIDE_ALT_NOTE, "GameFontDisableSmall", nil, aligne)
             end
         end
     end

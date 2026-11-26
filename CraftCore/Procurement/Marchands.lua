@@ -388,6 +388,13 @@ function encheres.ObjetsARelever()
     -- Les objets que demandent les quetes en cours (QuestCore) et qu'aucun
     -- monstre ne donne : a fabriquer, echanger ou acheter.
     for objet in pairs(encheres.ObjetsDeQuetes()) do Ajouter(objet) end
+    -- Les plans d'une voie plus courte proposee dans le guide d'un metier
+    -- (vendus par un marchand ou non : on veut leur prix a l'hotel des ventes).
+    local g = NS.base.ReglagesGeneraux()
+    for cle in pairs(type(g.plansARelever) == "table" and g.plansARelever or {}) do
+        local objet = tonumber(cle)
+        if objet and not vus[objet] then vus[objet] = true table.insert(liste, objet) end
+    end
     return liste
 end
 
