@@ -1776,41 +1776,66 @@ end
 Suite.GlyphePad = function(t) return GlyphePad(t) end
 
 -- L'encadrement des icones carrees, le meme partout dans la suite : celui
--- des boutons d'action du jeu (barres, grimoire, manette), son biseau
--- metallique et son lisere. Seulement l'image du jeu, rien de dessine.
--- porteur : le cadre de l'icone ; icone : sa texture (recadree au bord).
-local CADRES_ICONE = { "UI-HUD-ActionBar-IconFrame", "UI-HUD-ActionBar-IconFrame-Slot" }
-function Suite.HabillerIcone(porteur, icone)
+-- du grimoire du jeu (cadre biseaute et sa petite feuille a gauche), sinon
+-- celui des boutons d'action. Seulement les images du jeu, rien de dessine.
+-- porteur : le cadre de l'icone ; icone : sa texture ; inactif : sort pas
+-- appris (le cadre eteint du grimoire). Se rappelle a chaque rendu.
+local function AtlasExiste(nom)
+    local info = _G.C_Texture and _G.C_Texture.GetAtlasInfo
+    local ok, existe = pcall(info or function() end, nom)
+    return ok and existe ~= nil
+end
+function Suite.HabillerIcone(porteur, icone, inactif)
     if not porteur then return end
-    if icone and icone.SetTexCoord then pcall(icone.SetTexCoord, icone, 0.07, 0.93, 0.07, 0.93) end
     local c = porteur.cadreIcone
     if not c then
         c = porteur:CreateTexture(nil, "OVERLAY", nil, 6)
         porteur.cadreIcone = c
-        local info = _G.C_Texture and _G.C_Texture.GetAtlasInfo
-        local pose = false
-        for _, nom in ipairs(CADRES_ICONE) do
-            local ok, existe = pcall(info or function() end, nom)
-            if ok and existe and pcall(c.SetAtlas, c, nom) then pose = true break end
-        end
-        c:ClearAllPoints()
-        local cible = icone or porteur
-        if pose then
-            c:SetPoint("TOPLEFT", cible, "TOPLEFT", -1, 1)
-            c:SetPoint("BOTTOMRIGHT", cible, "BOTTOMRIGHT", 1, -1)
+    end
+    local cible = icone or porteur
+    local w = (porteur.GetWidth and porteur:GetWidth()) or 0
+    if w <= 0 and cible.GetWidth then w = cible:GetWidth() or 0 end
+    if w <= 0 then w = 18 end
+    local k = w / 40
+    c:ClearAllPoints()
+    local nom = inactif and "spellbook-item-iconframe-inactive" or "spellbook-item-iconframe"
+    if AtlasExiste(nom) then
+        -- Le cadre du grimoire (bouton de 40, icone de 36 au centre) : memes
+        -- proportions, a la taille du porteur.
+        c:SetAtlas(nom)
+        if inactif then
+            c:SetPoint("TOPLEFT", porteur, "TOPLEFT", -10 * k, 1 * k)
+            c:SetPoint("BOTTOMRIGHT", porteur, "BOTTOMRIGHT", 2 * k, -5 * k)
         else
-            -- Ancien client : le cadre des boutons d'action classiques.
-            c:SetTexture("Interface\\Buttons\\UI-Quickslot2")
-            c:SetPoint("CENTER", cible, "CENTER", 0, 0)
-            local w = (cible.GetWidth and cible:GetWidth()) or 0
-            if w <= 0 then w = (porteur.GetWidth and porteur:GetWidth()) or 0 end
-            if w <= 0 then w = 18 end
-            c:SetSize(w * 1.78, w * 1.78)
-            porteur.cadreIconeAncien = true
+            c:SetPoint("TOPLEFT", porteur, "TOPLEFT", -11 * k, 1 * k)
+            c:SetPoint("BOTTOMRIGHT", porteur, "BOTTOMRIGHT", 1 * k, -7 * k)
         end
-    elseif porteur.cadreIconeAncien and icone then
-        local w = icone:GetWidth() or 0
-        if w > 0 then c:SetSize(w * 1.78, w * 1.78) end
+        if icone and icone ~= porteur then
+            icone:ClearAllPoints()
+            icone:SetPoint("TOPLEFT", porteur, "TOPLEFT", 2 * k, -2 * k)
+            icone:SetPoint("BOTTOMRIGHT", porteur, "BOTTOMRIGHT", -2 * k, 2 * k)
+            if icone.SetTexCoord then pcall(icone.SetTexCoord, icone, 0, 1, 0, 1) end
+            if not porteur.masqueIcone and porteur.CreateMaskTexture and AtlasExiste("spellbook-item-spellicon-mask") then
+                local okM, m = pcall(porteur.CreateMaskTexture, porteur)
+                if okM and m then
+                    m:SetAtlas("spellbook-item-spellicon-mask")
+                    m:SetAllPoints(icone)
+                    pcall(icone.AddMaskTexture, icone, m)
+                    porteur.masqueIcone = m
+                end
+            end
+        end
+    elseif AtlasExiste("UI-HUD-ActionBar-IconFrame") then
+        c:SetAtlas("UI-HUD-ActionBar-IconFrame")
+        if icone and icone.SetTexCoord then pcall(icone.SetTexCoord, icone, 0.07, 0.93, 0.07, 0.93) end
+        c:SetPoint("TOPLEFT", cible, "TOPLEFT", -1, 1)
+        c:SetPoint("BOTTOMRIGHT", cible, "BOTTOMRIGHT", 1, -1)
+    else
+        -- Ancien client : le cadre des boutons d'action classiques.
+        if icone and icone.SetTexCoord then pcall(icone.SetTexCoord, icone, 0.07, 0.93, 0.07, 0.93) end
+        c:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+        c:SetPoint("CENTER", cible, "CENTER", 0, 0)
+        c:SetSize(w * 1.78, w * 1.78)
     end
     c:Show()
     return c

@@ -294,6 +294,7 @@ local function Rendre(page, blocs)
             elseif e.icone then
                 l.icone:SetTexture(e.icone)
                 l.icone:SetDesaturated(e.gris and true or false)
+                do local S = _G.CoreSuite if S and S.HabillerIcone then pcall(S.HabillerIcone, l.bord, l.icone, e.gris and true or false) end end
                 l.bord:Show() l.icone:Show()
                 x = x + 24
             elseif e.coche then
