@@ -131,10 +131,22 @@ local function LireQuetes()
             zone = titre
         elseif id and id ~= 0 then
             local instance, genreInstance = Instance(id)
+            local objectifs = Objectifs(id, i)
+            local etat = (complete == -1 and -1) or (complete and complete ~= 0 and true) or false
+            -- Quete sans objectif (« allez voir X ») : le jeu ne la dit pas
+            -- terminee, mais elle se rend tout de suite. Elle compte comme a rendre.
+            -- La base de quetes doit le confirmer (pas d'objectif connu) : un
+            -- journal pas encore charge ne fait pas passer une quete pour finie.
+            if etat == false and type(objectifs) == "table" and #objectifs == 0 and NS.ref and NS.ref.Lire then
+                local base = NS.ref.Lire("QuestDB", id, "objectives")
+                local vide = base == nil or (type(base) == "table" and next(base) == nil)
+                local connue = NS.ref.Lire("QuestDB", id, "name") ~= nil
+                if connue and vide then etat = true end
+            end
             quetes[id] = { titre = titre, niveau = tonumber(niveau) or 0, zone = zone,
                 instance = instance, genreInstance = genreInstance,
-                complete = (complete == -1 and -1) or (complete and complete ~= 0 and true) or false,
-                objectifs = Objectifs(id, i), recompenses = LireRecompenses(id, i) }
+                complete = etat,
+                objectifs = objectifs, recompenses = LireRecompenses(id, i) }
         end
     end
     return quetes
