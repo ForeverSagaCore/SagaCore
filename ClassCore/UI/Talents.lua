@@ -167,6 +167,7 @@ local function Rendre(page, profil)
             b:SetPoint("TOPLEFT", zone, "TOPLEFT", xGrille + (ta.colonne - 1) * PAS_X, -y)
             b.icone:SetTexture(ta.icone or "Interface\\Icons\\INV_Misc_QuestionMark")
             b.icone:SetDesaturated((ta.rang or 0) == 0)
+            do local S = _G.CoreSuite if S and S.HabillerIcone then pcall(S.HabillerIcone, b, b.icone, (ta.rang or 0) == 0) end end
             b.rang:SetText(string.format("%d/%d", ta.rang or 0, ta.max or 1))
             if (ta.rang or 0) >= (ta.max or 1) then b.rang:SetTextColor(1, 0.82, 0)
             elseif (ta.rang or 0) > 0 then b.rang:SetTextColor(0.31, 0.82, 0.41)
