@@ -6411,7 +6411,8 @@ function ecran.Montrer(cle)
     -- allume a gauche, son menu et ses seuls onglets a droite.
     do
         local stuff = ecran.EstStuff(ecran.page)
-        if fenetre.titre then fenetre.titre:SetText(stuff and "StuffCore" or L.WINDOW_TITLE) end
+        -- Le commerce entre joueurs est en beta : son titre le dit.
+        if fenetre.titre then fenetre.titre:SetText(stuff and "StuffCore" or (ecran.page == "groupe" and L.WINDOW_TITLE_GROUP) or L.WINDOW_TITLE) end
         -- Les caisses sont seules : pas de menu de CraftCore a cote.
         local seul = stuff or ecran.page == "caisses"
         for _, b in pairs(fenetre.boutons) do b:SetShown(not seul) end

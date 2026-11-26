@@ -2057,6 +2057,7 @@ local function Remplir(plan)
     -- A l'echange : les commandes ouvertes avec ce joueur, et ce que j'y
     -- apporte. Poser met les objets dans la fenetre d'echange ; on valide
     -- soi-meme, dans la fenetre du jeu.
+    if panneau.titre then panneau.titre:SetText(lieu == "echange" and (L().WINDOW_TITLE_GROUP or "CraftCore") or "CraftCore") end
     if lieu == "echange" and NS.groupe then
         local qui = NS.groupe.partenaire
         local okC, liste = pcall(NS.groupe.AvecJoueur, qui)
