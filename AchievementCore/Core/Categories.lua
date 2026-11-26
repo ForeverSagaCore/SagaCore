@@ -676,11 +676,13 @@ local function NomDeRang(rang)
     return noms[rang] or tostring(rang)
 end
 
+ref.NomDeRang = function(r) return NomDeRang(r) end
+
 local function CategorieReputations()
-    return { cle = "reputations", icone = "Interface\\Icons\\INV_Misc_Note_01", versions = { "reputations" },
+    return { cle = "reputations", icone = "Interface\\Icons\\INV_Misc_Note_01", versions = { "reputations" }, plat = true,
         nom = function() return T("Réputations", "Reputations") end,
-        intro = function() return T("Chaque faction qu'on peut servir, d'Amical à Exalté ; les capitales de l'autre camp ne comptent pas.",
-            "Every faction you can serve, from Friendly to Exalted ; the other side's capitals do not count.") end,
+        intro = function() return T("Chaque faction, son rang et l'avancement vers le suivant. Les capitales de l'autre camp ne comptent pas.",
+            "Every faction, its standing and the progress to the next. The other side's capitals do not count.") end,
         Calculer = function(ctx)
             local d = base.DB()
             local res = { sous = {} }
@@ -697,8 +699,15 @@ local function CategorieReputations()
                     local s = Sous(res, "e" .. entete, entete, info.entete and 1 or 2, "Interface\\Icons\\INV_Misc_Note_01")
                     local fait = 0
                     for _, r in ipairs(ref.PALIERS_REPUTATION) do if meilleur >= r then fait = fait + 1 end end
+                    -- L'avancement actuel : celui du personnage le plus avance.
+                    local rep
+                    for _, p in ipairs(ctx.persos) do
+                        local dd = persos.ReputationsDetail(p.cle)[id]
+                        if type(dd) == "table" and tonumber(dd[1]) and (not rep or dd[1] > rep[1] or (dd[1] == rep[1] and (dd[2] or 0) > (rep[2] or 0))) then rep = dd end
+                    end
                     Ajouter(res, s, { cle = "f" .. id, nom = info.nom or ("#" .. id), icone = "Interface\\Icons\\INV_Misc_Note_01",
-                        fait = fait, total = #ref.PALIERS_REPUTATION,
+                        fait = fait, total = #ref.PALIERS_REPUTATION, rang = rep and rep[1] or meilleur,
+                        valeur = rep and rep[2], mini = rep and rep[3], maxi = rep and rep[4],
                         Detail = function()
                             local l = {}
                             for _, r in ipairs(ref.PALIERS_REPUTATION) do

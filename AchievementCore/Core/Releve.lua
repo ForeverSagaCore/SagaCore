@@ -342,11 +342,12 @@ local function InfoFaction(id)
     if C and C.GetFactionDataByID then
         local ok, d = pcall(C.GetFactionDataByID, id)
         if ok and type(d) == "table" and d.name then
-            return NS.Sur(d.name), NS.Sur(d.reaction), NS.Sur(d.atWarWith), NS.Sur(d.canToggleAtWar)
+            return NS.Sur(d.name), NS.Sur(d.reaction), NS.Sur(d.atWarWith), NS.Sur(d.canToggleAtWar),
+                NS.Sur(d.currentReactionThreshold), NS.Sur(d.nextReactionThreshold), NS.Sur(d.currentStanding)
         end
     end
-    local nom, _, rang, _, _, _, guerre, basculable = Jeu("GetFactionInfoByID", id)
-    return nom, rang, guerre, basculable
+    local nom, _, rang, mini, maxi, valeur, guerre, basculable = Jeu("GetFactionInfoByID", id)
+    return nom, rang, guerre, basculable, mini, maxi, valeur
 end
 
 -- Les en-tetes visibles de la liste du jeu (pour ranger les factions).
@@ -380,10 +381,18 @@ function releve.Reputations()
     local d = NS.base.DB()
     pcall(LireListe, d)
     local reps = NS.base.Table(f, "reputations")
+    -- L'avancement actuel dans le rang : { rang, valeur, mini, maxi }.
+    local detail = NS.base.Table(f, "reputationsDetail")
     local change = false
     for id in pairs(NS.base.Factions()) do
-        local nom, rang, guerre, basculable = InfoFaction(id)
+        local nom, rang, guerre, basculable, mini, maxi, valeur = InfoFaction(id)
         rang = tonumber(rang)
+        if nom and rang and rang > 0 and tonumber(valeur) and tonumber(mini) and tonumber(maxi) then
+            local avantD = detail[id]
+            local nouveau = { rang, tonumber(valeur), tonumber(mini), tonumber(maxi) }
+            if type(avantD) ~= "table" or avantD[1] ~= nouveau[1] or avantD[2] ~= nouveau[2] then change = true end
+            detail[id] = nouveau
+        end
         if nom and rang and rang > 0 then
             -- Une faction ennemie qu'on ne peut pas monter (capitales de
             -- l'autre camp) ne compte pas pour ce personnage.
