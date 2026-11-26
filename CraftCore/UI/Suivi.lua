@@ -1228,7 +1228,6 @@ local function Consigne()
         if (e == "BANKFRAME_OPENED" and service == "banque") or (e == "MAIL_SHOW" and service ~= "banque") then
             self.guider:Hide()
             self:PoserBoutons()
-            self:Lier()
         end
     end)
     -- Les boutons au milieu du pied, comme les fenetres de dialogue du jeu.
@@ -1243,32 +1242,10 @@ local function Consigne()
             self.ok:SetPoint("CENTER", self.pied or self, "CENTER", 0, 0)
         end
     end
-    -- Une touche suffit pour fermer : A, B ou Entree (Echap aussi, comme
-    -- toute fenetre) ; Y guide quand le bouton est la. Par des liaisons
-    -- prioritaires posees a l'ouverture et retirees a la fermeture, jamais
-    -- en combat : pas de manette prise directement par la fenetre (le jeu
-    -- reagissait en bloquant une de ses propres actions).
-    local fermerRelais = CreateFrame("Button", "CraftCoreConsigneFermer", UIParent)
-    fermerRelais:Hide()
-    pcall(fermerRelais.RegisterForClicks, fermerRelais, "AnyDown")
-    fermerRelais:SetScript("OnClick", function() f:Hide() end)
-    local guiderRelais = CreateFrame("Button", "CraftCoreConsigneGuider", UIParent)
-    guiderRelais:Hide()
-    pcall(guiderRelais.RegisterForClicks, guiderRelais, "AnyDown")
-    guiderRelais:SetScript("OnClick", function() if f.guider:IsShown() then f.guider:Click() end end)
-    f.Lier = function(self)
-        if InCombatLockdown and InCombatLockdown() then return end
-        pcall(ClearOverrideBindings, self)
-        for _, t in ipairs({ "PAD1", "PAD2", "ENTER" }) do
-            pcall(SetOverrideBindingClick, self, true, t, "CraftCoreConsigneFermer", "LeftButton")
-        end
-        if self.guider:IsShown() then
-            pcall(SetOverrideBindingClick, self, true, "PAD4", "CraftCoreConsigneGuider", "LeftButton")
-        end
-    end
-    f:HookScript("OnHide", function(self)
-        if not (InCombatLockdown and InCombatLockdown()) then pcall(ClearOverrideBindings, self) end
-    end)
+    -- Fermeture : Echap au clavier, B a la manette (fenetre speciale du
+    -- jeu, comme ses propres fenetres), ou Compris. Aucune liaison de touche
+    -- modifiee : cela derangeait la gestion de la manette du jeu.
+    f.Lier = function() end
     table.insert(UISpecialFrames, "CraftCoreConsigne")
     f:Hide()
     consigne = f
@@ -1323,7 +1300,6 @@ local function Montrer(titre, lignes, guide)
     f:SetHeight(y + 48)
     f:PoserBoutons()
     f:Show()
-    f:Lier()
 end
 
 -- Ce que le personnage connecte detient encore d'un objet (sacs, banque,
