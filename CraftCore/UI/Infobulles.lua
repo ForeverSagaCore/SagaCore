@@ -357,3 +357,66 @@ do
     Brancher(_G.ContainerFrameCombinedBags)
     for i = 1, 13 do Brancher(_G["ContainerFrame" .. i]) end
 end
+
+-- ---------------------------------------------------------------------------
+-- L'enveloppe de la minicarte : ce que CraftCore sait du courrier qui attend,
+-- sans ouvrir la boite. Le jeu n'en dit que les expediteurs ; CraftCore
+-- ajoute ce que vos personnages ont envoye et ce qui restait a la derniere
+-- visite. Le reste ne se lit qu'a l'ouverture.
+-- ---------------------------------------------------------------------------
+
+do
+    local function Ajouter(tt)
+        if NS.base.ReglagesGeneraux().infobulles == false then return end
+        local cle = NS.ClePersonnage()
+        if not (cle and NS.inventaire.BoiteConnue) then return end
+        local envoyes, restes, releve = NS.inventaire.BoiteConnue(cle)
+        local L = NS.L
+        tt:AddLine(" ")
+        tt:AddLine("CraftCore", 1, 0.82, 0)
+        local rien = true
+        if #envoyes > 0 then
+            rien = false
+            tt:AddLine(L.MAIL_TIP_SENT, 1, 1, 1)
+            table.sort(envoyes, function(a, b) return NS.inventaire.NomDObjet(a.objet) < NS.inventaire.NomDObjet(b.objet) end)
+            for _, e in ipairs(envoyes) do
+                local icone = NS.Appeler(NS.jeu.iconeObjet, e.objet)
+                tt:AddDoubleLine("  " .. (icone and ("|T" .. icone .. ":12:12:0:0|t ") or "") .. NS.inventaire.NomDObjet(e.objet) .. " x" .. e.n,
+                    e.de and NS.inventaire.NomCourt(e.de) or "", 1, 1, 1, 0.6, 0.6, 0.6)
+            end
+        end
+        local liste = {}
+        for id, n in pairs(restes) do table.insert(liste, { objet = id, n = n }) end
+        if #liste > 0 then
+            rien = false
+            local depuis = ""
+            local maintenant = NS.Appeler(_G.time) or 0
+            if releve and releve > 0 then
+                local h = math.floor((maintenant - releve) / 3600)
+                depuis = h >= 24 and string.format(L.MAIL_TIP_DAYS, math.floor(h / 24)) or string.format(L.MAIL_TIP_HOURS, h)
+            end
+            tt:AddLine(string.format(L.MAIL_TIP_LEFT, depuis), 1, 1, 1)
+            table.sort(liste, function(a, b) return NS.inventaire.NomDObjet(a.objet) < NS.inventaire.NomDObjet(b.objet) end)
+            for _, e in ipairs(liste) do
+                local icone = NS.Appeler(NS.jeu.iconeObjet, e.objet)
+                tt:AddLine("  " .. (icone and ("|T" .. icone .. ":12:12:0:0|t ") or "") .. NS.inventaire.NomDObjet(e.objet) .. " x" .. e.n, 0.85, 0.85, 0.85)
+            end
+        end
+        if rien then tt:AddLine(L.MAIL_TIP_NOTHING, 0.6, 0.6, 0.6, true) end
+        tt:Show()
+    end
+    local branche = false
+    local function Brancher()
+        if branche then return end
+        local cadre = _G.MiniMapMailFrame
+            or (_G.MinimapCluster and _G.MinimapCluster.IndicatorFrame and _G.MinimapCluster.IndicatorFrame.MailFrame)
+        if not (cadre and cadre.HookScript) then return end
+        branche = true
+        cadre:HookScript("OnEnter", function(self)
+            if GameTooltip:IsOwned(self) then pcall(Ajouter, GameTooltip) end
+        end)
+    end
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_LOGIN")
+    f:SetScript("OnEvent", function() pcall(Brancher) end)
+end

@@ -97,7 +97,35 @@ function inventaire.NoterEnvoi(cle, objets)
     if not cle or type(objets) ~= "table" then return end
     local copie = {}
     for objet, n in pairs(objets) do copie[tonumber(objet)] = tonumber(n) or 0 end
-    table.insert(Boite(cle).envois, { quand = NS.Appeler(_G.time) or 0, objets = copie })
+    table.insert(Boite(cle).envois, { quand = NS.Appeler(_G.time) or 0, objets = copie, de = NS.ClePersonnage() })
+end
+
+-- Ce que CraftCore sait de la boite d'un personnage sans l'ouvrir :
+-- envoyes = { { objet, n, de } } (mes personnages, en route ou arrives),
+-- restes = { [objet] = n } (ce qui y restait au dernier releve), releve.
+function inventaire.BoiteConnue(cle)
+    local b = Boites()[cle]
+    local envoyes, restes = {}, {}
+    if type(b) ~= "table" then return envoyes, restes, nil end
+    local maintenant = NS.Appeler(_G.time) or 0
+    local parCle = {}
+    for _, e in ipairs(type(b.envois) == "table" and b.envois or {}) do
+        if maintenant - (e.quand or 0) <= JOURS_COURRIER * 86400 then
+            for id, n in pairs(e.objets or {}) do
+                local k = tostring(id) .. ":" .. tostring(e.de)
+                if parCle[k] then parCle[k].n = parCle[k].n + (tonumber(n) or 0)
+                else
+                    parCle[k] = { objet = tonumber(id), n = tonumber(n) or 0, de = e.de }
+                    table.insert(envoyes, parCle[k])
+                end
+            end
+        end
+    end
+    for id, n in pairs(type(b.objets) == "table" and b.objets or {}) do
+        local reste = (tonumber(n) or 0) - (type(b.arrives) == "table" and tonumber(b.arrives[id]) or 0)
+        if reste > 0 then restes[tonumber(id) or id] = reste end
+    end
+    return envoyes, restes, b.releve
 end
 
 -- Quantite d'un objet qui attend dans la boite d'un personnage.
