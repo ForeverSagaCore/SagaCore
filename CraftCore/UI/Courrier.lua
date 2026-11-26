@@ -25,7 +25,7 @@ local COLONNE = LARGEUR - 2 * 12 - 10 - 22
 -- Un peu plus large a l'hotel des ventes : la place des deux boutons de vente.
 -- Plus large encore depuis l'onglet Rentabilite (sa colonne de prix et de
 -- quantites) : la meme largeur pour tous les onglets, rien ne bouge.
-local function LargeurDuLieu(l) return l == "encheres" and (LARGEUR + 170) or LARGEUR end
+local function LargeurDuLieu(l) return l == "encheres" and (LARGEUR + 330) or LARGEUR end
 -- A l'hotel des ventes : deux onglets sur le bord droit, en bas : acheter
 -- (prix, achats, fabrications) et vendre (ce qu'il y a dans mes sacs).
 local function OngletHV()
@@ -1111,6 +1111,7 @@ end
 local HAUT_DU_CONTENU = 24 + 12  -- barre de titre, puis la marge de la charte
 local BAS_DU_CONTENU = 12 + 4
 local LIGNES_MAX = 500            -- tout est montre ; le panneau defile au besoin
+local COL_PRIX, COL_QTE, COL_RANG = 96, 56, 44  -- colonnes de l'hotel des ventes
 -- Fenetres du jeu que le panneau accompagne, selon le lieu, et l'ecart a
 -- laisser a leur droite (la banque a des onglets lateraux).
 local FENETRES = {
@@ -1146,6 +1147,17 @@ local function Construire()
     if cuir.SetHorizTile then cuir:SetHorizTile(true) cuir:SetVertTile(true) end
     cuir:Hide()
     cadre.cuir = cuir
+    -- A l'hotel des ventes : son propre fond, pour que le panneau en soit le
+    -- prolongement (seulement si le jeu a cette texture).
+    local fondHV = cadre:CreateTexture(nil, "BACKGROUND", nil, 7)
+    fondHV:SetAllPoints(cadre.fond)
+    local info = _G.C_Texture and _G.C_Texture.GetAtlasInfo
+    for _, atlas in ipairs({ "auctionhouse-background-index", "auctionhouse-background-buy-noncommodities-market" }) do
+        local okA, existe = pcall(info or function() end, atlas)
+        if okA and existe and fondHV.SetAtlas then fondHV:SetAtlas(atlas) fondHV.ok = true break end
+    end
+    fondHV:Hide()
+    cadre.fondHV = fondHV
     -- Panneau ferme : la touche A rend sa place au jeu.
 
     cadre:Hide()
@@ -1171,6 +1183,7 @@ local function Texte(rang, police)
     end
     t:SetFontObject(police or "GameFontHighlightSmall")
     t:SetWordWrap(false)
+    t:SetJustifyH("LEFT")
     t:Show()
     return t
 end
@@ -1432,13 +1445,25 @@ local function Remplir(plan)
                 pcall(bt.SetHighlightFontObject, bt, "GameFontHighlightSmall")
                 pcall(bt.SetDisabledFontObject, bt, "GameFontDisableSmall")
             end
+            -- Trois colonnes alignees : quantite, prix a l'unite, total.
+            l.total = l:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            l.total:SetPoint("RIGHT", l.voir, "LEFT", -10, 0)
+            l.total:SetWidth(COL_PRIX)
+            l.total:SetJustifyH("RIGHT")
+            l.total:SetWordWrap(false)
             l.prix = l:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            l.prix:SetPoint("RIGHT", l.voir, "LEFT", -6, 0)
+            l.prix:SetPoint("RIGHT", l.total, "LEFT", -8, 0)
+            l.prix:SetWidth(COL_PRIX)
             l.prix:SetJustifyH("RIGHT")
             l.prix:SetWordWrap(false)
+            l.qte = l:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            l.qte:SetPoint("RIGHT", l.prix, "LEFT", -8, 0)
+            l.qte:SetWidth(COL_QTE)
+            l.qte:SetJustifyH("RIGHT")
+            l.qte:SetWordWrap(false)
             l.nom = l:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             l.nom:SetPoint("LEFT", l.icone, "RIGHT", 6, 0)
-            l.nom:SetPoint("RIGHT", l.prix, "LEFT", -6, 0)
+            l.nom:SetPoint("RIGHT", l.qte, "LEFT", -6, 0)
             l.nom:SetJustifyH("LEFT")
             l.nom:SetWordWrap(false)
             panneau.ventes[nv] = l
@@ -1447,19 +1472,20 @@ local function Remplir(plan)
         l:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0, -y)
         l:SetWidth(largeur)
         l.icone:SetTexture(NS.Appeler(NS.jeu.iconeObjet, v.objet) or "Interface\\Icons\\INV_Misc_QuestionMark")
-        l.nom:SetText(NS.inventaire.NomDObjet(v.objet) .. (v.nombre > 1 and ("  |cffb3b3b3x" .. v.nombre .. "|r") or ""))
+        -- Un objet dont mes fabrications se servent : son nom en gris clair.
+        l.nom:SetText((v.utile and "|cffb3b3b3" or "") .. NS.inventaire.NomDObjet(v.objet) .. (v.utile and "|r" or ""))
+        l.qte:SetText("x" .. v.nombre)
         local prixV = NS.encheres.PrixDeVente(v.objet)
         if prixV then
-            -- Le total d'abord (ce que rapporte la pile), l'unite en gris.
-            -- Le prix a l'unite en gris clair, puis le total.
-            l.prix:SetText((v.nombre > 1 and ("|cffb3b3b3" .. NS.marchands.Monnaie(prixV) .. "|r   ") or "")
-                .. NS.marchands.Monnaie(prixV * v.nombre))
+            l.prix:SetText(NS.marchands.Monnaie(prixV))
+            l.total:SetText(NS.marchands.Monnaie(prixV * v.nombre))
         elseif v.marchand and v.marchand > 0 then
-            l.prix:SetText("|cff8c8c8c" .. string.format(L().AH_SELL_VENDOR, NS.marchands.Monnaie(v.marchand)) .. "|r")
+            l.prix:SetText("|cff8c8c8c" .. NS.marchands.Monnaie(v.marchand) .. "|r")
+            l.total:SetText("|cff8c8c8c" .. (L().AH_COL_VENDOR or "") .. "|r")
         else
             l.prix:SetText("|cff8c8c8c" .. L().AH_NEVER .. "|r")
+            l.total:SetText("")
         end
-        l.prix:SetWidth(math.min(150, (l.prix:GetStringWidth() or 60) + 4))
         local vv = v
         -- La ligne : rien a cliquer (le survol montre l'objet) ; le bouton vend.
         l:SetScript("OnClick", nil)
@@ -1508,6 +1534,7 @@ local function Remplir(plan)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             if GameTooltip.SetItemByID then pcall(GameTooltip.SetItemByID, GameTooltip, vv.objet) end
             GameTooltip:AddLine(" ")
+            if vv.utile then GameTooltip:AddLine(string.format(L().AH_SELL_USED or "%d", vv.utile), 0.7, 0.7, 0.7, true) end
             GameTooltip:AddLine(L().AH_SELL_TIP, 1, 0.82, 0, true)
             GameTooltip:Show()
         end)
@@ -1544,6 +1571,130 @@ local function Remplir(plan)
         t:SetText(NS.inventaire.NomDObjet(objet) .. "  |cffffffff" .. droite .. "|r")
         y = y + 20
     end
+
+    -- Hotel des ventes : des tableaux a colonnes, comme sa liste d'objets.
+    -- Les colonnes se calent sur le bord droit (avant le bouton de la ligne),
+    -- le nom prend le reste ; jamais de texte sur deux lignes.
+    local BOUTON_LIGNE = 76
+    local function Colonnes(cols, ligneY, avecBouton, police)
+        local x = x0 + largeur - (avecBouton and (BOUTON_LIGNE + 10) or 0)
+        for i = #cols, 1, -1 do
+            local c = cols[i]
+            nt = nt + 1
+            local t = Texte(nt, police or "GameFontHighlightSmall")
+            t:ClearAllPoints()
+            t:SetWidth(c[2])
+            t:SetJustifyH("RIGHT")
+            t:SetPoint("TOPRIGHT", panneau.contenu, "TOPLEFT", x, -ligneY)
+            t:SetText(c[1] or "")
+            x = x - c[2] - 8
+        end
+        return x
+    end
+    -- La ligne de titres des colonnes, en or, avec un filet dessous.
+    local function EnTete(nomColonne, cols, avecBouton, retrait)
+        nt = nt + 1
+        local t = Texte(nt, "GameFontNormalSmall")
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 + (retrait or 24), -y)
+        t:SetText(nomColonne or "")
+        Colonnes(cols, y, avecBouton, "GameFontNormalSmall")
+        y = y + 16
+    end
+    -- Une ligne : case (facultative), icone, nom, colonnes, bouton (facultatif).
+    local function LigneTableau(objet, cols, bouton, caseC)
+        local gauche = x0 + 2
+        if caseC then
+            nc = nc + 1
+            local c = Case(nc)
+            c:ClearAllPoints()
+            c:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 - 2, -(y - 1))
+            c:SetChecked(caseC.coche and true or false)
+            c:UnlockHighlight()
+            c:SetScript("OnClick", function(self)
+                caseC.auClic(self:GetChecked() and true or false)
+                courrier.Actualiser()
+            end)
+            gauche = x0 + 22
+        end
+        ni = ni + 1
+        local icone = Icone(ni)
+        icone:ClearAllPoints()
+        icone:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", gauche, -(y + 2))
+        icone:SetTexture(NS.Appeler(NS.jeu.iconeObjet, objet) or "Interface\\Icons\\INV_Misc_QuestionMark")
+        if bouton then
+            nb = nb + 1
+            local b = Bouton(nb)
+            b:ClearAllPoints()
+            b:SetSize(BOUTON_LIGNE, 20)
+            b:SetPoint("TOPRIGHT", panneau.contenu, "TOPLEFT", x0 + largeur, -y)
+            b.libelle = bouton.libelle
+            b:SetText(bouton.libelle)
+            b:SetAlpha(1)
+            b:UnlockHighlight()
+            b:SetScript("OnClick", bouton.auClic)
+            b:SetEnabled(not enCours and bouton.actif ~= false)
+            Choisissable(b, "ligne:" .. tostring(objet) .. ":" .. tostring(bouton.cle or ""))
+        end
+        local limite = Colonnes(cols, y + 3, bouton ~= nil)
+        nt = nt + 1
+        local t = Texte(nt)
+        t:ClearAllPoints()
+        t:SetPoint("LEFT", icone, "RIGHT", 6, 0)
+        t:SetWidth(math.max(40, limite - (gauche + 22) - 6))
+        t:SetText(NS.inventaire.NomDObjet(objet))
+        y = y + 22
+    end
+    -- Un titre de section (metier, objectif) avec un petit bouton a droite.
+    local function Section(texte, bouton)
+        y = y + 4
+        nt = nt + 1
+        local t = Texte(nt, "GameFontNormal")
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0, -y)
+        t:SetWidth(largeur - (bouton and (BOUTON_LIGNE + 30) or 0))
+        t:SetText(texte)
+        if bouton then
+            nb = nb + 1
+            local b = Bouton(nb)
+            b:ClearAllPoints()
+            b:SetSize(BOUTON_LIGNE + 24, 20)
+            b:SetPoint("TOPRIGHT", panneau.contenu, "TOPLEFT", x0 + largeur, -(y - 2))
+            b.libelle = bouton.libelle
+            b:SetText(bouton.libelle)
+            b:SetAlpha(1)
+            b:UnlockHighlight()
+            b:SetScript("OnClick", bouton.auClic)
+            b:SetEnabled(not enCours and bouton.actif ~= false)
+            Choisissable(b, "section:" .. tostring(texte))
+        end
+        y = y + 22
+    end
+    local function Vide(texte)
+        nt = nt + 1
+        local t = Texte(nt, "GameFontDisableSmall")
+        t:ClearAllPoints()
+        t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 + 24, -y)
+        t:SetWidth(largeur - 24)
+        t:SetText(texte)
+        y = y + 18
+    end
+    local function Releve(liste)
+        if NS.encheres.EnCours() then
+            local r, total = NS.encheres.Avancement()
+            Action(string.format(L().AH_SCANNING, math.min(r, total), total), function() end)
+            panneau.boutons[nb]:SetEnabled(false)
+            return
+        end
+        -- Seulement s'il y a des prix a relever.
+        if #liste == 0 then return end
+        Action(string.format(L().AH_SCAN, #liste), function()
+            statut = nil
+            NS.encheres.Relever(liste)
+            courrier.Actualiser()
+        end)
+    end
+    local function Monnaie(n) return n and NS.marchands.Monnaie(n) or ("|cff8c8c8c" .. (L().AH_NEVER or "") .. "|r") end
 
     local vide = true
     if lieu == "banque" and #plan.sortir > 0 then
@@ -1647,89 +1798,94 @@ local function Remplir(plan)
             end)
         end
     end
-    if lieu == "encheres" and NS.encheres and NS.encheres.Disponible() and OngletHV() == "acheter" then
-        -- Hotel des ventes : le releve des prix de ce qui manque.
+    local HV = lieu == "encheres" and NS.encheres and NS.encheres.Disponible()
+    if HV and OngletHV() == "acheter" then
+        -- A acheter : ce qui manque, objectif par objectif (un metier vise,
+        -- un projet), puis les quetes. Une ligne par objet : ce qui manque,
+        -- le prix a l'unite releve, le total, et Chercher.
         vide = false
-        local objets = NS.encheres.ObjetsARelever()
-        -- Les releves en haut, sous la main : ce qui manque, puis ce qu'on
-        -- peut fabriquer.
-        if NS.encheres.EnCours() then
-            local r, total = NS.encheres.Avancement()
-            Action(string.format(L().AH_SCANNING, math.min(r, total), total), function() end)
-            panneau.boutons[nb]:SetEnabled(false)
-        else
-            if #objets > 0 then
-                Action(string.format(L().AH_SCAN, #objets), function()
-                    statut = nil
-                    NS.encheres.Relever()
-                    courrier.Actualiser()
-                end)
-            end
-            -- Le releve de mes fabrications est dans l'onglet Rentabilite.
-        end
-        Titre(L().AH_TITLE)
-        if #objets == 0 then
-            nt = nt + 1
-            local t = Texte(nt, "GameFontDisableSmall")
-            t:ClearAllPoints()
-            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 + 0, -y)
-            t:SetWidth(largeur)
-            t:SetText(L().AH_NOTHING)
-            y = y + 16
-        else
-            local liste = {}
-            for _, objet in ipairs(objets) do table.insert(liste, { objet = objet }) end
-            Lignes(liste, function(l)
-                local enRoute = NS.encheres.EnRoute and NS.encheres.EnRoute(l.objet) or 0
-                if enRoute > 0 then return "|cff4fd16a" .. string.format(L().AH_IN_MAIL or "%d", enRoute) .. "|r" end
-                local prix, quand, absent = NS.encheres.Prix(l.objet, 1)
-                if prix then return string.format(L().AH_UNIT, NS.marchands.Monnaie(prix)) .. "  |cff8c8c8c" .. NS.encheres.DateDe(quand) .. "|r" end
-                if absent then return "|cff8c8c8c" .. string.format(L().AH_ABSENT, NS.encheres.DateDe(quand)) .. "|r" end
-                return "|cff8c8c8c" .. L().AH_NEVER .. "|r"
-            end)
-            -- A acheter : un bouton par objet qui manque, qui le cherche dans
-            -- l'hotel des ventes. L'achat reste a faire soi-meme.
-            local manques = NS.encheres.Manques and NS.encheres.Manques() or {}
-            local aChercher = {}
-            for _, objet in ipairs(objets) do
-                if (manques[objet] or 0) > 0 then table.insert(aChercher, objet) end
-            end
-            if #aChercher > 0 then
-                y = y + 4
-                Titre(L().AH_BUY_TITLE)
-                for k, objet in ipairs(aChercher) do
-                    local o = objet
-                    LigneAvecBouton(o, string.format(L().AH_MISSING, manques[o]), L().AH_FIND_SHORT, function()
-                        NS.encheres.Chercher(o)
-                    end)
+        local groupes, tous, vus = {}, {}, {}
+        local okO, objectifs = pcall(NS.suivi.Objectifs)
+        for _, o in ipairs(okO and objectifs or {}) do
+            local lignes = {}
+            for _, m in ipairs(o.matieres or {}) do
+                if (m.manque or 0) > 0 and not NS.marchands.Achetable(m.objet) then
+                    table.insert(lignes, { objet = m.objet, n = m.manque })
+                    if not vus[m.objet] then vus[m.objet] = true table.insert(tous, m.objet) end
                 end
             end
+            if #lignes > 0 then table.insert(groupes, { titre = o.nom, lignes = lignes }) end
         end
-
+        local quetes = {}
+        for objet, n in pairs(NS.encheres.ObjetsDeQuetes()) do
+            table.insert(quetes, { objet = objet, n = n })
+            if not vus[objet] then vus[objet] = true table.insert(tous, objet) end
+        end
+        if #quetes > 0 then table.insert(groupes, { titre = L().AH_FOR_QUESTS or "", lignes = quetes }) end
+        Releve(tous)
+        if #groupes == 0 then
+            Titre(L().AH_BUY_TITLE)
+            Vide(L().AH_NOTHING)
+        end
+        for _, g in ipairs(groupes) do
+            Section(g.titre)
+            EnTete(L().AH_COL_ITEM, { { L().AH_COL_MISSING, COL_QTE }, { L().AH_COL_UNIT, COL_PRIX }, { L().AH_COL_TOTAL, COL_PRIX } }, true)
+            table.sort(g.lignes, function(p, q) return NS.inventaire.NomDObjet(p.objet) < NS.inventaire.NomDObjet(q.objet) end)
+            for _, l in ipairs(g.lignes) do
+                local o = l.objet
+                local enRoute = NS.encheres.EnRoute and NS.encheres.EnRoute(o) or 0
+                local reste = math.max(0, l.n - enRoute)
+                local prix, _, absent = NS.encheres.Prix(o, 1)
+                local unite = prix and NS.marchands.Monnaie(prix) or ("|cff8c8c8c" .. (absent and L().AH_COL_NONE or L().AH_NEVER) .. "|r")
+                local total = (reste == 0) and ("|cff4fd16a" .. string.format(L().AH_IN_MAIL or "%d", enRoute) .. "|r")
+                    or (prix and NS.marchands.Monnaie(prix * reste) or "")
+                LigneTableau(o, { { "x" .. l.n, COL_QTE }, { unite, COL_PRIX }, { total, COL_PRIX } },
+                    { libelle = L().AH_FIND_SHORT, auClic = function() NS.encheres.Chercher(o) end, actif = reste > 0, cle = g.titre })
+            end
+        end
     end
-    if lieu == "encheres" and NS.encheres and NS.encheres.Disponible() and OngletHV() == "rentable" then
-        -- Onglet Rentabilite : tout ce que je sais fabriquer, ce qui rapporte
-        -- le plus d'abord, avec ce que je peux deja faire. On coche ce qui
-        -- interesse : un projet commercial se cree dans Mes fabrications.
+    if HV and OngletHV() == "vendre" then
+        -- Vendre : tout ce qui se vend dans mes sacs (sauf les munitions et
+        -- composants de classe) ; ce qui sert a mes fabrications, en gris.
+        vide = false
+        local okV, aVendre = pcall(NS.encheres.AVendre)
+        aVendre = okV and aVendre or {}
+        local sansPrix = {}
+        for _, v in ipairs(aVendre) do if not v.unite and not v.releve then table.insert(sansPrix, v.objet) end end
+        Releve(sansPrix)
+        Titre(L().AH_SELL_TITLE)
+        if #aVendre == 0 then
+            Vide(L().AH_SELL_NONE)
+        else
+            nt = nt + 1
+            local t = Texte(nt, "GameFontNormalSmall")
+            t:ClearAllPoints()
+            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 + 24, -y)
+            t:SetText(L().AH_COL_ITEM)
+            -- Memes colonnes que les lignes (boutons Preparer et Vendre a droite).
+            local x = x0 + largeur - 52 - 2 - 64 - 10
+            for _, c in ipairs({ { L().AH_COL_TOTAL, COL_PRIX }, { L().AH_COL_UNIT, COL_PRIX }, { L().AH_COL_QTY, COL_QTE } }) do
+                nt = nt + 1
+                local h = Texte(nt, "GameFontNormalSmall")
+                h:ClearAllPoints()
+                h:SetWidth(c[2])
+                h:SetJustifyH("RIGHT")
+                h:SetPoint("TOPRIGHT", panneau.contenu, "TOPLEFT", x, -y)
+                h:SetText(c[1])
+                x = x - c[2] - 8
+            end
+            y = y + 16
+            for _, v in ipairs(aVendre) do LigneVente(v) end
+        end
+    end
+    if HV and OngletHV() == "rentable" then
+        -- Ce qui rapporte : un tableau par metier, le mieux paye d'abord. On
+        -- coche ce qui interesse : un projet commercial dans Mes fabrications.
         vide = false
         local okT, toutes = pcall(NS.encheres.ToutesMesFabrications)
         toutes = okT and toutes or {}
         local coches = {}
         for _, f in ipairs(toutes) do if choixRentables[tostring(f.recette.id)] then table.insert(coches, f) end end
-        if NS.encheres.EnCours() then
-            local r, total = NS.encheres.Avancement()
-            Action(string.format(L().AH_SCANNING, math.min(r, total), total), function() end)
-            panneau.boutons[nb]:SetEnabled(false)
-        else
-            local aRelever = NS.encheres.ObjetsDeToutesMesFabrications()
-            if #aRelever > 0 then
-                Action(string.format(L().AH_SCAN_CRAFTS, #aRelever), function()
-                    statut = nil
-                    NS.encheres.Relever(aRelever)
-                    courrier.Actualiser()
-                end)
-            end
-        end
         Action(string.format(L().AH_TRADE_PROJECT or "%d", #coches), function()
             if #coches == 0 then return end
             local n = 1
@@ -1744,115 +1900,82 @@ local function Remplir(plan)
             if NS.ecran and NS.ecran.Actualiser then pcall(NS.ecran.Actualiser) end
             courrier.Actualiser()
         end, "projetCommercial")
-        panneau.boutons[nb]:SetEnabled(#coches > 0)
-        Titre(L().AH_TRADE_TITLE or "")
-        if #toutes == 0 then
-            nt = nt + 1
-            local t = Texte(nt, "GameFontDisableSmall")
-            t:ClearAllPoints()
-            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0, -y)
-            t:SetWidth(largeur)
-            t:SetText(L().AH_TRADE_NONE or "")
-            y = y + 16
-        else
-            for _, f in ipairs(toutes) do
-                local droite
-                if f.rapporte then
-                    droite = NS.marchands.Monnaie(f.rapporte)
-                    if f.benefice then
-                        local signe = f.benefice >= 0 and "|cff4fd16a+" or "|cffff6060-"
-                        droite = droite .. "  " .. signe .. NS.marchands.Monnaie(math.abs(f.benefice)) .. "|r"
-                    end
-                else
-                    droite = "|cff8c8c8c" .. (L().AH_NEVER or "") .. "|r"
+        panneau.boutons[nb]:SetEnabled(#coches > 0 and not enCours)
+        if NS.encheres.EnCours() then
+            local r, total = NS.encheres.Avancement()
+            Action(string.format(L().AH_SCANNING, math.min(r, total), total), function() end)
+            panneau.boutons[nb]:SetEnabled(false)
+        end
+        local parMetier, ordre = {}, {}
+        for _, f in ipairs(toutes) do
+            local ligne = NS.recettes.MetierDe and NS.recettes.MetierDe(f.recette) or 0
+            local nom = (NS.recettes.NomDuMetier and ligne ~= 0 and NS.recettes.NomDuMetier(ligne)) or L().AH_OTHER_CRAFTS or "?"
+            if not parMetier[nom] then parMetier[nom] = {} table.insert(ordre, nom) end
+            table.insert(parMetier[nom], f)
+        end
+        table.sort(ordre)
+        if #ordre == 0 then Titre(L().AH_TRADE_TITLE or "") Vide(L().AH_TRADE_NONE or "") end
+        for _, nom in ipairs(ordre) do
+            local liste = parMetier[nom]
+            local aRelever, vusR = {}, {}
+            for _, f in ipairs(liste) do
+                for _, o in ipairs({ f.recette.objetProduit }) do
+                    if o and not vusR[o] then vusR[o] = true table.insert(aRelever, o) end
                 end
-                droite = droite .. "  " .. (f.n > 0 and "|cffffffff" or "|cff8c8c8c") .. string.format(L().AH_TRADE_CAN or "(%d)", f.n) .. "|r"
+                for _, c in ipairs(f.recette.composants or {}) do
+                    local o = tonumber(c.objet)
+                    if o and not vusR[o] and not NS.marchands.Achetable(o) then vusR[o] = true table.insert(aRelever, o) end
+                end
+            end
+            Section(nom, { libelle = string.format(L().AH_SCAN_SHORT or "%d", #aRelever), actif = #aRelever > 0 and not NS.encheres.EnCours(),
+                auClic = function() statut = nil NS.encheres.Relever(aRelever) courrier.Actualiser() end })
+            EnTete(L().AH_COL_CRAFT, { { L().AH_COL_SELLS, COL_PRIX }, { L().AH_COL_PROFIT, COL_PRIX }, { L().AH_COL_CAN, COL_QTE } }, false, 46)
+            for _, f in ipairs(liste) do
+                local benef = ""
+                if f.benefice then
+                    benef = (f.benefice >= 0 and "|cff4fd16a" or "|cffff6060-") .. NS.marchands.Monnaie(math.abs(f.benefice)) .. "|r"
+                end
                 local id = tostring(f.recette.id)
-                LigneACocher(f.recette.objetProduit, droite, choixRentables[id] == true, function(oui)
-                    choixRentables[id] = oui or nil
-                end)
+                LigneTableau(f.recette.objetProduit,
+                    { { Monnaie(f.rapporte), COL_PRIX }, { benef, COL_PRIX }, { (f.n > 0 and "|cffffffff" or "|cff8c8c8c") .. f.n .. "|r", COL_QTE } },
+                    nil, { coche = choixRentables[id] == true, auClic = function(oui) choixRentables[id] = oui or nil end })
             end
         end
     end
-    if lieu == "encheres" and NS.encheres and NS.encheres.Disponible() and OngletHV() == "vendre" then
-        -- Onglet Vendre : ce que j'ai dans mes sacs et qui peut se vendre.
-        vide = false
-        local okV, aVendre = pcall(NS.encheres.AVendre)
-        aVendre = okV and aVendre or {}
-        -- Le prix de ce qui n'a pas encore ete releve : le bouton en haut.
-        do
-            local sansPrix = {}
-            for _, v in ipairs(aVendre) do if not v.unite and not v.releve then table.insert(sansPrix, v.objet) end end
-            if #sansPrix > 0 and not NS.encheres.EnCours() then
-                Action(string.format(L().AH_SCAN_BAGS, #sansPrix), function()
-                    statut = nil
-                    NS.encheres.Relever(sansPrix)
-                    courrier.Actualiser()
-                end)
-            elseif NS.encheres.EnCours() then
-                local r, total = NS.encheres.Avancement()
-                Action(string.format(L().AH_SCANNING, math.min(r, total), total), function() end)
-                panneau.boutons[nb]:SetEnabled(false)
-            end
-        end
-        Titre(L().AH_SELL_TITLE)
-        if #aVendre == 0 then
-            nt = nt + 1
-            local t = Texte(nt, "GameFontDisableSmall")
-            t:ClearAllPoints()
-            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0, -y)
-            t:SetWidth(largeur)
-            t:SetText(L().AH_SELL_NONE)
-            y = y + 16
-        else
-            for rang, v in ipairs(aVendre) do
-                LigneVente(v)
-            end
-        end
-    end
-    if lieu == "encheres" and NS.encheres and NS.encheres.Disponible() and OngletHV() == "recettes" then
-        -- Onglet Recettes : les plans a apprendre tout de suite, leur prix
-        -- releve, et un bouton pour les chercher dans l'hotel des ventes.
+    if HV and OngletHV() == "recettes" then
+        -- Recettes a apprendre maintenant : par metier, du rang le plus bas
+        -- au plus haut, avec leur prix et Chercher.
         vide = false
         local okP, plans = pcall(NS.encheres.PlansAApprendre)
         plans = okP and plans or {}
-        do
-            local sansPrix = {}
-            for _, p in ipairs(plans) do
-                local prix, _, absent = NS.encheres.Prix(p.objet, 1)
-                if not prix and not absent then table.insert(sansPrix, p.objet) end
-            end
-            if #sansPrix > 0 and not NS.encheres.EnCours() then
-                Action(string.format(L().AH_RECIPES_SCAN, #sansPrix), function()
-                    statut = nil
-                    NS.encheres.Relever(sansPrix)
-                    courrier.Actualiser()
-                end)
-            elseif NS.encheres.EnCours() then
-                local r, total = NS.encheres.Avancement()
-                Action(string.format(L().AH_SCANNING, math.min(r, total), total), function() end)
-                panneau.boutons[nb]:SetEnabled(false)
-            end
+        local sansPrix = {}
+        for _, p in ipairs(plans) do
+            local prix, _, absent = NS.encheres.Prix(p.objet, 1)
+            if not prix and not absent then table.insert(sansPrix, p.objet) end
         end
-        Titre(L().AH_RECIPES_TITLE)
-        if #plans == 0 then
-            nt = nt + 1
-            local t = Texte(nt, "GameFontDisableSmall")
-            t:ClearAllPoints()
-            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0, -y)
-            t:SetWidth(largeur)
-            t:SetText(L().AH_RECIPES_NONE)
-            y = y + 16
-        else
-            for k, p in ipairs(plans) do
-                local prix, quand, absent = NS.encheres.Prix(p.objet, 1)
-                do
-                    local droite = string.format(L().AH_RECIPES_RANK, p.rang)
-                    if prix then droite = droite .. "  " .. NS.marchands.Monnaie(prix)
-                    elseif absent then droite = droite .. "  |cff8c8c8c" .. L().AH_RECIPES_ABSENT .. "|r" end
-                    local o = p.objet
-                    LigneAvecBouton(o, droite, L().AH_FIND_SHORT, function() NS.encheres.Chercher(o) end)
-                end
+        Releve(sansPrix)
+        local parMetier, ordre = {}, {}
+        for _, p in ipairs(plans) do
+            local nom = (NS.recettes.NomDuMetier and NS.recettes.NomDuMetier(p.metier)) or tostring(p.metier or "?")
+            if not parMetier[nom] then parMetier[nom] = {} table.insert(ordre, nom) end
+            table.insert(parMetier[nom], p)
+        end
+        table.sort(ordre)
+        if #ordre == 0 then Titre(L().AH_RECIPES_TITLE) Vide(L().AH_RECIPES_NONE) end
+        for _, nom in ipairs(ordre) do
+            local liste = parMetier[nom]
+            table.sort(liste, function(a2, b2)
+                if (a2.rang or 0) ~= (b2.rang or 0) then return (a2.rang or 0) < (b2.rang or 0) end
+                return NS.inventaire.NomDObjet(a2.objet) < NS.inventaire.NomDObjet(b2.objet)
+            end)
+            Section(nom)
+            EnTete(L().AH_COL_RECIPE, { { L().AH_COL_RANK, COL_RANG }, { L().AH_COL_UNIT, COL_PRIX } }, true)
+            for _, p in ipairs(liste) do
+                local prix, _, absent = NS.encheres.Prix(p.objet, 1)
+                local o = p.objet
+                LigneTableau(o, { { tostring(p.rang), COL_RANG },
+                    { prix and NS.marchands.Monnaie(prix) or ("|cff8c8c8c" .. (absent and L().AH_COL_NONE or L().AH_NEVER) .. "|r"), COL_PRIX } },
+                    { libelle = L().AH_FIND_SHORT, auClic = function() NS.encheres.Chercher(o) end, cle = nom })
             end
         end
     end
@@ -2036,6 +2159,7 @@ Placer = function()
     if panneau.contenu then panneau.contenu:SetWidth(LargeurDuLieu(lieu) - 2 * NS.charte.MARGE - 10 - 22) end
     -- Le meme fond partout (banque, courrier, encheres).
     if panneau.cuir then panneau.cuir:Hide() end
+    if panneau.fondHV then panneau.fondHV:SetShown(lieu == "encheres" and panneau.fondHV.ok == true) end
     local gauche, droite, bas, haut = Bornes(FENETRES[lieu] or {})
     panneau.hauteurCible = (haut and bas) and (haut - bas) or nil
     if not gauche then
