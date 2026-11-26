@@ -8,7 +8,7 @@
 -- suites. Prive.  /saga : la meme fenetre.
 
 local ADDONS = { "CraftCore", "QuestCore", "MapCore", "LegacyCore", "StuffCore", "FriendsCore", "AuraCore", "PvPCore", "AchievementCore" }
-local PRIVES = { "TradeCore" }   -- ta version seulement (jamais publie)
+local PRIVES = { "TradeCore", "ClassCore" }   -- ta version seulement (jamais publie)
 local SUFFIXES = { normale = "", dev = "Dev", live = "Live" }
 
 local A = _G.C_AddOns or {}
