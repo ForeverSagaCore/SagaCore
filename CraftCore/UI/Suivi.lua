@@ -213,10 +213,12 @@ local function ObjectifsDeProgression(liste)
                         local ok, avec = pcall(catalogue.Progression, ligne, seg.de or sien.rang, sien.rangMax, vise, nil, true)
                         if ok and avec then source = avec end
                     end
+                    local rangsRequis = {}
                     for _, etape in ipairs(source.etapes or {}) do
                         local r = etape.apprendre and etape.recette
                         if r and r.id and not vus[r.id] then
                             vus[r.id] = true
+                            rangsRequis[r.id] = tonumber(etape.rangRequis) or tonumber(etape.de)
                             table.insert(trouvees, r)
                         end
                     end
@@ -225,15 +227,21 @@ local function ObjectifsDeProgression(liste)
                     local cleM = tostring(fiche.cle) .. ":" .. tostring(cle) .. ":" .. tostring(vise)
                     if sien.rang >= vise then g.aApprendre[cleM] = nil return {} end
                     local memo = type(g.aApprendre[cleM]) == "table" and g.aApprendre[cleM] or {}
-                    for _, r in ipairs(trouvees) do memo[tostring(r.id)] = r.nom or tostring(r.id) end
+                    for _, r in ipairs(trouvees) do
+                        memo[tostring(r.id)] = { nom = r.nom or tostring(r.id), rang = rangsRequis[r.id] }
+                    end
                     g.aApprendre[cleM] = next(memo) and memo or nil
                     local t = {}
-                    for id, nom in pairs(memo) do
+                    for id, m in pairs(memo) do
                         local r = catalogue.Toutes()[id]
-                        table.insert(t, { id = id, nom = nom, recette = r, appris = catalogue.EstApprise(id) })
+                        local nom = type(m) == "table" and m.nom or tostring(m)
+                        local rang = type(m) == "table" and tonumber(m.rang) or (r and catalogue.RangRequis and catalogue.RangRequis(r)) or nil
+                        table.insert(t, { id = id, nom = nom, recette = r, appris = catalogue.EstApprise(id),
+                            rang = rang, plusTard = rang and sien.rang < rang or false })
                     end
                     table.sort(t, function(x, y2)
                         if x.appris ~= y2.appris then return not x.appris end
+                        if (x.rang or 0) ~= (y2.rang or 0) then return (x.rang or 0) < (y2.rang or 0) end
                         return tostring(x.nom) < tostring(y2.nom)
                     end)
                     return t
@@ -1756,7 +1764,8 @@ local function DessinerObjectifs(y, objectifs, vue)
                             -- En une ligne : la recette, et ou (le mot court).
                             local okC, nature = pcall(NS.recettes.CommentApprendre, a.recette)
                             local ou = okC and nature and L[nature] or nil
-                            GameTooltip:AddLine("     " .. a.nom .. (ou and ("  |cffb3b3b3" .. ou .. "|r") or ""), 1, 1, 1)
+                            local quand = a.plusTard and ("  |cffb3b3b3" .. string.format(L.GOAL_LEARN_RANK, a.rang) .. "|r") or ""
+                            GameTooltip:AddLine("     " .. a.nom .. (ou and ("  |cffb3b3b3" .. ou .. "|r") or "") .. quand, 1, 1, 1)
                             Petite(GameTooltip)
                         end
                     end
@@ -1790,11 +1799,14 @@ local function DessinerObjectifs(y, objectifs, vue)
                 end
                 -- Pas de fabrication partielle : tout doit etre reuni (100 %) et
                 -- dans les sacs (rien a sortir de la banque ni a acheter).
-                local toutEnSacs = (o.pct or 0) >= 1
-                for _, m in ipairs(toutEnSacs and o.matieres or {}) do
+                -- Monter un metier : chaque etape se fait des qu'elle a ses
+                -- composants (le bouton se grise seul sinon) ; jamais bloque
+                -- par une recette a apprendre plus tard.
+                local toutEnSacs = (o.pct or 0) >= 1 or o.genre == "progression"
+                for _, m in ipairs(toutEnSacs and o.genre ~= "progression" and o.matieres or {}) do
                     if (NS.inventaire.DisponibleDansLesSacs(m.objet) or 0) < (m.requis or 0) then toutEnSacs = false break end
                 end
-                for objet, n in pairs(toutEnSacs and type(o.achats) == "table" and o.achats or {}) do
+                for objet, n in pairs(toutEnSacs and o.genre ~= "progression" and type(o.achats) == "table" and o.achats or {}) do
                     if (NS.inventaire.DisponibleDansLesSacs(objet) or 0) < (tonumber(n) or 0) then toutEnSacs = false break end
                 end
                 -- Une serie de cette recette est en cours : a la place du
@@ -1990,8 +2002,17 @@ local function DessinerObjectifs(y, objectifs, vue)
                         t:SetPoint("LEFT", icone, "RIGHT", 6, 0)
                         t:SetPoint("RIGHT", zone, "TOPLEFT", largeur - 22, -(y + 8))
                         t:SetWordWrap(false)
-                        t:SetText(string.format(L.GOAL_LEARN, a.nom))
-                        if a.appris then
+                        -- Pas encore le rang : dit pour plus tard, en gris ; la
+                        -- fabrication continue d'ici la.
+                        if a.plusTard and not a.appris then
+                            t:SetText(string.format(L.GOAL_LEARN_AT, a.rang, a.nom))
+                        else
+                            t:SetText(string.format(L.GOAL_LEARN, a.nom))
+                        end
+                        if a.plusTard and not a.appris then
+                            t:SetTextColor(0.6, 0.6, 0.6)
+                            icone:SetDesaturated(true)
+                        elseif a.appris then
                             t:SetTextColor(0.5, 0.5, 0.5)
                             local coche = Icone()
                             coche:SetSize(14, 14)
