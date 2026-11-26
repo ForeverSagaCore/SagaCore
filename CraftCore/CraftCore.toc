@@ -31,6 +31,7 @@ Recipes\Transverse.lua
 CraftingEngine\Engine.lua
 Projects\Projects.lua
 Caisses\Caisses.lua
+Groupe\Groupe.lua
 Procurement\Procurement.lua
 Procurement\Marchands.lua
 Procurement\NoeudsJeu.lua
