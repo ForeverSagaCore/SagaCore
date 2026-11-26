@@ -1542,6 +1542,8 @@ local function Remplir(plan)
             local liste = {}
             for _, objet in ipairs(objets) do table.insert(liste, { objet = objet }) end
             Lignes(liste, function(l)
+                local enRoute = NS.encheres.EnRoute and NS.encheres.EnRoute(l.objet) or 0
+                if enRoute > 0 then return "|cff4fd16a" .. string.format(L().AH_IN_MAIL or "%d", enRoute) .. "|r" end
                 local prix, quand, absent = NS.encheres.Prix(l.objet, 1)
                 if prix then return string.format(L().AH_UNIT, NS.marchands.Monnaie(prix)) .. "  |cff8c8c8c" .. NS.encheres.DateDe(quand) .. "|r" end
                 if absent then return "|cff8c8c8c" .. string.format(L().AH_ABSENT, NS.encheres.DateDe(quand)) .. "|r" end
