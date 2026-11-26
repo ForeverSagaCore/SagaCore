@@ -183,7 +183,19 @@ end
 -- Rapproche un libelle de pack d'un objet possede, en cherchant le nom d'objet
 -- contenu dans le libelle. Sans correspondance nette, on ne devine pas : nil.
 local FORMES = {}
+local RapprocherCalcul
+local DEJA = {}
 local function RapprocherDUnObjet(libelle, parNom)
+    -- Meme liste de noms, meme libelle : meme reponse (le panneau le demande
+    -- pour chaque caisse de chaque personnage a chaque rafraichissement).
+    parNom[DEJA] = parNom[DEJA] or {}
+    local deja = parNom[DEJA][libelle]
+    if deja ~= nil then return deja or nil end
+    local r = RapprocherCalcul(libelle, parNom)
+    parNom[DEJA][libelle] = r or false
+    return r
+end
+RapprocherCalcul = function(libelle, parNom)
     local recherche = SansPluriel(libelle)
     local meilleur, meilleureLongueur
     -- Les formes sans pluriel sont calculees une fois par liste de noms.

@@ -354,16 +354,17 @@ end
 -- Gardee quelques secondes (meme regle que les plans) : elle parcourt tout
 -- le catalogue et etait demandee des dizaines de fois par rafraichissement.
 local memoPour = {}
+-- Change quand le catalogue des recettes change (releve d'un metier, recette
+-- apprise), jamais avec les sacs.
+recettes.versionRecettes = 0
 local PourCalcul
 function recettes.Pour(ligneDeMetier)
     local k = tostring(ligneDeMetier)
     local maintenant = NS.Appeler(_G.GetTime) or 0
     local m = memoPour[k]
-    if not (m and m.catalogue == Catalogue() and m.version == (recettes.VersionDesPlans and recettes.VersionDesPlans() or 0)
-        and maintenant - m.quand < 5) then
+    if not (m and m.catalogue == Catalogue() and m.version == recettes.versionRecettes and maintenant - m.quand < 60) then
         local liste, connu = PourCalcul(ligneDeMetier)
-        m = { liste = liste, connu = connu, quand = maintenant, catalogue = Catalogue(),
-            version = recettes.VersionDesPlans and recettes.VersionDesPlans() or 0 }
+        m = { liste = liste, connu = connu, quand = maintenant, catalogue = Catalogue(), version = recettes.versionRecettes }
         memoPour[k] = m
     end
     local copie = {}
@@ -1052,6 +1053,8 @@ function recettes.PoserEmplacement(fiche, cle, nom, valeur)
     fiche.objectifsProgression[tostring(cle)] = { sur = e.sur, recettes = e.recettes, choix = e.choix, valeur = e.valeur }
     -- Nouvel objectif : son plan sera fige a son premier calcul.
     if type(fiche.plansFiges) == "table" then fiche.plansFiges[tostring(cle)] = nil end
+    if type(fiche.visees) == "table" then fiche.visees[tostring(cle)] = nil end
+    if recettes.OublierPlans then recettes.OublierPlans() end
 end
 
 -- Les metiers qui se montent (ceux qui fabriquent), pour les rangs vises.
@@ -1103,14 +1106,19 @@ function recettes.RangsVises(fiche, cle)
         if r and not vus[r] then vus[r] = true table.insert(t, r) end
     end
     if e.sur or e.recettes then
-        if e.valeur then
-            -- Fige au moment du choix.
-            if e.valeur > rang then Ajouter(e.valeur) end
-        else
+        -- Le rang assure ou atteignable est fige des qu'il est connu : il ne
+        -- suit plus les stocks (sinon chaque achat deplacait l'objectif et
+        -- son plan). Atteint, le suivant est fige a son tour.
+        if not e.valeur or e.valeur <= rang then
             local sur, rec = recettes.Cibles(fiche, cle)
-            if e.sur and sur and sur > rang then Ajouter(sur) end
-            if e.recettes and rec and rec > rang then Ajouter(rec) end
+            local v = e.sur and sur or rec
+            if v and v > rang and type(fiche) == "table" then
+                fiche.objectifsProgression = type(fiche.objectifsProgression) == "table" and fiche.objectifsProgression or {}
+                fiche.objectifsProgression[tostring(cle)] = { sur = e.sur, recettes = e.recettes, choix = e.choix, valeur = v }
+                e.valeur = v
+            end
         end
+        if e.valeur and e.valeur > rang then Ajouter(e.valeur) end
     end
     Ajouter(e.choix)
     table.sort(t)
@@ -1122,133 +1130,385 @@ function recettes.Viser(fiche, cle, rang, oui)
     rang = tonumber(rang)
     if not rang or oui then return end
     local e = Emplacements(fiche, cle)
-    local sur, rec = recettes.Cibles(fiche, cle)
     if e.choix == rang then recettes.PoserEmplacement(fiche, cle, "choix", nil) end
-    if e.sur and sur == rang then recettes.PoserEmplacement(fiche, cle, "sur", nil) end
-    if e.recettes and rec == rang then recettes.PoserEmplacement(fiche, cle, "recettes", nil) end
+    if e.sur and e.valeur == rang then recettes.PoserEmplacement(fiche, cle, "sur", nil) end
+    if e.recettes and e.valeur == rang then recettes.PoserEmplacement(fiche, cle, "recettes", nil) end
 end
 
--- Les rangs vises d'un metier, a la suite : chacun part du precedent, et ce
--- que le precedent prend dans les stocks n'est pas compte deux fois.
--- Rend { { vise, de, plan }, ... }, du plus bas au plus haut.
--- Les plans coutent cher (des milliers de recettes essayees) et etaient
--- recalcules a chaque rafraichissement, pour chaque personnage : a l'hotel
--- des ventes, une rafale d'evenements bloquait le jeu. Un plan calcule est
--- garde tant que rien ne change (sacs, banque, courrier, recettes, rangs,
--- plan fige), et au plus quelques secondes.
+-- ---------------------------------------------------------------------------
+-- Rang vise : le plan fige.
+--
+-- Le plan d'un rang vise est calcule UNE fois, quand l'objectif est pose (ou
+-- a son premier affichage), avec le stock du moment, puis enregistre tel quel
+-- dans la fiche : ses etapes, dans l'ordre, et pour chacune la recette, le
+-- nombre de fabrications prevu (marge de chance comprise) et ses composants.
+-- Les fabrications intermediaires (huile de feu, barres) sont des etapes
+-- comme les autres. Le total des composants est donc connu des le depart.
+--
+-- Ensuite, rien n'est recalcule. L'avancement se lit :
+--   - au rang reel du metier (une etape est faite quand son rang est atteint) ;
+--   - aux fabrications reussies, comptees une a une ;
+--   - aux recettes apprises.
+-- Une etape faite le reste. Ce qu'il reste a reunir = ce que demandent les
+-- etapes pas encore faites, moins ce que le compte possede : acheter ou
+-- fabriquer ne peut que le faire baisser.
+-- Seule exception, dite clairement : la malchance au-dela de la marge prevue
+-- (environ une fois sur vingt) ajoute un rattrapage visible a l'etape.
+--
+-- fiche.visees[metier][vise .. ":" .. (apprendre and 1 or 0)] = {
+--   version, vise, apprendre, rangDepart, rangMax, creeLe, atteint, arret,
+--   estime, probable, rangSur, pointsSurs, pointsProbables, refus,
+--   etapes = { { genre = "apprendre"|"inter"|"fab", recette = id, fois,
+--     moyenne, de, a, probable, rangRequis, objet, comps = { {objet, q} } } },
+--   faites = { [i] = n }, finies = { [i] = true }, totaux = { [objet] = n } }
+-- ---------------------------------------------------------------------------
+
+local VERSION_VISEE = 2
 local memoPlans, versionPlans = {}, 0
-local DUREE_MEMO = 5
 function recettes.OublierPlans() versionPlans = versionPlans + 1 memoPlans = {} end
 function recettes.VersionDesPlans() return versionPlans end
+
+local function Visees(fiche, cle)
+    fiche.visees = type(fiche.visees) == "table" and fiche.visees or {}
+    local t = fiche.visees[tostring(cle)]
+    if type(t) ~= "table" then t = {} fiche.visees[tostring(cle)] = t end
+    return t
+end
+local function CleVisee(vise, apprendre) return tostring(vise) .. ":" .. (apprendre and "1" or "0") end
+
+-- Le stock de tout ce qui peut servir au metier, intermediaires compris
+-- (minerai d'une barre d'une autre barre...), a l'instant.
+function recettes.PhotoDuStock(cle)
+    local photo = {}
+    local function Noter(objet)
+        if objet and photo[objet] == nil then photo[objet] = NS.inventaire.TotalPossede(objet) or 0 return true end
+    end
+    for _, r in ipairs((recettes.Pour(tonumber(cle)))) do
+        for _, c in ipairs(type(r.composants) == "table" and r.composants or {}) do Noter(c.objet) end
+    end
+    local producteurs = {}
+    for _, r in pairs(Catalogue() or {}) do
+        if type(r) == "table" and r.objetProduit and type(r.composants) == "table" then producteurs[r.objetProduit] = r end
+    end
+    for _ = 1, 5 do
+        local nouveau = false
+        for objet in pairs(photo) do
+            local r = producteurs[objet]
+            if r then for _, c in ipairs(r.composants) do if Noter(c.objet) then nouveau = true end end end
+        end
+        if not nouveau then break end
+    end
+    return photo
+end
+
+local function Producteurs()
+    local p = {}
+    for _, r in pairs(Catalogue() or {}) do
+        if type(r) == "table" and r.objetProduit and type(r.composants) == "table" and #r.composants > 0
+            and recettes.EstApprise(r.id) then
+            p[r.objetProduit] = p[r.objetProduit] or r
+        end
+    end
+    return p
+end
+
+local function Comps(r)
+    local t = {}
+    for _, c in ipairs(type(r) == "table" and type(r.composants) == "table" and r.composants or {}) do
+        if c.objet then table.insert(t, { tonumber(c.objet) or c.objet, tonumber(c.quantite) or 1 }) end
+    end
+    return t
+end
+
+-- Fige un plan (resultat de recettes.Progression) : etapes explicites.
+local function Figer(fiche, cle, vise, apprendre, rang, rangMax, plan)
+    local V = { version = VERSION_VISEE, vise = vise, apprendre = apprendre and true or false, rangDepart = rang,
+        rangMax = rangMax, creeLe = NS.Appeler(_G.time) or 0, atteint = plan.atteint, arret = plan.arret,
+        estime = plan.estime, probable = plan.probable, rangSur = plan.rangSur, pointsSurs = plan.pointsSurs,
+        pointsProbables = plan.pointsProbables, etapes = {}, faites = {}, finies = {}, totaux = {} }
+    -- 1. Les intermediaires, le plus profond d'abord (barre de cuivre avant bronze).
+    local producteurs = Producteurs()
+    local inter = {}
+    for objet, fois in pairs(plan.intermediaires or {}) do
+        local r = producteurs[objet]
+        if r and fois > 0 then
+            table.insert(inter, { genre = "inter", recette = tonumber(r.id) or r.id, objet = objet, fois = fois,
+                parFois = math.max(1, tonumber(r.quantiteMin) or 1), comps = Comps(r),
+                profondeur = (plan.profondeurs or {})[objet] or 0 })
+        end
+    end
+    table.sort(inter, function(a, b)
+        if a.profondeur ~= b.profondeur then return a.profondeur > b.profondeur end
+        return tostring(a.objet) < tostring(b.objet)
+    end)
+    for _, e in ipairs(inter) do table.insert(V.etapes, e) end
+    -- 2. Les recettes a apprendre et les fabrications, dans l'ordre du plan.
+    for _, etape in ipairs(plan.etapes or {}) do
+        local r = etape.recette
+        if type(r) == "table" and r.id then
+            if etape.apprendre then
+                table.insert(V.etapes, { genre = "apprendre", recette = tonumber(r.id) or r.id, de = etape.de,
+                    rangRequis = etape.rangRequis })
+            else
+                table.insert(V.etapes, { genre = "fab", recette = tonumber(r.id) or r.id, fois = etape.fois,
+                    moyenne = etape.moyenne, de = etape.de, a = etape.a, probable = etape.probable and true or false,
+                    objet = r.objetProduit, comps = Comps(r) })
+            end
+        end
+    end
+    -- 3. Le total, des le depart : tout ce que demandent toutes les etapes.
+    for _, e in ipairs(V.etapes) do
+        for _, c in ipairs(e.comps or {}) do V.totaux[c[1]] = (V.totaux[c[1]] or 0) + c[2] * (e.fois or 0) end
+    end
+    local t = Visees(fiche, cle)
+    local ancien = t[CleVisee(vise, apprendre)]
+    V.refus = type(ancien) == "table" and type(ancien.refus) == "table" and ancien.refus or {}
+    t[CleVisee(vise, apprendre)] = V
+    recettes.OublierPlans()
+    return V
+end
+
+local function Construire(fiche, cle, vise, apprendre, rang, rangMax)
+    local photo = recettes.PhotoDuStock(cle)
+    local ok, plan = pcall(recettes.Progression, tonumber(cle), rang, rangMax, vise, nil, apprendre, nil, photo)
+    if not (ok and type(plan) == "table") then return nil end
+    return Figer(fiche, cle, vise, apprendre, rang, rangMax, plan)
+end
+
+-- L'etat d'un plan fige au rang actuel : ce qu'il reste de chaque etape, et
+-- ce qu'il reste a reunir. Rend un plan au format de recettes.Progression,
+-- pour tous les ecrans (suivi, guide, courrier, hotel des ventes, marchand).
+local function Etat(V, rang)
+    local cat = Catalogue() or {}
+    local plan = { etapes = {}, achats = {}, manques = {}, utilises = {}, intermediaires = {}, profondeurs = {},
+        aApprendre = {}, atteint = math.max(rang, V.atteint or rang), arret = V.arret, estime = V.estime,
+        probable = V.probable, rangSur = V.rangSur, pointsSurs = V.pointsSurs, pointsProbables = V.pointsProbables,
+        totaux = V.totaux, fige = V, depart = V.rangDepart }
+    local besoin, production = {}, {}
+    local rattrapage = false
+    -- Une etape intermediaire est finie quand ce qu'elle nourrit l'est.
+    local finFab = true
+    for i = #V.etapes, 1, -1 do
+        local e = V.etapes[i]
+        if e.genre == "fab" and not (V.finies[i] or rang >= (e.a or 0)) then finFab = false end
+        if e.genre == "inter" and finFab then V.finies[i] = true end
+    end
+    for i, e in ipairs(V.etapes) do
+        local r = cat[e.recette] or cat[tostring(e.recette)]
+        local recette = type(r) == "table" and r or { nom = tostring(e.recette), composants = {} }
+        recette.id = e.recette
+        local reste = 0
+        if e.genre == "apprendre" then
+            if V.finies[i] or recettes.EstApprise(e.recette) then V.finies[i] = true end
+            local copie = { apprendre = true, recette = recette, fois = 0, de = e.de, a = e.de,
+                rangRequis = e.rangRequis, faite = V.finies[i] or false }
+            table.insert(plan.etapes, copie)
+            if not copie.faite then table.insert(plan.aApprendre, copie) end
+        else
+            local faites = tonumber(V.faites[i]) or 0
+            local surplus
+            if e.genre == "fab" then
+                if not V.finies[i] and rang >= (e.a or 0) then V.finies[i] = true end
+                if not V.finies[i] then
+                    reste = math.max(0, (e.fois or 0) - faites)
+                    -- Le rang avance plus vite que prevu (bonne chance, ou
+                    -- fabrications faites avant le suivi) : le reste suit le rang.
+                    local de, a = tonumber(e.de) or rang, tonumber(e.a) or rang
+                    if rang > de and a > de then
+                        reste = math.min(reste, math.ceil((e.fois or 0) * (a - rang) / (a - de)))
+                    end
+                    if reste <= 0 then
+                        -- Malchance au-dela de la marge : un rattrapage, dit.
+                        local chance = 0.5
+                        local okC, c = pcall(recettes.ChanceDePoint, recette, rang)
+                        if okC and tonumber(c) and c > 0 then chance = c end
+                        surplus = math.ceil((a - rang) / math.max(0.1, chance))
+                        reste = surplus
+                        rattrapage = true
+                    end
+                end
+            else
+                if not V.finies[i] and faites >= (e.fois or 0) then V.finies[i] = true end
+                if not V.finies[i] then reste = math.max(0, (e.fois or 0) - faites) end
+                if reste > 0 then
+                    plan.intermediaires[e.objet] = (plan.intermediaires[e.objet] or 0) + reste
+                    production[e.objet] = (production[e.objet] or 0) + reste * (e.parFois or 1)
+                    plan.profondeurs[e.objet] = e.profondeur
+                end
+            end
+            for _, c in ipairs(e.comps or {}) do besoin[c[1]] = (besoin[c[1]] or 0) + c[2] * reste end
+            if e.genre == "fab" then
+                table.insert(plan.etapes, { recette = recette, fois = reste, foisPrevues = e.fois, moyenne = e.moyenne,
+                    de = e.de, a = e.a, probable = e.probable, faite = V.finies[i] or false, rattrapage = surplus,
+                    faites = faites })
+            end
+        end
+    end
+    plan.rattrapage = rattrapage
+    for objet, n in pairs(besoin) do
+        if n > 0 then
+            if recettes.EstVenduPartout(objet) then
+                plan.achats[objet] = n
+            else
+                local a = NS.inventaire.TotalPossede(objet) or 0
+                plan.utilises[objet] = math.min(n, a)
+                local m = n - a - (production[objet] or 0)
+                if m > 0 then plan.manques[objet] = m end
+            end
+        end
+    end
+    return plan
+end
+recettes.EtatDuPlan = Etat
+
+-- Un meilleur plan, seulement propose (recette apprise depuis) : cherche une
+-- fois par session et par plan, puis apres chaque recette apprise.
+local autres, autresVus = {}, {}
+local function Autre(fiche, cle, V, rang, rangMax)
+    local k = tostring(fiche.cle) .. ":" .. tostring(cle) .. ":" .. CleVisee(V.vise, V.apprendre)
+    if autresVus[k] then return autres[k] end
+    autresVus[k] = true
+    autres[k] = nil
+    if fiche ~= (NS.base.Personnage and NS.base.Personnage()) then return nil end
+    local ok, libre = pcall(recettes.Progression, tonumber(cle), rang, rangMax, V.vise, nil, V.apprendre, nil,
+        recettes.PhotoDuStock(cle))
+    if not (ok and type(libre) == "table") then return nil end
+    local ids = {}
+    for _, e in ipairs(V.etapes) do ids[tostring(e.recette)] = true end
+    for id in pairs(recettes.IdsDuPlan(libre)) do
+        if not ids[id] and (libre.atteint or 0) >= math.min(V.vise, V.atteint or V.vise) then
+            autres[k] = libre
+            break
+        end
+    end
+    return autres[k]
+end
+
+-- Les plans des rangs vises d'un metier. Rend { { vise, de, plan, autre } }.
+function recettes.PlansVises(fiche, cle, rang, rangMax, liste, apprendreTout)
+    if type(fiche) ~= "table" or not rang then return {} end
+    local e = Emplacements(fiche, cle)
+    local vises = liste or recettes.RangsVises(fiche, cle)
+    local k = table.concat({ tostring(fiche.cle), tostring(cle), tostring(rang), tostring(apprendreTout),
+        table.concat(vises, ","), tostring(e.choix) }, ":")
+    local m = memoPlans[k]
+    local maintenant = NS.Appeler(_G.GetTime) or 0
+    if m and maintenant - m.quand < 5 then return m.res end
+    local res, gardes = {}, {}
+    for _, vise in ipairs(vises) do
+        if vise > rang then
+            local apprendre = (apprendreTout or (e.choix ~= nil and vise == e.choix)) and true or false
+            local t = Visees(fiche, cle)
+            local V = t[CleVisee(vise, apprendre)]
+            if type(V) ~= "table" or V.version ~= VERSION_VISEE or type(V.etapes) ~= "table" then
+                V = Construire(fiche, cle, vise, apprendre, rang, rangMax)
+            end
+            if V then
+                gardes[CleVisee(vise, apprendre)] = true
+                local plan = Etat(V, rang)
+                table.insert(res, { vise = vise, de = rang, plan = plan, autre = Autre(fiche, cle, V, rang, rangMax) })
+            end
+        end
+    end
+    -- Les plans d'un rang qui n'est plus vise s'effacent (vrais objectifs
+    -- seulement, pas les apercus du guide).
+    if not liste and not apprendreTout then
+        local t = Visees(fiche, cle)
+        for cv, V in pairs(t) do
+            if type(V) ~= "table" or (not gardes[cv] and not V.apprendre) then
+                local reste = false
+                for _, v in ipairs(vises) do if tostring(v) == tostring(type(V) == "table" and V.vise) then reste = true end end
+                if not reste then t[cv] = nil end
+            end
+        end
+    end
+    memoPlans[k] = { res = res, quand = maintenant }
+    return res
+end
+
+-- Les fabrications reussies avancent les etapes ; le rang est relu a chaque
+-- point gagne ; une recette apprise fait chercher un meilleur plan (propose).
 do
     local f = CreateFrame("Frame")
-    for _, e in ipairs({ "BAG_UPDATE_DELAYED", "PLAYERBANKSLOTS_CHANGED", "MAIL_INBOX_UPDATE", "SKILL_LINES_CHANGED",
-        "NEW_RECIPE_LEARNED", "TRADE_SKILL_LIST_UPDATE", "LEARNED_SPELL_IN_TAB", "PLAYER_LEVEL_UP" }) do
-        pcall(f.RegisterEvent, f, e)
+    for _, ev in ipairs({ "UNIT_SPELLCAST_SUCCEEDED", "CHAT_MSG_SKILL", "NEW_RECIPE_LEARNED", "BAG_UPDATE_DELAYED",
+        "PLAYERBANKSLOTS_CHANGED", "MAIL_INBOX_UPDATE", "SKILL_LINES_CHANGED", "TRADE_SKILL_LIST_UPDATE",
+        "LEARNED_SPELL_IN_TAB", "PLAYER_LEVEL_UP" }) do
+        pcall(f.RegisterEvent, f, ev)
     end
-    f:SetScript("OnEvent", function()
+    f:SetScript("OnEvent", function(_, ev, unite, _, sort)
+        if ev == "UNIT_SPELLCAST_SUCCEEDED" then
+            if unite ~= "player" or not tonumber(sort) then return end
+            local fiche = NS.base.Personnage and NS.base.Personnage()
+            if type(fiche) ~= "table" or type(fiche.visees) ~= "table" then return end
+            local compte = false
+            for _, t in pairs(fiche.visees) do
+                for _, V in pairs(type(t) == "table" and t or {}) do
+                    if type(V) == "table" and type(V.etapes) == "table" then
+                        -- La premiere etape de cette recette pas encore
+                        -- remplie ; sinon la derniere (fabrications en plus).
+                        local cible, derniere
+                        for i, e in ipairs(V.etapes) do
+                            if e.genre ~= "apprendre" and not V.finies[i] and tonumber(e.recette) == tonumber(sort) then
+                                derniere = i
+                                if not cible and (tonumber(V.faites[i]) or 0) < (e.fois or 0) then cible = i end
+                            end
+                        end
+                        cible = cible or derniere
+                        if cible then
+                            V.faites[cible] = (tonumber(V.faites[cible]) or 0) + 1
+                            compte = true
+                        end
+                    end
+                end
+            end
+            if compte then recettes.OublierPlans() end
+            return
+        end
+        if ev == "CHAT_MSG_SKILL" and recettes.ReleverNiveaux then pcall(recettes.ReleverNiveaux) end
+        if ev == "NEW_RECIPE_LEARNED" then autresVus = {} end
+        if ev == "NEW_RECIPE_LEARNED" or ev == "TRADE_SKILL_LIST_UPDATE" or ev == "LEARNED_SPELL_IN_TAB"
+            or ev == "SKILL_LINES_CHANGED" then
+            recettes.versionRecettes = recettes.versionRecettes + 1
+        end
         recettes.OublierPlans()
         -- Le releve des sacs suit l'evenement de peu : on oublie encore apres.
         local apres = _G.C_Timer and _G.C_Timer.After
         if apres then apres(1, recettes.OublierPlans) end
     end)
 end
-local PlansVisesCalcul
-function recettes.PlansVises(fiche, cle, rang, rangMax, liste, apprendreTout)
-    if liste ~= nil or type(fiche) ~= "table" then return PlansVisesCalcul(fiche, cle, rang, rangMax, liste, apprendreTout) end
-    local okV, vises = pcall(recettes.RangsVises, fiche, cle)
-    local e = Emplacements(fiche, cle) or {}
-    local k = table.concat({ tostring(fiche.cle), tostring(cle), tostring(rang), tostring(rangMax), tostring(apprendreTout),
-        okV and type(vises) == "table" and table.concat(vises, ",") or "?", tostring(e.choix) }, ":")
-    local maintenant = NS.Appeler(_G.GetTime) or 0
-    local m = memoPlans[k]
-    if m and m.version == versionPlans and maintenant - m.quand < DUREE_MEMO then return m.res end
-    local res = PlansVisesCalcul(fiche, cle, rang, rangMax, liste, apprendreTout)
-    memoPlans[k] = { res = res, quand = maintenant, version = versionPlans }
-    return res
-end
-PlansVisesCalcul = function(fiche, cle, rang, rangMax, liste, apprendreTout)
-    local res, pris, de = {}, {}, rang
-    -- Le rang choisi aux fleches : le vrai guide, recettes a apprendre comprises.
-    local e = Emplacements(fiche, cle)
-    for _, vise in ipairs(liste or recettes.RangsVises(fiche, cle)) do
-        if de and vise > de then
-            local apprendre = apprendreTout or (e.choix ~= nil and vise == e.choix)
-            -- Le plan d'un objectif est fige a son premier calcul : jamais
-            -- change sans l'accord du joueur. Un meilleur plan (recette
-            -- apprise entre-temps) est seulement propose (seg.autre).
-            local fige = recettes.PlanFige(fiche, cle, vise)
-            -- Le stock du moment ou le plan a ete fixe ; un plan fixe avant
-            -- qu'on le retienne prend celui d'aujourd'hui, une fois.
-            local photo = fige and type(fige.stock) == "table" and fige.stock or recettes.PhotoDuStock(cle)
-            if fige and not fige.stock then fige.stock = photo end
-            local okL, libre = pcall(recettes.Progression, tonumber(cle), de, rangMax, vise, pris, apprendre, nil, photo)
-            local ok, plan = okL, libre
-            local autre
-            if fige then
-                ok, plan = pcall(recettes.Progression, tonumber(cle), de, rangMax, vise, pris, apprendre, fige.ids, photo)
-                if okL and libre and ok and plan then
-                    local idsL = recettes.IdsDuPlan(libre)
-                    local nouveau = false
-                    for id in pairs(idsL) do if not fige.ids[id] then nouveau = true break end end
-                    if nouveau and (libre.atteint or 0) >= math.min(vise, plan.atteint or 0) then autre = libre end
-                end
-            elseif okL and libre then
-                recettes.FigerPlan(fiche, cle, vise, libre, photo)
-            end
-            if ok and plan then
-                table.insert(res, { vise = vise, de = de, plan = plan, autre = autre })
-                for objet, n in pairs(plan.utilises or {}) do pris[objet] = (pris[objet] or 0) + n end
-            end
-            de = vise
-        end
-    end
-    return res
-end
 
--- Plans figes : { [cle] = { [vise] = { ids = { [idRecette] = true }, refus = { [signature] = true } } } }
+-- Compatibilite : le plan fige d'un rang (pour les refus de la proposition).
 function recettes.IdsDuPlan(plan)
     local ids = {}
     for _, etape in ipairs(plan and plan.etapes or {}) do
-        if etape.recette and etape.recette.id then ids[tostring(etape.recette.id)] = true end
+        local r = etape.recette
+        local id = type(r) == "table" and r.id or r
+        if id then ids[tostring(id)] = true end
     end
     return ids
 end
 function recettes.PlanFige(fiche, cle, vise)
-    local t = type(fiche) == "table" and type(fiche.plansFiges) == "table" and fiche.plansFiges[tostring(cle)]
-    local p = type(t) == "table" and t[tostring(vise)]
-    if type(p) == "table" and type(p.ids) == "table" and next(p.ids) then return p end
-    return nil
+    if type(fiche) ~= "table" then return nil end
+    local t = Visees(fiche, cle)
+    return t[CleVisee(vise, false)] or t[CleVisee(vise, true)]
 end
--- Le stock des composants des recettes d'un metier, a l'instant.
-function recettes.PhotoDuStock(cle)
-    local photo = {}
-    for _, r in ipairs((recettes.Pour(tonumber(cle)))) do
-        for _, c in ipairs(type(r.composants) == "table" and r.composants or {}) do
-            if c.objet and photo[c.objet] == nil then photo[c.objet] = NS.inventaire.TotalPossede(c.objet) or 0 end
-        end
-    end
-    -- Et ce qui sert a fabriquer ces composants (minerai d'une barre).
-    for _, r in pairs(Catalogue() or {}) do
-        if type(r) == "table" and r.objetProduit and photo[r.objetProduit] ~= nil then
-            for _, c in ipairs(type(r.composants) == "table" and r.composants or {}) do
-                if c.objet and photo[c.objet] == nil then photo[c.objet] = NS.inventaire.TotalPossede(c.objet) or 0 end
-            end
-        end
-    end
-    return photo
+-- Changer de plan (choix du joueur dans la proposition) : le nouveau est fige.
+function recettes.FigerPlan(fiche, cle, vise, plan)
+    if type(fiche) ~= "table" or type(plan) ~= "table" then return end
+    local ancien = recettes.PlanFige(fiche, cle, vise)
+    local apprendre = type(ancien) == "table" and ancien.apprendre or false
+    local sien = type(fiche.metiers) == "table" and fiche.metiers[tostring(cle)] or {}
+    Figer(fiche, cle, vise, apprendre, sien.rang or plan.depart or 0, sien.rangMax, plan)
+    autresVus = {}
 end
-function recettes.FigerPlan(fiche, cle, vise, plan, photo)
+-- Refaire le plan d'un rang vise a partir d'aujourd'hui (sur demande).
+function recettes.RefaireLePlan(fiche, cle, vise)
     if type(fiche) ~= "table" then return end
-    if recettes.OublierPlans then recettes.OublierPlans() end
-    local ids = recettes.IdsDuPlan(plan)
-    if not next(ids) then return end
-    fiche.plansFiges = type(fiche.plansFiges) == "table" and fiche.plansFiges or {}
-    fiche.plansFiges[tostring(cle)] = type(fiche.plansFiges[tostring(cle)]) == "table" and fiche.plansFiges[tostring(cle)] or {}
-    local ancien = fiche.plansFiges[tostring(cle)][tostring(vise)]
-    fiche.plansFiges[tostring(cle)][tostring(vise)] = { ids = ids, refus = type(ancien) == "table" and ancien.refus or {},
-        stock = type(photo) == "table" and photo or recettes.PhotoDuStock(cle) }
+    local t = Visees(fiche, cle)
+    for cv, V in pairs(t) do if type(V) == "table" and V.vise == vise then t[cv] = nil end end
+    recettes.OublierPlans()
 end
+
 -- La signature d'un plan propose : ses recettes, triees.
 function recettes.SignatureDuPlan(plan)
     local t = {}

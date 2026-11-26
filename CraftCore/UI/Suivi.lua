@@ -197,7 +197,9 @@ local function ObjectifsDeProgression(liste)
             if sien.rang >= vise then pct = 1
             elseif total > 0 then pct = (total - manque) / total
             else pct = 0 end
+            local fige = plan.fige
             table.insert(liste, { cle = "prog" .. cle .. ":" .. vise, ligne = ligne, vise = vise, nom = string.format(L.GOAL_PROG, nom, vise), genre = "progression",
+                planId = type(fige) == "table" and (tostring(fige.creeLe) .. ":" .. tostring(fige.rangDepart)) or nil,
                 detail = string.format(L.GOAL_PROG_DETAIL, sien.rang, vise), pct = pct, atteint = sien.rang >= vise,
                 matieres = Matieres(requis, manques), achats = plan.achats,
                 -- Recettes a apprendre en chemin (une seule fois chacune). Elles
@@ -209,8 +211,10 @@ local function ObjectifsDeProgression(liste)
                     -- le meme calcul, recettes a apprendre comprises, dit lesquelles.
                     local source = plan
                     if sien.rang < vise and (plan.atteint or sien.rang) < vise then
-                        local ok, avec = pcall(catalogue.Progression, ligne, seg.de or sien.rang, sien.rangMax, vise, nil, true)
-                        if ok and avec then source = avec end
+                        -- Le meme plan fige, recettes a apprendre comprises
+                        -- (calcule une fois, pas a chaque affichage).
+                        local ok, segs = pcall(catalogue.PlansVises, fiche, cle, sien.rang, sien.rangMax, { vise }, true)
+                        if ok and segs and segs[1] then source = segs[1].plan end
                     end
                     local rangsRequis = {}
                     for _, etape in ipairs(source.etapes or {}) do
@@ -249,8 +253,8 @@ local function ObjectifsDeProgression(liste)
                 lignes = (function()
                     local t = {}
                     for _, etape in ipairs(plan.etapes or {}) do
-                        if etape.recette and etape.recette.id and not etape.apprendre then
-                            table.insert(t, { recette = etape.recette.id, quantite = etape.fois or 1 })
+                        if etape.recette and etape.recette.id and not etape.apprendre and (etape.fois or 0) > 0 then
+                            table.insert(t, { recette = etape.recette.id, quantite = etape.fois })
                         end
                     end
                     return t
@@ -1170,6 +1174,9 @@ function suivi.Feuille(o)
     end
     local cle = CleObjectif(o)
     local avant = F[moi.cle][cle]
+    -- Rang vise : la memoire ne vaut que pour le meme plan fige (un nouveau
+    -- plan repart d'une feuille propre, sans etapes d'un ancien plan).
+    if type(avant) == "table" and o.planId and avant.planId ~= o.planId then avant = nil end
     local neuves = {}
     for _, e in ipairs(calcul) do neuves[e.cle] = e end
     local liste, vus = {}, {}
@@ -1185,8 +1192,11 @@ function suivi.Feuille(o)
                 e.rang = k
                 table.insert(liste, e)
                 vus[e.cle] = true
-            elseif not e.qui and CibleAtteinte(e) then
-                e.faite, e.preuve, e.rang = true, "sacs", k
+            elseif not e.qui and (CibleAtteinte(e) or (cle:sub(1, 4) == "prog" and e.cle ~= nil)) then
+                -- Une etape d'un rang vise que le plan fige ne demande plus est
+                -- faite : elle reste en vert a sa place, meme si une autre
+                -- etape a depuis consomme ce qu'elle avait reuni.
+                e.faite, e.preuve, e.rang = true, e.preuve or "sacs", k
                 table.insert(liste, e)
                 vus[e.cle] = true
             end
@@ -1206,7 +1216,7 @@ function suivi.Feuille(o)
         table.insert(garde, { cle = e.cle, phase = e.phase, qui = e.qui, titre = e.titre, lieu = e.lieu,
             blocs = e.blocs, faite = e.faite, preuve = e.preuve, cible = e.cible, envoye = e.envoye, texte = e.texte })
     end
-    F[moi.cle][cle] = { nom = o.nom, etapes = garde, quand = NS.Appeler(_G.time) or 0 }
+    F[moi.cle][cle] = { nom = o.nom, etapes = garde, quand = NS.Appeler(_G.time) or 0, planId = o.planId }
     return liste
 end
 

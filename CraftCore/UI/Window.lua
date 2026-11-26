@@ -3644,7 +3644,17 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     -- Rien ne change sans le choix du joueur : une fois la recette apprise,
     -- le plan propose de changer (plan actuel contre nouveau plan).
     do
-        local okA, alt = pcall(catalogue.Progression, ligneMetier, rang, rangMax, objectif, nil, true)
+        -- Calculee une fois par rang et par objectif, pas a chaque affichage.
+        ecran.memoAutreVoie = ecran.memoAutreVoie or {}
+        local cleAlt = tostring(fiche and fiche.cle) .. ":" .. tostring(ligneMetier) .. ":" .. tostring(rang) .. ":" .. tostring(objectif)
+            .. ":" .. tostring(catalogue.VersionDesPlans and catalogue.VersionDesPlans() or 0)
+        local memoAlt = ecran.memoAutreVoie[cleAlt]
+        if not memoAlt then
+            local okM, altM = pcall(catalogue.Progression, ligneMetier, rang, rangMax, objectif, nil, true)
+            memoAlt = { ok = okM, alt = altM }
+            ecran.memoAutreVoie = { [cleAlt] = memoAlt }
+        end
+        local okA, alt = memoAlt.ok, memoAlt.alt
         -- Au moins aussi haut que le plan actuel.
         local atteintActuel = objectif
         for _, seg in ipairs(segments) do atteintActuel = math.min(atteintActuel, seg.plan.atteint or seg.vise) end
@@ -3908,12 +3918,17 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                     rangs = rangs .. "  " .. (etape.moyenne and etape.moyenne < etape.fois
                         and string.format(L.PROG_PROBABLE_PLANNED, etape.moyenne) or L.PROG_PROBABLE_TAG)
                 end
+                -- Une etape faite reste a sa place, en vert ; un rattrapage
+                -- (malchance au-dela de la marge) est dit.
+                if etape.faite then rangs = "|cff4fd16a" .. (NS.L.PROG_STEP_DONE or "Fait") .. "|r"
+                elseif etape.rattrapage then rangs = rangs .. "  " .. string.format(NS.L.PROG_CATCH_UP or "+%d", etape.rattrapage) end
                 local l
                 index, y, l = LigneSimple(contenu, index, y, objet and Icone(objet),
-                    (etape.recette.nom or "?") .. "  |cffffffffx" .. etape.fois .. "|r", rangs)
+                    (etape.recette.nom or "?") .. "  |cffffffffx" .. (etape.faite and (etape.foisPrevues or 0) or etape.fois) .. "|r", rangs)
                 if l then
-                    if etape.probable then l.total:SetTextColor(1, 0.82, 0) else l.total:SetTextColor(0.31, 0.82, 0.41) end
-                    Creer(l, etape.recette, etape.fois)
+                    if etape.faite then l.total:SetTextColor(0.31, 0.82, 0.41)
+                    elseif etape.probable then l.total:SetTextColor(1, 0.82, 0) else l.total:SetTextColor(0.31, 0.82, 0.41) end
+                    if not etape.faite and (etape.fois or 0) > 0 then Creer(l, etape.recette, etape.fois) end
                     if objet then
                         l:EnableMouse(true)
                         l:SetScript("OnEnter", function(self)
