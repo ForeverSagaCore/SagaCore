@@ -37,7 +37,7 @@ if not _G.SagaCoreRoyaume then
     local PROVISOIRE = "Forever"
     -- Les sauvegardes presentes (sans trou : ipairs s'arreterait au premier absent).
     local NOMS_BASES = { "QuestCoreDB", "CraftCoreDB", "MapCoreDB", "LegacyCoreDB", "TradeCoreDB",
-        "FriendsCoreDB", "AchievementCoreDB", "PvPCoreDB" }
+        "FriendsCoreDB", "AchievementCoreDB", "PvPCoreDB", "ClassCoreDB" }
     local BASES = function(db)
         local l = {}
         for _, n in ipairs(NOMS_BASES) do if type(_G[n]) == "table" then table.insert(l, _G[n]) end end
@@ -261,6 +261,9 @@ Suite.ORDRE = {
     -- Les hauts faits (finir le jeu, avancement en pourcentage) : discret
     -- tant qu'il n'est pas publie (montre seulement s'il est installe).
     { cle = "AchievementCore", icone = "Interface\\Icons\\INV_Misc_Ribbon_01", discret = true, complement = true },
+    -- Ma classe (quetes de classe, reactifs, sorts, familiers) : discret,
+    -- montre seulement s'il est installe.
+    { cle = "ClassCore", icone = "Interface\\Icons\\INV_Misc_Book_09", discret = true, complement = true },
 }
 
 -- ---------------------------------------------------------------------------
@@ -286,7 +289,7 @@ function Suite.Complements()
         end)
     end
     if Suite.Prive and Suite.Prive() then Ajouter("Macros", Suite.ICONE_MACROCORE, function() Suite.OuvrirMacros() end) end
-    for _, cle in ipairs({ "TradeCore", "PvPCore" }) do
+    for _, cle in ipairs({ "ClassCore", "TradeCore", "PvPCore" }) do
         if Suite.membres[cle] then
             for _, info in ipairs(Suite.ORDRE) do if info.cle == cle then Ajouter(cle, info.icone) end end
         end
@@ -297,7 +300,7 @@ function Suite.Complements()
     end
     return liste
 end
-local CLES_COMPLEMENTS = { FriendsCore = true, AuraCore = true, Macros = true, TradeCore = true, PvPCore = true, AchievementCore = true }
+local CLES_COMPLEMENTS = { FriendsCore = true, AuraCore = true, Macros = true, TradeCore = true, PvPCore = true, AchievementCore = true, ClassCore = true }
 function Suite.EstComplement(cle) return cle ~= nil and CLES_COMPLEMENTS[cle] == true end
 -- Ouvre un complement (et ferme la fenetre de complement d'ou l'on vient).
 function Suite.OuvrirComplement(cle, depuis)
@@ -1670,7 +1673,7 @@ Suite.ADDONS_SUITE = { "CraftCore", "QuestCore", "MapCore", "LegacyCore", "Stuff
 -- Chaque commande bascule vers sa suite, ou revient a la normale si on y est
 -- deja. TradeCore (prive, jamais publie) reste coupe en Live.
 local MODES_SUITE = { normale = "", dev = "Dev", live = "Live" }
-local PRIVES_HORS_LIVE = { "TradeCore" }
+local PRIVES_HORS_LIVE = { "TradeCore", "ClassCore" }
 function Suite.ModeSuite()
     local A = _G.C_AddOns or {}
     local charge = A.IsAddOnLoaded or _G.IsAddOnLoaded
@@ -8484,7 +8487,7 @@ end
 
 local BASES = { CraftCore = "CraftCoreDB", QuestCore = "QuestCoreDB", MapCore = "MapCoreDB",
     LegacyCore = "LegacyCoreDB", TradeCore = "TradeCoreDB" }
-local PRIVES = { TradeCore = true }
+local PRIVES = { TradeCore = true, ClassCore = true }
 -- Cles de la suite qui ne voyagent pas : propres au compte ou au personnage.
 local HORS_PROFIL = { profils = true, prive = true, macrosDesPersos = true, raccourcisOff = true, guidage = true }
 
