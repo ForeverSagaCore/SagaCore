@@ -3478,6 +3478,9 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         if seg.plan.probable then auHasard = true end
         if k == 1 or not auHasard then rangSur = math.max(rangSur, seg.plan.rangSur or seg.de) end
     end
+    -- Pas sur a 100 % : le de du jeu devant le rang (atteint avec de la
+    -- chance, en theorie).
+    if auHasard then for k, v in ipairs(noms) do noms[k] = (NS.ICONE_CHANCE or "") .. v end end
     y = Paragraphe(contenu, y + 6, string.format(L.GUIDE_TARGETS, table.concat(noms, ", ")), POLICE, auHasard and OR or VERT, aligne)
     if auHasard then
         local texteSur = (rangSur > rang) and string.format(L.GUIDE_SURE_UNTIL, rangSur) or L.GUIDE_SURE_NONE
@@ -3647,7 +3650,7 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         -- Calculee une fois par rang et par objectif, pas a chaque affichage.
         ecran.memoAutreVoie = ecran.memoAutreVoie or {}
         local cleAlt = tostring(fiche and fiche.cle) .. ":" .. tostring(ligneMetier) .. ":" .. tostring(rang) .. ":" .. tostring(objectif)
-            .. ":" .. tostring(catalogue.VersionDesPlans and catalogue.VersionDesPlans() or 0)
+            .. ":" .. tostring(catalogue.versionRecettes or 0)
         local memoAlt = ecran.memoAutreVoie[cleAlt]
         if not memoAlt then
             local okM, altM = pcall(catalogue.Progression, ligneMetier, rang, rangMax, objectif, nil, true)
@@ -3898,7 +3901,8 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                 local l
                 index, y, l = LigneSimple(contenu, index, y, "Interface\\Icons\\INV_Misc_Book_09",
                     string.format(L.GUIDE_LEARN, etape.recette.nom or "?"),
-                    string.format(L.GUIDE_LEARN_AT, etape.rangRequis or etape.de) .. "  " .. (L[nature or ""] or ""))
+                    etape.faite and ("|cff4fd16a" .. (L.PROG_STEP_DONE or "Fait") .. "|r")
+                    or (string.format(L.GUIDE_LEARN_AT, etape.rangRequis or etape.de) .. "  " .. (L[nature or ""] or "")))
                 if l then
                     l.total:SetTextColor(0.31, 0.82, 0.41)
                     l:EnableMouse(true)
@@ -3913,9 +3917,9 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                 end
               else
                 local objet = etape.recette.objetProduit
-                local rangs = string.format(L.PROG_RANKS, etape.de, etape.a)
+                local rangs = (etape.probable and not etape.faite and (NS.ICONE_CHANCE or "") or "") .. string.format(L.PROG_RANKS, etape.de, etape.a)
                 if etape.probable then
-                    rangs = rangs .. "  " .. (etape.moyenne and etape.moyenne < etape.fois
+                    rangs = rangs .. "  " .. (etape.moyenne and etape.moyenne < (etape.foisPrevues or etape.fois)
                         and string.format(L.PROG_PROBABLE_PLANNED, etape.moyenne) or L.PROG_PROBABLE_TAG)
                 end
                 -- Une etape faite reste a sa place, en vert ; un rattrapage
