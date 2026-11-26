@@ -1000,7 +1000,7 @@ local function Construire()
     cuir:Hide()
     cadre.cuir = cuir
     -- Panneau ferme : la touche A rend sa place au jeu.
-    cadre:HookScript("OnHide", function(self) pcall(_G.ClearOverrideBindings, self) end)
+
     cadre:Hide()
     return cadre
 end
@@ -1057,12 +1057,11 @@ end
 -- Touche Y de la manette sur la premiere action du panneau (Tout sortir,
 -- Preparer l'envoi), le temps que le panneau est ouvert. Une liaison
 -- prioritaire, retiree des que le panneau se ferme ; jamais en combat.
-function courrier.ToucheManette()
-    local gp = _G.C_GamePad
-    if not (gp and gp.IsEnabled) then return false end
-    local ok, actif = pcall(gp.IsEnabled)
-    return ok and actif == true
-end
+-- Plus aucune touche prise par le panneau : modifier les liaisons de touches
+-- pendant que la manette du jeu est active derangeait sa gestion des touches
+-- (actions bloquees par le jeu, jusqu'a ne plus pouvoir quitter). Le curseur
+-- de la manette du jeu clique les boutons du panneau comme les autres.
+function courrier.ToucheManette() return false end
 
 -- La touche passe par un bouton cache, inscrit pour l'appui : le jeu
 -- declenche une touche liee a l'appui, et un bouton du jeu qui n'ecoute que le
@@ -1104,7 +1103,6 @@ end
 local function LierManette(actif)
     if not panneau then return end
     if NS.Appeler(NS.Lecture("InCombatLockdown")) then return end
-    pcall(_G.ClearOverrideBindings, panneau)
     if actif and courrier.ToucheManette() and #(panneau.elements or {}) > 0 then
         Relais()
         RelaisSuivant()

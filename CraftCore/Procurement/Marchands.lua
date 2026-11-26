@@ -768,13 +768,14 @@ end
 
 -- Met l'objet de cette case en vente dans la fenetre de l'hotel des ventes :
 -- le jeu propose son prix, le joueur verifie et valide lui-meme.
+-- On ne touche jamais aux fenetres du jeu (cela les « salirait » et la mise
+-- en vente pourrait etre bloquee) : l'objet est pris en main, le joueur le
+-- pose dans la case de vente de l'hotel des ventes.
 function encheres.MettreEnVente(sac, case)
-    local f = _G.AuctionHouseFrame
-    local Loc = _G.ItemLocation
-    if not (f and f.SetPostItem and Loc and Loc.CreateFromBagAndSlot) then return false end
-    local okL, loc = pcall(Loc.CreateFromBagAndSlot, Loc, sac, case)
-    if not okL or not loc then return false end
-    local ok = pcall(f.SetPostItem, f, loc)
+    local prendre = NS.Lecture("C_Container.PickupContainerItem", "PickupContainerItem")
+    if not prendre then return false end
+    if NS.Appeler(NS.Lecture("InCombatLockdown")) then return false end
+    local ok = pcall(prendre, sac, case)
     return ok
 end
 
