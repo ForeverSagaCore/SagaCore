@@ -2285,7 +2285,7 @@ function RendreCommerceBas(contenu, index, y, fiche, gardees)
                 if c then l.palier:SetVertexColor(c[1], c[2], c[3]) end
                 l.palier:SetShown(p.point ~= "rien")
             end
-            l.sacs:SetText(p.rang > 0 and tostring(p.rang) or "")
+            l.sacs:SetText(p.rang > 0 and ((p.rangEstime and "|cff8c8c8c~" or "") .. tostring(p.rang) .. (p.rangEstime and "|r" or "")) or "")
             l.banque:SetText(p.niveau > 0 and tostring(p.niveau) or "")
             l.courrier:SetText(TextePrix(p.prix, p.estime))
             PoserEtat(l, p)

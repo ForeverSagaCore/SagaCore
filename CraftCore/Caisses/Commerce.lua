@@ -35,7 +35,8 @@ local function Base()
     local langue = NS.Appeler(GetLocale) or "?"
     -- Version 2 : le niveau requis du personnage est lu aussi.
     -- Version 3 : un patron sans rang requis lu n'est plus garde tel quel.
-    if b.langue ~= langue or b.version ~= 3 then b.langue = langue b.version = 3 b.patrons = {} end
+    -- Version 4 : rang requis lu sur la ligne du metier, quelle que soit sa forme.
+    if b.langue ~= langue or b.version ~= 4 then b.langue = langue b.version = 4 b.patrons = {} end
     b.patrons = type(b.patrons) == "table" and b.patrons or {}
     b.prix = type(b.prix) == "table" and b.prix or {}
     return b
@@ -179,6 +180,9 @@ local function Lire(objet)
     -- Une infobulle incomplete (objet pas encore charge) n'est pas gardee.
     if #lignes < 2 then Demander(objet) return nil end
     local p = { nom = nom }
+    local metier = D.PATRONS[objet]
+    local nomMetier = metier and NS.recettes.NomDuMetier and NS.recettes.NomDuMetier(metier)
+    nomMetier = nomMetier and NS.caisses.Plier(nomMetier) or nil
     local mCompetence, mReputation, mNiveau = Motif(_G.ITEM_REQ_SKILL), Motif(_G.ITEM_REQ_REPUTATION), Motif(_G.ITEM_MIN_LEVEL)
     for _, texte in ipairs(lignes) do
         if mNiveau and not p.niveau then
@@ -189,6 +193,18 @@ local function Lire(objet)
             local _, rang = texte:match(mCompetence)
             if rang then p.rang = tonumber(rang) end
         end
+        -- Toute forme de la ligne : le nom du metier suivi de « (275) »
+        -- (espace insecable, couleur, libelle different du client).
+        if not p.rang then
+            local plie = NS.caisses.Plier(texte)
+            local premier = type(_G.ITEM_REQ_SKILL) == "string" and _G.ITEM_REQ_SKILL:match("^(%S+)")
+            local surMetier = nomMetier and plie and plie:find(nomMetier, 1, true)
+            local surRequis = premier and texte:find(premier, 1, true) == 1
+            if surMetier or surRequis then
+                local rang = texte:match("%((%d+)%)")
+                if rang then p.rang = tonumber(rang) end
+            end
+        end
         local faction, palier = nil, nil
         if mReputation then faction, palier = texte:match(mReputation) end
         if palier and not p.palier then p.palier = PalierDuLibelle(palier) or 4 end
@@ -197,6 +213,13 @@ local function Lire(objet)
     -- Le rang requis manque : l'infobulle n'etait pas complete (objet
     -- fabrique pas encore charge). On relira, trois fois au plus.
     if not p.rang then
+        -- Diagnostic : ce que l'infobulle disait (lu apres un /reload).
+        b.diag = b.diag or {}
+        if not b.diag[objet] then
+            local copie = {}
+            for k, t in ipairs(lignes) do copie[k] = t end
+            b.diag[objet] = copie
+        end
         essais[objet] = (essais[objet] or 0) + 1
         Demander(objet)
         if essais[objet] < 3 then return p end
@@ -287,7 +310,8 @@ function C.Patrons(fiche, metier)
                 local rec = r and CraftCoreDB.recettes[tostring(r)]
                 local R2 = NS.recettes
                 if type(rec) == "table" then
-                    if e.rang == 0 and R2.RangRequis then e.rang = tonumber(R2.RangRequis(rec)) or 0 end
+                    -- Le rang du catalogue n'est qu'un repli (il peut etre estime).
+                    if e.rang == 0 and R2.RangRequis then e.rang = tonumber(R2.RangRequis(rec)) or 0 e.rangEstime = e.rang > 0 end
                     if R2.FinDuOrange and R2.FinDuOrange(rec) and R2.ChanceDePoint and rangMetier > 0 then
                         local ok, chance = pcall(R2.ChanceDePoint, rec, rangMetier)
                         if ok and chance then
