@@ -3060,35 +3060,31 @@ end
 -- s'il revient ; rien n'est remplace. Jamais en combat.
 local SUIVIS_DU_JEU = { "ObjectiveTrackerFrame", "QuestWatchFrame", "WatchFrame" }
 local suivisAccroches = {}
--- Le jeu re-montre son suivi a chaque quete prise (et le replace) : le
--- cacher ne tient pas. Il est donc range dans un cadre toujours cache : quoi
--- que fasse le jeu, il ne se voit plus. Rendu a son parent d'origine quand
--- le reglage repasse sur Afficher. Jamais en combat (repris a la sortie).
-local rangement
-local parents = {}
-local function Rangement()
-    if not rangement then
-        rangement = CreateFrame("Frame")
-        rangement:Hide()
-    end
-    return rangement
-end
+-- Le jeu re-montre son suivi a chaque quete prise : il est recache a chaque
+-- fois (OnShow), sans jamais le changer de parent ni de place. Le deplacer
+-- dans un cadre cache le laissait « montre » mais invisible, et les add-ons
+-- qui se calent sur lui (ShortestPathForever) lisaient un cadre sans place.
+-- Cache pour de bon, il dit clairement qu'il est cache. En combat, il ne peut
+-- pas etre cache (il contient des boutons d'objets proteges) : il devient
+-- seulement transparent, et il est cache a la sortie du combat.
+local enAttente = {}
 
 local function MasquerSiDemande(f)
     if not Reglages().masquerNatif then return end
-    if InCombatLockdown and InCombatLockdown() then return end
-    if f:GetParent() ~= Rangement() then
-        parents[f] = parents[f] or f:GetParent() or UIParent
-        pcall(f.SetParent, f, Rangement())
+    if InCombatLockdown and InCombatLockdown() then
+        pcall(f.SetAlpha, f, 0)
+        enAttente[f] = true
+        return
     end
+    enAttente[f] = nil
     pcall(f.Hide, f)
+    pcall(f.SetAlpha, f, 1)
 end
 
 local function RendreAuJeu(f)
     if InCombatLockdown and InCombatLockdown() then return end
-    if rangement and f:GetParent() == rangement then
-        pcall(f.SetParent, f, parents[f] or UIParent)
-    end
+    enAttente[f] = nil
+    pcall(f.SetAlpha, f, 1)
     pcall(f.Show, f)
 end
 
