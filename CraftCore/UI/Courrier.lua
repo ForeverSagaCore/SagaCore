@@ -1602,7 +1602,7 @@ local function Remplir(plan)
         y = y + 16
     end
     -- Une ligne : case (facultative), icone, nom, colonnes, bouton (facultatif).
-    local function LigneTableau(objet, cols, bouton, caseC)
+    local function LigneTableau(objet, cols, bouton, caseC, couleurNom)
         local gauche = x0 + 2
         if caseC then
             nc = nc + 1
@@ -1642,7 +1642,7 @@ local function Remplir(plan)
         t:ClearAllPoints()
         t:SetPoint("LEFT", icone, "RIGHT", 6, 0)
         t:SetWidth(math.max(40, limite - (gauche + 22) - 6))
-        t:SetText(NS.inventaire.NomDObjet(objet))
+        t:SetText((couleurNom and ("|cff" .. couleurNom) or "") .. NS.inventaire.NomDObjet(objet) .. (couleurNom and "|r" or ""))
         y = y + 22
     end
     -- Un titre de section (metier, objectif) avec un petit bouton a droite.
@@ -1977,6 +1977,33 @@ local function Remplir(plan)
             if not prix and not absent then table.insert(sansPrix, p.objet) end
         end
         Releve(sansPrix)
+        -- Les recettes que mon plan prevoit d'apprendre (ou la voie plus
+        -- courte proposee par le guide) : en tete, en vert, marquees.
+        local duPlan = {}
+        local moiR = NS.base.Personnage and NS.base.Personnage()
+        pcall(function()
+            for _, cle in ipairs(moiR and NS.recettes.MetiersVises(moiR) or {}) do
+                local sien = moiR.metiers[tostring(cle)]
+                if type(sien) == "table" and sien.rang then
+                    for _, seg in ipairs(NS.recettes.PlansVises(moiR, cle, sien.rang, sien.rangMax)) do
+                        for _, e in ipairs(seg.plan.aApprendre or {}) do
+                            if e.recette and e.recette.id then duPlan["r" .. tostring(e.recette.id)] = true end
+                        end
+                    end
+                end
+            end
+        end)
+        local g = NS.base.ReglagesGeneraux()
+        for cle in pairs(type(g.plansARelever) == "table" and g.plansARelever or {}) do duPlan["o" .. tostring(cle)] = true end
+        -- Et celles que le suivi retient pour mes rangs vises.
+        for k, memo in pairs(type(g.aApprendre) == "table" and g.aApprendre or {}) do
+            if moiR and type(k) == "string" and k:sub(1, #tostring(moiR.cle) + 1) == tostring(moiR.cle) .. ":" and type(memo) == "table" then
+                for id in pairs(memo) do duPlan["r" .. tostring(id)] = true end
+            end
+        end
+        local function EstDuPlan(p)
+            return duPlan["o" .. tostring(p.objet)] or (p.recette and duPlan["r" .. tostring(p.recette.id)]) or false
+        end
         local parMetier, ordre = {}, {}
         for _, p in ipairs(plans) do
             local nom = (NS.recettes.NomDuMetier and NS.recettes.NomDuMetier(p.metier)) or tostring(p.metier or "?")
@@ -1988,17 +2015,20 @@ local function Remplir(plan)
         for _, nom in ipairs(ordre) do
             local liste = parMetier[nom]
             table.sort(liste, function(a2, b2)
+                local pa, pb = EstDuPlan(a2) and 0 or 1, EstDuPlan(b2) and 0 or 1
+                if pa ~= pb then return pa < pb end
                 if (a2.rang or 0) ~= (b2.rang or 0) then return (a2.rang or 0) < (b2.rang or 0) end
                 return NS.inventaire.NomDObjet(a2.objet) < NS.inventaire.NomDObjet(b2.objet)
             end)
             Section(nom)
-            EnTete(L().AH_COL_RECIPE, { { L().AH_COL_RANK, COL_RANG }, { L().AH_COL_UNIT, COL_PRIX } }, true)
+            EnTete(L().AH_COL_RECIPE, { { "", COL_PRIX }, { L().AH_COL_RANK, COL_RANG }, { L().AH_COL_UNIT, COL_PRIX } }, true)
             for _, p in ipairs(liste) do
                 local prix, _, absent = NS.encheres.Prix(p.objet, 1)
                 local o = p.objet
-                LigneTableau(o, { { tostring(p.rang), COL_RANG },
+                local plan = EstDuPlan(p)
+                LigneTableau(o, { { plan and ("|cff4fd16a" .. (L().AH_IN_MY_PLAN or "") .. "|r") or "", COL_PRIX }, { tostring(p.rang), COL_RANG },
                     { prix and NS.marchands.Monnaie(prix) or ("|cff8c8c8c" .. (absent and L().AH_COL_NONE or L().AH_NEVER) .. "|r"), COL_PRIX } },
-                    { libelle = L().AH_FIND_SHORT, auClic = function() NS.encheres.Chercher(o) end, cle = nom })
+                    { libelle = L().AH_FIND_SHORT, auClic = function() NS.encheres.Chercher(o) end, cle = nom }, nil, plan and "4fd16a" or nil)
             end
         end
     end
