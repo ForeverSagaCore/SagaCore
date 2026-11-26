@@ -994,16 +994,15 @@ function encheres.AVendre()
             end
         end
     end
+    -- Tout ce qui se vend est propose ; ce dont mes fabrications se servent
+    -- est seulement signale (v.utile : combien elles en demandent).
     local rendu = {}
     for _, v in ipairs(liste) do
-        local reste = v.nombre - (garde[v.objet] or 0)
-        if reste > 0 then
-            v.nombre = reste
-            local prix, quand = encheres.Prix(v.objet, reste)
-            v.releve = quand ~= nil
-            if prix then v.unite = prix * (1 - COMMISSION) end
-            table.insert(rendu, v)
-        end
+        if (garde[v.objet] or 0) > 0 then v.utile = garde[v.objet] end
+        local prix, quand = encheres.Prix(v.objet, v.nombre)
+        v.releve = quand ~= nil
+        if prix then v.unite = prix * (1 - COMMISSION) end
+        table.insert(rendu, v)
     end
     table.sort(rendu, function(a, b)
         local va, vb = (a.unite or 0) * a.nombre, (b.unite or 0) * b.nombre
