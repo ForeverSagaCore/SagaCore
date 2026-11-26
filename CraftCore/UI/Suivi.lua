@@ -186,7 +186,12 @@ local function ObjectifsDeProgression(liste)
             for objet, n in pairs(plan.manques or {}) do manques[objet] = n end
             for objet, n in pairs(plan.achats or {}) do
                 requis[objet] = (requis[objet] or 0) + n
-                manques[objet] = (manques[objet] or 0) + math.max(0, n - (NS.inventaire.TotalPossede(objet) or 0))
+                -- Ce qui se vend partout ne se fait pas envoyer par un autre
+                -- personnage : seul ce que j'ai moi-meme compte (sacs, banque,
+                -- courrier), comme l'etape « Acheter chez un marchand ».
+                local sacs, banque, courrier = NS.inventaire.SacsEtBanque(fiche, objet)
+                local miens = (sacs or 0) + (banque or 0) + (courrier or 0)
+                manques[objet] = (manques[objet] or 0) + math.max(0, n - miens)
             end
             local total, manque = 0, 0
             for objet, n in pairs(requis) do
