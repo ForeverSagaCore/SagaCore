@@ -2807,8 +2807,13 @@ local function RendreListeDeProjets(contenu, progressions)
 
     local liste = {}
     for _, projet in ipairs(NS.projets.Tous(true)) do
+        -- Un projet vide est fini (tout a ete fabrique) : il quitte la liste,
+        -- sauf celui qu'on est en train de remplir (la destination des ajouts).
+        local vide = #(NS.projets.Contenu(projet.id) or {}) == 0
+        local enRemplissage = NS.projets.Destination() == projet.id
         if (NS.projets.EstDeProgression(projet) == true) == (progressions == true)
-            and not (NS.commandes and NS.commandes.EstCommande(projet)) then table.insert(liste, projet) end
+            and not (NS.commandes and NS.commandes.EstCommande(projet))
+            and (not vide or enRemplissage) then table.insert(liste, projet) end
     end
     if #liste == 0 then
         y = Paragraphe(contenu, y, progressions and L.PROGRESSIONS_NO_PROJECT or L.PROJECTS_NONE, "GameFontDisableSmall")
