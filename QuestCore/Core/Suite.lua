@@ -4717,7 +4717,11 @@ local TP = Paresseux({
 -- defaut) y entre ; on y navigue ensuite comme dans les autres fenetres.
 -- Une seule touche, posee a l'ouverture et retiree a la fermeture, jamais
 -- en combat ; A, B et les autres restent au jeu.
+-- Desactive : poser une touche (meme une seule, libre) pendant que la
+-- manette du jeu est active faisait bloquer une action du jeu au courrier.
+local ENTREE_PAR_TOUCHE = false
 function Suite.ToucheDEntree(f, nom)
+    if not ENTREE_PAR_TOUCHE then return end
     if not f or f.toucheDEntree then return end
     f.toucheDEntree = true
     f.nomDEntree = nom or (f.GetName and f:GetName())
