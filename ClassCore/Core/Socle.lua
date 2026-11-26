@@ -4,7 +4,7 @@ local _, NS = ...
 -- attend de chaque add-on. ClassCore peut ainsi vivre seul, avec la meme
 -- fenetre et les memes reglages que la suite complete.
 
-NS.VERSION = "2.5.4"
+NS.VERSION = "2.5.5"
 NS.base = {}
 local base = NS.base
 
