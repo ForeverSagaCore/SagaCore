@@ -14,7 +14,7 @@
 
 Chaque add-on s'installe aussi seul (StuffCore demande CraftCore). Installés ensemble, ils partagent la même interface (barre des personnages, menus, paramètres), le même personnage choisi et le même guidage, toujours annulable. Tout se joue aussi à la manette, en 7 langues.
 
-**Nouveautés de la 2.1** : monter un métier vraiment guidé (plan figé, proposé jamais imposé), séries de fabrication complètes, vente à l'hôtel des ventes depuis CraftCore, quêtes et métiers reliés, guidage plus sûr, manette dans toutes les petites fenêtres. Le détail : [notes de la 2.1.0](notes/2.1.0.md).
+**Nouveautés de la 2.1** : monter un métier vraiment guidé (plan figé, proposé jamais imposé), séries de fabrication complètes, vente à l'hôtel des ventes depuis CraftCore, quêtes et métiers reliés, guidage plus sûr, manette dans toutes les petites fenêtres. Le détail : [notes de la 2.1.0](notes/2.1.0.md), correctif [2.1.1](notes/2.1.1.md).
 
 **Nouveautés de la 2.0** : interface commune à toute la suite, un personnage = une seule fiche, guidage annulable qui ne chevauche jamais un add-on d'itinéraire, feuille de route et banquiers dans CraftCore, itinéraires dans MapCore, donjons réécrits dans QuestCore. Le détail : [notes de la 2.0.0](notes/2.0.0.md).
 
