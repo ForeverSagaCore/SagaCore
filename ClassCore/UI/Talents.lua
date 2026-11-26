@@ -432,18 +432,71 @@ local ACTIVITES = {
     groupe = function() return T("Montée en groupe", "Group levelling") end,
     jce = function() return T("Raids et donjons (60)", "Raids and dungeons (60)") end,
     jcj = function() return T("JcJ", "PvP") end,
+    farm = function() return T("Farm", "Farming") end,
+    mes = function() return T("Mes modèles", "My builds") end,
+    recus = function() return T("Modèles reçus", "Received builds") end,
 }
-local ORDRE_ACTIVITES = { "solo", "donjons", "groupe", "jce", "jcj" }
+local ORDRE_ACTIVITES = { "solo", "donjons", "groupe", "jce", "jcj", "farm", "mes", "recus" }
+Ta.ACTIVITES, Ta.ORDRE_ACTIVITES = ACTIVITES, ORDRE_ACTIVITES
+
+-- La cle d'un talent dans la grille (arbre:rangee:colonne), stable d'une
+-- lecture a l'autre.
+function Ta.CleTalent(t) return t.arbre .. ":" .. t.rangee .. ":" .. t.colonne end
+
+-- L'ordre des points en code (une lettre par changement d'arbre, un
+-- caractere par point : la case de la grille de 4 colonnes, en base 36).
+function Ta.Coder(suite)
+    local morceaux, arbre = {}, nil
+    for _, t in ipairs(suite or {}) do
+        local i = (t.rangee - 1) * 4 + (t.colonne - 1)
+        if t.colonne > 4 or i > 35 then return nil end
+        if t.arbre ~= arbre then arbre = t.arbre table.insert(morceaux, ({ "A", "B", "C" })[arbre] or "A") end
+        table.insert(morceaux, string.sub("0123456789abcdefghijklmnopqrstuvwxyz", i + 1, i + 1))
+    end
+    return table.concat(morceaux)
+end
+
+-- L'ordre des points de la simulation : celui des clics, complete (s'il en
+-- manque) par l'arbre principal d'abord, de haut en bas.
+function Ta.OrdreSimulation(s)
+    if not s then return {} end
+    local idx = {}
+    for _, a in ipairs(s.arbres) do for _, t in ipairs(a.talents) do idx[Ta.CleTalent(t)] = t end end
+    local rangs, suite = {}, {}
+    for _, cle in ipairs(Ta.sim.ordre or {}) do
+        local t = idx[cle]
+        if t and (rangs[t.id] or 0) < (Ta.sim.rangs[t.id] or 0) and Ta.Ajouter(s, rangs, t) then table.insert(suite, t) end
+    end
+    local reste = 0
+    for _, a in ipairs(s.arbres) do for _, t in ipairs(a.talents) do reste = reste + math.max(0, (Ta.sim.rangs[t.id] or 0) - (rangs[t.id] or 0)) end end
+    while reste > 0 do
+        local pose = false
+        for _, a in ipairs(s.arbres) do
+            for _, t in ipairs(a.talents) do
+                if (rangs[t.id] or 0) < (Ta.sim.rangs[t.id] or 0) and Ta.Ajouter(s, rangs, t) then
+                    table.insert(suite, t) reste = reste - 1 pose = true break
+                end
+            end
+            if pose then break end
+        end
+        if not pose then break end
+    end
+    return suite
+end
 
 -- { { nom, icone, suite, rangs, repartition, modele } } pour une structure.
 function Ta.Modeles(classe, s)
     local liste = {}
     if not s then return liste end
     local diag = {}
-    for _, m in ipairs(NS.MODELES and NS.MODELES[classe or ""] or {}) do
+    local sources = {}
+    for i, m in ipairs(NS.MODELES and NS.MODELES[classe or ""] or {}) do table.insert(sources, { m = m, cle = "std:" .. i }) end
+    for _, e in ipairs(NS.mesModeles and NS.mesModeles.Liste(classe) or {}) do table.insert(sources, e) end
+    for _, src in ipairs(sources) do
+        local m = src.m
         local suite, rangs
         if m.code then suite, rangs = Ta.Decoder(s, m.code) else suite, rangs = Ta.DecoderRangs(s, m.rangs) end
-        if not suite then table.insert(diag, tostring(m.code or m.rangs):sub(1, 14) .. " : " .. tostring(rangs)) end
+        if not suite and src.cle:sub(1, 4) == "std:" then table.insert(diag, tostring(m.code or m.rangs):sub(1, 14) .. " : " .. tostring(rangs)) end
         if suite then
             local _, parArbre = Ta.Depenses(s, rangs)
             local rep, principal, maxi = {}, 1, -1
@@ -452,11 +505,12 @@ function Ta.Modeles(classe, s)
                 if (parArbre[k] or 0) > maxi then principal, maxi = k, parArbre[k] or 0 end
             end
             local a = s.arbres[principal] or s.arbres[1]
-            local nom = a.nom or ""
+            local nom = m.nom or a.nom or ""
             if m.variante == "saignement" then nom = nom .. " " .. T("(saignements)", "(bleeds)") end
             if m.jusqua then nom = nom .. " " .. string.format(T("(jusqu'au niveau %d)", "(up to level %d)"), m.jusqua) end
+            if m.auteur and m.activite == "recus" then nom = nom .. " " .. string.format(T("(de %s)", "(from %s)"), m.auteur) end
             table.insert(liste, { nom = nom, icone = a.icone, suite = suite, rangs = rangs, arbre = principal,
-                repartition = table.concat(rep, "/"), modele = m })
+                repartition = table.concat(rep, "/"), modele = m, cle = src.cle, index = src.index })
         end
     end
     -- Ce qui n'a pas pu se lire, garde pour corriger (sauvegardes).
@@ -721,12 +775,14 @@ end
 
 local function ChargerModele(m, classe)
     local budget = math.max(0, (Ta.sim.niveau or 60) - 9)
-    Ta.sim.classe, Ta.sim.rangs = classe, {}
+    Ta.sim.classe, Ta.sim.rangs, Ta.sim.ordre = classe, {}, {}
     for i, t in ipairs(m.suite) do
         if i > budget then break end
         Ta.sim.rangs[t.id] = (Ta.sim.rangs[t.id] or 0) + 1
+        table.insert(Ta.sim.ordre, Ta.CleTalent(t))
     end
 end
+Ta.ChargerModele = ChargerModele
 
 -- Les modeles conseilles : une rubrique, deux listes sur sa ligne de titre
 -- (l'activite, puis la specialisation) et le modele choisi dessous. Choisir
@@ -749,15 +805,15 @@ local function ModeleChoisi(page, s, classe, rangs)
     local _, parArbre = Ta.Depenses(s, rangs)
     local principal, maxi = 1, -1
     for k = 1, #s.arbres do if (parArbre[k] or 0) > maxi then principal, maxi = k, parArbre[k] or 0 end end
-    local function Trouver(act, arbre)
+    local function Trouver(act, arbre, cle)
         for _, m in ipairs(liste) do
-            if m.modele.activite == act and (arbre == nil or m.arbre == arbre) then return m end
+            if m.modele.activite == act and (arbre == nil or m.arbre == arbre) and (cle == nil or m.cle == cle) then return m end
         end
     end
     local act = c.activite or "solo"
     if not Trouver(act) then act = liste[1].modele.activite end
-    local m = Trouver(act, c.arbre or principal) or Trouver(act)
-    c.activite, c.arbre = act, m and m.arbre
+    local m = (c.cle and Trouver(act, nil, c.cle)) or Trouver(act, principal) or Trouver(act)
+    c.activite, c.cle = act, m and m.cle
     return m, liste
 end
 
@@ -779,7 +835,7 @@ local function BlocModele(page, s, classe, rangs, simulation)
         bouton = { texte = T("Charger", "Load"), action = function()
             ChargerModele(m, classe)
             page.mode = "simulation"
-        end } } } }
+        end } } } }, m
 end
 
 local function RendreSous(page, y, blocs)
@@ -821,6 +877,7 @@ function Ta.Page()
     return { cle = "talents", icone = "Interface\\Icons\\Ability_Marksmanship",
         libelle = function() return T("Talents", "Talents") end,
         construire = function(page, O)
+            Ta.pageActive = page
             page.t1 = O.Section()
             -- La liste sur la ligne du titre, calee a droite.
             local r = CreateFrame("Frame", nil, page.cadre)
@@ -859,17 +916,17 @@ function Ta.Page()
                 end
                 return l
             end, function() local p = NS.fenetre.Profil() or {} return (Ta.choix[p.classe or ""] or {}).activite end,
-            function(v) local p = NS.fenetre.Profil() or {} Ta.choix[p.classe or ""] = Ta.choix[p.classe or ""] or {} Ta.choix[p.classe or ""].activite = v Charger() end)
+            function(v) local p = NS.fenetre.Profil() or {} Ta.choix[p.classe or ""] = Ta.choix[p.classe or ""] or {} Ta.choix[p.classe or ""].activite = v Ta.choix[p.classe or ""].cle = nil Charger() end)
             page.choixSpe = O.Segments(page.rSpe, function()
                 local p, s = Contexte()
                 local c = Ta.choix[p.classe or ""] or {}
                 local l = {}
                 for _, m in ipairs(s and ModelesDispo(page, s, p.classe) or {}) do
-                    if m.modele.activite == c.activite then table.insert(l, { m.arbre, m.nom }) end
+                    if m.modele.activite == c.activite then table.insert(l, { m.cle, m.nom }) end
                 end
                 return l
-            end, function() local p = NS.fenetre.Profil() or {} return (Ta.choix[p.classe or ""] or {}).arbre end,
-            function(v) local p = NS.fenetre.Profil() or {} Ta.choix[p.classe or ""] = Ta.choix[p.classe or ""] or {} Ta.choix[p.classe or ""].arbre = v Charger() end)
+            end, function() local p = NS.fenetre.Profil() or {} return (Ta.choix[p.classe or ""] or {}).cle end,
+            function(v) local p = NS.fenetre.Profil() or {} Ta.choix[p.classe or ""] = Ta.choix[p.classe or ""] or {} Ta.choix[p.classe or ""].cle = v Charger() end)
             page.intro = O.Detail(36)
             -- La liste est a droite, sur la ligne de l'explication.
             page.intro:SetWidth(O.LARGEUR - 290)
@@ -881,15 +938,34 @@ function Ta.Page()
                 if Ta.sim.structure then Ajuster(Ta.sim.structure, Ta.sim.niveau - 9) end
             end)
             page.rPoints = O.Rangee(24)
-            page.vider = O.Bouton(page.rPoints, 90, function() Ta.sim.rangs = {} end)
+            page.vider = O.Bouton(page.rPoints, 90, function() Ta.sim.rangs = {} Ta.sim.ordre = {} end)
             page.vider:SetPoint("RIGHT", page.rPoints, "RIGHT", -10, 0)
             page.miens = O.Bouton(page.rPoints, 90, function()
                 local p = NS.fenetre.Profil() or {}
                 Ta.sim.rangs = Ta.Rangs(Ta.Structure(p, 1))
-                Ta.sim.classe = p.classe
+                Ta.sim.classe, Ta.sim.ordre = p.classe, {}
                 if Ta.sim.structure then Ajuster(Ta.sim.structure, (Ta.sim.niveau or 60) - 9) end
             end)
             page.miens:SetPoint("RIGHT", page.vider, "LEFT", -6, 0)
+            -- Mes modeles : enregistrer la simulation, l'exporter en code,
+            -- importer un code ou un lien de calculateur.
+            page.rMes = O.Rangee(24)
+            page.importer = O.Bouton(page.rMes, 90, function() if NS.mesModeles then NS.mesModeles.Importer() end end)
+            page.importer:SetPoint("RIGHT", page.rMes, "RIGHT", -10, 0)
+            page.exporter = O.Bouton(page.rMes, 90, function() if NS.mesModeles then NS.mesModeles.Exporter() end end)
+            page.exporter:SetPoint("RIGHT", page.importer, "LEFT", -6, 0)
+            page.enregistrer = O.Bouton(page.rMes, 90, function() if NS.mesModeles then NS.mesModeles.Enregistrer() end end)
+            page.enregistrer:SetPoint("RIGHT", page.exporter, "LEFT", -6, 0)
+            -- Le modele choisi, s'il est a moi ou recu : le partager, le garder, le supprimer.
+            page.rChoisi = O.Rangee(24)
+            page.supprimer = O.Bouton(page.rChoisi, 90, function() if NS.mesModeles and page.modeleChoisi then NS.mesModeles.Supprimer(page.modeleChoisi) end end)
+            page.supprimer:SetPoint("RIGHT", page.rChoisi, "RIGHT", -10, 0)
+            page.partager = O.Bouton(page.rChoisi, 90, function()
+                if not (NS.mesModeles and page.modeleChoisi) then return end
+                if page.modeleChoisi.modele.activite == "recus" then NS.mesModeles.Garder(page.modeleChoisi)
+                else NS.mesModeles.Partager(page.modeleChoisi) end
+            end)
+            page.partager:SetPoint("RIGHT", page.supprimer, "LEFT", -6, 0)
             page.zone = O.Rangee(20)
             page.yZone = page.y - 20
         end,
@@ -904,6 +980,7 @@ function Ta.Page()
             local simulation = page.mode == "simulation"
             page.rNiveau:SetShown(simulation)
             page.rPoints:SetShown(simulation)
+            page.rMes:SetShown(simulation)
             -- Les arbres et les modeles restent a la meme place dans tous les
             -- modes ; les reglages de la simulation viennent dessous.
             local yZone = page.yAvant + 6
@@ -931,7 +1008,11 @@ function Ta.Page()
                 o = { aide = T("Clic : un point. Clic droit : le retirer.", "Click : one point. Right-click : remove it."),
                     auClic = function(t, droit)
                         if not s then return end
-                        if droit then Ta.Retirer(s, Ta.sim.rangs, t) else Ta.Ajouter(s, Ta.sim.rangs, t, budget) end
+                        if droit then Ta.Retirer(s, Ta.sim.rangs, t)
+                        elseif Ta.Ajouter(s, Ta.sim.rangs, t, budget) then
+                            Ta.sim.ordre = Ta.sim.ordre or {}
+                            table.insert(Ta.sim.ordre, Ta.CleTalent(t))
+                        end
                         if F.w then F.w.Rendre() end
                     end }
             else
@@ -956,7 +1037,11 @@ function Ta.Page()
                 o = {}
             end
             local h = Dessiner(page, s, rangs, o)
-            local bloc = s and BlocModele(page, s, p.classe, rangs, simulation) or nil
+            local bloc, choisi
+            if s then bloc, choisi = BlocModele(page, s, p.classe, rangs, simulation) end
+            page.modeleChoisi = choisi
+            local avecChoisi = simulation and choisi ~= nil and (choisi.modele.activite == "mes" or choisi.modele.activite == "recus")
+            page.rChoisi:SetShown(avecChoisi)
             local h2 = RendreSous(page, h + 10, bloc and { bloc } or nil)
             page.rActivite:SetShown(bloc ~= nil)
             page.rSpe:SetShown(bloc ~= nil)
@@ -972,7 +1057,26 @@ function Ta.Page()
                 page.rNiveau:SetPoint("TOPLEFT", page.zone, "TOPLEFT", 0, -(total + 12))
                 page.rPoints:ClearAllPoints()
                 page.rPoints:SetPoint("TOPLEFT", page.rNiveau, "BOTTOMLEFT", 0, -6)
-                total = total + 12 + 24 + 6 + 24
+                page.rMes:ClearAllPoints()
+                page.rMes:SetPoint("TOPLEFT", page.rPoints, "BOTTOMLEFT", 0, -6)
+                page.rMes.nom:SetText(T("La simulation", "The simulation"))
+                page.enregistrer:SetText(T("Enregistrer", "Save"))
+                page.exporter:SetText(T("Exporter", "Export"))
+                page.importer:SetText(T("Importer", "Import"))
+                page.enregistrer:SetEnabled(s ~= nil)
+                page.exporter:SetEnabled(s ~= nil)
+                page.importer:SetEnabled(s ~= nil)
+                total = total + 12 + 24 + 6 + 24 + 6 + 24
+                if avecChoisi then
+                    page.rChoisi:ClearAllPoints()
+                    page.rChoisi:SetPoint("TOPLEFT", page.rMes, "BOTTOMLEFT", 0, -6)
+                    page.rChoisi.nom:SetText(string.format(T("Le modèle « %s »", "The build « %s »"), choisi.modele.nom or choisi.nom))
+                    local recu = choisi.modele.activite == "recus"
+                    page.partager:SetText(recu and T("Garder", "Keep") or T("Partager", "Share"))
+                    page.supprimer:SetText(T("Supprimer", "Delete"))
+                    page.partager:SetEnabled(recu or (NS.mesModeles and NS.mesModeles.CanalDePartage() ~= nil) or false)
+                    total = total + 6 + 24
+                end
             end
             page.zone:SetHeight(math.max(total, 20))
             page.hauteur = yZone + math.max(total, 20)

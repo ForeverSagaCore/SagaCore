@@ -28,5 +28,6 @@ Core\Maitres.lua
 UI\Badge.lua
 UI\Familiers.lua
 UI\Talents.lua
+UI\MesModeles.lua
 UI\Fenetre.lua
 ClassCore.lua

@@ -1,0 +1,42 @@
+name: Proposer un modèle de talents
+description: Partager un modèle de talents pour qu'il rejoigne les « Modèles conseillés » de ClassCore.
+title: "[Modèle] "
+labels: ["modèle de talents"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci ! Dans le jeu : page Talents, Simulation, place tes points puis « Exporter ». Colle le code ci-dessous.
+        Un lien de calculateur (wowforevertalent, talentsforever, Warcraft Tavern) convient aussi.
+  - type: input
+    id: code
+    attributes:
+      label: Code ou lien
+      description: Le code commence par CCM1 ; ou un lien de calculateur.
+      placeholder: "CCM1;HUNTER;solo;Mon modèle;A1111144..."
+    validations:
+      required: true
+  - type: dropdown
+    id: classe
+    attributes:
+      label: Classe
+      options: [Chasseur, Démoniste, Druide, Guerrier, Mage, Paladin, Prêtre, Chaman, Voleur]
+    validations:
+      required: true
+  - type: dropdown
+    id: activite
+    attributes:
+      label: Activité
+      options: [Montée de niveau, Donjons en montée, Montée en groupe, Raids et donjons (60), JcJ, Farm]
+    validations:
+      required: true
+  - type: input
+    id: niveau
+    attributes:
+      label: Jusqu'à quel niveau
+      description: Laisse vide si le modèle va jusqu'au niveau 60.
+  - type: textarea
+    id: pourquoi
+    attributes:
+      label: Pourquoi ce modèle
+      description: Ce qu'il apporte, comment le jouer, d'où il vient (guide, ta propre expérience...).
