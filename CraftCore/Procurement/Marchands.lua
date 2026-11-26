@@ -800,6 +800,24 @@ function encheres.DepotDeVente(v)
     return nil
 end
 
+-- Preparer : l'objet dans la vente de la fenetre de l'hotel des ventes, comme
+-- un clic droit sur l'objet dans le sac. La mise en vente reste au joueur.
+function encheres.PreparerVente(v)
+    local f = _G.AuctionHouseFrame
+    local Loc = _G.ItemLocation
+    if not (f and f.SetPostItem and Loc and Loc.CreateFromBagAndSlot) then return false end
+    if NS.Appeler(NS.Lecture("InCombatLockdown")) then return false end
+    local okL, loc = pcall(Loc.CreateFromBagAndSlot, Loc, v.sac, v.case)
+    if not okL or not loc then return false end
+    if not pcall(f.SetPostItem, f, loc) then return false end
+    -- Toute la pile, comme demande ; le joueur ajuste ensuite dans la fenetre.
+    for _, nom in ipairs({ "CommoditiesSellFrame", "ItemSellFrame" }) do
+        local sf = f[nom]
+        if sf and sf.IsShown and sf:IsShown() and sf.SetToMaxQuantity then pcall(sf.SetToMaxQuantity, sf) end
+    end
+    return true
+end
+
 function encheres.Vendre(v)
     local ah = AH()
     local Loc = _G.ItemLocation

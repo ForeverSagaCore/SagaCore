@@ -4828,7 +4828,7 @@ function Suite.Piloter(oui, nom)
     -- consigne, panneau de la banque, du courrier ou de l'hotel des ventes),
     -- puis le premier suivi ouvert. La meme touche entre partout.
     if not nom then
-        for _, n in ipairs({ "CraftCoreApercuVente", "CraftCoreNouveauPlan", "CraftCoreConsigne", "CraftCoreAssistant" }) do
+        for _, n in ipairs({ "CraftCoreNouveauPlan", "CraftCoreConsigne", "CraftCoreAssistant" }) do
             if _G[n] and _G[n]:IsShown() then nom = n break end
         end
     end
