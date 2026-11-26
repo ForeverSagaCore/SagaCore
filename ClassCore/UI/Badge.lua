@@ -104,14 +104,15 @@ local function Case(i)
     if c then return c end
     c = CreateFrame("Frame", nil, cadre)
     c:SetSize(44, 20)
-    c.bord = c:CreateTexture(nil, "BORDER")
+    c.bord = CreateFrame("Frame", nil, c)
     c.bord:SetSize(18, 18)
     c.bord:SetPoint("LEFT", c, "LEFT", 0, 0)
-    c.bord:SetColorTexture(0.75, 0.6, 0.35, 1)
-    c.icone = c:CreateTexture(nil, "ARTWORK")
+    c.icone = c.bord:CreateTexture(nil, "ARTWORK")
     c.icone:SetPoint("TOPLEFT", c.bord, "TOPLEFT", 1, -1)
     c.icone:SetPoint("BOTTOMRIGHT", c.bord, "BOTTOMRIGHT", -1, 1)
     c.icone:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    -- L'encadrement des icones du jeu (boutons d'action, grimoire).
+    do local S = _G.CoreSuite if S and S.HabillerIcone then pcall(S.HabillerIcone, c.bord, c.icone) end end
     c.texte = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     c.texte:SetPoint("LEFT", c.bord, "RIGHT", 4, 0)
     c.texte:SetWordWrap(false)

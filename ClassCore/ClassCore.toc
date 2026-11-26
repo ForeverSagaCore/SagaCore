@@ -24,5 +24,6 @@ Core\Quetes.lua
 Core\Sorts.lua
 UI\Badge.lua
 UI\Familiers.lua
+UI\Talents.lua
 UI\Fenetre.lua
 ClassCore.lua

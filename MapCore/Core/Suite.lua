@@ -1774,6 +1774,47 @@ local function GlyphePad(touche)
     return "|cffffd100" .. g[2] .. "|r"
 end
 Suite.GlyphePad = function(t) return GlyphePad(t) end
+
+-- L'encadrement des icones carrees, le meme partout dans la suite : celui
+-- des boutons d'action du jeu (barres, grimoire, manette), son biseau
+-- metallique et son lisere. Seulement l'image du jeu, rien de dessine.
+-- porteur : le cadre de l'icone ; icone : sa texture (recadree au bord).
+local CADRES_ICONE = { "UI-HUD-ActionBar-IconFrame", "UI-HUD-ActionBar-IconFrame-Slot" }
+function Suite.HabillerIcone(porteur, icone)
+    if not porteur then return end
+    if icone and icone.SetTexCoord then pcall(icone.SetTexCoord, icone, 0.07, 0.93, 0.07, 0.93) end
+    local c = porteur.cadreIcone
+    if not c then
+        c = porteur:CreateTexture(nil, "OVERLAY", nil, 6)
+        porteur.cadreIcone = c
+        local info = _G.C_Texture and _G.C_Texture.GetAtlasInfo
+        local pose = false
+        for _, nom in ipairs(CADRES_ICONE) do
+            local ok, existe = pcall(info or function() end, nom)
+            if ok and existe and pcall(c.SetAtlas, c, nom) then pose = true break end
+        end
+        c:ClearAllPoints()
+        local cible = icone or porteur
+        if pose then
+            c:SetPoint("TOPLEFT", cible, "TOPLEFT", -1, 1)
+            c:SetPoint("BOTTOMRIGHT", cible, "BOTTOMRIGHT", 1, -1)
+        else
+            -- Ancien client : le cadre des boutons d'action classiques.
+            c:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+            c:SetPoint("CENTER", cible, "CENTER", 0, 0)
+            local w = (cible.GetWidth and cible:GetWidth()) or 0
+            if w <= 0 then w = (porteur.GetWidth and porteur:GetWidth()) or 0 end
+            if w <= 0 then w = 18 end
+            c:SetSize(w * 1.78, w * 1.78)
+            porteur.cadreIconeAncien = true
+        end
+    elseif porteur.cadreIconeAncien and icone then
+        local w = icone:GetWidth() or 0
+        if w > 0 then c:SetSize(w * 1.78, w * 1.78) end
+    end
+    c:Show()
+    return c
+end
 -- La croix entiere (une seule icone), sinon la fleche du haut.
 local function GlypheCroix()
     local info = C_Texture and C_Texture.GetAtlasInfo

@@ -151,14 +151,14 @@ local function Ligne(page, i)
     l:SetHeight(HAUTEUR)
     pcall(l.RegisterForClicks, l, "LeftButtonUp")
     l:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-    -- Icone carree : un fin liseré, comme les pastilles de CraftCore.
-    l.bord = l:CreateTexture(nil, "BORDER")
+    l.bord = CreateFrame("Frame", nil, l)
     l.bord:SetSize(18, 18)
-    l.bord:SetColorTexture(0.75, 0.6, 0.35, 1)
-    l.icone = l:CreateTexture(nil, "ARTWORK")
+    l.icone = l.bord:CreateTexture(nil, "ARTWORK")
     l.icone:SetPoint("TOPLEFT", l.bord, "TOPLEFT", 1, -1)
     l.icone:SetPoint("BOTTOMRIGHT", l.bord, "BOTTOMRIGHT", -1, 1)
     l.icone:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    -- L'encadrement des icones du jeu (boutons d'action, grimoire).
+    do local S = _G.CoreSuite if S and S.HabillerIcone then pcall(S.HabillerIcone, l.bord, l.icone) end end
     l.coche = l:CreateTexture(nil, "OVERLAY")
     l.coche:SetSize(14, 14)
     l.coche:SetTexture(COCHE)
@@ -192,8 +192,17 @@ local function Apercu(page)
     m:SetSize(220, 200)
     m.fond = m:CreateTexture(nil, "BACKGROUND")
     m.fond:SetAllPoints()
-    m.fond:SetColorTexture(0, 0, 0, 0.25)
+    m.fond:SetColorTexture(0, 0, 0, 0.55)
     m:EnableMouse(false)
+    -- Le cadre des fenetres du jeu (bord metallique), autour de l'apercu.
+    local okC, c = pcall(CreateFrame, "Frame", nil, m, "BackdropTemplate")
+    if okC and c and c.SetBackdrop then
+        c:SetPoint("TOPLEFT", m, "TOPLEFT", -6, 6)
+        c:SetPoint("BOTTOMRIGHT", m, "BOTTOMRIGHT", 6, -6)
+        c:SetBackdrop({ edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border", edgeSize = 24 })
+        c:SetFrameLevel(m:GetFrameLevel() + 2)
+        m.cadre = c
+    end
     page.apercu = m
     return m
 end
@@ -234,7 +243,7 @@ local function Rendre(page, blocs)
             local m = Apercu(page)
             if m then
                 m:ClearAllPoints()
-                m:SetPoint("TOPLEFT", zone, "TOPLEFT", RETRAIT, -y)
+                m:SetPoint("TOPLEFT", zone, "TOPLEFT", RETRAIT + 6, -y - 8)
                 local okM = false
                 if b.apercu.display and m.SetDisplayInfo then okM = pcall(m.SetDisplayInfo, m, b.apercu.display) end
                 if not okM and b.apercu.id and m.SetCreature then okM = pcall(m.SetCreature, m, b.apercu.id) end
@@ -244,7 +253,7 @@ local function Rendre(page, blocs)
                 m:Show()
             end
             page.textesApercu = page.textesApercu or {}
-            local yy = y + 4
+            local yy = y + 10
             for i, txt in ipairs(b.apercu.lignes or {}) do
                 local fs = page.textesApercu[i]
                 if not fs then
@@ -254,7 +263,7 @@ local function Rendre(page, blocs)
                     page.textesApercu[i] = fs
                 end
                 fs:ClearAllPoints()
-                fs:SetPoint("TOPLEFT", zone, "TOPLEFT", RETRAIT + 240, -yy)
+                fs:SetPoint("TOPLEFT", zone, "TOPLEFT", RETRAIT + 252, -yy)
                 fs:SetPoint("RIGHT", zone, "RIGHT", -10, 0)
                 fs:SetText(txt[1] or "")
                 local c = txt[2] or NORMAL
@@ -263,7 +272,7 @@ local function Rendre(page, blocs)
                 fs:Show()
                 yy = yy + 20
             end
-            y = y + 210
+            y = y + 226
         end
         for _, e in ipairs(b.lignes or {}) do
             nL = nL + 1
@@ -642,17 +651,27 @@ local function BlocsClasse()
         if #bq.lignes == 0 then bq.vide = T("Rien à prendre pour le moment.", "Nothing to take for now.") end
     end
     table.insert(blocs, bq)
-    -- Sorts a apprendre maintenant
-    local bs = { titre = T("À apprendre chez le maître", "To learn at the trainer"), lignes = {} }
+    -- Sorts a apprendre maintenant : un resume (la liste est dans Sorts de classe).
+    local bs = { titre = T("Chez le maître", "At the trainer"), lignes = {} }
     if p.releve then
-        local total = 0
+        local total, n, icone = 0, 0, nil
         for _, g in ipairs(NS.sorts.Liste(p.classe)) do
-            local l, etat, cout = nil, nil, 0
-            if NS.sorts.PourProfil(g, p) then l, etat, cout = LigneDeSort(g, p) end
-            if l and etat == "apprendre" then table.insert(bs.lignes, l) total = total + (cout or 0) end
+            if NS.sorts.PourProfil(g, p) then
+                local etat, _, _, _, cout = NS.sorts.Etat(g, p)
+                if etat == "apprendre" then
+                    n = n + 1
+                    total = total + (cout or 0)
+                    if not icone then local _, ic = NS.sorts.NomIcone(g) icone = ic end
+                end
+            end
         end
-        if total > 0 then bs.droite = string.format(T("En tout : %s", "Total : %s"), NS.sorts.Cout(total)) end
-        if #bs.lignes == 0 then bs.vide = T("Tout est appris pour ce niveau.", "Everything is learned for this level.") end
+        if n > 0 then
+            table.insert(bs.lignes, { icone = icone, texte = string.format(n == 1 and T("%d sort à apprendre", "%d spell to learn") or T("%d sorts à apprendre", "%d spells to learn"), n),
+                droite = NS.sorts.Cout(total), clic = function() if F.w then F.w.page = "sorts" end end,
+                infobulle = function(tt) tt:AddLine(T("Le détail est dans Sorts de classe.", "Details in Class spells.")) end })
+        else
+            bs.vide = T("Tout est appris pour ce niveau.", "Everything is learned for this level.")
+        end
     else
         bs.vide = T("Connecte ce personnage une fois pour relever ses sorts.", "Log in this character once to read its spells.")
     end
@@ -823,7 +842,9 @@ end
 function F.Construire()
     local S = Su()
     if F.w or not (S and S.FenetreAPages) then return F.w end
-    local pages = { PageClasse(), PageQuetes(), PageSorts(), PageObjets() }
+    local pages = { PageClasse(), PageQuetes(), PageSorts() }
+    if NS.talents then table.insert(pages, NS.talents.Page()) end
+    table.insert(pages, PageObjets())
     if NS.familiers and AvecChasseur() then table.insert(pages, NS.familiers.Page(Page)) end
     table.insert(pages, PageReglages())
     if S.Seul and S.Seul() then table.insert(pages, PageSuite()) end

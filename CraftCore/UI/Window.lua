@@ -650,15 +650,18 @@ local function Pastille(parent)
     local okP, p = pcall(CreateFrame, "Frame", nil, parent, "BackdropTemplate")
     p = okP and p or CreateFrame("Frame", nil, parent)
     p:SetSize(TAILLE_PASTILLE, TAILLE_PASTILLE)
-    if p.SetBackdrop then
-        p:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
-        p:SetBackdropColor(0, 0, 0, 0.6)
-        p:SetBackdropBorderColor(0.75, 0.6, 0.35, 0.9)
-    end
     p.t = p:CreateTexture(nil, "ARTWORK")
     p.t:SetPoint("TOPLEFT", p, "TOPLEFT", 1, -1)
     p.t:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -1, 1)
     p.t:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    -- L'encadrement des icones du jeu, le meme dans toute la suite.
+    local S = NS.suite or _G.CoreSuite
+    if S and S.HabillerIcone then pcall(S.HabillerIcone, p, p.t)
+    elseif p.SetBackdrop then
+        p:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        p:SetBackdropColor(0, 0, 0, 0.6)
+        p:SetBackdropBorderColor(0.75, 0.6, 0.35, 0.9)
+    end
     return p
 end
 
