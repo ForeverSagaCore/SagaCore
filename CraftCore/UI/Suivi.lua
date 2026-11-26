@@ -296,6 +296,7 @@ function suivi.ProposerPlan(fiche, cle, nomMetier, vise, actuel, autre)
         f.changer = NS.charte.BoutonDePied(f, L.PLAN_SWITCH, 150, f.garder)
         f:SetHeight(40 + 5 * 20 + 48)
         table.insert(UISpecialFrames, "CraftCoreNouveauPlan")
+        do local S = NS.suite or _G.CoreSuite if S and S.ToucheDEntree then S.ToucheDEntree(f, "CraftCoreNouveauPlan") end end
         fenetrePlan = f
     end
     local f = fenetrePlan
@@ -1357,6 +1358,7 @@ local function Consigne()
     -- modifiee : cela derangeait la gestion de la manette du jeu.
     f.Lier = function() end
     table.insert(UISpecialFrames, "CraftCoreConsigne")
+    do local S = NS.suite or _G.CoreSuite if S and S.ToucheDEntree then S.ToucheDEntree(f, "CraftCoreConsigne") end end
     f:Hide()
     consigne = f
     return f
