@@ -29,6 +29,52 @@ local function Normaliser(texte)
     return texte
 end
 
+-- Minuscules, lettres accentuees comprises : string.lower laisse "É" en
+-- majuscule, et "Étoffe de lin" ne se reconnaissait plus dans "unites
+-- d'étoffe de lin". Les capitales latines accentuees (UTF-8 C3 80 a C3 9E,
+-- sauf le signe multiplie) passent en minuscules.
+local function Minuscules(texte)
+    if type(texte) ~= "string" then return texte end
+    texte = string.lower(texte)
+    texte = string.gsub(texte, "\195([\128-\158])", function(c)
+        local b = string.byte(c)
+        if b == 151 then return "\195" .. c end
+        return "\195" .. string.char(b + 32)
+    end)
+    texte = string.gsub(texte, "\197\146", "\197\147")   -- Œ
+    return texte
+end
+caisses.Minuscules = Minuscules
+
+-- Pour comparer, sans accents non plus : le client ecrit "Eglantine" et
+-- "Etoffe de lin" sur l'objet, mais "pousses d'églantine" et "unités
+-- d'étoffe de lin" dans la caisse.
+local SANS_ACCENT = {
+    ["à"] = "a", ["â"] = "a", ["ä"] = "a", ["é"] = "e", ["è"] = "e", ["ê"] = "e", ["ë"] = "e",
+    ["î"] = "i", ["ï"] = "i", ["ô"] = "o", ["ö"] = "o", ["ù"] = "u", ["û"] = "u", ["ü"] = "u",
+    ["ç"] = "c", ["ÿ"] = "y", ["œ"] = "oe", ["æ"] = "ae",
+}
+local function Plier(texte)
+    texte = Minuscules(texte)
+    if type(texte) ~= "string" then return texte end
+    return (string.gsub(texte, "[\195\197][\128-\191]", function(c) return SANS_ACCENT[c] end))
+end
+caisses.Plier = Plier
+
+-- Objets de base que les caisses demandent souvent : le jeu les nomme des
+-- qu'on les lui demande, meme si personne n'en a et qu'aucune recette relevee
+-- ne s'en sert (sinon le pack restait sans icone ni compte).
+local OBJETS_DE_BASE = {
+    -- etoffes et cuirs
+    2589, 2592, 4306, 4338, 14047, 2318, 2319, 4234, 4304, 8170,
+    -- plantes
+    765, 785, 2447, 2449, 2450, 2452, 2453, 3355, 3356, 3357, 3358, 3369, 3818, 3819, 3820, 3821,
+    -- minerais, barres, pierres
+    2770, 2771, 2772, 2775, 2776, 2840, 3576, 2841, 3575, 3577, 3859, 2835, 2836, 2838,
+    -- pieces d'ingenieur
+    4357, 4359, 4361, 4363, 4364, 4371, 4375, 4377, 4382,
+}
+
 -- Reconnait une caisse du systeme a sa ligne d'utilisation. Le nom seul ne
 -- suffirait pas : un vieil objet de quete peut s'appeler caisse aussi.
 local function LignesDePacks(lignes)
@@ -64,7 +110,7 @@ local function StocksParNomBrut()
             if id then
                 local info = NS.objets.Info(id)
                 if info and info.nom then
-                    local nom = string.lower(info.nom)
+                    local nom = Minuscules(info.nom)
                     parNom[nom] = parNom[nom] or { id = id, total = 0 }
                     parNom[nom].total = parNom[nom].total + (entree.total or 0)
                 end
@@ -80,7 +126,7 @@ local function StocksParNomBrut()
         local info = NS.objets.Info(id)
         local nom = (info and info.nom) or nomDeSecours
         if nom then
-            nom = string.lower(nom)
+            nom = Minuscules(nom)
             if not parNom[nom] then parNom[nom] = { id = id, total = 0 } end
         end
     end
@@ -92,11 +138,12 @@ local function StocksParNomBrut()
             for _, comp in ipairs(recette.composants or {}) do Connu(comp.objet) end
         end
     end
+    for _, id in ipairs(OBJETS_DE_BASE) do Connu(id) end
     -- Les objets deja retrouves une fois par leur nom (au survol, ou le jeu
     -- les avait en memoire) : reconnus ensuite meme hors de la memoire du jeu.
     for nom, id in pairs((CraftCoreDB and CraftCoreDB.objetsParNom) or {}) do
-        if type(nom) == "string" and tonumber(id) and not parNom[nom] then
-            parNom[nom] = { id = tonumber(id), total = 0 }
+        if type(nom) == "string" and tonumber(id) and not parNom[Minuscules(nom)] then
+            parNom[Minuscules(nom)] = { id = tonumber(id), total = 0 }
         end
     end
     return parNom
@@ -113,7 +160,7 @@ function caisses.OublierNoms() parNomMemo = nil end
 function caisses.RetenirNom(nom, id)
     if type(nom) ~= "string" or not tonumber(id) or type(CraftCoreDB) ~= "table" then return end
     CraftCoreDB.objetsParNom = CraftCoreDB.objetsParNom or {}
-    nom = string.lower(nom)
+    nom = Minuscules(nom)
     if CraftCoreDB.objetsParNom[nom] ~= tonumber(id) then
         CraftCoreDB.objetsParNom[nom] = tonumber(id)
         parNomMemo = nil
@@ -125,7 +172,7 @@ end
 -- donc des formes sans marque de pluriel, des deux cotes.
 local function SansPluriel(texte)
     local sortie = {}
-    for brut in string.gmatch(string.lower(Normaliser(texte)), "[^%s]+") do
+    for brut in string.gmatch(Plier(Normaliser(texte)), "[^%s]+") do
         local mot = string.gsub(brut, "s$", "")
         mot = string.gsub(mot, "x$", "")
         table.insert(sortie, mot)
