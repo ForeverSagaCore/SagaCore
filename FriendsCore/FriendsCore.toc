@@ -3,7 +3,7 @@
 ## Notes: A small helper of Forever SagaCore: the add-ons from other authors that complete the suite, and the bridges that hand them a job (detailed routes...).
 ## Notes-frFR: Une petite aide de Forever SagaCore : les add-ons d'autres auteurs qui complètent la suite, et les passerelles qui leur confient une tâche (itinéraires détaillés...).
 ## Author: Forever SagaCore
-## Version: 2.5.2
+## Version: 2.5.3
 ## IconTexture: Interface\Icons\Spell_Nature_FarSight
 ## OptionalDeps: CraftCore, QuestCore, MapCore, LegacyCore, TomTom
 ## SavedVariables: FriendsCoreDB

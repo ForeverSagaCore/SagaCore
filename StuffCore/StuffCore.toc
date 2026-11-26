@@ -3,7 +3,7 @@
 ## Notes: Your equipment: what improves it and where it comes from (crafts, world drops, quests, dungeons). Part of Forever SagaCore, needs CraftCore.
 ## Notes-frFR: Votre équipement : ce qui l'améliore et d'où ça vient (crafts, butins du monde, quêtes, donjons). Fait partie de Forever SagaCore, demande CraftCore.
 ## Author: Forever SagaCore
-## Version: 2.5.2
+## Version: 2.5.3
 ## IconTexture: Interface\Icons\INV_Chest_Chain
 ## RequiredDeps: CraftCore
 ## OptionalDeps: QuestieDB

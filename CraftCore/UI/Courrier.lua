@@ -2030,7 +2030,51 @@ local function Pertinent()
 end
 
 -- Redessine le panneau, ou le cache s'il n'y a rien a faire ici.
+-- Le panneau se recalcule au plus une fois toutes les 0,7 seconde : le
+-- releve des prix de l'hotel des ventes, les sacs et le courrier le
+-- demandaient en rafale, et chaque calcul (plans de tous les personnages)
+-- s'empilait jusqu'a bloquer le jeu. Le dernier appel est toujours fait.
+local ActualiserMaintenant
+local dernierCalcul, calculPrevu = -10, false
 function courrier.Actualiser()
+    local maintenant = NS.Appeler(_G.GetTime) or 0
+    local plusTard = Lire("C_Timer.After")
+    if not plusTard or maintenant - dernierCalcul >= 0.7 then
+        dernierCalcul = maintenant
+        return courrier.Chronometrer(ActualiserMaintenant)
+    end
+    if calculPrevu then return end
+    calculPrevu = true
+    NS.Appeler(plusTard, 0.7 - (maintenant - dernierCalcul), function()
+        calculPrevu = false
+        dernierCalcul = NS.Appeler(_G.GetTime) or 0
+        pcall(courrier.Chronometrer, ActualiserMaintenant)
+    end)
+end
+-- Mouchard de lenteur : un calcul du panneau qui depasse un quart de
+-- seconde est note (incidents, lus apres un /reload) et signale dans la
+-- discussion, au plus une fois par minute. Un blocage laisse ainsi une trace
+-- visible avant de figer le jeu.
+local dernierAvis = -100
+function courrier.Chronometrer(fn)
+    local chrono = _G.debugprofilestop
+    local debut = chrono and chrono()
+    local r = fn()
+    if debut then
+        local ms = chrono() - debut
+        if ms > 250 then
+            local quoi = string.format("panneau %s : %d ms", tostring(lieu), ms)
+            if NS.base.NoterIncident then pcall(NS.base.NoterIncident, "lenteur", quoi) end
+            local maintenant = NS.Appeler(_G.GetTime) or 0
+            if maintenant - dernierAvis > 60 then
+                dernierAvis = maintenant
+                print("|cffffd100CraftCore|r calcul lent du panneau (" .. math.floor(ms) .. " ms), noté pour analyse.")
+            end
+        end
+    end
+    return r
+end
+ActualiserMaintenant = function()
     if not lieu or not NS.base.ReglagesGeneraux().assistant or not Pertinent() then
         if panneau then panneau:Hide() end
         return
