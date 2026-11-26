@@ -2136,7 +2136,7 @@ local function BoutonGuiderPNJ(contenu, gardees, y, id, ou)
 end
 
 local COULEURS_ETAT = {
-    appris = { 0.31, 0.82, 0.41 }, possede = { 1, 0.82, 0 }, achetable = { 1, 1, 1 },
+    appris = { 0.6, 0.6, 0.6 }, possede = { 1, 0.82, 0 }, achetable = { 0.31, 0.82, 0.41 }, introuvable = { 0.55, 0.55, 0.55 },
     faveur = { 0.55, 0.55, 0.55 }, palier = { 0.55, 0.55, 0.55 }, rang = { 0.55, 0.55, 0.55 }, niveau = { 0.55, 0.55, 0.55 },
     inconnu = { 0.55, 0.55, 0.55 },
 }
@@ -2146,17 +2146,28 @@ local function TexteEtat(e)
     if e.etat == "rang" and e.metier then return L.TRADEHUB_STATE_SKILL300 end
     return L["TRADEHUB_STATE_" .. string.upper(e.etat or "inconnu")] or ""
 end
+-- L'etat en couleur : vert achetable, jaune achete a apprendre, gris le
+-- reste ; la coche du jeu sur ce qui est deja appris ou achete.
 local function PoserEtat(l, e)
-    l.total:SetText(TexteEtat(e))
-    local c = COULEURS_ETAT[e.etat] or COULEURS_ETAT.inconnu
-    l.total:SetTextColor(c[1], c[2], c[3])
     if e.etat == "appris" or e.etat == "possede" then
         Marquer(l, true, "GameFontHighlightSmall", e.objet)
     end
+    l.total:SetText(TexteEtat(e))
+    local c = COULEURS_ETAT[e.etat] or COULEURS_ETAT.inconnu
+    l.total:SetTextColor(c[1], c[2], c[3])
 end
-local function TextePrix(prix, estime)
+-- L'icone de la faveur marchande, celle du jeu.
+local function IconeFaveur(fiche)
+    local _, info = NS.commerce.Faveur(fiche)
+    local icone = type(info) == "table" and info.icone or "Interface\\Icons\\INV_Misc_Coin_17"
+    return "|T" .. tostring(icone) .. ":12:12:0:0|t"
+end
+-- Le prix avec l'icone de la monnaie : vert si la faveur suffit, rouge sinon ;
+-- « ~ » devant une valeur des guides.
+local function TextePrix(prix, estime, faveur, icone)
     if not prix then return "" end
-    return (estime and "|cff8c8c8c~" or "") .. prix .. (estime and "|r" or "")
+    local couleur = (faveur and prix <= faveur) and "|cff4fd16a" or "|cffe05050"
+    return (estime and "|cff8c8c8c~|r" or "") .. couleur .. prix .. "|r " .. (icone or "")
 end
 
 -- En haut : la reputation du camp (barre), la faveur, le conseil.
@@ -2168,7 +2179,7 @@ function RendreCommerceHaut(contenu, index, y, fiche, gardees)
     local rep = C.Reputation(fiche)
     local faveur = C.Faveur(fiche)
     index, y = TitreDeSection(contenu, index, y, (rep and rep.nom) or L["TRADEHUB_FACTION_" .. string.upper(camp)],
-        string.format(L.TRADEHUB_FAVOR, faveur or 0))
+        string.format(L.TRADEHUB_FAVOR, faveur or 0) .. " " .. IconeFaveur(fiche))
     -- Le palier et la barre au modele commun.
     index = index + 1
     local l = LigneDeTableau(contenu, index)
@@ -2248,6 +2259,7 @@ function RendreCommerceBas(contenu, index, y, fiche, gardees)
         local R = NS.recettes
         y = Paragraphe(contenu, y + ESPACE_SECTION, string.format(L.RECIPES_LEGEND, R.CocheTexte("sur"), R.CocheTexte("probable"), R.CocheTexte("peu")),
             "GameFontDisableSmall")
+        y = Paragraphe(contenu, y, L.TRADEHUB_LEGEND_COLORS, "GameFontDisableSmall")
     end
     for _, m in ipairs(metiers) do
         local patrons = C.Patrons(fiche, m.ligne)
@@ -2268,10 +2280,16 @@ function RendreCommerceBas(contenu, index, y, fiche, gardees)
         entete.banque:SetText(L.TRADEHUB_COL_LEVEL)
         entete.courrier:SetText(L.TRADEHUB_COL_PRICE)
         entete.total:SetText(L.TRADEHUB_COL_STATE)
+        local maFaveur, icone = C.Faveur(fiche) or 0, IconeFaveur(fiche)
+        local monRang = tonumber((fiche.metiers[tostring(m.ligne)] or {}).rang) or 0
         for _, p in ipairs(patrons) do
             local l
             index, y, l = LigneCommerce(contenu, index, y, p.objet)
             ColonneCourrier(l, true)
+            -- Le jeu ne donne pas l'objet : son nom de la base de quetes.
+            if type(NS.Appeler(NS.jeu.infoObjet, p.objet)) ~= "string" and NS.commerceDonnees.NOMS[p.objet] then
+                l.nom:SetText(NS.commerceDonnees.NOMS[p.objet])
+            end
             -- Fera-t-elle monter le metier : la coche coloree en coin
             -- d'icone, comme dans Mes recettes.
             if p.point then
@@ -2285,9 +2303,12 @@ function RendreCommerceBas(contenu, index, y, fiche, gardees)
                 if c then l.palier:SetVertexColor(c[1], c[2], c[3]) end
                 l.palier:SetShown(p.point ~= "rien")
             end
-            l.sacs:SetText(p.rang > 0 and ((p.rangEstime and "|cff8c8c8c~" or "") .. tostring(p.rang) .. (p.rangEstime and "|r" or "")) or "")
+            -- Rang en vert : a mon rang, je peux la fabriquer.
+            local rangTexte = p.rang > 0 and tostring(p.rang) or ""
+            if p.rang > 0 and p.rang <= monRang then rangTexte = "|cff4fd16a" .. rangTexte .. "|r" end
+            l.sacs:SetText(((p.rangEstime and p.rang > 0) and "|cff8c8c8c~|r" or "") .. rangTexte)
             l.banque:SetText(p.niveau > 0 and tostring(p.niveau) or "")
-            l.courrier:SetText(TextePrix(p.prix, p.estime))
+            l.courrier:SetText(TextePrix(p.prix, p.estime, maFaveur, icone))
             PoserEtat(l, p)
         end
     end
@@ -2296,7 +2317,7 @@ function RendreCommerceBas(contenu, index, y, fiche, gardees)
     for _, r in ipairs(C.Recompenses(fiche)) do
         local l
         index, y, l = LigneCommerce(contenu, index, y, r.objet)
-        l.banque:SetText(TextePrix(r.prix, r.estime))
+        l.banque:SetText(TextePrix(r.prix, r.estime, C.Faveur(fiche) or 0, IconeFaveur(fiche)))
         PoserEtat(l, r)
     end
     y = Paragraphe(contenu, y + 6, L.TRADEHUB_ESTIMATED, "GameFontDisableSmall")

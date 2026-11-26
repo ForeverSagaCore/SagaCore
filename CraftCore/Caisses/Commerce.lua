@@ -161,13 +161,17 @@ local function PalierDuLibelle(libelle)
 end
 
 local demandes, essais = {}, {}
+local tentatives = {}
 local function Demander(objet)
     if demandes[objet] then return end
     demandes[objet] = true
+    tentatives[objet] = (tentatives[objet] or 0) + 1
     local charger = NS.Lecture("C_Item.RequestLoadItemDataByID")
     if charger then NS.Appeler(charger, objet) end
 end
 C.Demander = Demander
+-- Le jeu ne donne pas cet objet, meme apres plusieurs demandes.
+function C.Introuvable(objet) return (tentatives[objet] or 0) >= 3 end
 
 local function Lire(objet)
     local b = Base()
@@ -301,7 +305,7 @@ function C.Patrons(fiche, metier)
             local e = { objet = objet, p = p, rang = p and p.rang or 0, palier = p and p.palier or 4, niveau = p and p.niveau or 0 }
             e.prix, e.estime = C.Prix(objet, metier, p)
             if not p then
-                e.etat = "inconnu"
+                e.etat = C.Introuvable(objet) and "introuvable" or "inconnu"
             else
                 local r = Recette(objet, metier)
                 e.recette = r
