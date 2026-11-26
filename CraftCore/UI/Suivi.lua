@@ -261,6 +261,17 @@ local function ObjectifsDeProgression(liste)
                     end
                     return t
                 end)() })
+                -- Une recette a apprendre maintenant, ni apprise ni en main :
+                -- tout n'est pas faisable, le pourcentage ne dit jamais 100.
+                local o = liste[#liste]
+                local aPrendre = 0
+                for _, a in ipairs(o.aApprendre or {}) do
+                    if not a.appris and not a.plusTard then aPrendre = aPrendre + 1 end
+                end
+                if aPrendre > 0 and not o.atteint then
+                    o.pct = math.min(o.pct or 0, 0.9) * (1 / (1 + 0.1 * (aPrendre - 1)))
+                    o.recetteManquante = true
+                end
             end
         end
     end
@@ -1840,12 +1851,26 @@ local function DessinerObjectifs(y, objectifs, vue)
                                 GameTooltip:AddLine(L.GOAL_LEARN_WHERE, 1, 0.82, 0)
                                 premiere = false
                             end
-                            -- En une ligne : la recette, et ou (le mot court).
-                            local okC, nature = pcall(NS.recettes.CommentApprendre, a.recette)
+                            -- La recette, ou (le mot court), puis le detail :
+                            -- le plan deja en main, sinon qui le vend ou le laisse.
+                            local okC, nature, lignes = pcall(NS.recettes.CommentApprendre, a.recette)
                             local ou = okC and nature and L[nature] or nil
+                            local okP, _, possede = pcall(NS.recettes.PlanPossede, a.recette)
+                            if okP and possede then ou = string.format(L.GOAL_LEARN_HAVE, possede) end
                             local quand = a.plusTard and ("  |cffb3b3b3" .. string.format(L.GOAL_LEARN_RANK, a.rang) .. "|r") or ""
                             GameTooltip:AddLine("     " .. a.nom .. (ou and ("  |cffb3b3b3" .. ou .. "|r") or "") .. quand, 1, 1, 1)
                             Petite(GameTooltip)
+                            if not (okP and possede) and okC and type(lignes) == "table" then
+                                local n = 0
+                                for _, l in ipairs(lignes) do
+                                    if n >= 3 then break end
+                                    if l ~= L.RECIPES_SRC_ORIGIN and l ~= L.RECIPES_HOW_TRAINER_GUESS then
+                                        GameTooltip:AddLine("          " .. l, 0.7, 0.7, 0.7)
+                                        Petite(GameTooltip)
+                                        n = n + 1
+                                    end
+                                end
+                            end
                         end
                     end
                     -- A acheter : seulement ce qui manque encore dans les sacs.
@@ -2076,10 +2101,33 @@ local function DessinerObjectifs(y, objectifs, vue)
                         icone:SetPoint("TOPLEFT", zone, "TOPLEFT", 28, -y)
                         icone:SetTexture("Interface\\Icons\\INV_Misc_Book_09")
                         icone:SetDesaturated(a.appris)
+                        -- A droite, en court : le plan deja en main (ou), sinon
+                        -- comment l'obtenir (a acheter, a looter...).
+                        local ouTexte
+                        if not a.appris and not a.plusTard then
+                            local okP, _, possede = pcall(NS.recettes.PlanPossede, a.recette)
+                            if okP and possede then ouTexte = string.format(L.GOAL_LEARN_HAVE, possede)
+                            else
+                                local okC, nature = pcall(NS.recettes.CommentApprendre, a.recette)
+                                ouTexte = okC and nature and L[nature] or nil
+                            end
+                        end
+                        local ou
+                        if ouTexte then
+                            ou = T(LIGNE, TAILLE_LIGNE)
+                            ou:ClearAllPoints()
+                            ou:SetPoint("RIGHT", zone, "TOPLEFT", largeur - 2, -(y + 8))
+                            ou:SetWidth(0)
+                            ou:SetJustifyH("RIGHT")
+                            ou:SetWordWrap(false)
+                            ou:SetText(ouTexte)
+                            ou:SetTextColor(0.7, 0.7, 0.7)
+                        end
                         local t = T(LIGNE, TAILLE_LIGNE)
                         t:ClearAllPoints()
                         t:SetPoint("LEFT", icone, "RIGHT", 6, 0)
-                        t:SetPoint("RIGHT", zone, "TOPLEFT", largeur - 22, -(y + 8))
+                        if ou then t:SetPoint("RIGHT", ou, "LEFT", -8, 0)
+                        else t:SetPoint("RIGHT", zone, "TOPLEFT", largeur - 22, -(y + 8)) end
                         t:SetWordWrap(false)
                         -- Pas encore le rang : dit pour plus tard, en gris ; la
                         -- fabrication continue d'ici la.

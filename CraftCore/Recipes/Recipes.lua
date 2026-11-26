@@ -766,6 +766,39 @@ local function AvecZone(entree)
     return zone and (nom .. " (" .. zone .. ")") or nom
 end
 
+-- Le plan (recette, formule, patron...) d'une recette deja en possession :
+-- dans les sacs, la banque ou le courrier d'un personnage du meme camp.
+-- Cherche par le nom (« Recette : Potion de ... »). Rend l'identifiant de
+-- l'objet et un texte court (« 1 en banque », « Thrall 1 »), ou nil.
+local planCache = {}
+function recettes.PlanPossede(recette)
+    if type(recette) ~= "table" or type(recette.nom) ~= "string" then return nil end
+    local cherche = Cle(recette.nom)
+    if not cherche or cherche == "" then return nil end
+    local inv = NS.inventaire
+    local base = NS.base
+    if not (inv and base and base.TousLesPersonnages and base.StocksDe) then return nil end
+    local trouve = planCache[cherche]
+    if not trouve then
+        for _, fiche in ipairs(base.TousLesPersonnages()) do
+            for id in pairs(base.StocksDe(fiche) or {}) do
+                local nom = Cle(inv.NomDObjet(id))
+                -- « Prefixe : nom de la recette », le nom exact apres les deux-points.
+                if nom and string.find(nom, ":", 1, true) then
+                    local apres = string.match(nom, ":%s*(.+)$")
+                    if apres == cherche then trouve = tonumber(id) break end
+                end
+            end
+            if trouve then break end
+        end
+        if trouve then planCache[cherche] = trouve end
+    end
+    if not trouve then return nil end
+    local ok, texte = pcall(inv.TexteOuEst, trouve)
+    if not ok or type(texte) ~= "string" or texte == "" then planCache[cherche] = nil return nil end
+    return trouve, texte
+end
+
 -- Rend la cle du libelle court et les lignes a montrer au survol.
 function recettes.CommentApprendre(recette)
     local L = NS.L

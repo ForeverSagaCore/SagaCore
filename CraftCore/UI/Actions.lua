@@ -303,8 +303,8 @@ local function Fenetres() return { _G.ProfessionsFrame, _G.TradeSkillFrame } end
 
 local function Rendre(f)
     if f and f.avantFantome then
-        pcall(f.SetScale, f, f.avantFantome.echelle or 1)
         pcall(f.SetAlpha, f, f.avantFantome.alpha or 1)
+        if f.avantFantome.souris ~= nil then pcall(f.EnableMouse, f, f.avantFantome.souris) end
         f.avantFantome = nil
     end
 end
@@ -317,10 +317,13 @@ local function Cacher()
     if NS.Appeler(InCombatLockdown) then return end
     for _, f in ipairs(Fenetres()) do
         if f and f.IsShown and f:IsShown() and not f.avantFantome then
-            f.avantFantome = { alpha = f:GetAlpha(), echelle = f:GetScale() }
-            -- Transparente et minuscule : plus rien a voir ni a cliquer.
+            local okM, souris = pcall(f.IsMouseEnabled, f)
+            f.avantFantome = { alpha = f:GetAlpha(), souris = okM and souris or nil }
+            -- Transparente, sans toucher a sa taille : la reduire faisait
+            -- recalculer au jeu la barre de ses boutons, qui restait ensuite
+            -- etiree sur tout l'ecran (boutons Creer tronques).
             pcall(f.SetAlpha, f, 0)
-            pcall(f.SetScale, f, 0.01)
+            pcall(f.EnableMouse, f, false)
             if not f.fantomeAccroche then
                 f.fantomeAccroche = true
                 f:HookScript("OnHide", function(self)
