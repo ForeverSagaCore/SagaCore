@@ -22,7 +22,8 @@ local PAUSE_PIECE = 0.15   -- entre deux pieces jointes : plus court (une case v
 local LARGEUR = 300
 -- Largeur utile d'une colonne du panneau (la barre de defilement gardee).
 local COLONNE = LARGEUR - 2 * 12 - 10 - 22
-local function LargeurDuLieu() return LARGEUR end
+-- Un peu plus large a l'hotel des ventes : la place des deux boutons de vente.
+local function LargeurDuLieu(l) return l == "encheres" and (LARGEUR + 70) or LARGEUR end
 -- A l'hotel des ventes : deux onglets sur le bord droit, en bas : acheter
 -- (prix, achats, fabrications) et vendre (ce qu'il y a dans mes sacs).
 local function OngletHV()
@@ -1142,6 +1143,63 @@ local function LierManetteBientot(actif)
     end
 end
 
+-- Apercu d'une vente : ce qui part, a quel prix, le total et le depot ;
+-- rien ne part avant « Vendre ».
+local apercu
+function courrier.ApercuVente(v)
+    local Lx = L()
+    local prix = NS.encheres.PrixDeVente(v.objet)
+    if not prix then return end
+    if not apercu then
+        local f = NS.charte.Fenetre("CraftCoreApercuVente", 340, 190, { portrait = false, strate = "DIALOG" })
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 80)
+        if f.titre then f.titre:SetText("CraftCore") end
+        f.icone = f:CreateTexture(nil, "ARTWORK")
+        f.icone:SetSize(28, 28)
+        f.icone:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -40)
+        f.nom = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        f.nom:SetPoint("LEFT", f.icone, "RIGHT", 8, 0)
+        f.nom:SetPoint("RIGHT", f, "RIGHT", -18, 0)
+        f.nom:SetJustifyH("LEFT")
+        f.nom:SetWordWrap(false)
+        f.lignes = {}
+        for i = 1, 4 do
+            local g = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            g:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -78 - (i - 1) * 18)
+            g:SetJustifyH("LEFT")
+            local d = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            d:SetPoint("TOPRIGHT", f, "TOPRIGHT", -18, -78 - (i - 1) * 18)
+            d:SetJustifyH("RIGHT")
+            f.lignes[i] = { g, d }
+        end
+        f.annuler = NS.charte.BoutonDePied(f, Lx.AH_CANCEL, 110)
+        f.vendre = NS.charte.BoutonDePied(f, Lx.AH_SELL_BUTTON, 110, f.annuler)
+        f.annuler:SetScript("OnClick", function() f:Hide() end)
+        table.insert(UISpecialFrames, "CraftCoreApercuVente")
+        local S = NS.suite or _G.CoreSuite
+        if S and S.ToucheDEntree then S.ToucheDEntree(f, "CraftCoreApercuVente") end
+        apercu = f
+    end
+    local f = apercu
+    f.icone:SetTexture(NS.Appeler(NS.jeu.iconeObjet, v.objet) or "Interface\\Icons\\INV_Misc_QuestionMark")
+    f.nom:SetText(NS.inventaire.NomDObjet(v.objet) .. "  x" .. v.nombre)
+    local depot = NS.encheres.DepotDeVente and NS.encheres.DepotDeVente(v)
+    local valeurs = {
+        { Lx.AH_PREVIEW_UNIT, NS.marchands.Monnaie(prix) },
+        { Lx.AH_PREVIEW_TOTAL, NS.marchands.Monnaie(prix * v.nombre) },
+        { Lx.AH_PREVIEW_DEPOSIT, depot and NS.marchands.Monnaie(depot) or "?" },
+        { Lx.AH_PREVIEW_DURATION, Lx.AH_PREVIEW_24H },
+    }
+    for i, x in ipairs(valeurs) do f.lignes[i][1]:SetText(x[1]) f.lignes[i][2]:SetText(x[2]) end
+    f.vendre:SetScript("OnClick", function()
+        local ok, detail = NS.encheres.Vendre(v)
+        statut = ok and string.format(Lx.AH_SOLD, NS.inventaire.NomDObjet(v.objet), NS.marchands.Monnaie(detail)) or Lx.AH_SELL_FAIL
+        f:Hide()
+        courrier.Actualiser()
+    end)
+    f:Show()
+end
+
 local function Remplir(plan)
     for _, t in ipairs(panneau.textes) do t:Hide() end
     for _, i in ipairs(panneau.icones) do i:Hide() end
@@ -1153,7 +1211,7 @@ local function Remplir(plan)
     -- x0 : le bord gauche de la colonne en cours (deux colonnes a l'hotel
     -- des ventes : acheter a gauche, vendre a droite).
     local x0 = 0
-    local largeur = COLONNE
+    local largeur = COLONNE + (LargeurDuLieu(lieu) - LARGEUR)
 
     local function Titre(texte)
         nt = nt + 1
@@ -1261,12 +1319,16 @@ local function Remplir(plan)
             l.icone = l:CreateTexture(nil, "ARTWORK")
             l.icone:SetSize(16, 16)
             l.icone:SetPoint("LEFT", l, "LEFT", 2, 0)
-            -- Le petit bouton Vendre, au bout de la ligne.
+            -- Deux petits boutons au bout de la ligne : Voir (apercu de la
+            -- vente, a valider) et Vendre (vente directe).
             l.vendre = CreateFrame("Button", "CraftCoreAssistantVendre" .. nv, l, "UIPanelButtonTemplate")
-            l.vendre:SetSize(64, 18)
+            l.vendre:SetSize(52, 18)
             l.vendre:SetPoint("RIGHT", l, "RIGHT", 0, 0)
+            l.voir = CreateFrame("Button", "CraftCoreAssistantVoir" .. nv, l, "UIPanelButtonTemplate")
+            l.voir:SetSize(44, 18)
+            l.voir:SetPoint("RIGHT", l.vendre, "LEFT", -2, 0)
             l.prix = l:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            l.prix:SetPoint("RIGHT", l.vendre, "LEFT", -6, 0)
+            l.prix:SetPoint("RIGHT", l.voir, "LEFT", -6, 0)
             l.prix:SetJustifyH("RIGHT")
             l.prix:SetWordWrap(false)
             l.nom = l:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -1281,14 +1343,17 @@ local function Remplir(plan)
         l:SetWidth(largeur)
         l.icone:SetTexture(NS.Appeler(NS.jeu.iconeObjet, v.objet) or "Interface\\Icons\\INV_Misc_QuestionMark")
         l.nom:SetText(NS.inventaire.NomDObjet(v.objet) .. (v.nombre > 1 and ("  |cffb3b3b3x" .. v.nombre .. "|r") or ""))
-        if v.unite then
-            l.prix:SetText(NS.marchands.Monnaie(v.unite))
+        local prixV = NS.encheres.PrixDeVente(v.objet)
+        if prixV then
+            -- Le total d'abord (ce que rapporte la pile), l'unite en gris.
+            l.prix:SetText(NS.marchands.Monnaie(prixV * v.nombre)
+                .. (v.nombre > 1 and ("  |cff8c8c8c" .. string.format(L().AH_EACH, NS.marchands.Monnaie(prixV)) .. "|r") or ""))
         elseif v.marchand and v.marchand > 0 then
             l.prix:SetText("|cff8c8c8c" .. string.format(L().AH_SELL_VENDOR, NS.marchands.Monnaie(v.marchand)) .. "|r")
         else
             l.prix:SetText("|cff8c8c8c" .. L().AH_NEVER .. "|r")
         end
-        l.prix:SetWidth(math.min(120, (l.prix:GetStringWidth() or 60) + 4))
+        l.prix:SetWidth(math.min(150, (l.prix:GetStringWidth() or 60) + 4))
         local vv = v
         -- La ligne : rien a cliquer (le survol montre l'objet) ; le bouton vend.
         l:SetScript("OnClick", nil)
@@ -1315,6 +1380,15 @@ local function Remplir(plan)
             GameTooltip:Show()
         end)
         l.vendre:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        l.voir:SetText(L().AH_PREVIEW_BUTTON)
+        l.voir:SetEnabled(prixVente ~= nil and not enCours)
+        l.voir:SetScript("OnClick", function() courrier.ApercuVente(vv) end)
+        l.voir:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(L().AH_PREVIEW_TIP, 1, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        l.voir:SetScript("OnLeave", function() GameTooltip:Hide() end)
         l:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             if GameTooltip.SetItemByID then pcall(GameTooltip.SetItemByID, GameTooltip, vv.objet) end

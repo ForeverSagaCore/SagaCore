@@ -6050,11 +6050,18 @@ function Suite.ToucheDEntree(f, nom)
     -- fenetre, au milieu (visible meme quand la liste defile).
     if not f.badgeEntree then
         local b = CreateFrame("Frame", nil, f)
-        b:SetSize(28, 28)
-        b:SetPoint("CENTER", f, "BOTTOM", 0, 2)
-        b:SetFrameLevel((f:GetFrameLevel() or 1) + 20)
+        b:SetSize(30, 30)
+        b:SetPoint("CENTER", f, "BOTTOM", 0, 4)
+        -- Au-dessus du cadre de la fenetre (son bord est un cadre enfant).
+        b:SetFrameLevel((f:GetFrameLevel() or 1) + 500)
+        -- Une pastille sombre sous l'icone : elle se detache du bord.
+        b.fond = b:CreateTexture(nil, "BACKGROUND")
+        b.fond:SetSize(30, 30)
+        b.fond:SetPoint("CENTER")
+        b.fond:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+        b.fond:SetVertexColor(0, 0, 0, 0.9)
         b.texte = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        b.texte:SetPoint("CENTER")
+        b.texte:SetPoint("CENTER", 0, 0)
         b:Hide()
         f.badgeEntree = b
     end
@@ -6127,7 +6134,7 @@ function Suite.Piloter(oui, nom)
     -- consigne, panneau de la banque, du courrier ou de l'hotel des ventes),
     -- puis le premier suivi ouvert. La meme touche entre partout.
     if not nom then
-        for _, n in ipairs({ "CraftCoreNouveauPlan", "CraftCoreConsigne", "CraftCoreAssistant" }) do
+        for _, n in ipairs({ "CraftCoreApercuVente", "CraftCoreNouveauPlan", "CraftCoreConsigne", "CraftCoreAssistant" }) do
             if _G[n] and _G[n]:IsShown() then nom = n break end
         end
     end
