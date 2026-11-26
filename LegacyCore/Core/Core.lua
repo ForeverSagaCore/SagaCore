@@ -412,44 +412,23 @@ end
 -- Ouvre la fenetre d'heritage du jeu (pour depenser les points) : par le
 -- raccourci du jeu qui l'ouvre, sinon par sa fonction d'ouverture.
 function NS.OuvrirHeritageDuJeu()
-    -- Jamais RunBinding ni les fonctions du jeu appelees a l'aveugle : le jeu
-    -- les reserve a sa propre interface et bloque l'add-on. On montre
-    -- seulement une fenetre d'heritage deja chargee et non protegee.
+    -- Comme la touche du jeu : la fonction que l'interface d'heritage de
+    -- WoW Forever donne elle-meme (Blizzard_LegacySystem, ToggleLegacySystemUI),
+    -- puis la page des arbres (onglet 3). Rien d'autre n'est appele : ni
+    -- touche simulee, ni chargement d'add-on du jeu a la main.
     if NS.Appeler(_G.InCombatLockdown) then return false end
-    -- L'interface d'heritage du jeu peut n'etre chargee qu'a la demande.
-    local nombreAddons = NS.Appeler(NS.Lecture("C_AddOns.GetNumAddOns", "GetNumAddOns")) or 0
-    local infoAddon = NS.Lecture("C_AddOns.GetAddOnInfo", "GetAddOnInfo")
-    local charger = NS.Lecture("C_AddOns.LoadAddOn", "LoadAddOn")
-    local estCharge = NS.Lecture("C_AddOns.IsAddOnLoaded", "IsAddOnLoaded")
-    for i = 1, nombreAddons do
-        local nomAddon = NS.Appeler(infoAddon, i)
-        if type(nomAddon) == "string" and string.find(nomAddon, "^Blizzard_") and string.find(nomAddon, "Legacy")
-            and not NS.Appeler(estCharge, nomAddon) then
-            NS.Appeler(charger, nomAddon)
-        end
+    local cadre = _G.LegacySystemFrame
+    if not (cadre and cadre.IsShown and cadre:IsShown()) then
+        local basculer = _G.ToggleLegacySystemUI
+        if type(basculer) ~= "function" then return false end
+        local ok = pcall(basculer)
+        if not ok then return false end
+        cadre = _G.LegacySystemFrame
     end
-    local vus = {}
-    for nom, valeur in pairs(_G) do
-        if type(nom) == "string" and type(valeur) == "table" and string.find(nom, "^Legacy") and string.find(nom, "Frame$")
-            and type(valeur.GetObjectType) == "function" and type(valeur.Show) == "function" then
-            local okP, protege = pcall(valeur.IsProtected, valeur)
-            local parent = NS.Appeler(valeur.GetParent, valeur)
-            table.insert(vus, nom .. (protege and " (protege)" or "") .. (parent == _G.UIParent and "" or " (enfant)"))
-            if okP and not protege and parent == _G.UIParent then
-                local montrer = NS.Lecture("ShowUIPanel")
-                if montrer then NS.Appeler(montrer, valeur) else pcall(valeur.Show, valeur) end
-                if NS.Appeler(valeur.IsShown, valeur) then
-                    if NS.suite and NS.suite.Prive and NS.suite.Prive() then NS.Dire("Héritage, ouverte : " .. nom) end
-                    return true
-                end
-            end
-        end
-    end
-    -- Mode prive : ce qui a ete trouve, pour viser la bonne fenetre.
-    if NS.suite and NS.suite.Prive and NS.suite.Prive() then
-        NS.Dire("Héritage, fenêtres vues : " .. (#vus > 0 and table.concat(vus, ", ") or "aucune"))
-    end
-    return false
+    if not (cadre and cadre.IsShown and cadre:IsShown()) then return false end
+    local registre = _G.EventRegistry
+    if registre and registre.TriggerEvent then pcall(registre.TriggerEvent, registre, "Legacy.SelectPage", 3) end
+    return true
 end
 
 -- La touche qui ouvre l'heritage dans les raccourcis du joueur, ou nil.
@@ -463,4 +442,75 @@ function NS.ToucheHeritage()
         end
     end
     return nil
+end
+
+
+-- ---------------------------------------------------------------------------
+-- Ouvrir l'heritage sans toucher a l'interface du jeu : un bouton securise
+-- du jeu (SecureActionButtonTemplate, type "click") clique le bouton
+-- Heritage du micro-menu (LegacyMicroButton), comme le joueur le ferait.
+-- Il est pose a l'ecran, sans ancrage, par-dessus le bouton de LegacyCore ;
+-- il disparait des le combat (rien ne bouge alors) et quand on ne le voit pas.
+-- ---------------------------------------------------------------------------
+
+local securise, cible
+local function Securise()
+    if securise then return securise end
+    if NS.Appeler(_G.InCombatLockdown) or not _G.LegacyMicroButton then return nil end
+    local ok, b = pcall(CreateFrame, "Button", "LegacyCoreHeritageSecurise", UIParent, "SecureActionButtonTemplate")
+    if not ok or not b then return nil end
+    b:RegisterForClicks("AnyUp")
+    b:SetAttribute("type", "click")
+    b:SetAttribute("clickbutton", _G.LegacyMicroButton)
+    b:SetFrameStrata("DIALOG")
+    local surbrillance = b:CreateTexture(nil, "HIGHLIGHT")
+    surbrillance:SetAllPoints()
+    surbrillance:SetTexture("Interface\\Buttons\\UI-Panel-Button-Highlight")
+    surbrillance:SetTexCoord(0, 0.625, 0, 0.6875)
+    surbrillance:SetBlendMode("ADD")
+    b:Hide()
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_REGEN_DISABLED")
+    f:RegisterEvent("PLAYER_REGEN_ENABLED")
+    f:SetScript("OnEvent", function(_, e)
+        if e == "PLAYER_REGEN_DISABLED" then b:Hide()
+        elseif cible and NS.PoserHeritageSecurise then NS.PoserHeritageSecurise(cible.bouton, cible.actif) end
+    end)
+    securise = b
+    return b
+end
+
+local function Placer()
+    local b = securise
+    if not b or NS.Appeler(_G.InCombatLockdown) then return end
+    local v = cible and cible.bouton
+    if not (cible and cible.actif and v and v:IsVisible()) then b:Hide() return end
+    local l, bas, w, h = v:GetLeft(), v:GetBottom(), v:GetWidth(), v:GetHeight()
+    if not (l and bas and w and h) then b:Hide() return end
+    local k = v:GetEffectiveScale() / UIParent:GetEffectiveScale()
+    b:ClearAllPoints()
+    b:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", l * k, bas * k)
+    b:SetSize(w * k, h * k)
+    b:Show()
+end
+
+function NS.PoserHeritageSecurise(bouton, actif)
+    cible = { bouton = bouton, actif = actif }
+    local b = Securise()
+    if not b then return end
+    if not bouton.heritageSuivi then
+        -- Le bouton visible bouge (defilement, fenetre) ou se cache : le
+        -- bouton securise suit, hors combat.
+        bouton.heritageSuivi = true
+        bouton:HookScript("OnHide", function() if securise and not NS.Appeler(_G.InCombatLockdown) then securise:Hide() end end)
+        local suivi = CreateFrame("Frame", nil, bouton)
+        local attente = 0
+        suivi:SetScript("OnUpdate", function(_, e)
+            attente = attente - (e or 0)
+            if attente > 0 then return end
+            attente = 0.2
+            Placer()
+        end)
+    end
+    Placer()
 end

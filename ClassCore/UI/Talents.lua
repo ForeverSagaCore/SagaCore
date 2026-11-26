@@ -56,17 +56,22 @@ end
 --   colonne, rang, max }.
 -- ---------------------------------------------------------------------------
 
--- Valeurs distinctes : la premiere et le pas le plus petit.
+-- Valeurs proches regroupees (a 15 points pres : une meme rangee ou
+-- colonne du jeu), puis la premiere et le pas le plus petit entre groupes.
 local function Grille(valeurs)
     local tri = {}
     for v in pairs(valeurs) do table.insert(tri, v) end
     table.sort(tri)
-    local pas
-    for i = 2, #tri do
-        local d = tri[i] - tri[i - 1]
-        if d > 0.5 and (not pas or d < pas) then pas = d end
+    local groupes = {}
+    for _, v in ipairs(tri) do
+        if #groupes == 0 or v - groupes[#groupes] >= 15 then table.insert(groupes, v) end
     end
-    return tri[1] or 0, pas or 1
+    local pas
+    for i = 2, #groupes do
+        local d = groupes[i] - groupes[i - 1]
+        if not pas or d < pas then pas = d end
+    end
+    return groupes[1] or 0, pas or 60
 end
 
 function Ta.NombreDeGroupes()
@@ -337,7 +342,8 @@ function Ta.Decoder(s, code)
     for _, a in ipairs(s.arbres) do
         for _, t in ipairs(a.talents) do parCase[a.rangArbre .. ":" .. t.rangee .. ":" .. t.colonne] = t end
     end
-    local arbre, suite, rangs = 1, {}, {}
+    -- Les points du code, dans l'ordre.
+    local arbre, liste = 1, {}
     for c in code:gmatch(".") do
         local k = ({ A = 1, B = 2, C = 3 })[c]
         if k then arbre = k
@@ -346,18 +352,88 @@ function Ta.Decoder(s, code)
             if not i then return nil, "caractere " .. c end
             local case = arbre .. ":" .. (math.floor(i / 4) + 1) .. ":" .. (i % 4 + 1)
             local t = parCase[case]
-            if not t then return nil, "point " .. (#suite + 1) .. " case vide " .. case end
-            if not Ta.Ajouter(s, rangs, t) then return nil, "point " .. (#suite + 1) .. " refuse " .. case .. " " .. tostring(t.nom) end
-            table.insert(suite, t)
+            if not t then return nil, "point " .. (#liste + 1) .. " case vide " .. case end
+            table.insert(liste, t)
+        end
+    end
+    -- L'ordre conseille, rendu possible : un point qui ne peut pas encore se
+    -- placer (rangee pas ouverte, fleche) attend son tour, sans changer
+    -- l'ordre des autres.
+    local rangs, suite, place = {}, {}, {}
+    local avance = true
+    while avance do
+        avance = false
+        for i, t in ipairs(liste) do
+            if not place[i] and Ta.Ajouter(s, rangs, t) then
+                place[i] = true
+                table.insert(suite, t)
+                avance = true
+                break
+            end
+        end
+    end
+    if #suite < #liste then
+        for i, t in ipairs(liste) do
+            if not place[i] then return nil, "bloque " .. tostring(t.nom) .. " " .. t.arbre .. ":" .. t.rangee .. ":" .. t.colonne end
         end
     end
     return suite, rangs
 end
 
+-- Rangs finaux (un chiffre par talent, rangee puis colonne, arbres separes
+-- par "-") : l'ordre des points en est deduit, l'arbre principal d'abord,
+-- de haut en bas, chaque point des que sa rangee et ses fleches le permettent.
+function Ta.DecoderRangs(s, code)
+    if not (s and type(code) == "string") then return nil end
+    local morceaux = {}
+    for m in (code .. "-"):gmatch("([^-]*)-") do table.insert(morceaux, m) end
+    local voulu, total = {}, {}
+    for k, chiffres in ipairs(morceaux) do
+        local a = s.arbres[k]
+        if chiffres ~= "" and not a then return nil, "arbre " .. k end
+        total[k] = 0
+        if a then
+            if #chiffres > #a.talents then return nil, "arbre " .. k .. " : " .. #chiffres .. " talents pour " .. #a.talents end
+            for i = 1, #chiffres do
+                local r = tonumber(chiffres:sub(i, i)) or 0
+                local t = a.talents[i]
+                if r > (t.max or 1) then return nil, "rang " .. r .. " > " .. tostring(t.max) .. " " .. tostring(t.nom) end
+                if r > 0 then voulu[t.id] = r total[k] = total[k] + r end
+            end
+        end
+    end
+    local ordre = {}
+    for k in ipairs(s.arbres) do table.insert(ordre, k) end
+    table.sort(ordre, function(x, y) if (total[x] or 0) ~= (total[y] or 0) then return (total[x] or 0) > (total[y] or 0) end return x < y end)
+    local rangs, suite = {}, {}
+    local reste = 0
+    for _, n in pairs(voulu) do reste = reste + n end
+    while reste > 0 do
+        local pose = false
+        for _, k in ipairs(ordre) do
+            for _, t in ipairs(s.arbres[k].talents) do
+                if (rangs[t.id] or 0) < (voulu[t.id] or 0) and Ta.Ajouter(s, rangs, t) then
+                    table.insert(suite, t)
+                    reste = reste - 1
+                    pose = true
+                    break
+                end
+            end
+            if pose then break end
+        end
+        if not pose then return nil, "ordre impossible" end
+    end
+    return suite, rangs
+end
+
 local ACTIVITES = {
-    quetes = function() return T("Montée de niveau", "Levelling") end,
-    groupe = function() return T("Donjons et raids", "Dungeons and raids") end,
+    solo = function() return T("Montée de niveau", "Levelling") end,
+    donjons = function() return T("Donjons en montée", "Dungeons while levelling") end,
+    groupe = function() return T("Montée en groupe", "Group levelling") end,
+    jce = function() return T("Raids et donjons (60)", "Raids and dungeons (60)") end,
+    jcj = function() return T("JcJ", "PvP") end,
 }
+local ORDRE_ACTIVITES = { "solo", "donjons", "groupe", "jce", "jcj" }
 
 -- { { nom, icone, suite, rangs, repartition, modele } } pour une structure.
 function Ta.Modeles(classe, s)
@@ -365,16 +441,21 @@ function Ta.Modeles(classe, s)
     if not s then return liste end
     local diag = {}
     for _, m in ipairs(NS.MODELES and NS.MODELES[classe or ""] or {}) do
-        local suite, rangs = Ta.Decoder(s, m.code)
-        if not suite then table.insert(diag, m.code:sub(1, 12) .. " : " .. tostring(rangs)) end
+        local suite, rangs
+        if m.code then suite, rangs = Ta.Decoder(s, m.code) else suite, rangs = Ta.DecoderRangs(s, m.rangs) end
+        if not suite then table.insert(diag, tostring(m.code or m.rangs):sub(1, 14) .. " : " .. tostring(rangs)) end
         if suite then
             local _, parArbre = Ta.Depenses(s, rangs)
-            local rep = {}
-            for k = 1, #s.arbres do table.insert(rep, tostring(parArbre[k] or 0)) end
-            local a = s.arbres[m.arbre] or s.arbres[1]
-            local nom = (ACTIVITES[m.activite] or ACTIVITES.quetes)() .. " : " .. (a.nom or "")
+            local rep, principal, maxi = {}, 1, -1
+            for k = 1, #s.arbres do
+                table.insert(rep, tostring(parArbre[k] or 0))
+                if (parArbre[k] or 0) > maxi then principal, maxi = k, parArbre[k] or 0 end
+            end
+            local a = s.arbres[principal] or s.arbres[1]
+            local nom = a.nom or ""
             if m.variante == "saignement" then nom = nom .. " " .. T("(saignements)", "(bleeds)") end
-            table.insert(liste, { nom = nom, icone = a.icone, suite = suite, rangs = rangs,
+            if m.jusqua then nom = nom .. " " .. string.format(T("(jusqu'au niveau %d)", "(up to level %d)"), m.jusqua) end
+            table.insert(liste, { nom = nom, icone = a.icone, suite = suite, rangs = rangs, arbre = principal,
                 repartition = table.concat(rep, "/"), modele = m })
         end
     end
@@ -523,7 +604,8 @@ local function Dessiner(page, s, rangs, o)
     end
     -- Le pas du jeu, reduit seulement si les arbres ne tiennent pas.
     local pas = math.min(PAS, math.floor((colonneL - 24 - BOUTON) / math.max(maxCol - 1, 1)))
-    local k = math.min(1, pas / PAS)
+    -- Un peu plus petit que le jeu : l'arbre entier reste lisible.
+    local k = math.min(0.8, pas / PAS)
     g:SetScale(k)
     local hauteur = HAUT_TITRE + 10 + (maxRangee - 1) * PAS * k + BOUTON * k + 12
     g:SetSize(largeur / k, hauteur / k)
@@ -646,32 +728,67 @@ local function ChargerModele(m, classe)
     end
 end
 
--- nil quand aucun modele ne va a cet arbre : rien n'est montre.
-local function BlocModeles(page, s, classe, rangs, simulation)
-    local lignes = {}
-    for _, m in ipairs(Ta.Modeles(classe, s)) do
-        local droite
-        if not simulation then
-            local t = Ta.Prochain(m, rangs)
-            droite = t and string.format(T("Prochain point : %s", "Next point : %s"), t.nom) or T("Suivi en entier", "Fully followed")
-        end
-        table.insert(lignes, { icone = m.icone, texte = m.nom .. "  (" .. m.repartition .. ")", droite = droite, largeurDroite = 240,
-            bouton = { texte = simulation and T("Charger", "Load") or T("Essayer", "Try"), action = function()
-                ChargerModele(m, classe)
-                page.mode = "simulation"
-            end } })
-    end
-    if #lignes == 0 then return nil end
-    return { titre = T("Modèles conseillés", "Suggested builds"), lignes = lignes }
+-- Les modeles conseilles : une rubrique, deux listes sur sa ligne de titre
+-- (l'activite, puis la specialisation) et le modele choisi dessous. Choisir
+-- charge le modele dans la simulation.
+Ta.choix = Ta.choix or {}
+
+local function ModelesDispo(page, s, classe)
+    page.cacheModeles = page.cacheModeles or {}
+    local cle = tostring(classe) .. ":" .. tostring(s)
+    if page.cacheModeles.cle ~= cle then page.cacheModeles = { cle = cle, liste = Ta.Modeles(classe, s) } end
+    return page.cacheModeles.liste
 end
 
-local function RendreSous(page, y, bloc)
+local function ModeleChoisi(page, s, classe, rangs)
+    local liste = ModelesDispo(page, s, classe)
+    if #liste == 0 then return nil, liste end
+    local c = Ta.choix[classe or ""] or {}
+    Ta.choix[classe or ""] = c
+    -- Par defaut : montee de niveau, dans la specialisation du personnage.
+    local _, parArbre = Ta.Depenses(s, rangs)
+    local principal, maxi = 1, -1
+    for k = 1, #s.arbres do if (parArbre[k] or 0) > maxi then principal, maxi = k, parArbre[k] or 0 end end
+    local function Trouver(act, arbre)
+        for _, m in ipairs(liste) do
+            if m.modele.activite == act and (arbre == nil or m.arbre == arbre) then return m end
+        end
+    end
+    local act = c.activite or "solo"
+    if not Trouver(act) then act = liste[1].modele.activite end
+    local m = Trouver(act, c.arbre or principal) or Trouver(act)
+    c.activite, c.arbre = act, m and m.arbre
+    return m, liste
+end
+
+local function BlocModele(page, s, classe, rangs, simulation)
+    local m = ModeleChoisi(page, s, classe, rangs)
+    if not m then return nil end
+    local droite
+    if not simulation then
+        local t = Ta.Prochain(m, rangs)
+        droite = t and string.format(T("Prochain point : %s", "Next point : %s"), t.nom) or T("Suivi en entier", "Fully followed")
+    end
+    return { titre = T("Modèles conseillés", "Suggested builds"), espaceApresTitre = 30, lignes = { { icone = m.icone,
+        texte = m.nom .. "  (" .. m.repartition .. ")", droite = droite, largeurDroite = 260,
+        infobulle = function(tt)
+            tt:AddLine(m.nom .. "  (" .. m.repartition .. ")")
+            tt:AddLine(T("Un ordre de points conseillé, du premier au dernier. « Charger » le place dans la simulation, jusqu'au niveau choisi.",
+                "A suggested point order, first to last. « Load » places it in the simulation, up to the chosen level."), 1, 1, 1, true)
+        end,
+        bouton = { texte = T("Charger", "Load"), action = function()
+            ChargerModele(m, classe)
+            page.mode = "simulation"
+        end } } } }
+end
+
+local function RendreSous(page, y, blocs)
     local sous = Sous(page)
     sous.zone:ClearAllPoints()
     sous.zone:SetPoint("TOPLEFT", page.zone, "TOPLEFT", 0, -y)
     sous.zone:SetWidth(page.zone:GetWidth() or 780)
     local F = NS.fenetre
-    local h = (F and F.RendreBlocs) and F.RendreBlocs(sous, bloc and { bloc } or {}) or 0
+    local h = (F and F.RendreBlocs) and F.RendreBlocs(sous, blocs or {}) or 0
     sous.zone:SetHeight(math.max(h, 1))
     return h
 end
@@ -708,7 +825,7 @@ function Ta.Page()
             -- La liste sur la ligne du titre, calee a droite.
             local r = CreateFrame("Frame", nil, page.cadre)
             r:SetSize(O.LARGEUR - 10, 22)
-            r:SetPoint("TOPLEFT", page.cadre, "TOPLEFT", 0, 2)
+            r:SetPoint("TOPLEFT", page.cadre, "TOPLEFT", 0, -38)
             page.choix = O.Segments(r, function()
                 local p = NS.fenetre.Profil() or {}
                 local l = { { "principale", T("Principale", "Primary") } }
@@ -716,7 +833,46 @@ function Ta.Page()
                 table.insert(l, { "simulation", T("Simulation", "Simulation") })
                 return l
             end, function() return page.mode or "principale" end, function(v) page.mode = v end)
+            -- Les deux listes des modeles (placees au rendu, sur la ligne de
+            -- titre de la rubrique).
+            page.rActivite = CreateFrame("Frame", nil, page.cadre)
+            page.rActivite:SetSize(O.LARGEUR - 10 - 220, 22)
+            page.rSpe = CreateFrame("Frame", nil, page.cadre)
+            page.rSpe:SetSize(O.LARGEUR - 10, 22)
+            local function Contexte()
+                local p = NS.fenetre.Profil() or {}
+                local s = page.mode == "simulation" and Ta.sim.structure or Ta.Structure(p, page.mode == "secondaire" and 2 or 1) or Ta.sim.structure
+                return p, s
+            end
+            local function Charger()
+                local p, s = Contexte()
+                if not s then return end
+                local m = ModeleChoisi(page, s, p.classe, Ta.Rangs(s))
+                if m then ChargerModele(m, p.classe) page.mode = "simulation" end
+            end
+            page.choixActivite = O.Segments(page.rActivite, function()
+                local p, s = Contexte()
+                local l, vus = {}, {}
+                for _, m in ipairs(s and ModelesDispo(page, s, p.classe) or {}) do vus[m.modele.activite] = true end
+                for _, a in ipairs(ORDRE_ACTIVITES) do
+                    if vus[a] then table.insert(l, { a, ACTIVITES[a]() }) end
+                end
+                return l
+            end, function() local p = NS.fenetre.Profil() or {} return (Ta.choix[p.classe or ""] or {}).activite end,
+            function(v) local p = NS.fenetre.Profil() or {} Ta.choix[p.classe or ""] = Ta.choix[p.classe or ""] or {} Ta.choix[p.classe or ""].activite = v Charger() end)
+            page.choixSpe = O.Segments(page.rSpe, function()
+                local p, s = Contexte()
+                local c = Ta.choix[p.classe or ""] or {}
+                local l = {}
+                for _, m in ipairs(s and ModelesDispo(page, s, p.classe) or {}) do
+                    if m.modele.activite == c.activite then table.insert(l, { m.arbre, m.nom }) end
+                end
+                return l
+            end, function() local p = NS.fenetre.Profil() or {} return (Ta.choix[p.classe or ""] or {}).arbre end,
+            function(v) local p = NS.fenetre.Profil() or {} Ta.choix[p.classe or ""] = Ta.choix[p.classe or ""] or {} Ta.choix[p.classe or ""].arbre = v Charger() end)
             page.intro = O.Detail(36)
+            -- La liste est a droite, sur la ligne de l'explication.
+            page.intro:SetWidth(O.LARGEUR - 290)
             page.yAvant = page.y
             -- Simulation seulement : le niveau, puis les points et deux actions.
             page.rNiveau = O.Rangee(24)
@@ -748,8 +904,9 @@ function Ta.Page()
             local simulation = page.mode == "simulation"
             page.rNiveau:SetShown(simulation)
             page.rPoints:SetShown(simulation)
-            -- Hors simulation, les arbres montent a la place des deux rangees.
-            local yZone = simulation and page.yZone or page.yAvant + 6
+            -- Les arbres et les modeles restent a la meme place dans tous les
+            -- modes ; les reglages de la simulation viennent dessous.
+            local yZone = page.yAvant + 6
             page.zone:ClearAllPoints()
             page.zone:SetPoint("TOPLEFT", page.cadre, "TOPLEFT", 0, -yZone)
 
@@ -799,8 +956,24 @@ function Ta.Page()
                 o = {}
             end
             local h = Dessiner(page, s, rangs, o)
-            local h2 = RendreSous(page, h + 10, s and BlocModeles(page, s, p.classe, rangs, simulation) or nil)
+            local bloc = s and BlocModele(page, s, p.classe, rangs, simulation) or nil
+            local h2 = RendreSous(page, h + 10, bloc and { bloc } or nil)
+            page.rActivite:SetShown(bloc ~= nil)
+            page.rSpe:SetShown(bloc ~= nil)
+            if bloc then
+                page.rActivite:ClearAllPoints()
+                page.rActivite:SetPoint("TOPLEFT", page.zone, "TOPLEFT", 0, -(h + 10 + 30))
+                page.rSpe:ClearAllPoints()
+                page.rSpe:SetPoint("TOPLEFT", page.zone, "TOPLEFT", 0, -(h + 10 + 30))
+            end
             local total = h + (h2 > 0 and (h2 + 10) or 0)
+            if simulation then
+                page.rNiveau:ClearAllPoints()
+                page.rNiveau:SetPoint("TOPLEFT", page.zone, "TOPLEFT", 0, -(total + 12))
+                page.rPoints:ClearAllPoints()
+                page.rPoints:SetPoint("TOPLEFT", page.rNiveau, "BOTTOMLEFT", 0, -6)
+                total = total + 12 + 24 + 6 + 24
+            end
             page.zone:SetHeight(math.max(total, 20))
             page.hauteur = yZone + math.max(total, 20)
         end }

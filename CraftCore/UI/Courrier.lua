@@ -858,14 +858,15 @@ end
 -- ---------------------------------------------------------------------------
 
 local function BesoinsDAchat()
+    -- Ce qui manque encore a chaque objectif (matieres, achats compris), et
+    -- les plans a apprendre maintenant pas encore en main.
     local besoins = {}
     local ok, objectifs = pcall(NS.suivi.Objectifs)
     for _, o in ipairs(ok and objectifs or {}) do
-        for objet, n in pairs(type(o.achats) == "table" and o.achats or {}) do
-            objet = tonumber(objet)
-            if objet then besoins[objet] = (besoins[objet] or 0) + (tonumber(n) or 0) end
+        for _, m in ipairs(o.matieres or {}) do
+            local objet = tonumber(m.objet)
+            if objet and (m.manque or 0) > 0 then besoins[objet] = (besoins[objet] or 0) + m.manque end
         end
-        -- Les plans a apprendre maintenant, pas encore en main : un chacun.
         for _, a in ipairs(o.aApprendre or {}) do
             if not a.appris and not a.plusTard then
                 local okO, plan = pcall(NS.recettes.ObjetDuPlan, a.recette)
@@ -881,17 +882,18 @@ end
 -- { { index, objet, reste (objets), lot (objets par achat), prix (par lot) } }
 function courrier.AchatsMarchand()
     local liste = {}
-    local nombre, idDe, infoDe = Lire("GetMerchantNumItems"), Lire("GetMerchantItemID"), Lire("GetMerchantItemInfo")
-    if not (nombre and idDe and infoDe) then return liste end
+    local nombre, idDe = Lire("GetMerchantNumItems"), Lire("GetMerchantItemID")
+    local infoDe = NS.marchands.InfoArticle
+    if not (nombre and idDe) then return liste end
     local besoins = BesoinsDAchat()
     for i = 1, tonumber(NS.Appeler(nombre)) or 0 do
         local objet = tonumber(NS.Appeler(idDe, i))
         local besoin = objet and besoins[objet]
         if besoin and besoin > 0 then
-            local ok, _, _, prix, lot, dispo, achetable, _, coutSpecial = pcall(infoDe, i)
+            local prix, lot, dispo, achetable, coutSpecial = infoDe(i)
             prix, lot = tonumber(prix), math.max(1, tonumber(lot) or 1)
-            if ok and prix and not coutSpecial and achetable ~= false then
-                local reste = besoin - (NS.inventaire.DisponibleDansLesSacs(objet) or 0)
+            if prix and prix > 0 and not coutSpecial and achetable ~= false then
+                local reste = besoin
                 if reste > 0 then
                     table.insert(liste, { index = i, objet = objet, reste = reste, lot = lot, prix = prix,
                         lots = math.ceil(reste / lot), dispo = tonumber(dispo) })
@@ -924,7 +926,8 @@ function courrier.Acheter(lignes)
                 reste = reste - q
             end
         else
-            for _ = 1, l.lots do table.insert(file, { index = l.index, q = 1, prix = l.prix }) end
+            -- Comme un clic sur l'article : un lot entier, sans quantite.
+            for _ = 1, l.lots do table.insert(file, { index = l.index, lot = l.lot, prix = l.prix }) end
         end
     end
     if #file == 0 then return end
@@ -942,8 +945,13 @@ function courrier.Acheter(lignes)
             file = {}
             NS.Dire(L().MERCHANT_NO_MONEY or "")
         else
-            NS.Appeler(acheter, l.index, l.q)
-            faits = faits + l.q
+            if l.lot then
+                NS.Appeler(acheter, l.index)
+                faits = faits + l.lot
+            else
+                NS.Appeler(acheter, l.index, l.q)
+                faits = faits + l.q
+            end
         end
         NS.Appeler(plusTard, 0.25, Suivant)
     end

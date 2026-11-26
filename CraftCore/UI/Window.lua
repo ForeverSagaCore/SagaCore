@@ -3474,6 +3474,62 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
         vises = { choix }
         propose = true
     end
+    -- Rang maximum du palier atteint : le palier suivant, ou l'apprendre
+    -- (le maitre le plus proche, le niveau du personnage requis) et le guidage.
+    if rangMax and rang >= rangMax and NS.avisRang and NS.avisRang.PalierSuivant then
+        local palier = NS.avisRang.PalierSuivant(rangMax)
+        if palier then
+            local niveau = tonumber(NS.Appeler(NS.Lecture("UnitLevel"), "player")) or 1
+            y = Paragraphe(contenu, y, string.format(L.CAP_NEXT, rangMax, palier.rang), POLICE, OR, aligne)
+            local parLivre = NS.avisRang.PalierParLivre and NS.avisRang.PalierParLivre(ligneMetier)
+            local niveauOk = not (palier.niveau and niveau < palier.niveau)
+            if palier.niveau and not niveauOk then
+                y = Paragraphe(contenu, y, string.format(L.CAP_LEVEL_LOW, palier.niveau, niveau), POLICE, GRIS, aligne)
+            elseif palier.niveau then
+                y = Paragraphe(contenu, y, string.format(L.CAP_LEVEL_OK, palier.niveau), POLICE, VERT, aligne)
+            end
+            if parLivre then
+                y = Paragraphe(contenu, y, L.CAP_BOOK, POLICE, GRIS, aligne)
+            else
+                -- Tous les maitres possibles, chacun avec ce que sa zone offre
+                -- en plus, et son propre guidage : le choix reste au joueur.
+                local liste = NS.avisRang.MaitresDuPalier and NS.avisRang.MaitresDuPalier(ligneMetier, rangMax) or {}
+                if #liste == 0 then
+                    local pt = NS.avisRang.MaitrePlusProche and NS.avisRang.MaitrePlusProche(ligneMetier, rangMax)
+                    if pt then liste = { pt } end
+                end
+                if #liste > 1 then y = Paragraphe(contenu, y, string.format(L.CAP_CHOICES, #liste), POLICE, GRIS, aligne) end
+                for i, pt in ipairs(liste) do
+                    local zone = pt.zone
+                    if not zone then
+                        local okZ, info = pcall(C_Map.GetMapInfo, pt.carte)
+                        zone = okZ and type(info) == "table" and info.name or nil
+                    end
+                    local ligneTexte = pt.nom .. (zone and (", " .. zone) or "")
+                        .. (pt.distance and ("  |cffb3b3b3" .. string.format(L.CAP_DISTANCE, math.floor(pt.distance + 0.5)) .. "|r") or "")
+                    y = Paragraphe(contenu, y, ligneTexte, POLICE, OR, aligne)
+                    if pt.interets and #pt.interets > 0 then
+                        y = Paragraphe(contenu, y, table.concat(pt.interets, "  ·  "), POLICE, GRIS, aligne + 12)
+                    end
+                    if niveauOk and NS.guidage and NS.guidage.MaitreDeMetier then
+                        y = y + 2
+                        local bp = BoutonAction(contenu, "progPalier" .. i, L.RANK_MAX_GUIDE)
+                        bp:ClearAllPoints()
+                        bp:SetPoint("TOPLEFT", contenu, "TOPLEFT", aligne + 12, -y)
+                        local cible, nomM = pt, sien.nom
+                        bp:SetScript("OnClick", function()
+                            NS.guidage.MaitreDeMetier(ligneMetier, nomM, rangMax, cible)
+                            ecran.Montrer(ecran.page)
+                        end)
+                        bp:Show()
+                        y = y + 26
+                    end
+                end
+            end
+            y = y + 6
+        end
+    end
+
     if #vises == 0 then return index, y + 6 end
     if propose then
         y = Paragraphe(contenu, y + 6, string.format(L.GUIDE_PROPOSED, choix), POLICE, OR, aligne)

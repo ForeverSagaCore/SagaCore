@@ -115,10 +115,18 @@ local function BetesDe(cle)
     return l
 end
 
+-- La classification du jeu, en couleur de son cadre de portrait : argent
+-- pour une rare, or pour une elite, blanc sinon.
+local ARGENT, OR = { 0.78, 0.8, 0.86 }, { 1, 0.82, 0 }
+local function Classement(b)
+    if b.rare and b.elite then return T("Rare élite", "Rare elite"), ARGENT end
+    if b.rare then return T("Rare", "Rare"), ARGENT end
+    if b.elite then return T("Élite", "Elite"), OR end
+    return nil
+end
+
 local function Marques(b)
     local l = {}
-    if b.elite then table.insert(l, T("Élite", "Elite")) end
-    if b.rare then table.insert(l, T("Rare", "Rare")) end
     if b.dungeon then table.insert(l, T("En donjon", "In a dungeon")) end
     if b.summoned then table.insert(l, T("Invoquée", "Summoned")) end
     return table.concat(l, ", ")
@@ -190,8 +198,10 @@ local function InfobulleBete(b)
         tt:AddLine(string.format("%s, %s", f and f.nom() or b.family, Niveaux(b)), 1, 1, 1)
         local lieu = Lieu(b)
         if lieu then tt:AddLine(lieu, 0.8, 0.8, 0.8) end
+        local classe, teinte = Classement(b)
+        if classe then tt:AddLine(classe, teinte[1], teinte[2], teinte[3]) end
         local m = Marques(b)
-        if m ~= "" then tt:AddLine(m, 1, 0.5, 0.25) end
+        if m ~= "" then tt:AddLine(m, 0.8, 0.8, 0.8) end
         if b.teaches and #b.teaches > 0 then tt:AddLine(string.format(T("Apprend : %s", "Teaches : %s"), Enseigne(b)), 1, 0.82, 0, true) end
         if b.note then tt:AddLine(b.note, 0.8, 0.8, 0.8, true) end
     end
@@ -255,12 +265,14 @@ local function VueFamille(cle)
             { Lieu(choisie) or "", C("NORMAL") },
         }
         if choisie.teaches and #choisie.teaches > 0 then table.insert(lignes, { string.format(T("Apprend : %s", "Teaches : %s"), Enseigne(choisie)), C("VERT") }) end
+        local classe, teinte = Classement(choisie)
+        if classe then table.insert(lignes, { classe, teinte }) end
         local m = Marques(choisie)
-        if m ~= "" then table.insert(lignes, { m, C("ROUGE") }) end
+        if m ~= "" then table.insert(lignes, { m, C("NORMAL") }) end
         if choisie.speed then table.insert(lignes, { (string.gsub(string.format(T("Vitesse d'attaque : %.1f s", "Attack speed : %.1f s"), choisie.speed), "(%d)%.(%d)", T("%1,%2", "%1.%2"))), C("NORMAL") }) end
         table.insert(lignes, { string.format(T("Mange : %s", "Eats : %s"), Regime(f)), C("GRIS") })
         table.insert(lignes, { string.format(T("Techniques de la famille : %s", "Family abilities : %s"), table.concat(noms, ", ")), C("GRIS") })
-        table.insert(blocs, { apercu = { display = choisie.display, id = choisie.id, lignes = lignes } })
+        table.insert(blocs, { apercu = { display = choisie.display, id = choisie.id, lignes = lignes, bordure = teinte } })
     end
     local lb = { titre = T("Où les trouver", "Where to find them"), lignes = {} }
     for _, b in ipairs(betes) do table.insert(lb.lignes, LigneBete(b, b == choisie)) end

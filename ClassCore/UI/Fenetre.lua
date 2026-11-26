@@ -276,7 +276,7 @@ local function Rendre(page, blocs)
             if NS.charte and NS.charte.TitreDeSection then pcall(NS.charte.TitreDeSection, t.fs, t.filet)
             else t.filet:SetColorTexture(0.8, 0.65, 0.35, 0.35) end
             t.fs:Show() t.filet:Show() t.droite:Show()
-            y = y + 30
+            y = y + 30 + (b.espaceApresTitre or 0)
         end
         if b.colonnes then
             -- L'en-tete des colonnes : en legende, au-dessus des valeurs.
@@ -305,6 +305,11 @@ local function Rendre(page, blocs)
                 if m.SetPortraitZoom then pcall(m.SetPortraitZoom, m, 0) end
                 if m.SetCamDistanceScale then pcall(m.SetCamDistanceScale, m, 1.2) end
                 if m.SetRotation then pcall(m.SetRotation, m, 0.6) end
+                -- Le cadre prend la couleur de la classification (rare, elite).
+                if m.cadre and m.cadre.SetBackdropBorderColor then
+                    local c = b.apercu.bordure or { 1, 1, 1 }
+                    m.cadre:SetBackdropBorderColor(c[1], c[2], c[3], 1)
+                end
                 m:Show()
             end
             page.textesApercu = page.textesApercu or {}

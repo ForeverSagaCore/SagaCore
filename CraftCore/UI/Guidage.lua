@@ -243,6 +243,33 @@ TYPES.marchand = (function()
 end)()
 
 -- ---------------------------------------------------------------------------
+-- Maitre de metier : le plus proche du metier bloque a son rang maximum.
+-- ---------------------------------------------------------------------------
+
+TYPES.maitreMetier = (function()
+    local t = S().TypePoint({ icone = "Interface\\Minimap\\Tracking\\Profession" })
+    t.Cle = function(p) return tostring(p.ligne) .. (type(p.cible) == "table" and (":" .. tostring(p.cible.id or p.cible.nom)) or "") end
+    t.Libelle = function(p) return string.format(L().RANK_MAX_GUIDE_WHAT or "%s", tostring(p.nom or "?")) end
+    t.Preparer = function(p, etat)
+        local a = NS.avisRang
+        local pt = (type(p.cible) == "table" and p.cible.carte and p.cible)
+            or (a and a.MaitrePlusProche and a.MaitrePlusProche(tonumber(p.ligne), tonumber(p.rangMax)))
+        if not pt then Dire(L().RANK_MAX_GUIDE_NONE) return false end
+        etat.point = { carte = pt.carte, x = pt.x, y = pt.y, nom = pt.nom }
+        return true
+    end
+    t.Reprendre = function(p, etat) return type(etat.point) == "table" and etat.point.carte ~= nil end
+    t.Etapes = function(p, etat)
+        local pt = etat.point
+        if type(pt) ~= "table" then return nil, "atteint" end
+        local quoi = t.Libelle(p)
+        return { { carte = pt.carte, x = pt.x, y = pt.y, titre = quoi, guidage = quoi,
+            qui = tostring(pt.nom or "?") .. "\n|cffb3b3b3" .. quoi .. "|r", cle = "maitreMetier" } }
+    end
+    return t
+end)()
+
+-- ---------------------------------------------------------------------------
 -- Service : la banque ou la boite aux lettres la plus proche (lieux de
 -- MapCore), pour une etape de la feuille de route.
 -- ---------------------------------------------------------------------------
@@ -290,6 +317,11 @@ function guidage.Lancer(params)
     if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
     return r
 end
+function guidage.MaitreDeMetier(ligne, nom, rangMax, cible)
+    local c = type(cible) == "table" and { id = cible.id, carte = cible.carte, x = cible.x, y = cible.y, nom = cible.nom } or nil
+    return S().LancerObjectif("CraftCore", "maitreMetier", { ligne = ligne, nom = nom, rangMax = rangMax, cible = c })
+end
+
 function guidage.Marchand(objet)
     local r = S().LancerObjectif("CraftCore", "marchand", { objet = objet })
     if r and NS.marchands then

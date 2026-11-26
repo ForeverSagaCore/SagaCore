@@ -22,17 +22,34 @@ end
 -- Releve des prix chez le marchand
 -- ---------------------------------------------------------------------------
 
+-- Un article du marchand : prix (par lot), objets par lot, disponibles,
+-- achetable, cout special (autre monnaie). Les deux formes du jeu : la
+-- fonction d'origine, ou C_MerchantFrame.GetItemInfo (une table).
+function marchands.InfoArticle(i)
+    local C = _G.C_MerchantFrame
+    if C and C.GetItemInfo then
+        local ok, t = pcall(C.GetItemInfo, i)
+        if ok and type(t) == "table" then
+            return tonumber(t.price), tonumber(t.stackCount) or 1, tonumber(t.numAvailable), t.isPurchasable, t.hasExtendedCost
+        end
+    end
+    local f = NS.Lecture("GetMerchantItemInfo")
+    if f then
+        local ok, _, _, cout, quantite, dispo, achetable, _, coutSpecial = pcall(f, i)
+        if ok then return tonumber(cout), tonumber(quantite) or 1, tonumber(dispo), achetable, coutSpecial end
+    end
+    return nil
+end
+
 local function Relever()
     local prix = Base()
     local nombre = NS.Lecture("GetMerchantNumItems")
     local idDe = NS.Lecture("GetMerchantItemID")
-    local infoDe = NS.Lecture("GetMerchantItemInfo")
-    if not (prix and nombre and idDe and infoDe) then return end
+    if not (prix and nombre and idDe) then return end
     for i = 1, tonumber(NS.Appeler(nombre)) or 0 do
         local id = tonumber(NS.Appeler(idDe, i))
-        local ok, _, _, cout, quantite, _, _, _, coutSpecial = pcall(infoDe, i)
-        cout, quantite = tonumber(cout), tonumber(quantite)
-        if ok and id and cout and cout > 0 and quantite and quantite > 0 and not coutSpecial then
+        local cout, quantite, _, _, coutSpecial = marchands.InfoArticle(i)
+        if id and cout and cout > 0 and quantite and quantite > 0 and not coutSpecial then
             prix[id] = cout / quantite
         end
     end
@@ -1098,9 +1115,10 @@ function avisRang.Bloques()
     for cle, sien in pairs(fiche.metiers) do
         local ligne = tonumber(cle)
         local rang, rangMax = tonumber(sien.rang), tonumber(sien.rangMax)
-        if ligne and rang and rangMax and rang >= rangMax and rangMax < plafond
-            and PALIERS[rangMax] and niveau >= PALIERS[rangMax] then
-            table.insert(liste, { ligne = ligne, nom = sien.nom, rang = rang, rangMax = rangMax })
+        if ligne and rang and rangMax and rang >= rangMax and rangMax < plafond and PALIERS[rangMax] then
+            -- Bloque par le niveau du personnage : on le dit aussi (parNiveau).
+            table.insert(liste, { ligne = ligne, nom = sien.nom, rang = rang, rangMax = rangMax,
+                parNiveau = niveau < PALIERS[rangMax], niveauRequis = PALIERS[rangMax] })
         end
     end
     table.sort(liste, function(a, b) return a.ligne < b.ligne end)
@@ -1165,6 +1183,11 @@ local function Construire()
     b:SetSize(120, 22)
     b:SetPoint("BOTTOMRIGHT", cadreA, "BOTTOMRIGHT", -10, 10)
     cadreA.ok = b
+    -- Me guider : vers le maitre le plus proche ; ferme l'avis aussi.
+    local g = CreateFrame("Button", "CraftCoreAvisRangGuider", cadreA, "UIPanelButtonTemplate")
+    g:SetSize(120, 22)
+    g:SetPoint("RIGHT", b, "LEFT", -8, 0)
+    cadreA.guider = g
     cadreA:Hide()
     return cadreA
 end
@@ -1172,15 +1195,89 @@ end
 local enCours           -- le metier montre
 local rappelLe = {}     -- dernier rappel, par metier (pres d'un maitre)
 
+-- Les maitres qui enseignent les paliers Expert (au-dela de 150) et Artisan
+-- (au-dela de 225) dans WoW Forever : tous les maitres ne les enseignent
+-- pas. Source : Warcraft Tavern, maitres de metier de Forever. Par numero de
+-- PNJ et camp ("A", "H", "AH"). Recolte (herboristerie, minage, depecage) :
+-- les maitres hors des zones de depart enseignent tous les paliers.
+local PALIERS_MAITRES = {
+    [171] = { expert = { { 4160, "A" }, { 246795, "A" }, { 275322, "A" }, { 11042, "A" }, { 4611, "H" } },
+              artisan = { { 1386, "H" }, { 259585, "AH" } } },
+    [164] = { expert = { { 28694, "A" }, { 4258, "A" }, { 3355, "H" } }, artisan = { { 2836, "AH" } } },
+    [333] = { expert = { { 11072, "A" }, { 259287, "A" }, { 251978, "A" }, { 11074, "H" } }, artisan = {} },
+    [202] = { expert = { { 5174, "A" }, { 11017, "H" } }, artisan = { { 8736, "AH" } } },
+    [165] = { expert = { { 4212, "A" }, { 3007, "H" } }, artisan = { { 11098, "H" } } },
+    [197] = { expert = { { 251972, "A" }, { 1346, "A" }, { 1300, "A" }, { 4576, "H" } }, artisan = { { 2399, "H" } } },
+}
+do
+    local recolte = {
+        [182] = { { 812, "A" }, { 3965, "A" }, { 275321, "A" }, { 4204, "A" }, { 908, "AH" }, { 257021, "AH" }, { 1218, "A" },
+            { 1473, "A" }, { 3604, "A" }, { 12025, "AH" }, { 5137, "A" }, { 5502, "A" }, { 254345, "AH" }, { 5566, "A" },
+            { 1458, "A" }, { 2856, "H" }, { 2390, "H" }, { 2114, "H" }, { 3404, "H" }, { 3013, "H" }, { 4614, "H" }, { 3185, "H" }, { 8146, "H" } },
+        [186] = { { 1681, "A" }, { 1701, "A" }, { 5513, "A" }, { 4254, "A" }, { 255891, "AH" }, { 252388, "AH" }, { 6297, "A" }, { 3137, "A" },
+            { 257022, "AH" }, { 8128, "AH" }, { 5392, "A" }, { 3001, "H" }, { 4598, "H" }, { 3555, "H" }, { 3175, "H" }, { 3357, "H" } },
+        [393] = { { 6291, "A" }, { 6292, "A" }, { 6306, "A" }, { 257003, "AH" }, { 6288, "A" }, { 1292, "A" }, { 257024, "AH" }, { 6287, "A" },
+            { 6295, "A" }, { 6387, "H" }, { 7087, "H" }, { 8144, "H" }, { 12030, "H" }, { 7089, "H" }, { 6289, "H" }, { 7088, "H" }, { 6290, "H" } },
+    }
+    for ligne, liste in pairs(recolte) do PALIERS_MAITRES[ligne] = { expert = liste, artisan = liste } end
+end
+-- Cuisine, peche, secourisme : un livre ou une quete, pas un maitre.
+local PALIERS_LIVRES = { [185] = true, [356] = true, [129] = true }
+
+-- Les maitres qui peuvent apprendre le palier au-dela de rangMax : leurs
+-- numeros (nil : n'importe quel maitre du metier).
+local function MaitresDuPalier(ligne, rangMax)
+    local t = PALIERS_MAITRES[ligne]
+    if not t or not rangMax or rangMax < 150 then return nil end
+    local liste = rangMax >= 225 and t.artisan or t.expert
+    local camp = MonCamp()
+    local ids = {}
+    for _, e in ipairs(liste or {}) do
+        if string.find(e[2], camp, 1, true) then table.insert(ids, e[1]) end
+    end
+    return ids
+end
+function avisRang.PalierParLivre(ligne) return PALIERS_LIVRES[tonumber(ligne) or 0] == true end
+local LireMaitres       -- plus bas : la lecture des maitres de chaque metier
+
 local function Montrer(m, pres)
     Construire()
     enCours = m
     local L = NS.L
     local icones = NS.ICONES_METIERS or {}
     cadreA.rond.icone:SetTexture(icones[m.ligne] or "Interface\\Icons\\INV_Misc_QuestionMark")
+    if m.parNiveau then
+        -- Bloque par le niveau : le dire, sans guidage (rien a apprendre encore).
+        cadreA.titre:SetText(string.format(L.RANK_LEVEL_TITLE or "%s %d/%d", m.nom or "?", m.rang, m.rangMax))
+        cadreA.texte:SetText(string.format(L.RANK_LEVEL_TEXT or "%d", m.niveauRequis or 0))
+        cadreA.ok:SetText(L.RANK_MAX_OK)
+        cadreA.guider:Hide()
+        cadreA.ok:SetScript("OnClick", function()
+            Memoire()["niv" .. tostring(m.ligne)] = m.rangMax
+            cadreA:Hide()
+            enCours = nil
+            avisRang.Verifier()
+        end)
+        Placer()
+        cadreA:Show()
+        return
+    end
+    cadreA.guider:Show()
     cadreA.titre:SetText(string.format(L.RANK_MAX_TITLE, m.nom or "?", m.rang, m.rangMax))
-    cadreA.texte:SetText(pres and string.format(L.RANK_MAX_NEAR, pres) or L.RANK_MAX_TEXT)
+    -- Le niveau requis vient d'etre atteint (l'avis du niveau avait ete vu).
+    local niveauAtteint = Memoire()["niv" .. tostring(m.ligne)] == m.rangMax
+    cadreA.texte:SetText(pres and string.format(L.RANK_MAX_NEAR, pres) or (niveauAtteint and L.RANK_LEVEL_DONE) or L.RANK_MAX_TEXT)
     cadreA.ok:SetText(L.RANK_MAX_OK)
+    LireMaitres()
+    cadreA.guider:SetText(L.RANK_MAX_GUIDE or "Guide me")
+    cadreA.guider:SetScript("OnClick", function()
+        local ok = NS.guidage and NS.guidage.MaitreDeMetier and NS.guidage.MaitreDeMetier(m.ligne, m.nom, m.rangMax)
+        if ok then
+            Memoire()[tostring(m.ligne)] = m.rangMax
+            cadreA:Hide()
+            enCours = nil
+        end
+    end)
     cadreA.ok:SetScript("OnClick", function()
         Memoire()[tostring(m.ligne)] = m.rangMax
         cadreA:Hide()
@@ -1196,18 +1293,22 @@ function avisRang.Verifier()
     if enCours and cadreA and cadreA:IsShown() then
         -- Le metier montre a-t-il ete debloque entre-temps ?
         local encore = false
-        for _, m in ipairs(avisRang.Bloques()) do if m.ligne == enCours.ligne then encore = true end end
+        for _, m in ipairs(avisRang.Bloques()) do
+            if m.ligne == enCours.ligne and (m.parNiveau or false) == (enCours.parNiveau or false) then encore = true end
+        end
         if not encore then cadreA:Hide() enCours = nil else return end
     end
     local vus = Memoire()
     for _, m in ipairs(avisRang.Bloques()) do
-        if vus[tostring(m.ligne)] ~= m.rangMax then Montrer(m) return end
+        if m.parNiveau then
+            if vus["niv" .. tostring(m.ligne)] ~= m.rangMax then Montrer(m) return end
+        elseif vus[tostring(m.ligne)] ~= m.rangMax then Montrer(m) return end
     end
 end
 
 -- Les maitres de chaque metier, d'apres QuestieDB (lus une fois, par lots).
 local maitres, lectureMaitres
-local function LireMaitres()
+LireMaitres = function()
     if maitres or lectureMaitres then return end
     local base = _G.NpcDB
     if type(base) ~= "table" or type(base.GetAllIds) ~= "function" then return end
@@ -1250,8 +1351,8 @@ local function LireMaitres()
 end
 
 -- Le maitre le plus proche d'un metier, s'il est a moins de 60 metres.
-local function MaitreProche(ligne, jx, jy, jc)
-    for _, id in ipairs((maitres and maitres[ligne]) or {}) do
+local function MaitreProche(ligne, jx, jy, jc, rangMax)
+    for _, id in ipairs(MaitresDuPalier(ligne, rangMax) or (maitres and maitres[ligne]) or {}) do
         local spawns = LireDB("NpcDB", id, "spawns")
         for zone, points in pairs(type(spawns) == "table" and spawns or {}) do
             local carte = CarteDeZone(zone)
@@ -1265,6 +1366,119 @@ local function MaitreProche(ligne, jx, jy, jc)
             end
         end
     end
+end
+
+-- Tous les maitres qui enseignent le palier suivant, chacun a son lieu le
+-- plus proche : { nom, carte, x, y, zone, distance (metres, nil sur un autre
+-- continent), interets = { textes } }, les plus proches d'abord.
+local CAPITALES = { [1453] = true, [1454] = true, [1455] = true, [1456] = true, [1457] = true, [1458] = true }
+function avisRang.MaitresDuPalier(ligne, rangMax)
+    local ids = MaitresDuPalier(ligne, rangMax)
+    if not ids then return {} end
+    local carteJ = NS.Appeler(NS.Lecture("C_Map.GetBestMapForUnit"), "player")
+    local pos = carteJ and NS.Appeler(NS.Lecture("C_Map.GetPlayerMapPosition"), carteJ, "player")
+    local jx, jy, jc
+    if type(pos) == "table" and pos.GetXY then jx, jy, jc = Monde(carteJ, pos:GetXY()) end
+    local liste = {}
+    for _, id in ipairs(ids) do
+        local meilleur, cible
+        local spawns = LireDB("NpcDB", id, "spawns")
+        for zone, points in pairs(type(spawns) == "table" and spawns or {}) do
+            local carte = CarteDeZone(zone)
+            for _, p in ipairs(carte and type(points) == "table" and points or {}) do
+                if tonumber(p[1]) and tonumber(p[2]) and p[1] >= 0 then
+                    local x, y, c = Monde(carte, p[1] / 100, p[2] / 100)
+                    local d = (x and jx and c == jc) and math.sqrt((x - jx) ^ 2 + (y - jy) ^ 2) or nil
+                    local score = d or 1e9
+                    if not meilleur or score < meilleur then
+                        meilleur = score
+                        cible = { id = id, carte = carte, x = p[1] / 100, y = p[2] / 100, distance = d,
+                            nom = LireDB("NpcDB", id, "name") or "?" }
+                    end
+                end
+            end
+        end
+        if cible then
+            local ok, info = pcall(C_Map.GetMapInfo, cible.carte)
+            cible.zone = ok and type(info) == "table" and info.name or nil
+            table.insert(liste, cible)
+        end
+    end
+    -- Ce qu'il y a d'autre a faire dans chaque zone.
+    local fiche = NS.base and NS.base.Personnage and NS.base.Personnage()
+    local api = _G.QuestCoreAPI
+    local okP, points = pcall(function() return api and api.Points and api.Points() end)
+    for _, c in ipairs(liste) do
+        local interets = {}
+        if CAPITALES[c.carte] then table.insert(interets, NS.L.CAP_WHY_CITY) end
+        -- Les autres metiers du personnage bloques, dont un maitre est la.
+        for cle, sien in pairs(fiche and type(fiche.metiers) == "table" and fiche.metiers or {}) do
+            local autre = tonumber(cle)
+            local r, rm = tonumber(sien.rang), tonumber(sien.rangMax)
+            if autre and autre ~= ligne and r and rm and r >= rm then
+                for _, id2 in ipairs(MaitresDuPalier(autre, rm) or {}) do
+                    local sp = LireDB("NpcDB", id2, "spawns")
+                    local la = false
+                    for zone in pairs(type(sp) == "table" and sp or {}) do if CarteDeZone(zone) == c.carte then la = true end end
+                    if la then table.insert(interets, string.format(NS.L.CAP_WHY_OTHER, sien.nom or "?")) break end
+                end
+            end
+        end
+        -- Les quetes du journal a prendre ou a rendre dans la zone (QuestCore).
+        local n = 0
+        for _, pt in ipairs(okP and type(points) == "table" and points or {}) do
+            if pt.carte == c.carte then n = n + 1 end
+        end
+        if n > 0 then table.insert(interets, string.format(n > 1 and NS.L.CAP_WHY_QUESTS or NS.L.CAP_WHY_QUEST, n)) end
+        if not c.distance then table.insert(interets, NS.L.CAP_WHY_FAR) end
+        c.interets = interets
+    end
+    table.sort(liste, function(a, b) return (a.distance or 1e9) < (b.distance or 1e9) end)
+    return liste
+end
+
+-- Le palier suivant d'un metier bloque a son rang maximum : { rang (le
+-- nouveau maximum), niveau (niveau du personnage requis pour l'apprendre) },
+-- ou nil si c'est deja le dernier palier.
+function avisRang.PalierSuivant(rangMax)
+    rangMax = tonumber(rangMax)
+    if not rangMax or rangMax >= Plafond() then return nil end
+    return { rang = rangMax + 75, niveau = PALIERS[rangMax] }
+end
+
+-- Le maitre d'un metier le plus proche, sur le continent du personnage :
+-- { carte, x (0-1), y (0-1), nom }, ou nil (maitres pas encore lus, aucun).
+function avisRang.MaitrePlusProche(ligne, rangMax)
+    local duPalier = MaitresDuPalier(ligne, rangMax)
+    if not duPalier then
+        LireMaitres()
+        if not maitres then return nil end
+    end
+    local carteJ = NS.Appeler(NS.Lecture("C_Map.GetBestMapForUnit"), "player")
+    local pos = carteJ and NS.Appeler(NS.Lecture("C_Map.GetPlayerMapPosition"), carteJ, "player")
+    if type(pos) ~= "table" or not pos.GetXY then return nil end
+    local jx, jy, jc = Monde(carteJ, pos:GetXY())
+    if not jx then return nil end
+    local meilleur, cible
+    for _, id in ipairs(duPalier or maitres[ligne] or {}) do
+        local spawns = LireDB("NpcDB", id, "spawns")
+        for zone, points in pairs(type(spawns) == "table" and spawns or {}) do
+            local carte = CarteDeZone(zone)
+            for _, p in ipairs(carte and type(points) == "table" and points or {}) do
+                if tonumber(p[1]) and tonumber(p[2]) and p[1] >= 0 then
+                    local x, y, c = Monde(carte, p[1] / 100, p[2] / 100)
+                    if x and c == jc then
+                        local d = (x - jx) ^ 2 + (y - jy) ^ 2
+                        if not meilleur or d < meilleur then
+                            meilleur = d
+                            cible = { carte = carte, x = p[1] / 100, y = p[2] / 100, nom = LireDB("NpcDB", id, "name") or "?" }
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return cible
 end
 
 -- Toutes les 3 secondes, tant qu'un metier attend son maitre : est-on pres
@@ -1289,8 +1503,8 @@ do
         if not jx then return end
         local maintenant = NS.Appeler(_G.GetTime) or 0
         for _, m in ipairs(bloques) do
-            if maintenant - (rappelLe[m.ligne] or -1e9) > 600 then
-                local okP, nom = pcall(MaitreProche, m.ligne, jx, jy, jc)
+            if not m.parNiveau and maintenant - (rappelLe[m.ligne] or -1e9) > 600 then
+                local okP, nom = pcall(MaitreProche, m.ligne, jx, jy, jc, m.rangMax)
                 if okP and nom then
                     rappelLe[m.ligne] = maintenant
                     Montrer(m, nom)
@@ -1411,4 +1625,14 @@ end
 _G.CraftCoreAPI.ObtenirCourt = function(objet, nom, n)
     objet = tonumber(objet) or encheres.IdParNom(nom)
     return encheres.ObtenirCourt(objet, n)
+end
+
+-- Un niveau gagne peut debloquer un palier : l'avis le dit aussitot.
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("PLAYER_LEVEL_UP")
+    f:SetScript("OnEvent", function()
+        local apres = NS.Lecture("C_Timer.After")
+        if apres then NS.Appeler(apres, 2, function() pcall(avisRang.Verifier) end) end
+    end)
 end
