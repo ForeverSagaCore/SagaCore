@@ -3582,6 +3582,21 @@ function Suite.ManetteBas(cleCourante, bouton)
         Suite.Voisin(cleCourante, bouton == "PADLSTICK" and -1 or 1)
         return true
     end
+    -- LT / RT dans un complement, quelle que soit sa fenetre : le complement
+    -- precedent / suivant (onglets de droite). Une seule regle pour tous.
+    if (bouton == "PADLTRIGGER" or bouton == "PADRTRIGGER") and Suite.EstComplement(cleCourante) then
+        local liste = Suite.Complements()
+        local rang
+        for i, c in ipairs(liste) do if c.cle == cleCourante then rang = i end end
+        if not rang then return false end
+        local cible = liste[math.max(1, math.min(#liste, rang + (bouton == "PADRTRIGGER" and 1 or -1)))]
+        if cible and cible.cle ~= cleCourante then
+            local m = Suite.membres[cleCourante]
+            local depuis = m and m.fenetre and m.fenetre()
+            Suite.OuvrirComplement(cible.cle, depuis)
+        end
+        return true
+    end
     return false
 end
 
