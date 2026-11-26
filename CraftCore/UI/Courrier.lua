@@ -1919,17 +1919,9 @@ local function Remplir(plan)
         for _, f in ipairs(toutes) do if choixRentables[tostring(f.recette.id)] then table.insert(coches, f) end end
         Action(string.format(L().AH_TRADE_PROJECT or "%d", #coches), function()
             if #coches == 0 then return end
-            local n = 1
-            for _, p in ipairs(NS.projets.Tous and NS.projets.Tous(true) or {}) do if p.commercial then n = n + 1 end end
-            local projet = NS.projets.Creer(string.format(L().AH_TRADE_NAME or "%d", n))
-            if not projet then return end
-            projet.commercial = true
-            for _, f in ipairs(coches) do NS.projets.Ajouter(projet.id, f.recette.id, 1) end
-            for k in pairs(choixRentables) do choixRentables[k] = nil end
-            statut = string.format(L().AH_TRADE_DONE or "%s", NS.projets.NomDe(projet))
-            if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
-            if NS.ecran and NS.ecran.Actualiser then pcall(NS.ecran.Actualiser) end
-            courrier.Actualiser()
+            -- D'abord les quantites : une fenetre les propose (par defaut, ce
+            -- que je peux deja faire), puis le projet est cree.
+            courrier.ProposerProjetCommercial(coches)
         end, "projetCommercial")
         panneau.boutons[nb]:SetEnabled(#coches > 0 and not enCours)
         if NS.encheres.EnCours() then
@@ -2459,4 +2451,94 @@ SlashCmdList["CRAFTCOREHV"] = function()
         end
     end
     if type(CraftCoreDB) == "table" then CraftCoreDB.diagHV = { quand = NS.Horodatage(), lignes = lignes } end
+end
+
+
+-- ---------------------------------------------------------------------------
+-- Projet commercial : la fenetre des quantites, avant de creer le projet.
+-- Une ligne par recette cochee : son nom, ce qui est faisable tout de suite,
+-- et la quantite a fabriquer entre deux fleches (1 et 5), par defaut le
+-- maximum faisable. « Creer le projet » le cree dans Mes fabrications.
+-- ---------------------------------------------------------------------------
+local fenQ
+function courrier.ProposerProjetCommercial(coches)
+    local L2 = NS.L
+    local S = NS.suite or _G.CoreSuite
+    if not fenQ then
+        local f = NS.charte.Fenetre("CraftCoreProjetCommercial", 520, 200, { portrait = false, strate = "DIALOG" })
+        f:SetPoint("CENTER", UIParent, "CENTER", 0, 80)
+        if f.titre then f.titre:SetText(L2.AH_TRADE_QTY_TITLE or "") end
+        f.intro = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        f.intro:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, 0)
+        f.intro:SetWordWrap(false)
+        f.lignes = {}
+        f.creer = NS.charte.BoutonDePied(f, L2.AH_TRADE_QTY_CREATE or "", 150)
+        f.annuler = NS.charte.BoutonDePied(f, L2.AH_TRADE_QTY_CANCEL or "", 110, f.creer)
+        f.annuler:SetScript("OnClick", function() f:Hide() end)
+        table.insert(UISpecialFrames, "CraftCoreProjetCommercial")
+        if S and S.ToucheDEntree then S.ToucheDEntree(f, "CraftCoreProjetCommercial") end
+        fenQ = f
+    end
+    local f = fenQ
+    f.intro:SetText(L2.AH_TRADE_QTY_TEXT or "")
+    local quantites = {}
+    for _, l in ipairs(f.lignes) do l:Hide() end
+    local y = 24
+    for i, c in ipairs(coches) do
+        local l = f.lignes[i]
+        if not l then
+            l = CreateFrame("Frame", nil, f)
+            l:SetHeight(28)
+            l.icone = l:CreateTexture(nil, "ARTWORK")
+            l.icone:SetSize(20, 20)
+            l.icone:SetPoint("LEFT", l, "LEFT", 0, 0)
+            l.nom = l:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            l.nom:SetPoint("LEFT", l.icone, "RIGHT", 6, 0)
+            l.nom:SetJustifyH("LEFT")
+            l.nom:SetWordWrap(false)
+            l.faisables = l:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            l.faisables:SetJustifyH("RIGHT")
+            l.faisables:SetWidth(90)
+            f.lignes[i] = l
+        end
+        l:ClearAllPoints()
+        l:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, -y)
+        l:SetPoint("RIGHT", f.zone, "RIGHT", 0, 0)
+        local id = c.recette.id
+        quantites[i] = math.max(1, math.min(999, tonumber(c.n) or 0))
+        l.icone:SetTexture(NS.Appeler(NS.jeu.iconeObjet, c.recette.objetProduit) or "Interface\\Icons\\INV_Misc_QuestionMark")
+        l.nom:SetText(c.recette.nom or NS.inventaire.NomDObjet(c.recette.objetProduit))
+        l.faisables:SetText(string.format(L2.AH_TRADE_CAN or "(%d)", tonumber(c.n) or 0))
+        if l.curseur then l.curseur:Hide() end
+        if S and S.Curseur then
+            local k = i
+            l.curseur = S.Curseur(l, 1, 999, 1, function() return quantites[k] end, function(v) quantites[k] = v end, nil, nil, 5)
+            l.curseur:ClearAllPoints()
+            l.curseur:SetPoint("RIGHT", l, "RIGHT", 0, 0)
+            if l.curseur.Rendre then l.curseur.Rendre() end
+            l.faisables:ClearAllPoints()
+            l.faisables:SetPoint("RIGHT", l.curseur, "LEFT", -10, 0)
+            l.nom:SetPoint("RIGHT", l.faisables, "LEFT", -8, 0)
+        end
+        l.recette = id
+        l:Show()
+        y = y + 30
+    end
+    f:SetHeight(y + 24 + 70)
+    f.creer:SetScript("OnClick", function()
+        local n = 1
+        for _, p in ipairs(NS.projets.Tous and NS.projets.Tous(true) or {}) do if p.commercial then n = n + 1 end end
+        local projet = NS.projets.Creer(string.format(L2.AH_TRADE_NAME or "%d", n))
+        if not projet then return end
+        projet.commercial = true
+        for i, c in ipairs(coches) do NS.projets.Ajouter(projet.id, c.recette.id, quantites[i] or 1) end
+        for k in pairs(choixRentables) do choixRentables[k] = nil end
+        statut = string.format(L2.AH_TRADE_DONE or "%s", NS.projets.NomDe(projet))
+        f:Hide()
+        if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
+        if NS.ecran and NS.ecran.Actualiser then pcall(NS.ecran.Actualiser) end
+        courrier.Actualiser()
+    end)
+    f:Show()
+    f:Raise()
 end
