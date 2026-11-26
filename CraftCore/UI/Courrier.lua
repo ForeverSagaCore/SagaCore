@@ -28,7 +28,8 @@ local function LargeurDuLieu(l) return l == "encheres" and (LARGEUR + 90) or LAR
 -- (prix, achats, fabrications) et vendre (ce qu'il y a dans mes sacs).
 local function OngletHV()
     local g = NS.base.ReglagesGeneraux()
-    return g.ongletHV == "vendre" and "vendre" or "acheter"
+    if g.ongletHV == "vendre" or g.ongletHV == "recettes" then return g.ongletHV end
+    return "acheter"
 end
 local statut               -- resultat de la derniere action, montre dans le panneau
 local statutManette        -- indication manette (X : action suivante)
@@ -1597,6 +1598,48 @@ local function Remplir(plan)
             end
         end
     end
+    if lieu == "encheres" and NS.encheres and NS.encheres.Disponible() and OngletHV() == "recettes" then
+        -- Onglet Recettes : les plans a apprendre tout de suite, leur prix
+        -- releve, et un bouton pour les chercher dans l'hotel des ventes.
+        vide = false
+        Titre(L().AH_RECIPES_TITLE)
+        local okP, plans = pcall(NS.encheres.PlansAApprendre)
+        plans = okP and plans or {}
+        if #plans == 0 then
+            nt = nt + 1
+            local t = Texte(nt, "GameFontDisableSmall")
+            t:ClearAllPoints()
+            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0, -y)
+            t:SetWidth(largeur)
+            t:SetText(L().AH_RECIPES_NONE)
+            y = y + 16
+        else
+            local sansPrix = {}
+            for k, p in ipairs(plans) do
+                local prix, quand, absent = NS.encheres.Prix(p.objet, 1)
+                if not prix and not absent then table.insert(sansPrix, p.objet) end
+                if k <= 30 then
+                    local droite = string.format(L().AH_RECIPES_RANK, p.rang)
+                    if prix then droite = droite .. "  " .. NS.marchands.Monnaie(prix)
+                    elseif absent then droite = droite .. "  |cff8c8c8c" .. L().AH_RECIPES_ABSENT .. "|r" end
+                    local o = p.objet
+                    LigneAvecBouton(o, droite, L().AH_FIND_SHORT, function() NS.encheres.Chercher(o) end)
+                end
+            end
+            if #plans > 30 then Reste(#plans - 30) end
+            if #sansPrix > 0 and not NS.encheres.EnCours() then
+                Action(string.format(L().AH_RECIPES_SCAN, #sansPrix), function()
+                    statut = nil
+                    NS.encheres.Relever(sansPrix)
+                    courrier.Actualiser()
+                end)
+            elseif NS.encheres.EnCours() then
+                local r, total = NS.encheres.Avancement()
+                Action(string.format(L().AH_SCANNING, math.min(r, total), total), function() end)
+                panneau.boutons[nb]:SetEnabled(false)
+            end
+        end
+    end
     -- Les onglets de l'hotel des ventes, sur le bord droit, en bas.
     if panneau.onglets then for _, o in pairs(panneau.onglets) do o:Hide() end end
     if lieu == "encheres" and NS.CreerOngletLateral then
@@ -1604,6 +1647,7 @@ local function Remplir(plan)
         local defs = {
             { cle = "acheter", icone = "Interface\\Icons\\INV_Misc_Coin_02", aide = L().AH_TAB_BUY },
             { cle = "vendre", icone = "Interface\\Icons\\INV_Misc_Bag_08", aide = L().AH_TAB_SELL },
+            { cle = "recettes", icone = "Interface\\Icons\\INV_Scroll_03", aide = L().AH_TAB_RECIPES },
         }
         local precedent
         for k = #defs, 1, -1 do
