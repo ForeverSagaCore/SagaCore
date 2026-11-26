@@ -4715,38 +4715,45 @@ local TP = Paresseux({
 })
 
 -- Touche du jeu (Echap, Options, Raccourcis, Add-ons) : piloter un suivi.
--- Entrer dans une petite fenetre de la suite a la manette, sans rien
--- regler : tant qu'elle est ouverte, le double carre (bouton Vue, libre par
--- defaut) y entre ; on y navigue ensuite comme dans les autres fenetres.
--- Une seule touche, posee a l'ouverture et retiree a la fermeture, jamais
--- en combat ; A, B et les autres restent au jeu.
--- Desactive : poser une touche (meme une seule, libre) pendant que la
--- manette du jeu est active faisait bloquer une action du jeu au courrier.
-local ENTREE_PAR_TOUCHE = false
+-- Entrer dans une petite fenetre de la suite a la manette (courrier, banque,
+-- hotel des ventes, consigne, nouveau plan), sans rien regler : tant qu'elle
+-- est ouverte, un appui sur le double carre (bouton Vue) y entre ; on y
+-- navigue ensuite comme dans les autres fenetres (croix, A, B pour sortir).
+-- Aucune touche n'est posee (plus de SetOverrideBinding : il faisait bloquer
+-- une action du jeu au courrier) et aucune entree n'est prise au jeu : la
+-- manette est seulement LUE (etat des boutons), quelques fois par seconde,
+-- jamais en combat. Le jeu garde toutes ses touches.
+local function IndexDuBouton(nomBouton)
+    local gp = _G.C_GamePad
+    if not (gp and gp.ButtonIndexToConfigName) then return nil end
+    for i = 0, 40 do
+        local ok, n = pcall(gp.ButtonIndexToConfigName, i)
+        if ok and n == nomBouton then
+            -- Indices du jeu a partir de 0, tableau Lua a partir de 1.
+            local okZ, z = pcall(gp.ButtonIndexToConfigName, 0)
+            return (okZ and z ~= nil) and (i + 1) or i
+        end
+    end
+    return nil
+end
+local function BoutonAppuye(index)
+    local gp = _G.C_GamePad
+    if not (index and gp and gp.GetDeviceMappedState) then return false end
+    local okI, id = pcall(gp.GetActiveDeviceID or function() return nil end)
+    local okS, etat = pcall(gp.GetDeviceMappedState, okI and id or nil)
+    if not (okS and type(etat) == "table" and type(etat.buttons) == "table") then return false end
+    return etat.buttons[index] == true
+end
+local function ManetteActive()
+    local gp = _G.C_GamePad
+    local ok, actif = pcall(gp and gp.IsEnabled or function() return false end)
+    return ok and actif and true or false
+end
+
 function Suite.ToucheDEntree(f, nom)
-    if not ENTREE_PAR_TOUCHE then return end
     if not f or f.toucheDEntree then return end
     f.toucheDEntree = true
     f.nomDEntree = nom or (f.GetName and f:GetName())
-    local relais = _G.CoreSuiteEntrer
-    if not relais then
-        relais = CreateFrame("Button", "CoreSuiteEntrer", UIParent)
-        relais:Hide()
-        pcall(relais.RegisterForClicks, relais, "AnyDown")
-        relais:SetScript("OnClick", function(self)
-            local nom = self.cible
-            if nom and _G[nom] and _G[nom]:IsShown() then Suite.Piloter(nil, nom) end
-        end)
-    end
-    local function Poser(self)
-        if InCombatLockdown and InCombatLockdown() then return end
-        local gp = _G.C_GamePad
-        local ok, actif = pcall(gp and gp.IsEnabled or function() return false end)
-        if not (ok and actif) then return end
-        relais.cible = (self.GetName and self:GetName()) or self.nomDEntree
-        pcall(SetOverrideBindingClick, self, true, "PADBACK", "CoreSuiteEntrer", "LeftButton")
-        self.toucheDEntreePosee = true
-    end
     -- Comme le jeu : l'icone du double carre a cheval sur le bas de la
     -- fenetre, au milieu (visible meme quand la liste defile).
     if not f.badgeEntree then
@@ -4767,9 +4774,7 @@ function Suite.ToucheDEntree(f, nom)
         f.badgeEntree = b
     end
     local function Badge(self)
-        local gp = _G.C_GamePad
-        local ok, actif = pcall(gp and gp.IsEnabled or function() return false end)
-        if ok and actif then
+        if ManetteActive() then
             self.badgeEntree.texte:SetText((string.gsub(GlyphePad("PADBACK"), ":20:20|a", ":26:26|a")))
             self.badgeEntree:Show()
         else
@@ -4778,14 +4783,25 @@ function Suite.ToucheDEntree(f, nom)
     end
     f:HookScript("OnShow", Badge)
     if f:IsShown() then Badge(f) end
-    f:HookScript("OnShow", Poser)
-    f:HookScript("OnHide", function(self)
-        if self.toucheDEntreePosee and not (InCombatLockdown and InCombatLockdown()) then
-            pcall(ClearOverrideBindings, self)
-            self.toucheDEntreePosee = nil
+    -- La lecture du double carre : un appui (pas la touche tenue) entre.
+    local veille = CreateFrame("Frame", nil, f)
+    local attente, avant, index = 0, true, nil
+    veille:SetScript("OnUpdate", function(_, ecoule)
+        attente = attente + (ecoule or 0)
+        if attente < 0.05 then return end
+        attente = 0
+        if not f:IsShown() or not ManetteActive() then avant = true return end
+        if InCombatLockdown and InCombatLockdown() then avant = true return end
+        local p = Suite.pilote
+        if p and p:IsShown() then avant = true return end
+        index = index or IndexDuBouton("PADBACK")
+        local appuye = BoutonAppuye(index)
+        if appuye and not avant then
+            local n = (f.GetName and f:GetName()) or f.nomDEntree
+            if n and _G[n] then pcall(Suite.Piloter, nil, n) end
         end
+        avant = appuye
     end)
-    if f:IsShown() then Poser(f) end
 end
 
 function CoreSuite_PiloterSuivi(nom)
