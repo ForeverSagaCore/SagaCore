@@ -768,6 +768,44 @@ end
 
 -- Met l'objet de cette case en vente dans la fenetre de l'hotel des ventes :
 -- le jeu propose son prix, le joueur verifie et valide lui-meme.
+-- Vendre directement depuis le panneau (clic du joueur) : au prix le plus bas
+-- du dernier releve, arrondi a l'argent (le jeu ne prend pas les
+-- pieces de cuivre), pour 24 heures. Par les fonctions de l'hotel des ventes,
+-- comme les add-ons de vente : jamais par sa fenetre.
+local DUREE_24H = 2
+function encheres.PrixDeVente(objet)
+    local r = Releves()
+    r = r and r[tonumber(objet) or 0]
+    local plus = type(r) == "table" and type(r.offres) == "table" and r.offres[1] and tonumber(r.offres[1][1])
+    if not plus then return nil, r and r.quand end
+    -- Le meme prix que l'offre la moins chere, arrondi a l'argent en dessous
+    -- (le jeu ne prend que l'argent) : jamais une baisse d'une piece entiere.
+    local prix = math.floor(plus / 100) * 100
+    return math.max(100, prix), r.quand
+end
+function encheres.Vendre(v)
+    local ah = AH()
+    local Loc = _G.ItemLocation
+    if not (ah and Loc and Loc.CreateFromBagAndSlot) then return false, "indisponible" end
+    if NS.Appeler(NS.Lecture("InCombatLockdown")) then return false, "combat" end
+    local prix = encheres.PrixDeVente(v.objet)
+    if not prix then return false, "prix" end
+    local okL, loc = pcall(Loc.CreateFromBagAndSlot, Loc, v.sac, v.case)
+    if not okL or not loc then return false, "objet" end
+    local statut = ah.GetItemCommodityStatus and NS.Appeler(ah.GetItemCommodityStatus, loc)
+    local enum = _G.Enum and _G.Enum.ItemCommodityStatus
+    local ok
+    if enum and statut == enum.Commodity and ah.PostCommodity then
+        ok = pcall(ah.PostCommodity, loc, DUREE_24H, v.nombre, prix)
+    elseif ah.PostItem then
+        -- Un objet unique : une vente par emplacement (la pile de cette case).
+        local d = NS.Appeler(NS.Lecture("C_Container.GetContainerItemInfo"), v.sac, v.case)
+        local n = type(d) == "table" and tonumber(d.stackCount) or 1
+        ok = pcall(ah.PostItem, loc, DUREE_24H, math.min(n, v.nombre), nil, prix)
+    end
+    return ok and true or false, ok and prix or "refus"
+end
+
 -- On ne touche jamais aux fenetres du jeu (cela les « salirait » et la mise
 -- en vente pourrait etre bloquee) : l'objet est pris en main, le joueur le
 -- pose dans la case de vente de l'hotel des ventes.
