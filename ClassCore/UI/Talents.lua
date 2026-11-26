@@ -56,17 +56,22 @@ end
 --   colonne, rang, max }.
 -- ---------------------------------------------------------------------------
 
--- Valeurs distinctes : la premiere et le pas le plus petit.
+-- Valeurs proches regroupees (a 15 points pres : une meme rangee ou
+-- colonne du jeu), puis la premiere et le pas le plus petit entre groupes.
 local function Grille(valeurs)
     local tri = {}
     for v in pairs(valeurs) do table.insert(tri, v) end
     table.sort(tri)
-    local pas
-    for i = 2, #tri do
-        local d = tri[i] - tri[i - 1]
-        if d > 0.5 and (not pas or d < pas) then pas = d end
+    local groupes = {}
+    for _, v in ipairs(tri) do
+        if #groupes == 0 or v - groupes[#groupes] >= 15 then table.insert(groupes, v) end
     end
-    return tri[1] or 0, pas or 1
+    local pas
+    for i = 2, #groupes do
+        local d = groupes[i] - groupes[i - 1]
+        if not pas or d < pas then pas = d end
+    end
+    return groupes[1] or 0, pas or 60
 end
 
 function Ta.NombreDeGroupes()
@@ -523,7 +528,8 @@ local function Dessiner(page, s, rangs, o)
     end
     -- Le pas du jeu, reduit seulement si les arbres ne tiennent pas.
     local pas = math.min(PAS, math.floor((colonneL - 24 - BOUTON) / math.max(maxCol - 1, 1)))
-    local k = math.min(1, pas / PAS)
+    -- Un peu plus petit que le jeu : l'arbre entier reste lisible.
+    local k = math.min(0.8, pas / PAS)
     g:SetScale(k)
     local hauteur = HAUT_TITRE + 10 + (maxRangee - 1) * PAS * k + BOUTON * k + 12
     g:SetSize(largeur / k, hauteur / k)
@@ -708,7 +714,7 @@ function Ta.Page()
             -- La liste sur la ligne du titre, calee a droite.
             local r = CreateFrame("Frame", nil, page.cadre)
             r:SetSize(O.LARGEUR - 10, 22)
-            r:SetPoint("TOPLEFT", page.cadre, "TOPLEFT", 0, 2)
+            r:SetPoint("TOPLEFT", page.cadre, "TOPLEFT", 0, -2)
             page.choix = O.Segments(r, function()
                 local p = NS.fenetre.Profil() or {}
                 local l = { { "principale", T("Principale", "Primary") } }
@@ -748,8 +754,9 @@ function Ta.Page()
             local simulation = page.mode == "simulation"
             page.rNiveau:SetShown(simulation)
             page.rPoints:SetShown(simulation)
-            -- Hors simulation, les arbres montent a la place des deux rangees.
-            local yZone = simulation and page.yZone or page.yAvant + 6
+            -- Les arbres et les modeles restent a la meme place dans tous les
+            -- modes ; les reglages de la simulation viennent dessous.
+            local yZone = page.yAvant + 6
             page.zone:ClearAllPoints()
             page.zone:SetPoint("TOPLEFT", page.cadre, "TOPLEFT", 0, -yZone)
 
@@ -801,6 +808,13 @@ function Ta.Page()
             local h = Dessiner(page, s, rangs, o)
             local h2 = RendreSous(page, h + 10, s and BlocModeles(page, s, p.classe, rangs, simulation) or nil)
             local total = h + (h2 > 0 and (h2 + 10) or 0)
+            if simulation then
+                page.rNiveau:ClearAllPoints()
+                page.rNiveau:SetPoint("TOPLEFT", page.zone, "TOPLEFT", 0, -(total + 12))
+                page.rPoints:ClearAllPoints()
+                page.rPoints:SetPoint("TOPLEFT", page.rNiveau, "BOTTOMLEFT", 0, -6)
+                total = total + 12 + 24 + 6 + 24
+            end
             page.zone:SetHeight(math.max(total, 20))
             page.hauteur = yZone + math.max(total, 20)
         end }
