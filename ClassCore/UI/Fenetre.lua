@@ -379,7 +379,8 @@ local function Rendre(page, blocs)
             end
             l.droite:ClearAllPoints()
             l.droite:SetPoint("RIGHT", l, "RIGHT", droiteX, 0)
-            l.droite:SetWidth(e.largeurDroite or 260)
+            -- Sans texte a droite, le nom va jusqu'aux colonnes.
+            l.droite:SetWidth((e.droite and e.droite ~= "") and (e.largeurDroite or 260) or 1)
             l.droite:SetText(e.droite or "")
             local cd = e.couleurDroite or e.couleur or NORMAL
             l.droite:SetTextColor(cd[1], cd[2], cd[3])
@@ -919,7 +920,7 @@ function F.Construire()
     local S = Su()
     if F.w or not (S and S.FenetreAPages) then return F.w end
     local pages = { PageClasse(), PageQuetes(), PageSorts() }
-    if NS.talents then table.insert(pages, NS.talents.Page()) end
+    if NS.talents then table.insert(pages, NS.talents.Page()) table.insert(pages, NS.talents.PageSimulateur()) end
     table.insert(pages, PageObjets())
     if NS.familiers and AvecChasseur() then table.insert(pages, NS.familiers.Page(Page)) end
     table.insert(pages, PageReglages())
