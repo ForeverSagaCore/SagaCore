@@ -673,50 +673,58 @@ local function ChargerModele(m, classe)
     end
 end
 
--- Les modeles par activite (une rubrique chacune), la specialisation du
--- personnage en premier. Vide quand aucun modele ne va a cet arbre.
-local function BlocsModeles(page, s, classe, rangs, simulation)
+-- Les modeles conseilles : une rubrique, deux listes sur sa ligne de titre
+-- (l'activite, puis la specialisation) et le modele choisi dessous. Choisir
+-- charge le modele dans la simulation.
+Ta.choix = Ta.choix or {}
+
+local function ModelesDispo(page, s, classe)
+    page.cacheModeles = page.cacheModeles or {}
+    local cle = tostring(classe) .. ":" .. tostring(s)
+    if page.cacheModeles.cle ~= cle then page.cacheModeles = { cle = cle, liste = Ta.Modeles(classe, s) } end
+    return page.cacheModeles.liste
+end
+
+local function ModeleChoisi(page, s, classe, rangs)
+    local liste = ModelesDispo(page, s, classe)
+    if #liste == 0 then return nil, liste end
+    local c = Ta.choix[classe or ""] or {}
+    Ta.choix[classe or ""] = c
+    -- Par defaut : montee de niveau, dans la specialisation du personnage.
     local _, parArbre = Ta.Depenses(s, rangs)
     local principal, maxi = 1, -1
     for k = 1, #s.arbres do if (parArbre[k] or 0) > maxi then principal, maxi = k, parArbre[k] or 0 end end
-    local parActivite, ordre = {}, {}
-    for _, m in ipairs(Ta.Modeles(classe, s)) do
-        local act = m.modele.activite or "quetes"
-        if not parActivite[act] then parActivite[act] = {} table.insert(ordre, act) end
-        table.insert(parActivite[act], m)
-    end
-    local blocs = {}
-    for _, act in ipairs({ "quetes", "groupe" }) do
-        local liste = parActivite[act]
-        if liste then
-            table.sort(liste, function(x, y)
-                local px, py = x.modele.arbre == principal, y.modele.arbre == principal
-                if px ~= py then return px end
-                return (x.modele.arbre or 0) < (y.modele.arbre or 0)
-            end)
-            local lignes = {}
-            for _, m in ipairs(liste) do
-                local droite
-                if not simulation then
-                    local t = Ta.Prochain(m, rangs)
-                    droite = t and string.format(T("Prochain point : %s", "Next point : %s"), t.nom) or T("Suivi en entier", "Fully followed")
-                end
-                local mm = m
-                table.insert(lignes, { icone = m.icone, texte = m.nom .. "  (" .. m.repartition .. ")", droite = droite, largeurDroite = 260,
-                    infobulle = function(tt)
-                        tt:AddLine(m.nom .. "  (" .. m.repartition .. ")")
-                        tt:AddLine(T("Un ordre de points conseillé, du premier au dernier. « Essayer » le montre dans la simulation, jusqu'au niveau choisi.",
-                            "A suggested point order, first to last. « Try » shows it in the simulation, up to the chosen level."), 1, 1, 1, true)
-                    end,
-                    bouton = { texte = simulation and T("Charger", "Load") or T("Essayer", "Try"), action = function()
-                        ChargerModele(mm, classe)
-                        page.mode = "simulation"
-                    end } })
-            end
-            table.insert(blocs, { titre = string.format(T("Modèles conseillés : %s", "Suggested builds : %s"), ACTIVITES[act]():lower()), lignes = lignes })
+    local function Trouver(act, arbre)
+        for _, m in ipairs(liste) do
+            if m.modele.activite == act and (arbre == nil or m.modele.arbre == arbre) then return m end
         end
     end
-    return blocs
+    local act = c.activite or "quetes"
+    if not Trouver(act) then act = liste[1].modele.activite end
+    local m = Trouver(act, c.arbre or principal) or Trouver(act)
+    c.activite, c.arbre = act, m and m.modele.arbre
+    return m, liste
+end
+
+local function BlocModele(page, s, classe, rangs, simulation)
+    local m = ModeleChoisi(page, s, classe, rangs)
+    if not m then return nil end
+    local droite
+    if not simulation then
+        local t = Ta.Prochain(m, rangs)
+        droite = t and string.format(T("Prochain point : %s", "Next point : %s"), t.nom) or T("Suivi en entier", "Fully followed")
+    end
+    return { titre = T("Modèles conseillés", "Suggested builds"), lignes = { { icone = m.icone,
+        texte = m.nom .. "  (" .. m.repartition .. ")", droite = droite, largeurDroite = 260,
+        infobulle = function(tt)
+            tt:AddLine(m.nom .. "  (" .. m.repartition .. ")")
+            tt:AddLine(T("Un ordre de points conseillé, du premier au dernier. « Charger » le place dans la simulation, jusqu'au niveau choisi.",
+                "A suggested point order, first to last. « Load » places it in the simulation, up to the chosen level."), 1, 1, 1, true)
+        end,
+        bouton = { texte = T("Charger", "Load"), action = function()
+            ChargerModele(m, classe)
+            page.mode = "simulation"
+        end } } } }
 end
 
 local function RendreSous(page, y, blocs)
@@ -770,6 +778,43 @@ function Ta.Page()
                 table.insert(l, { "simulation", T("Simulation", "Simulation") })
                 return l
             end, function() return page.mode or "principale" end, function(v) page.mode = v end)
+            -- Les deux listes des modeles (placees au rendu, sur la ligne de
+            -- titre de la rubrique).
+            page.rActivite = CreateFrame("Frame", nil, page.cadre)
+            page.rActivite:SetSize(O.LARGEUR - 10 - 220, 22)
+            page.rSpe = CreateFrame("Frame", nil, page.cadre)
+            page.rSpe:SetSize(O.LARGEUR - 10, 22)
+            local function Contexte()
+                local p = NS.fenetre.Profil() or {}
+                local s = page.mode == "simulation" and Ta.sim.structure or Ta.Structure(p, page.mode == "secondaire" and 2 or 1) or Ta.sim.structure
+                return p, s
+            end
+            local function Charger()
+                local p, s = Contexte()
+                if not s then return end
+                local m = ModeleChoisi(page, s, p.classe, Ta.Rangs(s))
+                if m then ChargerModele(m, p.classe) page.mode = "simulation" end
+            end
+            page.choixActivite = O.Segments(page.rActivite, function()
+                local p, s = Contexte()
+                local l, vus = {}, {}
+                for _, m in ipairs(s and ModelesDispo(page, s, p.classe) or {}) do
+                    local a = m.modele.activite
+                    if not vus[a] then vus[a] = true table.insert(l, { a, (ACTIVITES[a] or ACTIVITES.quetes)() }) end
+                end
+                return l
+            end, function() local p = NS.fenetre.Profil() or {} return (Ta.choix[p.classe or ""] or {}).activite end,
+            function(v) local p = NS.fenetre.Profil() or {} Ta.choix[p.classe or ""] = Ta.choix[p.classe or ""] or {} Ta.choix[p.classe or ""].activite = v Charger() end)
+            page.choixSpe = O.Segments(page.rSpe, function()
+                local p, s = Contexte()
+                local c = Ta.choix[p.classe or ""] or {}
+                local l = {}
+                for _, m in ipairs(s and ModelesDispo(page, s, p.classe) or {}) do
+                    if m.modele.activite == c.activite then table.insert(l, { m.modele.arbre, m.nom }) end
+                end
+                return l
+            end, function() local p = NS.fenetre.Profil() or {} return (Ta.choix[p.classe or ""] or {}).arbre end,
+            function(v) local p = NS.fenetre.Profil() or {} Ta.choix[p.classe or ""] = Ta.choix[p.classe or ""] or {} Ta.choix[p.classe or ""].arbre = v Charger() end)
             page.intro = O.Detail(36)
             -- La liste est a droite, sur la ligne de l'explication.
             page.intro:SetWidth(O.LARGEUR - 290)
@@ -856,7 +901,16 @@ function Ta.Page()
                 o = {}
             end
             local h = Dessiner(page, s, rangs, o)
-            local h2 = RendreSous(page, h + 10, s and BlocsModeles(page, s, p.classe, rangs, simulation) or nil)
+            local bloc = s and BlocModele(page, s, p.classe, rangs, simulation) or nil
+            local h2 = RendreSous(page, h + 10, bloc and { bloc } or nil)
+            page.rActivite:SetShown(bloc ~= nil)
+            page.rSpe:SetShown(bloc ~= nil)
+            if bloc then
+                page.rActivite:ClearAllPoints()
+                page.rActivite:SetPoint("TOPLEFT", page.zone, "TOPLEFT", 0, -(h + 10 - 2))
+                page.rSpe:ClearAllPoints()
+                page.rSpe:SetPoint("TOPLEFT", page.zone, "TOPLEFT", 0, -(h + 10 - 2))
+            end
             local total = h + (h2 > 0 and (h2 + 10) or 0)
             if simulation then
                 page.rNiveau:ClearAllPoints()
