@@ -1805,16 +1805,43 @@ local function Remplir(plan)
         -- le prix a l'unite releve, le total, et Chercher.
         vide = false
         local groupes, tous, vus = {}, {}, {}
-        local okO, objectifs = pcall(NS.suivi.Objectifs)
-        for _, o in ipairs(okO and objectifs or {}) do
+        local function Groupe(titre, paires)
             local lignes = {}
-            for _, m in ipairs(o.matieres or {}) do
-                if (m.manque or 0) > 0 and not NS.marchands.Achetable(m.objet) then
-                    table.insert(lignes, { objet = m.objet, n = m.manque })
-                    if not vus[m.objet] then vus[m.objet] = true table.insert(tous, m.objet) end
+            for objet, n in pairs(paires) do
+                objet = tonumber(objet)
+                if objet and (n or 0) > 0 and not NS.marchands.Achetable(objet) then
+                    table.insert(lignes, { objet = objet, n = n })
+                    if not vus[objet] then vus[objet] = true table.insert(tous, objet) end
                 end
             end
-            if #lignes > 0 then table.insert(groupes, { titre = o.nom, lignes = lignes }) end
+            if #lignes > 0 then table.insert(groupes, { titre = titre, lignes = lignes }) end
+        end
+        -- 1. Les rangs vises du personnage, lus directement dans leur plan fige
+        --    (la meme source que le suivi et le guide).
+        local moi = NS.base.Personnage and NS.base.Personnage()
+        local okR, souciR = pcall(function()
+            for _, cle in ipairs(moi and NS.recettes.MetiersVises(moi) or {}) do
+                local sien = type(moi.metiers) == "table" and moi.metiers[tostring(cle)]
+                if type(sien) == "table" and sien.rang then
+                    for _, seg in ipairs(NS.recettes.PlansVises(moi, cle, sien.rang, sien.rangMax)) do
+                        local nom = sien.nom or (NS.recettes.NomDuMetier and NS.recettes.NomDuMetier(tonumber(cle))) or "?"
+                        local titre = nom .. " : " .. ((seg.plan.probable and NS.ICONE_CHANCE) or "")
+                            .. string.format(L().GUIDE_TARGET_ONE or "rang %d", seg.vise)
+                        Groupe(titre, seg.plan.manques or {})
+                    end
+                end
+            end
+        end)
+        if not okR and NS.base.NoterIncident then NS.base.NoterIncident("a acheter, rangs vises", souciR) end
+        -- 2. Les projets et commandes (le suivi), sans les rangs vises deja lus.
+        local okO, objectifs = pcall(NS.suivi.Objectifs)
+        if not okO and NS.base.NoterIncident then NS.base.NoterIncident("a acheter, projets", objectifs) end
+        for _, o in ipairs(okO and objectifs or {}) do
+            if o.genre ~= "progression" then
+                local paires = {}
+                for _, m in ipairs(o.matieres or {}) do paires[m.objet] = (paires[m.objet] or 0) + (m.manque or 0) end
+                Groupe(o.nom, paires)
+            end
         end
         local quetes = {}
         for objet, n in pairs(NS.encheres.ObjetsDeQuetes()) do
