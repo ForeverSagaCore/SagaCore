@@ -276,7 +276,7 @@ local function Rendre(page, blocs)
             if NS.charte and NS.charte.TitreDeSection then pcall(NS.charte.TitreDeSection, t.fs, t.filet)
             else t.filet:SetColorTexture(0.8, 0.65, 0.35, 0.35) end
             t.fs:Show() t.filet:Show() t.droite:Show()
-            y = y + 30
+            y = y + 30 + (b.espaceApresTitre or 0)
         end
         if b.colonnes then
             -- L'en-tete des colonnes : en legende, au-dessus des valeurs.

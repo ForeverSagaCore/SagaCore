@@ -380,10 +380,60 @@ function Ta.Decoder(s, code)
     return suite, rangs
 end
 
+-- Rangs finaux (un chiffre par talent, rangee puis colonne, arbres separes
+-- par "-") : l'ordre des points en est deduit, l'arbre principal d'abord,
+-- de haut en bas, chaque point des que sa rangee et ses fleches le permettent.
+function Ta.DecoderRangs(s, code)
+    if not (s and type(code) == "string") then return nil end
+    local morceaux = {}
+    for m in (code .. "-"):gmatch("([^-]*)-") do table.insert(morceaux, m) end
+    local voulu, total = {}, {}
+    for k, chiffres in ipairs(morceaux) do
+        local a = s.arbres[k]
+        if chiffres ~= "" and not a then return nil, "arbre " .. k end
+        total[k] = 0
+        if a then
+            if #chiffres > #a.talents then return nil, "arbre " .. k .. " : " .. #chiffres .. " talents pour " .. #a.talents end
+            for i = 1, #chiffres do
+                local r = tonumber(chiffres:sub(i, i)) or 0
+                local t = a.talents[i]
+                if r > (t.max or 1) then return nil, "rang " .. r .. " > " .. tostring(t.max) .. " " .. tostring(t.nom) end
+                if r > 0 then voulu[t.id] = r total[k] = total[k] + r end
+            end
+        end
+    end
+    local ordre = {}
+    for k in ipairs(s.arbres) do table.insert(ordre, k) end
+    table.sort(ordre, function(x, y) if (total[x] or 0) ~= (total[y] or 0) then return (total[x] or 0) > (total[y] or 0) end return x < y end)
+    local rangs, suite = {}, {}
+    local reste = 0
+    for _, n in pairs(voulu) do reste = reste + n end
+    while reste > 0 do
+        local pose = false
+        for _, k in ipairs(ordre) do
+            for _, t in ipairs(s.arbres[k].talents) do
+                if (rangs[t.id] or 0) < (voulu[t.id] or 0) and Ta.Ajouter(s, rangs, t) then
+                    table.insert(suite, t)
+                    reste = reste - 1
+                    pose = true
+                    break
+                end
+            end
+            if pose then break end
+        end
+        if not pose then return nil, "ordre impossible" end
+    end
+    return suite, rangs
+end
+
 local ACTIVITES = {
-    quetes = function() return T("Montée de niveau", "Levelling") end,
-    groupe = function() return T("Donjons et raids", "Dungeons and raids") end,
+    solo = function() return T("Montée de niveau", "Levelling") end,
+    donjons = function() return T("Donjons en montée", "Dungeons while levelling") end,
+    groupe = function() return T("Montée en groupe", "Group levelling") end,
+    jce = function() return T("Raids et donjons (60)", "Raids and dungeons (60)") end,
+    jcj = function() return T("JcJ", "PvP") end,
 }
+local ORDRE_ACTIVITES = { "solo", "donjons", "groupe", "jce", "jcj" }
 
 -- { { nom, icone, suite, rangs, repartition, modele } } pour une structure.
 function Ta.Modeles(classe, s)
@@ -391,16 +441,21 @@ function Ta.Modeles(classe, s)
     if not s then return liste end
     local diag = {}
     for _, m in ipairs(NS.MODELES and NS.MODELES[classe or ""] or {}) do
-        local suite, rangs = Ta.Decoder(s, m.code)
-        if not suite then table.insert(diag, m.code:sub(1, 12) .. " : " .. tostring(rangs)) end
+        local suite, rangs
+        if m.code then suite, rangs = Ta.Decoder(s, m.code) else suite, rangs = Ta.DecoderRangs(s, m.rangs) end
+        if not suite then table.insert(diag, tostring(m.code or m.rangs):sub(1, 14) .. " : " .. tostring(rangs)) end
         if suite then
             local _, parArbre = Ta.Depenses(s, rangs)
-            local rep = {}
-            for k = 1, #s.arbres do table.insert(rep, tostring(parArbre[k] or 0)) end
-            local a = s.arbres[m.arbre] or s.arbres[1]
+            local rep, principal, maxi = {}, 1, -1
+            for k = 1, #s.arbres do
+                table.insert(rep, tostring(parArbre[k] or 0))
+                if (parArbre[k] or 0) > maxi then principal, maxi = k, parArbre[k] or 0 end
+            end
+            local a = s.arbres[principal] or s.arbres[1]
             local nom = a.nom or ""
             if m.variante == "saignement" then nom = nom .. " " .. T("(saignements)", "(bleeds)") end
-            table.insert(liste, { nom = nom, icone = a.icone, suite = suite, rangs = rangs,
+            if m.jusqua then nom = nom .. " " .. string.format(T("(jusqu'au niveau %d)", "(up to level %d)"), m.jusqua) end
+            table.insert(liste, { nom = nom, icone = a.icone, suite = suite, rangs = rangs, arbre = principal,
                 repartition = table.concat(rep, "/"), modele = m })
         end
     end
@@ -696,13 +751,13 @@ local function ModeleChoisi(page, s, classe, rangs)
     for k = 1, #s.arbres do if (parArbre[k] or 0) > maxi then principal, maxi = k, parArbre[k] or 0 end end
     local function Trouver(act, arbre)
         for _, m in ipairs(liste) do
-            if m.modele.activite == act and (arbre == nil or m.modele.arbre == arbre) then return m end
+            if m.modele.activite == act and (arbre == nil or m.arbre == arbre) then return m end
         end
     end
-    local act = c.activite or "quetes"
+    local act = c.activite or "solo"
     if not Trouver(act) then act = liste[1].modele.activite end
     local m = Trouver(act, c.arbre or principal) or Trouver(act)
-    c.activite, c.arbre = act, m and m.modele.arbre
+    c.activite, c.arbre = act, m and m.arbre
     return m, liste
 end
 
@@ -714,7 +769,7 @@ local function BlocModele(page, s, classe, rangs, simulation)
         local t = Ta.Prochain(m, rangs)
         droite = t and string.format(T("Prochain point : %s", "Next point : %s"), t.nom) or T("Suivi en entier", "Fully followed")
     end
-    return { titre = T("Modèles conseillés", "Suggested builds"), lignes = { { icone = m.icone,
+    return { titre = T("Modèles conseillés", "Suggested builds"), espaceApresTitre = 30, lignes = { { icone = m.icone,
         texte = m.nom .. "  (" .. m.repartition .. ")", droite = droite, largeurDroite = 260,
         infobulle = function(tt)
             tt:AddLine(m.nom .. "  (" .. m.repartition .. ")")
@@ -798,9 +853,9 @@ function Ta.Page()
             page.choixActivite = O.Segments(page.rActivite, function()
                 local p, s = Contexte()
                 local l, vus = {}, {}
-                for _, m in ipairs(s and ModelesDispo(page, s, p.classe) or {}) do
-                    local a = m.modele.activite
-                    if not vus[a] then vus[a] = true table.insert(l, { a, (ACTIVITES[a] or ACTIVITES.quetes)() }) end
+                for _, m in ipairs(s and ModelesDispo(page, s, p.classe) or {}) do vus[m.modele.activite] = true end
+                for _, a in ipairs(ORDRE_ACTIVITES) do
+                    if vus[a] then table.insert(l, { a, ACTIVITES[a]() }) end
                 end
                 return l
             end, function() local p = NS.fenetre.Profil() or {} return (Ta.choix[p.classe or ""] or {}).activite end,
@@ -810,7 +865,7 @@ function Ta.Page()
                 local c = Ta.choix[p.classe or ""] or {}
                 local l = {}
                 for _, m in ipairs(s and ModelesDispo(page, s, p.classe) or {}) do
-                    if m.modele.activite == c.activite then table.insert(l, { m.modele.arbre, m.nom }) end
+                    if m.modele.activite == c.activite then table.insert(l, { m.arbre, m.nom }) end
                 end
                 return l
             end, function() local p = NS.fenetre.Profil() or {} return (Ta.choix[p.classe or ""] or {}).arbre end,
@@ -907,9 +962,9 @@ function Ta.Page()
             page.rSpe:SetShown(bloc ~= nil)
             if bloc then
                 page.rActivite:ClearAllPoints()
-                page.rActivite:SetPoint("TOPLEFT", page.zone, "TOPLEFT", 0, -(h + 10 - 2))
+                page.rActivite:SetPoint("TOPLEFT", page.zone, "TOPLEFT", 0, -(h + 10 + 30))
                 page.rSpe:ClearAllPoints()
-                page.rSpe:SetPoint("TOPLEFT", page.zone, "TOPLEFT", 0, -(h + 10 - 2))
+                page.rSpe:SetPoint("TOPLEFT", page.zone, "TOPLEFT", 0, -(h + 10 + 30))
             end
             local total = h + (h2 > 0 and (h2 + 10) or 0)
             if simulation then
