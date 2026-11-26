@@ -31,6 +31,51 @@ local function Groupe()
     return tonumber(g) or 1
 end
 
+-- Ce que le jeu offre pour lire les talents (diagnostic, garde dans les
+-- sauvegardes quand rien n'est lu) : les fonctions presentes et leurs reponses.
+local function Diagnostic(n)
+    local d = { quand = (_G.time and _G.time()) or 0, onglets = tostring(n) }
+    for _, nom in ipairs({ "GetNumTalentTabs", "GetTalentTabInfo", "GetNumTalents", "GetTalentInfo", "GetActiveTalentGroup",
+        "GetNumSpecializations", "GetSpecialization", "GetSpecializationInfo", "GetNumTalentGroups", "UnitCharacterPoints" }) do
+        d[nom] = type(_G[nom])
+    end
+    for _, ns in ipairs({ "C_SpecializationInfo", "C_ClassTalents", "C_Traits", "C_Talent" }) do
+        local t = _G[ns]
+        if type(t) == "table" then
+            local cles = {}
+            for k in pairs(t) do table.insert(cles, k) end
+            table.sort(cles)
+            d[ns] = table.concat(cles, ",")
+        else
+            d[ns] = type(t)
+        end
+    end
+    local ok1, a1, b1, c1, d1, e1 = pcall(_G.GetTalentTabInfo or function() end, 1)
+    d.tab1 = table.concat({ tostring(ok1), tostring(a1), tostring(b1), tostring(c1), tostring(d1), tostring(e1) }, " | ")
+    local ok2, a2, b2, c2, d2, e2, f2 = pcall(_G.GetTalentInfo or function() end, 1, 1)
+    d.talent11 = table.concat({ tostring(ok2), tostring(a2), tostring(b2), tostring(c2), tostring(d2), tostring(e2), tostring(f2) }, " | ")
+    ClassCoreDB = type(ClassCoreDB) == "table" and ClassCoreDB or {}
+    ClassCoreDB.diagTalents = d
+end
+
+-- Une reponse de C_SpecializationInfo.GetTalentInfo (clients recents) :
+-- une table, ou les memes valeurs que l'ancienne fonction.
+local function InfoTalent(tab, i, groupe)
+    local tn, ti, rangee, colonne, rang, max = Appel("GetTalentInfo", tab, i, false, false, groupe)
+    if tn then return tn, ti, rangee, colonne, rang, max end
+    local C = _G.C_SpecializationInfo
+    if C and C.GetTalentInfo then
+        for _, q in ipairs({ { specializationIndex = tab, talentIndex = i, isInspect = false, isPet = false, groupIndex = groupe },
+            { tabIndex = tab, talentIndex = i, groupIndex = groupe } }) do
+            local ok, r = pcall(C.GetTalentInfo, q)
+            if ok and type(r) == "table" and r.name then
+                return r.name, r.icon or r.iconTexture or r.fileID, r.tier or r.row, r.column, r.rank or r.currentRank, r.maxRank
+            end
+        end
+    end
+    return nil
+end
+
 -- { { nom, icone, points, talents = { { nom, icone, rangee, colonne, rang, max, index } } } }
 function Ta.Lire()
     local n = tonumber(Appel("GetNumTalentTabs")) or 0
@@ -48,7 +93,7 @@ function Ta.Lire()
         local arbre = { nom = nom, icone = icone, points = tonumber(points) or 0, talents = {} }
         local nt = tonumber(Appel("GetNumTalents", tab, false, false)) or 0
         for i = 1, nt do
-            local tn, ti, rangee, colonne, rang, max = Appel("GetTalentInfo", tab, i, false, false, groupe)
+            local tn, ti, rangee, colonne, rang, max = InfoTalent(tab, i, groupe)
             if tn then
                 table.insert(arbre.talents, { nom = tn, icone = ti, rangee = tonumber(rangee) or 1, colonne = tonumber(colonne) or 1,
                     rang = tonumber(rang) or 0, max = tonumber(max) or 1, index = i })
@@ -56,6 +101,7 @@ function Ta.Lire()
         end
         table.insert(arbres, arbre)
     end
+    if #arbres == 0 or #(arbres[1].talents or {}) == 0 then pcall(Diagnostic, n) end
     return arbres
 end
 
@@ -126,7 +172,8 @@ local function Rendre(page, profil)
         page.vide = page.vide or zone:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         page.vide:ClearAllPoints()
         page.vide:SetPoint("TOPLEFT", zone, "TOPLEFT", 16, 0)
-        page.vide:SetText(T("Connecte ce personnage une fois pour relever ses talents.", "Log in this character once to read its talents."))
+        page.vide:SetText(profil.connecte and T("Le jeu ne donne pas encore les talents de ce personnage.", "The game does not give this character's talents yet.")
+            or T("Connecte ce personnage une fois pour relever ses talents.", "Log in this character once to read its talents."))
         page.vide:SetTextColor(0.55, 0.55, 0.55)
         page.vide:Show()
         return 30
