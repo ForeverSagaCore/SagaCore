@@ -1639,21 +1639,6 @@ local function Remplir(plan)
         t:SetText(statutManette)
         y = y + 18
     end
-    -- A la manette : comment entrer dans le panneau.
-    do
-        local gp = _G.C_GamePad
-        local okG, actif = pcall(gp and gp.IsEnabled or function() return false end)
-        if okG and actif and not vide then
-            local okX, g = pcall(NS.manette.Glyphe, "PADBACK", 14)
-            nt = nt + 1
-            local t = Texte(nt, "GameFontDisableSmall")
-            t:ClearAllPoints()
-            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", 0, -(y + 4))
-            t:SetWidth(largeur)
-            t:SetText((okX and g or "") .. " " .. L().ASSIST_PAD_ENTER)
-            y = y + 20
-        end
-    end
     -- Resultat de la derniere action, ici meme : pas seulement dans la discussion.
     if statut and not vide then
         nt = nt + 1
@@ -1681,6 +1666,14 @@ local function Remplir(plan)
     end
     panneau:SetHeight(hauteur)
     local defile = voulu > hauteur + 1
+    -- Les boutons Vendre au bord droit du panneau : dans la place de la barre
+    -- de defilement quand elle n'est pas la.
+    for _, l in ipairs(panneau.ventes or {}) do
+        if l.vendre then
+            l.vendre:ClearAllPoints()
+            l.vendre:SetPoint("RIGHT", l, "RIGHT", defile and 0 or 18, 0)
+        end
+    end
     if panneau.defil then
         panneau.defil:ClearAllPoints()
         panneau.defil:SetPoint("TOPLEFT", panneau.zone, "TOPLEFT", 0, 0)

@@ -6046,6 +6046,30 @@ function Suite.ToucheDEntree(f, nom)
         pcall(SetOverrideBindingClick, self, true, "PADBACK", "CoreSuiteEntrer", "LeftButton")
         self.toucheDEntreePosee = true
     end
+    -- Comme le jeu : l'icone du double carre a cheval sur le bas de la
+    -- fenetre, au milieu (visible meme quand la liste defile).
+    if not f.badgeEntree then
+        local b = CreateFrame("Frame", nil, f)
+        b:SetSize(28, 28)
+        b:SetPoint("CENTER", f, "BOTTOM", 0, 2)
+        b:SetFrameLevel((f:GetFrameLevel() or 1) + 20)
+        b.texte = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        b.texte:SetPoint("CENTER")
+        b:Hide()
+        f.badgeEntree = b
+    end
+    local function Badge(self)
+        local gp = _G.C_GamePad
+        local ok, actif = pcall(gp and gp.IsEnabled or function() return false end)
+        if ok and actif then
+            self.badgeEntree.texte:SetText((string.gsub(GlyphePad("PADBACK"), ":20:20|a", ":26:26|a")))
+            self.badgeEntree:Show()
+        else
+            self.badgeEntree:Hide()
+        end
+    end
+    f:HookScript("OnShow", Badge)
+    if f:IsShown() then Badge(f) end
     f:HookScript("OnShow", Poser)
     f:HookScript("OnHide", function(self)
         if self.toucheDEntreePosee and not (InCombatLockdown and InCombatLockdown()) then
