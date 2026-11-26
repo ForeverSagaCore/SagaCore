@@ -2555,6 +2555,10 @@ function courrier.ProposerProjetCommercial(coches)
         y = y + 30
     end
     f:SetHeight(y + 24 + 70)
+    -- Centree sur le panneau a cote de l'hotel des ventes, pas sur l'ecran.
+    f:ClearAllPoints()
+    if panneau and panneau:IsShown() then f:SetPoint("CENTER", panneau, "CENTER", 0, 0)
+    else f:SetPoint("CENTER", UIParent, "CENTER", 0, 80) end
     f.creer:SetScript("OnClick", function()
         local n = 1
         for _, p in ipairs(NS.projets.Tous and NS.projets.Tous(true) or {}) do if p.commercial then n = n + 1 end end
@@ -2571,4 +2575,24 @@ function courrier.ProposerProjetCommercial(coches)
     end)
     f:Show()
     f:Raise()
+    -- La manette passe a cette fenetre si elle pilotait le panneau ; a la
+    -- fermeture, elle revient au panneau.
+    local Su = NS.suite or _G.CoreSuite
+    local p = Su and Su.pilote
+    local pilotait = p and p:IsShown() and p.nom == "CraftCoreAssistant"
+    f.revenirAuPanneau = pilotait or nil
+    if pilotait and Su.Piloter then pcall(Su.Piloter, true, "CraftCoreProjetCommercial") end
+    if not f.retourBranche then
+        f.retourBranche = true
+        f:HookScript("OnHide", function(self)
+            if not self.revenirAuPanneau then return end
+            self.revenirAuPanneau = nil
+            local apres = _G.C_Timer and _G.C_Timer.After
+            local function Reprendre()
+                local S2 = NS.suite or _G.CoreSuite
+                if panneau and panneau:IsShown() and S2 and S2.Piloter then pcall(S2.Piloter, true, "CraftCoreAssistant") end
+            end
+            if apres then apres(0.3, Reprendre) else Reprendre() end
+        end)
+    end
 end
