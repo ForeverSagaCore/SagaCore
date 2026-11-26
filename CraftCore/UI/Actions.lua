@@ -309,11 +309,9 @@ local function Rendre(f)
     end
 end
 
--- Plus jamais : changer l'echelle ou la transparence d'une fenetre du jeu
--- (et la fermer par HideUIPanel) la « salissait », avec elle la gestion des
--- fenetres du jeu, jusqu'au menu (Quitter bloque). La fenetre du metier
--- s'ouvre donc normalement ; elle se referme par la fonction du jeu.
-local CACHER_LA_FENETRE = false
+-- La fenetre du metier ouverte par notre bouton reste cachee (comme avant).
+-- Elle se referme par la fonction du jeu, jamais par HideUIPanel.
+local CACHER_LA_FENETRE = true
 local function Cacher()
     if not CACHER_LA_FENETRE then return end
     if NS.Appeler(InCombatLockdown) then return end
