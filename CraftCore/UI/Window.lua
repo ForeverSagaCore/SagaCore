@@ -2430,6 +2430,29 @@ local function RendreCaisses(contenu)
         if faveurCaisse then ligne.banque:SetText("|cff8c8c8c~" .. faveurCaisse .. "|r") end
         local prets, total = NS.caisses.PacksPrets(caisse)
         ligne.total:SetText(string.format(L.CRATES_READY, prets, total))
+        -- Projet : la caisse part dans Mes fabrications (onglet Caisses), avec
+        -- le pack que le compte peut fournir (une caisse n'en prend qu'un).
+        -- Ses besoins passent dans les envois des autres personnages.
+        if NS.caisses.CreerProjet then
+            local suivie = NS.caisses.ProjetDe(caisse)
+            local caisseP = caisse
+            PoserBoutonLigne(ligne, suivie and L.CRATES_PROJECT_REMOVE or L.CRATES_PROJECT, function()
+                if NS.caisses.ProjetDe(caisseP) then
+                    NS.caisses.NePlusSuivre(caisseP.proprietaire, caisseP.id)
+                else
+                    local fait, qui = NS.caisses.CreerProjet(caisseP)
+                    if fait then NS.Dire(string.format(L.CRATES_PROJECT_MADE, fait.pack, nomDe(qui)))
+                    else NS.Dire(L.CRATES_PROJECT_NONE) end
+                end
+                ecran.Montrer(ecran.page)
+            end)
+            -- A gauche de la faveur estimee, jamais par-dessus.
+            if faveurCaisse and ligne.boutonLigne then
+                ligne.boutonLigne:ClearAllPoints()
+                ligne.boutonLigne:SetPoint("RIGHT", ligne.banque, "LEFT", -6, 0)
+                AncrerLibelle(ligne, ligne.boutonLigne)
+            end
+        end
         ligne.total:SetTextColor(prets > 0 and 0.31 or 0.55, prets > 0 and 0.82 or 0.55, prets > 0 and 0.41 or 0.55)
         ligne:Show()
         y = y + HAUTEUR_LIGNE
@@ -2488,23 +2511,15 @@ local function RendreCaisses(contenu)
                     end
                     l2.total:SetText(texte)
                 end
-                l2.total:SetWordWrap(false)
-                -- Projet : la caisse, avec ce pack, part dans Mes fabrications
-                -- (onglet Caisses) ; ses besoins passent dans les envois des
-                -- autres personnages. Retirer l'annule.
-                if objet and NS.caisses.CreerProjet then
-                    local deja = NS.caisses.ProjetDe(caisse, pack)
-                    local caisseP, packP = caisse, pack
-                    PoserBoutonLigne(l2, deja and L.CRATES_PROJECT_REMOVE or L.CRATES_PROJECT, function()
-                        if NS.caisses.ProjetDe(caisseP, packP) then
-                            NS.caisses.NePlusSuivre(caisseP.proprietaire, caisseP.id)
-                        else
-                            local fait, qui = NS.caisses.CreerProjet(caisseP, packP, objet)
-                            if fait then NS.Dire(string.format(L.CRATES_PROJECT_MADE, packP.libelle, nomDe(qui))) end
-                        end
-                        ecran.Montrer(ecran.page)
-                    end)
+                -- Le nom toujours a l'encre ordinaire : l'etat se lit a la
+                -- coche et au compte, jamais a une couleur de nom.
+                l2.nom:SetTextColor(1, 1, 1)
+                -- Le pack vise par le projet de la caisse.
+                local suivieP = NS.caisses.ProjetDe and NS.caisses.ProjetDe(caisse)
+                if suivieP and suivieP.pack == pack.libelle then
+                    l2.nom:SetText(pack.libelle .. "  |cff8c8c8c" .. (L.CRATES_PROJECT_PACK or "") .. "|r")
                 end
+                l2.total:SetWordWrap(false)
                 local objetSurvol = objet
                 l2:EnableMouse(true)
                 l2:SetScript("OnEnter", function(self)

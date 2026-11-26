@@ -139,7 +139,7 @@ local function ObjectifsDeCaisses(liste, cle)
         local manque = math.max(0, requis - total)
         local pct = math.min(1, total / requis)
         table.insert(liste, { groupe = "caisses", genre = "caisse", caisse = c.caisse, cle = "caisse" .. tostring(c.caisse),
-            nom = NS.inventaire.NomDObjet(c.caisse), titreAnnonce = NS.inventaire.NomDObjet(c.caisse),
+            nom = NS.inventaire.NomDObjet(c.caisse), titreAnnonce = NS.inventaire.NomDObjet(c.caisse), pack = c.pack,
             pct = pct, atteint = pct >= 1, fabriquer = {}, nLignes = 0, lignes = {},
             matieres = { { objet = c.objet, requis = requis, manque = manque, possede = requis - manque } } })
     end

@@ -510,13 +510,32 @@ local function FicheDe(cle)
     return nil
 end
 
--- La caisse est-elle suivie, et avec ce pack ?
-function caisses.ProjetDe(caisse, pack)
-    local s = Suivies(FicheDe(caisse.proprietaire))[tostring(caisse.id)]
-    return s and s.pack == pack.libelle and s or nil
+-- La caisse est-elle suivie ? Rend son suivi (pack choisi).
+function caisses.ProjetDe(caisse)
+    return Suivies(FicheDe(caisse.proprietaire))[tostring(caisse.id)]
+end
+
+-- Le pack a viser pour une caisse (elle n'en prend qu'un) : celui que le
+-- compte peut fournir en entier ; a egalite, celui dont le proprietaire a
+-- deja le plus, puis le moins de choses a reunir. Sinon, le plus avance.
+function caisses.MeilleurPack(caisse)
+    local meilleur, score
+    for _, pack in ipairs(caisses.Etat(caisse)) do
+        if pack.objet and (pack.requis or 0) > 0 then
+            local total = NS.inventaire.TotalPossede(pack.objet) or 0
+            local part = math.min(1, total / pack.requis)
+            local chezLui = math.min(1, (pack.possede or 0) / pack.requis)
+            local s = part * 1000 + chezLui * 10 - pack.requis * 0.001
+            if not score or s > score then meilleur, score = pack, s end
+        end
+    end
+    return meilleur
 end
 
 function caisses.CreerProjet(caisse, pack, objet)
+    pack = pack or caisses.MeilleurPack(caisse)
+    objet = objet or (pack and pack.objet)
+    if not pack then return nil end
     local fiche = FicheDe(caisse.proprietaire)
     if not (fiche and objet) then return nil end
     local s = { caisse = caisse.id, pack = pack.libelle, objet = tonumber(objet), requis = pack.requis or 1,
