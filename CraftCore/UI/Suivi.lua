@@ -1928,7 +1928,7 @@ local function DessinerObjectifs(y, objectifs, vue)
                     local barre = b.barreFab
                     barre:ClearAllPoints()
                     barre:SetPoint("RIGHT", b, "RIGHT", -placePct, 0)
-                    barre:SetSize(52, 10)
+                    barre:SetSize(60, 16)
                     barre:Poser(serie.reussis, serie.total)
                     barre:SetFrameLevel(b:GetFrameLevel() + 3)
                     barre:Show()

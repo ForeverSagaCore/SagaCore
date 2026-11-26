@@ -109,33 +109,55 @@ local function Atlas(nom)
     return ok and info and nom or nil
 end
 function actions.BarreDeSerie(parent)
-    local barre = CreateFrame("StatusBar", nil, parent)
-    barre:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    -- Une barre a la forme des boutons du jeu : leur contour (bord rouge et
+    -- chanfreins), a la meme taille, et la barre d'avancement a l'interieur.
+    -- Le meme modele pour toutes les barres d'avancement de CraftCore.
+    local barre = CreateFrame("Frame", nil, parent)
+    barre:SetSize(60, 16)
+    local coque = CreateFrame("Button", nil, barre, "UIPanelButtonTemplate")
+    coque:SetAllPoints()
+    coque:EnableMouse(false)
+    coque:SetText("")
+    barre.coque = coque
+    -- L'interieur : fond sombre, puis le remplissage (barre d'incantation
+    -- des metiers du jeu).
+    local remplir = CreateFrame("StatusBar", nil, barre)
+    remplir:SetPoint("TOPLEFT", barre, "TOPLEFT", 4, -3)
+    remplir:SetPoint("BOTTOMRIGHT", barre, "BOTTOMRIGHT", -4, 3)
+    remplir:SetFrameLevel(coque:GetFrameLevel() + 1)
+    remplir:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
     local remplissage = Atlas("ui-castingbar-filling-tradeskill") or Atlas("ui-castingbar-filling-standard")
-    local tex = barre:GetStatusBarTexture()
+    local tex = remplir:GetStatusBarTexture()
     if remplissage and tex and tex.SetAtlas then
         pcall(tex.SetAtlas, tex, remplissage, false)
     else
-        barre:SetStatusBarColor(1, 0.7, 0)
+        remplir:SetStatusBarColor(1, 0.7, 0)
     end
-    barre.fond = barre:CreateTexture(nil, "BACKGROUND")
-    barre.fond:SetAllPoints()
-    local fond = Atlas("ui-castingbar-background")
-    if fond then barre.fond:SetAtlas(fond, false) else barre.fond:SetColorTexture(0, 0, 0, 0.5) end
-    barre.cadre = barre:CreateTexture(nil, "OVERLAY")
-    local cadre = Atlas("ui-castingbar-frame")
-    if cadre then
-        barre.cadre:SetAtlas(cadre, false)
-        barre.cadre:SetPoint("TOPLEFT", barre, "TOPLEFT", -2, 2)
-        barre.cadre:SetPoint("BOTTOMRIGHT", barre, "BOTTOMRIGHT", 2, -2)
-    else
-        barre.cadre:SetTexture("Interface\\CastingBar\\UI-CastingBar-Border-Small")
-        barre.cadre:SetPoint("TOPLEFT", barre, "TOPLEFT", -6, 6)
-        barre.cadre:SetPoint("BOTTOMRIGHT", barre, "BOTTOMRIGHT", 6, -6)
-    end
-    barre.texte = barre:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    remplir.fond = remplir:CreateTexture(nil, "BACKGROUND")
+    remplir.fond:SetAllPoints()
+    remplir.fond:SetColorTexture(0, 0, 0, 0.6)
+    remplir:SetMinMaxValues(0, 1)
+    remplir:SetValue(0)
+    barre.remplir = remplir
+    local dessus = CreateFrame("Frame", nil, barre)
+    dessus:SetAllPoints()
+    dessus:SetFrameLevel(remplir:GetFrameLevel() + 1)
+    barre.texte = dessus:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     barre.texte:SetPoint("CENTER", barre, "CENTER", 0, 0)
+    barre.texte:SetWordWrap(false)
     if barre.texte.SetShadowOffset then barre.texte:SetShadowOffset(1, -1) end
+    barre.texte.couleurPropre = true
+    -- Comme une StatusBar : la meme facon de s'en servir partout.
+    function barre:SetMinMaxValues(a, b) self.remplir:SetMinMaxValues(a, b) end
+    function barre:SetValue(v) self.remplir:SetValue(v) end
+    function barre:GetValue() return self.remplir:GetValue() end
+    local poserNiveau = barre.SetFrameLevel
+    function barre:SetFrameLevel(n)
+        poserNiveau(self, n)
+        coque:SetFrameLevel(n + 1)
+        remplir:SetFrameLevel(n + 2)
+        dessus:SetFrameLevel(n + 3)
+    end
     function barre:Poser(faits, total)
         total = math.max(1, tonumber(total) or 1)
         faits = math.max(0, math.min(total, tonumber(faits) or 0))
