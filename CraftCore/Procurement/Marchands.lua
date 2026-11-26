@@ -1525,6 +1525,37 @@ end
 -- Le palier suivant d'un metier bloque a son rang maximum : { rang (le
 -- nouveau maximum), niveau (niveau du personnage requis pour l'apprendre) },
 -- ou nil si c'est deja le dernier palier.
+-- Le formateur qui enseigne une recette : celui du palier de son rang requis
+-- (compagnon jusqu'a 150, expert jusqu'a 225, artisan au-dela), le plus
+-- proche. { nom, carte, x, y, zone, palier } ou nil. Sert partout ou une
+-- recette dit « chez un formateur », pour dire lequel et y guider.
+function avisRang.FormateurPour(recette)
+    if type(recette) ~= "table" then return nil end
+    local R = NS.recettes
+    local ligne = R and R.MetierDe and R.MetierDe(recette)
+    local requis = R and R.RangRequis and R.RangRequis(recette)
+    if not ligne then return nil end
+    requis = tonumber(requis) or 0
+    local palier = (requis > 225 and 225) or (requis > 150 and 150) or 75
+    local ok, cible = pcall(avisRang.MaitrePlusProche, ligne, palier)
+    if not (ok and type(cible) == "table") then
+        -- Pas sur le meme continent : le premier du palier, ou qu'il soit.
+        local okL, liste = pcall(avisRang.MaitresDuPalier, ligne, palier)
+        cible = okL and type(liste) == "table" and liste[1] or nil
+    end
+    if type(cible) ~= "table" then return nil end
+    local info = cible.carte and NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), cible.carte)
+    return { nom = cible.nom, carte = cible.carte, x = cible.x, y = cible.y, id = cible.id,
+        zone = type(info) == "table" and info.name or nil, palier = palier, ligne = ligne }
+end
+
+-- Texte court : « chez <nom> (<zone>) », ou le texte general.
+function avisRang.TexteFormateur(recette)
+    local f = avisRang.FormateurPour(recette)
+    if not f then return NS.L.RECIPES_HOW_TRAINER end
+    return string.format(NS.L.RECIPES_HOW_TRAINER_AT or "%s (%s)", tostring(f.nom), tostring(f.zone or "?"))
+end
+
 function avisRang.PalierSuivant(rangMax)
     rangMax = tonumber(rangMax)
     if not rangMax or rangMax >= Plafond() then return nil end
