@@ -35,6 +35,8 @@ local PoserChoixDeProjet
 local PalierDeProgression, COULEURS_PALIER
 local BoutonAction
 local RendreCommandesDuGroupe
+local RendreCommerceHaut, RendreCommerceBas
+local RangeeDeBoutons, CacherActions
 
 -- Repere de selection, le meme partout : personnage, section et onglet.
 -- Ce qui est choisi est eclaire de la couleur des titres du jeu, tout le
@@ -2090,6 +2092,185 @@ local function DetenteursDe(objet, proprietaire)
     return liste
 end
 
+-- ---------------------------------------------------------------------------
+-- Commerce des caisses : le camp, la reputation, les patrons
+-- ---------------------------------------------------------------------------
+
+local function LigneCommerce(contenu, index, y, objet, retrait)
+    index = index + 1
+    local l = LigneDeTableau(contenu, index)
+    l:ClearAllPoints()
+    l:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
+    l:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
+    PoserLigne(l, retrait or RETRAIT_PAR_NIVEAU, false, false, nil)
+    local icone = objet and NS.Appeler(NS.jeu.iconeObjet, objet)
+    l.icone:SetTexture(icone or "Interface\\Icons\\INV_Misc_QuestionMark")
+    l.icone:Show()
+    l.nom:SetText(objet and NS.inventaire.NomDObjet(objet) or "")
+    if objet and NS.commerce then
+        local nom = NS.Appeler(NS.jeu.infoObjet, objet)
+        if type(nom) ~= "string" then NS.commerce.Demander(objet) end
+    end
+    l.sacs:SetText("") l.banque:SetText("") l.total:SetText("")
+    l.total:SetWordWrap(false)
+    if objet then
+        l:EnableMouse(true)
+        l:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            if GameTooltip.SetItemByID then pcall(GameTooltip.SetItemByID, GameTooltip, objet) end
+            GameTooltip:Show()
+        end)
+        l:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    l:Show()
+    return index, y + HAUTEUR_LIGNE, l
+end
+
+local function BoutonGuiderPNJ(contenu, gardees, y, id, ou)
+    if not (id and NS.guidage and NS.guidage.PNJCommerce) then return y end
+    local cle = (ou or "pnj") .. ":" .. id
+    local b = BoutonAction(contenu, cle, L.RANK_MAX_GUIDE)
+    b:SetScript("OnClick", function() NS.guidage.PNJCommerce(id) ecran.Montrer(ecran.page) end)
+    gardees[cle] = true
+    return RangeeDeBoutons(contenu, { b }, y + 2, RETRAIT_PAR_NIVEAU)
+end
+
+local COULEURS_ETAT = {
+    appris = { 0.31, 0.82, 0.41 }, possede = { 1, 0.82, 0 }, achetable = { 1, 1, 1 },
+    faveur = { 0.55, 0.55, 0.55 }, palier = { 0.55, 0.55, 0.55 }, rang = { 0.55, 0.55, 0.55 }, inconnu = { 0.55, 0.55, 0.55 },
+}
+local function TexteEtat(e)
+    local C = NS.commerce
+    if e.etat == "palier" then return string.format(L.TRADEHUB_STATE_STANDING, C.NomDuPalier(e.palier)) end
+    if e.etat == "rang" and e.metier then return L.TRADEHUB_STATE_SKILL300 end
+    return L["TRADEHUB_STATE_" .. string.upper(e.etat or "inconnu")] or ""
+end
+local function PoserEtat(l, e)
+    l.total:SetText(TexteEtat(e))
+    local c = COULEURS_ETAT[e.etat] or COULEURS_ETAT.inconnu
+    l.total:SetTextColor(c[1], c[2], c[3])
+    if e.etat == "appris" or e.etat == "possede" then
+        Marquer(l, true, "GameFontHighlightSmall", e.objet)
+    end
+end
+local function TextePrix(prix, estime)
+    if not prix then return "" end
+    return (estime and "|cff8c8c8c~" or "") .. prix .. (estime and "|r" or "")
+end
+
+-- En haut : la reputation du camp (barre), la faveur, le conseil.
+function RendreCommerceHaut(contenu, index, y, fiche, gardees)
+    local C = NS.commerce
+    local faction, camp = C.Faction(fiche)
+    if not faction then return index, y end
+    if fiche.cle == NS.ClePersonnage() then pcall(C.Relever) end
+    local rep = C.Reputation(fiche)
+    local faveur = C.Faveur(fiche)
+    index, y = TitreDeSection(contenu, index, y, (rep and rep.nom) or L["TRADEHUB_FACTION_" .. string.upper(camp)],
+        string.format(L.TRADEHUB_FAVOR, faveur or 0))
+    -- Le palier et la barre au modele commun.
+    index = index + 1
+    local l = LigneDeTableau(contenu, index)
+    l:ClearAllPoints()
+    l:SetPoint("TOPLEFT", contenu, "TOPLEFT", 0, -y)
+    l:SetPoint("TOPRIGHT", contenu, "TOPRIGHT", 0, -y)
+    PoserLigne(l, RETRAIT_PAR_NIVEAU, false, false, nil)
+    l.icone:Hide()
+    l.sacs:SetText("") l.banque:SetText("") l.total:SetText("")
+    if not contenu.barreRep and NS.actions and NS.actions.BarreDeSerie then contenu.barreRep = NS.actions.BarreDeSerie(contenu) end
+    local barre = contenu.barreRep
+    if rep and rep.rang then
+        l.nom:SetText(C.NomDuPalier(rep.rang))
+        if barre then
+            barre:ClearAllPoints()
+            barre:SetSize(220, 18)
+            barre:SetPoint("RIGHT", l, "RIGHT", -10, 0)
+            barre:SetFrameLevel(l:GetFrameLevel() + 3)
+            local mini, maxi, valeur = rep.mini or 0, rep.maxi or 1, rep.valeur or 0
+            barre:Poser(math.max(0, valeur - mini), math.max(1, maxi - mini))
+            barre:Show()
+        end
+    else
+        l.nom:SetText(L.TRADEHUB_REP_UNKNOWN)
+        if barre then barre:Hide() end
+    end
+    l:Show()
+    y = y + HAUTEUR_LIGNE + 4
+    -- Une seule chose a faire.
+    local okC, conseil = pcall(C.Conseil, fiche)
+    if okC and conseil then
+        y = Paragraphe(contenu, y, conseil.texte, "GameFontHighlightSmall", nil, RETRAIT_PAR_NIVEAU)
+        y = BoutonGuiderPNJ(contenu, gardees, y, conseil.pnj, "conseil")
+    end
+    return index, y
+end
+
+-- En bas : les ecrits, les patrons de ses metiers, les recompenses.
+function RendreCommerceBas(contenu, index, y, fiche, gardees)
+    local C = NS.commerce
+    local _, camp = C.Faction(fiche)
+    if not camp then return index, y end
+    -- Ecrits d'artisan en sac.
+    local scelles = 0
+    for _, o in ipairs(C.ECRITS_SCELLES) do scelles = scelles + C.Possede(fiche, o) end
+    local ecrits = C.Ecrits(fiche)
+    index, y = TitreDeSection(contenu, index, y, string.format(L.TRADEHUB_WRITS, #ecrits))
+    if scelles > 0 then y = Paragraphe(contenu, y, string.format(L.TRADEHUB_WRITS_SEALED, scelles), "GameFontHighlightSmall") end
+    if #ecrits == 0 then y = Paragraphe(contenu, y, L.TRADEHUB_WRITS_NONE, "GameFontDisableSmall") end
+    for _, e in ipairs(ecrits) do
+        local l
+        index, y, l = LigneCommerce(contenu, index, y, e.objet)
+        Marquer(l, e.possede > 0, "GameFontHighlightSmall", e.objet)
+        l.sacs:SetText(string.format("%d / 1", math.min(1, e.possede)))
+        l.total:SetText(string.format(L.TRADEHUB_REP_GAIN, e.rep))
+        if e.possede == 0 and e.apprise and e.recette then
+            local recette = e.recette
+            PoserBoutonLigne(l, L.TRADEHUB_ADD_CRAFT, function()
+                NS.projets.Ajouter("rapides", recette, 1)
+                if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
+                ecran.Montrer(ecran.page)
+            end)
+        elseif e.possede == 0 and not e.apprise then
+            l.banque:SetText("|cff8c8c8c" .. (L.TRADEHUB_NOT_KNOWN or "") .. "|r")
+        end
+    end
+    -- Les patrons, metier par metier (ceux du personnage), par rang.
+    local metiers = {}
+    for ligne, m in pairs(fiche.metiers or {}) do
+        local n = tonumber(ligne)
+        if n and C.PNJ(camp, n) then
+            table.insert(metiers, { ligne = n, nom = m.nom or (NS.recettes.NomDuMetier and NS.recettes.NomDuMetier(n)) or tostring(n) })
+        end
+    end
+    table.sort(metiers, function(a, b) return a.nom < b.nom end)
+    for _, m in ipairs(metiers) do
+        local patrons = C.Patrons(fiche, m.ligne)
+        local appris = 0
+        for _, p in ipairs(patrons) do if p.etat == "appris" then appris = appris + 1 end end
+        local id, pnj = C.PNJ(camp, m.ligne)
+        index, y = TitreDeSection(contenu, index, y, string.format(L.TRADEHUB_PATTERNS, m.nom, pnj and pnj.nom or "?"),
+            string.format(L.TRADEHUB_LEARNED, appris, #patrons))
+        y = BoutonGuiderPNJ(contenu, gardees, y, id)
+        for _, p in ipairs(patrons) do
+            local l
+            index, y, l = LigneCommerce(contenu, index, y, p.objet)
+            l.sacs:SetText(p.rang > 0 and tostring(p.rang) or "")
+            l.banque:SetText(TextePrix(p.prix, p.estime))
+            PoserEtat(l, p)
+        end
+    end
+    -- Les recompenses du camp.
+    index, y = TitreDeSection(contenu, index, y, L.TRADEHUB_REWARDS)
+    for _, r in ipairs(C.Recompenses(fiche)) do
+        local l
+        index, y, l = LigneCommerce(contenu, index, y, r.objet)
+        l.banque:SetText(TextePrix(r.prix, r.estime))
+        PoserEtat(l, r)
+    end
+    y = Paragraphe(contenu, y + 6, L.TRADEHUB_ESTIMATED, "GameFontDisableSmall")
+    return index, y
+end
+
 local function RendreCaisses(contenu)
     CacherLignesAuDela(contenu, 1)
     ecran.deplie = ecran.deplie or {}
@@ -2136,11 +2317,16 @@ local function RendreCaisses(contenu)
     y = y + 4
 
     local liste = NS.caisses.Connues(cle, ecran.caissesDesAutres == true)
+    local gardees = {}
+    local fiche = NS.base.FicheAffichee()
 
+    -- Le camp : reputation, faveur marchande, et la chose a faire.
+    if NS.commerce and fiche then
+        index, y = RendreCommerceHaut(contenu, index, y, fiche, gardees)
+    end
+    index, y = TitreDeSection(contenu, index, y, L.TRADEHUB_MY_CRATES)
     if #liste == 0 then
-        PoserMessage(contenu, string.format(L.CRATES_NONE_FOR, nomDe(cle)), y)
-        contenu:SetHeight(y + 60)
-        return
+        y = Paragraphe(contenu, y, string.format(L.CRATES_NONE_FOR, nomDe(cle)), "GameFontDisableSmall")
     end
 
     for _, caisse in ipairs(liste) do
@@ -2173,6 +2359,8 @@ local function RendreCaisses(contenu)
         ligne.sacs:SetText("")
         ligne.banque:SetText("")
 
+        local faveurCaisse = NS.commerce and NS.commerce.FaveurDeCaisse(caisse.id)
+        if faveurCaisse then ligne.banque:SetText("|cff8c8c8c~" .. faveurCaisse .. "|r") end
         local prets, total = NS.caisses.PacksPrets(caisse)
         ligne.total:SetText(string.format(L.CRATES_READY, prets, total))
         ligne.total:SetTextColor(prets > 0 and 0.31 or 0.55, prets > 0 and 0.82 or 0.55, prets > 0 and 0.41 or 0.55)
@@ -2274,6 +2462,10 @@ local function RendreCaisses(contenu)
     avis:Show()
     y = y + HAUTEUR_LIGNE + 6
 
+    if NS.commerce and fiche then
+        index, y = RendreCommerceBas(contenu, index, y, fiche, gardees)
+    end
+    CacherActions(contenu, gardees)
     CacherLignesAuDela(contenu, index + 1)
     contenu:SetHeight(math.max(y, 1))
 end
@@ -2541,7 +2733,7 @@ BoutonAction = function(contenu, cle, libelle)
     return bouton
 end
 
-local function CacherActions(contenu, gardees)
+function CacherActions(contenu, gardees)
     for cle, bouton in pairs(contenu.actions or {}) do
         if not (gardees and gardees[cle]) then bouton:Hide() end
     end
@@ -2632,7 +2824,7 @@ end
 
 -- Une rangee de boutons d'action sous un bloc, qui revient a la ligne quand
 -- la largeur est pleine. Rend le nouveau y.
-local function RangeeDeBoutons(contenu, boutons, y, retrait)
+function RangeeDeBoutons(contenu, boutons, y, retrait)
     local largeurMax = (tonumber(contenu:GetWidth()) or 0) - 8
     if largeurMax < 200 then largeurMax = LARGEUR - LARGEUR_MENU - MARGE - ECART * 2 - 40 end
     local x = retrait
@@ -6538,6 +6730,7 @@ function ecran.Montrer(cle)
             fenetre.contenu.caseNonApprises:Hide()
             fenetre.contenu.libelleNonApprises:Hide()
         end
+        if fenetre.contenu.barreRep and ecran.page ~= "caisses" then fenetre.contenu.barreRep:Hide() end
         if fenetre.contenu.caseGuide and ecran.page ~= "reglages" then
             fenetre.contenu.caseGuide:Hide()
             fenetre.contenu.libelleGuide:Hide()
@@ -6606,7 +6799,7 @@ function ecran.Montrer(cle)
             LargeurDesColonnes(fenetre.contenu, 0, 150)
             RendreGroupe(fenetre.contenu)
         elseif ecran.page == "caisses" then
-            LargeurDesColonnes(fenetre.contenu, 0, 150)
+            LargeurDesColonnes(fenetre.contenu, 54, 150)
             RendreCaisses(fenetre.contenu)
         elseif ecran.page == "reglages" then
             RendreReglages(fenetre.contenu)
