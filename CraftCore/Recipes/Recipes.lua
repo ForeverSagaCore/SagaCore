@@ -422,8 +422,20 @@ end
 
 function recettes.EstApprise(id)
     local fiche = NS.base.FicheAffichee()
-    if not fiche or type(fiche.recettesApprises) ~= "table" then return false end
-    return fiche.recettesApprises[tostring(id)] == true
+    if not fiche then return false end
+    if type(fiche.recettesApprises) == "table" and fiche.recettesApprises[tostring(id)] == true then return true end
+    -- Le personnage connecte : le jeu sait s'il connait le sort de la recette
+    -- (appris chez le formateur sans avoir rouvert le metier).
+    if fiche.cle == (NS.ClePersonnage and NS.ClePersonnage()) then
+        local connu = NS.Lecture("IsPlayerSpell") or NS.Lecture("C_SpellBook.IsSpellKnown") or NS.Lecture("IsSpellKnown")
+        local n = tonumber(id)
+        if connu and n and NS.Appeler(connu, n) == true then
+            fiche.recettesApprises = type(fiche.recettesApprises) == "table" and fiche.recettesApprises or {}
+            fiche.recettesApprises[tostring(id)] = true
+            return true
+        end
+    end
+    return false
 end
 
 -- Ce qui manque pour une recette, et si elle est realisable tout de suite.
