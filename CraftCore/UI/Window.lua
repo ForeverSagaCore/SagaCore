@@ -2328,12 +2328,13 @@ function RendreCommerceBas(contenu, index, y, fiche, gardees)
                     local c = COULEURS_PALIER[pc.point]
                     GameTooltip:AddLine(R.CocheTexte(pc.point) .. " " .. (L["PALIER_" .. string.upper(pc.point)] or ""), c[1], c[2], c[3])
                 end
-                local niv = type(rec) == "table" and R.Niveaux and R.Niveaux(rec)
+                local niv = pc.niv
                 if niv and niv.gris then
                     local depart = math.max(monRang, niv.orange or 0)
                     local possibles = math.max(0, niv.gris - depart)
                     local surs = math.max(0, (niv.jaune or 0) - depart)
-                    GameTooltip:AddLine(string.format(L.TRADEHUB_TIP_POINTS, possibles, surs, niv.gris), 1, 1, 1, true)
+                    GameTooltip:AddLine(string.format(pc.nivEstime and L.TRADEHUB_TIP_POINTS_EST or L.TRADEHUB_TIP_POINTS,
+                        possibles, surs, niv.gris), 1, 1, 1, true)
                 end
                 -- Hotel des ventes : le patron, et ce qu'il fabrique.
                 local E, M = NS.encheres, NS.marchands

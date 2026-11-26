@@ -316,12 +316,26 @@ function C.Patrons(fiche, metier)
                 if type(rec) == "table" then
                     -- Le rang du catalogue n'est qu'un repli (il peut etre estime).
                     if e.rang == 0 and R2.RangRequis then e.rang = tonumber(R2.RangRequis(rec)) or 0 e.rangEstime = e.rang > 0 end
-                    if R2.FinDuOrange and R2.FinDuOrange(rec) and R2.ChanceDePoint and rangMetier > 0 then
-                        local ok, chance = pcall(R2.ChanceDePoint, rec, rangMetier)
-                        if ok and chance then
-                            e.point = (chance >= 1 and "sur") or (chance >= 0.5 and "probable") or (chance > 0 and "peu") or "rien"
-                        end
-                    end
+                    local niv = R2.Niveaux and R2.Niveaux(rec)
+                    if niv and niv.gris then e.niv = { orange = niv.orange, jaune = niv.jaune, gris = niv.gris } end
+                end
+                -- Couleurs de la recette : celles du jeu si on les connait ;
+                -- sinon estimees depuis le rang requis lu sur le patron (jaune
+                -- 20 rangs plus haut, gris 60 rangs plus haut, l'ecart le plus
+                -- courant), marquees comme estimees.
+                if not e.niv and e.rang > 0 then
+                    e.niv = { orange = e.rang, jaune = e.rang + 20, gris = e.rang + 60 }
+                    e.nivEstime = true
+                end
+                -- La coche au rang ou on pourra la faire : le sien, ou le
+                -- rang requis s'il est plus haut (elle sera orange alors).
+                if e.niv and e.niv.gris and e.niv.jaune then
+                    local a = math.max(rangMetier, e.niv.orange or 0)
+                    local chance
+                    if a < e.niv.jaune then chance = 1
+                    elseif a >= e.niv.gris then chance = 0
+                    else chance = (e.niv.gris - a) / math.max(1, e.niv.gris - e.niv.jaune) end
+                    e.point = (chance >= 1 and "sur") or (chance >= 0.5 and "probable") or (chance > 0 and "peu") or "rien"
                 end
                 if r and type(fiche.recettesApprises) == "table" and fiche.recettesApprises[tostring(r)] then
                     e.etat = "appris"
