@@ -1891,6 +1891,9 @@ local function DessinerObjectifs(y, objectifs, vue)
                             -- le plan deja en main, sinon qui le vend ou le laisse.
                             local okC, nature, lignes = pcall(NS.recettes.CommentApprendre, a.recette)
                             local ou = okC and nature and L[nature] or nil
+                            if okC and nature == "RECIPES_HOW_TRAINER" and NS.avisRang and NS.avisRang.TexteFormateur then
+                                ou = NS.avisRang.TexteFormateur(a.recette)
+                            end
                             local okP, _, possede = pcall(NS.recettes.PlanPossede, a.recette)
                             if okP and possede then ou = string.format(L.GOAL_LEARN_HAVE, possede) end
                             local quand = a.plusTard and ("  |cffb3b3b3" .. string.format(L.GOAL_LEARN_RANK, a.rang) .. "|r") or ""
@@ -2162,6 +2165,9 @@ local function DessinerObjectifs(y, objectifs, vue)
                             else
                                 local okC, nature = pcall(NS.recettes.CommentApprendre, a.recette)
                                 ouTexte = okC and nature and L[nature] or nil
+                                if okC and nature == "RECIPES_HOW_TRAINER" and NS.avisRang and NS.avisRang.TexteFormateur then
+                                    ouTexte = NS.avisRang.TexteFormateur(a.recette)
+                                end
                             end
                         end
                         local ou
