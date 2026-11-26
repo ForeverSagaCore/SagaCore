@@ -488,9 +488,10 @@ local function LireBoite()
     end
     local t = EnRouteDuPerso()
     if not t then return end
-    local maintenant = NS.Appeler(_G.time) or 0
+    -- La boite lue, son contenu est compte dans l'inventaire (courrier) : le
+    -- garder aussi "en route" le comptait deux fois. Seuls les achats faits
+    -- apres cette lecture restent en route.
     for objet in pairs(t) do t[objet] = nil end
-    for objet, q in pairs(compte) do t[objet] = { q, maintenant } end
 end
 
 do

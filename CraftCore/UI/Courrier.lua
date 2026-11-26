@@ -2040,15 +2040,18 @@ function courrier.Actualiser()
     local maintenant = NS.Appeler(_G.GetTime) or 0
     local plusTard = Lire("C_Timer.After")
     if not plusTard or maintenant - dernierCalcul >= 0.7 then
-        dernierCalcul = maintenant
-        return courrier.Chronometrer(ActualiserMaintenant)
+        local r = courrier.Chronometrer(ActualiserMaintenant)
+        -- Compte a partir de la fin du calcul : un calcul long ne s'enchaine
+        -- jamais avec le suivant.
+        dernierCalcul = NS.Appeler(_G.GetTime) or maintenant
+        return r
     end
     if calculPrevu then return end
     calculPrevu = true
     NS.Appeler(plusTard, 0.7 - (maintenant - dernierCalcul), function()
         calculPrevu = false
-        dernierCalcul = NS.Appeler(_G.GetTime) or 0
         pcall(courrier.Chronometrer, ActualiserMaintenant)
+        dernierCalcul = NS.Appeler(_G.GetTime) or 0
     end)
 end
 -- Mouchard de lenteur : un calcul du panneau qui depasse un quart de
