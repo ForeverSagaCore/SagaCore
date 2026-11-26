@@ -331,7 +331,7 @@ function suivi.ProposerPlan(fiche, cle, nomMetier, vise, actuel, autre)
     f.garder:ClearAllPoints()
     f.garder:SetPoint("LEFT", f.changer, "RIGHT", 8, 0)
     f.changer:SetScript("OnClick", function()
-        NS.recettes.FigerPlan(fiche, cle, vise, autre)
+        NS.recettes.FigerPlan(fiche, cle, vise, autre, (NS.recettes.PlanFige(fiche, cle, vise) or {}).stock)
         f:Hide()
         if suivi.Dessiner then pcall(suivi.Dessiner) end
         if NS.ecran and NS.ecran.Actualiser then pcall(NS.ecran.Actualiser) end

@@ -1123,11 +1123,15 @@ function recettes.PlansVises(fiche, cle, rang, rangMax, liste, apprendreTout)
             -- change sans l'accord du joueur. Un meilleur plan (recette
             -- apprise entre-temps) est seulement propose (seg.autre).
             local fige = recettes.PlanFige(fiche, cle, vise)
-            local okL, libre = pcall(recettes.Progression, tonumber(cle), de, rangMax, vise, pris, apprendre)
+            -- Le stock du moment ou le plan a ete fixe ; un plan fixe avant
+            -- qu'on le retienne prend celui d'aujourd'hui, une fois.
+            local photo = fige and type(fige.stock) == "table" and fige.stock or recettes.PhotoDuStock(cle)
+            if fige and not fige.stock then fige.stock = photo end
+            local okL, libre = pcall(recettes.Progression, tonumber(cle), de, rangMax, vise, pris, apprendre, nil, photo)
             local ok, plan = okL, libre
             local autre
             if fige then
-                ok, plan = pcall(recettes.Progression, tonumber(cle), de, rangMax, vise, pris, apprendre, fige.ids)
+                ok, plan = pcall(recettes.Progression, tonumber(cle), de, rangMax, vise, pris, apprendre, fige.ids, photo)
                 if okL and libre and ok and plan then
                     local idsL = recettes.IdsDuPlan(libre)
                     local nouveau = false
@@ -1135,7 +1139,7 @@ function recettes.PlansVises(fiche, cle, rang, rangMax, liste, apprendreTout)
                     if nouveau and (libre.atteint or 0) >= math.min(vise, plan.atteint or 0) then autre = libre end
                 end
             elseif okL and libre then
-                recettes.FigerPlan(fiche, cle, vise, libre)
+                recettes.FigerPlan(fiche, cle, vise, libre, photo)
             end
             if ok and plan then
                 table.insert(res, { vise = vise, de = de, plan = plan, autre = autre })
@@ -1161,14 +1165,33 @@ function recettes.PlanFige(fiche, cle, vise)
     if type(p) == "table" and type(p.ids) == "table" and next(p.ids) then return p end
     return nil
 end
-function recettes.FigerPlan(fiche, cle, vise, plan)
+-- Le stock des composants des recettes d'un metier, a l'instant.
+function recettes.PhotoDuStock(cle)
+    local photo = {}
+    for _, r in ipairs((recettes.Pour(tonumber(cle)))) do
+        for _, c in ipairs(type(r.composants) == "table" and r.composants or {}) do
+            if c.objet and photo[c.objet] == nil then photo[c.objet] = NS.inventaire.TotalPossede(c.objet) or 0 end
+        end
+    end
+    -- Et ce qui sert a fabriquer ces composants (minerai d'une barre).
+    for _, r in pairs(Catalogue() or {}) do
+        if type(r) == "table" and r.objetProduit and photo[r.objetProduit] ~= nil then
+            for _, c in ipairs(type(r.composants) == "table" and r.composants or {}) do
+                if c.objet and photo[c.objet] == nil then photo[c.objet] = NS.inventaire.TotalPossede(c.objet) or 0 end
+            end
+        end
+    end
+    return photo
+end
+function recettes.FigerPlan(fiche, cle, vise, plan, photo)
     if type(fiche) ~= "table" then return end
     local ids = recettes.IdsDuPlan(plan)
     if not next(ids) then return end
     fiche.plansFiges = type(fiche.plansFiges) == "table" and fiche.plansFiges or {}
     fiche.plansFiges[tostring(cle)] = type(fiche.plansFiges[tostring(cle)]) == "table" and fiche.plansFiges[tostring(cle)] or {}
     local ancien = fiche.plansFiges[tostring(cle)][tostring(vise)]
-    fiche.plansFiges[tostring(cle)][tostring(vise)] = { ids = ids, refus = type(ancien) == "table" and ancien.refus or {} }
+    fiche.plansFiges[tostring(cle)][tostring(vise)] = { ids = ids, refus = type(ancien) == "table" and ancien.refus or {},
+        stock = type(photo) == "table" and photo or recettes.PhotoDuStock(cle) }
 end
 -- La signature d'un plan propose : ses recettes, triees.
 function recettes.SignatureDuPlan(plan)
@@ -1198,7 +1221,11 @@ end
 -- (chez le formateur, un vendeur, une quete), des que le rang requis est
 -- atteint en chemin. Jamais celles qui ne tombent que sur des monstres.
 local APPRENABLES = { RECIPES_HOW_TRAINER = true, RECIPES_HOW_VENDOR = true, RECIPES_HOW_QUEST = true }
-function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, dejaPris, apprendre, limite)
+-- stockDeChoix : le stock tel qu'il etait quand le plan a ete choisi (fige).
+-- Il decide seul quelles recettes passent en premier (ce qu'on avait deja) ;
+-- le stock du moment ne fait que reduire ce qui manque. Sans lui, chaque
+-- achat changeait le plan et le besoin grandissait (8 sur 11, puis 11 sur 14).
+function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, dejaPris, apprendre, limite, stockDeChoix)
     local resultat = { depart = rangDepart, atteint = rangDepart, etapes = {}, achats = {}, manques = {},
         estime = false, arret = nil, aApprendre = {} }
     if not ligneDeMetier or not rangDepart then resultat.arret = "inconnu" return resultat end
@@ -1261,6 +1288,32 @@ function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, deja
         return (n or 0) * math.max(1, tonumber(r.quantiteMin) or 1)
     end
     local function Disponible(objet) return Stock(objet) + Fabricables(objet) end
+    -- Le stock qui decide du choix des recettes.
+    local stockC = {}
+    local function StockC(objet)
+        if not stockDeChoix then return Stock(objet) end
+        if stockC[objet] == nil then
+            stockC[objet] = math.max(0, (tonumber(stockDeChoix[objet]) or 0) - (dejaPris and dejaPris[objet] or 0))
+        end
+        return stockC[objet]
+    end
+    local function DisponibleChoix(objet)
+        if not stockDeChoix then return Disponible(objet) end
+        local r = producteurs[objet]
+        local n
+        if r then
+            for _, c in ipairs(r.composants) do
+                if not recettes.EstVenduPartout(c.objet) and c.objet ~= objet then
+                    local k = math.floor(StockC(c.objet) / math.max(1, c.quantite))
+                    n = n and math.min(n, k) or k
+                end
+            end
+        end
+        return StockC(objet) + (n or 0) * math.max(1, tonumber(r and r.quantiteMin) or 1)
+    end
+    local function PrendreChoix(objet, quantite)
+        if stockDeChoix then stockC[objet] = math.max(0, StockC(objet) - quantite) end
+    end
     -- Prend `quantite` d'un composant : le stock d'abord, puis ce qu'on
     -- fabrique, puis le reste manque.
     local function Prendre(objet, quantite, profondeur)
@@ -1313,7 +1366,7 @@ function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, deja
                 for _, comp in ipairs(recette.composants) do
                     if not recettes.EstVenduPartout(comp.objet) then
                         recolte = recolte + comp.quantite
-                        manque = manque + math.max(0, comp.quantite - Disponible(comp.objet))
+                        manque = manque + math.max(0, comp.quantite - DisponibleChoix(comp.objet))
                     end
                 end
                 if objectif or manque == 0 then
@@ -1327,20 +1380,12 @@ function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, deja
                     -- au moins) vaut mieux qu'une orange qu'il faut aller
                     -- recolter. Puis les oranges, puis le reste.
                     local palier
-                    -- Rang vise : le choix ne depend jamais du stock. Sinon,
-                    -- chaque achat (3 etouffantes) faisait preferer la
-                    -- recette qui s'en sert, et le besoin grandissait a
-                    -- mesure qu'on achetait (8 sur 11, puis 11 sur 14). Le
-                    -- stock ne fait que reduire ce qui manque.
-                    local manqueChoix = objectif and 0 or manque
-                    if objectif then
-                        palier = chance >= 1 and 0 or 1e12
-                    elseif manque == 0 and chance >= 1 then palier = 0
+                    if manque == 0 and chance >= 1 then palier = 0
                     elseif manque == 0 and chance >= 0.5 then palier = 1e11
                     elseif chance >= 1 then palier = 2e11
                     else palier = 1e12 end
                     local score = palier + (apprise[recette.id] and 0 or 1e9)
-                        + (manqueChoix * 100000 + recolte * 1000 + 1) / chance + (1 - chance)
+                        + (manque * 100000 + recolte * 1000 + 1) / chance + (1 - chance)
                     if not meilleurScore or score < meilleurScore then
                         meilleur, meilleurScore, meilleureChance = recette, score, chance
                     end
@@ -1364,6 +1409,7 @@ function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, deja
                 resultat.achats[comp.objet] = (resultat.achats[comp.objet] or 0) + comp.quantite
             else
                 Prendre(comp.objet, comp.quantite)
+                PrendreChoix(comp.objet, comp.quantite)
             end
         end
         local gain = (meilleur.points or 1) * meilleureChance
