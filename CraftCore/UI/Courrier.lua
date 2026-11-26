@@ -23,7 +23,7 @@ local LARGEUR = 300
 -- Largeur utile d'une colonne du panneau (la barre de defilement gardee).
 local COLONNE = LARGEUR - 2 * 12 - 10 - 22
 -- Un peu plus large a l'hotel des ventes : la place des deux boutons de vente.
-local function LargeurDuLieu(l) return l == "encheres" and (LARGEUR + 70) or LARGEUR end
+local function LargeurDuLieu(l) return l == "encheres" and (LARGEUR + 90) or LARGEUR end
 -- A l'hotel des ventes : deux onglets sur le bord droit, en bas : acheter
 -- (prix, achats, fabrications) et vendre (ce qu'il y a dans mes sacs).
 local function OngletHV()
@@ -1163,14 +1163,28 @@ function courrier.ApercuVente(v)
         f.nom:SetJustifyH("LEFT")
         f.nom:SetWordWrap(false)
         f.lignes = {}
-        for i = 1, 4 do
+        for i = 1, 5 do
             local g = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            g:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -78 - (i - 1) * 18)
+            g:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -80 - (i - 1) * 22)
             g:SetJustifyH("LEFT")
             local d = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            d:SetPoint("TOPRIGHT", f, "TOPRIGHT", -18, -78 - (i - 1) * 18)
+            d:SetPoint("TOPRIGHT", f, "TOPRIGHT", -18, -80 - (i - 1) * 22)
             d:SetJustifyH("RIGHT")
             f.lignes[i] = { g, d }
+        end
+        f:SetHeight(80 + 5 * 22 + 44)
+        -- La quantite, entre les fleches de la suite (1 par 1, 5 par 5).
+        local S = NS.suite or _G.CoreSuite
+        if S and S.Curseur then
+            f.curseur = S.Curseur(f, 1, 999, 1,
+                function() return f.quantite end,
+                function(q)
+                    f.quantite = math.max(1, math.min(f.maxi or 1, math.floor(q)))
+                    if f.Calculer then f.Calculer() end
+                    f.curseur.Rendre()
+                end, nil, nil, 5)
+            f.curseur:SetPoint("RIGHT", f.lignes[1][2], "RIGHT", 0, 0)
+            f.lignes[1][2]:SetText("")
         end
         f.annuler = NS.charte.BoutonDePied(f, Lx.AH_CANCEL, 110)
         f.vendre = NS.charte.BoutonDePied(f, Lx.AH_SELL_BUTTON, 110, f.annuler)
@@ -1182,17 +1196,25 @@ function courrier.ApercuVente(v)
     end
     local f = apercu
     f.icone:SetTexture(NS.Appeler(NS.jeu.iconeObjet, v.objet) or "Interface\\Icons\\INV_Misc_QuestionMark")
-    f.nom:SetText(NS.inventaire.NomDObjet(v.objet) .. "  x" .. v.nombre)
-    local depot = NS.encheres.DepotDeVente and NS.encheres.DepotDeVente(v)
-    local valeurs = {
-        { Lx.AH_PREVIEW_UNIT, NS.marchands.Monnaie(prix) },
-        { Lx.AH_PREVIEW_TOTAL, NS.marchands.Monnaie(prix * v.nombre) },
-        { Lx.AH_PREVIEW_DEPOSIT, depot and NS.marchands.Monnaie(depot) or "?" },
-        { Lx.AH_PREVIEW_DURATION, Lx.AH_PREVIEW_24H },
-    }
-    for i, x in ipairs(valeurs) do f.lignes[i][1]:SetText(x[1]) f.lignes[i][2]:SetText(x[2]) end
+    f.nom:SetText(NS.inventaire.NomDObjet(v.objet))
+    f.maxi, f.quantite = v.nombre, v.nombre
+    function f.Calculer()
+        local q = f.quantite
+        local copie = { objet = v.objet, sac = v.sac, case = v.case, nombre = q }
+        local depot = NS.encheres.DepotDeVente and NS.encheres.DepotDeVente(copie)
+        local valeurs = {
+            { string.format(Lx.AH_PREVIEW_QTY, v.nombre), f.curseur and "" or tostring(q) },
+            { Lx.AH_PREVIEW_UNIT, NS.marchands.Monnaie(prix) },
+            { Lx.AH_PREVIEW_TOTAL, NS.marchands.Monnaie(prix * q) },
+            { Lx.AH_PREVIEW_DEPOSIT, depot and NS.marchands.Monnaie(depot) or "?" },
+            { Lx.AH_PREVIEW_DURATION, Lx.AH_PREVIEW_24H },
+        }
+        for i, x in ipairs(valeurs) do f.lignes[i][1]:SetText(x[1]) f.lignes[i][2]:SetText(x[2]) end
+    end
+    f.Calculer()
+    if f.curseur then f.curseur:Show() f.curseur.Rendre() end
     f.vendre:SetScript("OnClick", function()
-        local ok, detail = NS.encheres.Vendre(v)
+        local ok, detail = NS.encheres.Vendre({ objet = v.objet, sac = v.sac, case = v.case, nombre = f.quantite })
         statut = ok and string.format(Lx.AH_SOLD, NS.inventaire.NomDObjet(v.objet), NS.marchands.Monnaie(detail)) or Lx.AH_SELL_FAIL
         f:Hide()
         courrier.Actualiser()
@@ -1325,7 +1347,7 @@ local function Remplir(plan)
             l.vendre:SetSize(52, 18)
             l.vendre:SetPoint("RIGHT", l, "RIGHT", 0, 0)
             l.voir = CreateFrame("Button", "CraftCoreAssistantVoir" .. nv, l, "UIPanelButtonTemplate")
-            l.voir:SetSize(44, 18)
+            l.voir:SetSize(64, 18)
             l.voir:SetPoint("RIGHT", l.vendre, "LEFT", -2, 0)
             l.prix = l:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             l.prix:SetPoint("RIGHT", l.voir, "LEFT", -6, 0)
