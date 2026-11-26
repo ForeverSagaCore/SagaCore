@@ -940,7 +940,8 @@ local function Emplacements(fiche, cle)
         -- choisi, sinon les recettes, sinon l'assure.
         local choix = tonumber(v.choix)
         local recettesV = (not choix) and v.recettes == true
-        return { sur = (not choix) and (not recettesV) and v.sur == true, recettes = recettesV, choix = choix }
+        return { sur = (not choix) and (not recettesV) and v.sur == true, recettes = recettesV, choix = choix,
+            valeur = tonumber(v.valeur) }
     end
     -- Rien de regle, ou un ancien format (rangs empiles) : on repart propre.
     return { sur = true }
@@ -953,9 +954,18 @@ function recettes.PoserEmplacement(fiche, cle, nom, valeur)
     -- Un seul rang vise a la fois par metier : en choisir un retire les autres.
     if valeur then e.sur, e.recettes, e.choix = false, false, nil end
     if nom == "choix" then e.choix = tonumber(valeur) else e[nom] = valeur and true or false end
+    -- Le rang assure ou atteignable est fige au moment du choix : il ne
+    -- bouge plus tout seul ensuite (stocks, recette apprise).
+    e.valeur = nil
+    if valeur and (nom == "sur" or nom == "recettes") then
+        local sur, rec = recettes.Cibles(fiche, cle)
+        e.valeur = (nom == "sur") and sur or rec
+    end
     fiche.objectifsProgression = type(fiche.objectifsProgression) == "table" and fiche.objectifsProgression or {}
     -- Garde aussi les cases decochees : sinon le rang assure revient d'office.
-    fiche.objectifsProgression[tostring(cle)] = { sur = e.sur, recettes = e.recettes, choix = e.choix }
+    fiche.objectifsProgression[tostring(cle)] = { sur = e.sur, recettes = e.recettes, choix = e.choix, valeur = e.valeur }
+    -- Nouvel objectif : son plan sera fige a son premier calcul.
+    if type(fiche.plansFiges) == "table" then fiche.plansFiges[tostring(cle)] = nil end
 end
 
 -- Les metiers qui se montent (ceux qui fabriquent), pour les rangs vises.
@@ -1007,9 +1017,14 @@ function recettes.RangsVises(fiche, cle)
         if r and not vus[r] then vus[r] = true table.insert(t, r) end
     end
     if e.sur or e.recettes then
-        local sur, rec = recettes.Cibles(fiche, cle)
-        if e.sur and sur and sur > rang then Ajouter(sur) end
-        if e.recettes and rec and rec > rang then Ajouter(rec) end
+        if e.valeur then
+            -- Fige au moment du choix.
+            if e.valeur > rang then Ajouter(e.valeur) end
+        else
+            local sur, rec = recettes.Cibles(fiche, cle)
+            if e.sur and sur and sur > rang then Ajouter(sur) end
+            if e.recettes and rec and rec > rang then Ajouter(rec) end
+        end
     end
     Ajouter(e.choix)
     table.sort(t)
@@ -1036,15 +1051,64 @@ function recettes.PlansVises(fiche, cle, rang, rangMax, liste, apprendreTout)
     local e = Emplacements(fiche, cle)
     for _, vise in ipairs(liste or recettes.RangsVises(fiche, cle)) do
         if de and vise > de then
-            local ok, plan = pcall(recettes.Progression, tonumber(cle), de, rangMax, vise, pris, apprendreTout or (e.choix ~= nil and vise == e.choix))
+            local apprendre = apprendreTout or (e.choix ~= nil and vise == e.choix)
+            -- Le plan d'un objectif est fige a son premier calcul : jamais
+            -- change sans l'accord du joueur. Un meilleur plan (recette
+            -- apprise entre-temps) est seulement propose (seg.autre).
+            local fige = recettes.PlanFige(fiche, cle, vise)
+            local okL, libre = pcall(recettes.Progression, tonumber(cle), de, rangMax, vise, pris, apprendre)
+            local ok, plan = okL, libre
+            local autre
+            if fige then
+                ok, plan = pcall(recettes.Progression, tonumber(cle), de, rangMax, vise, pris, apprendre, fige.ids)
+                if okL and libre and ok and plan then
+                    local idsL = recettes.IdsDuPlan(libre)
+                    local nouveau = false
+                    for id in pairs(idsL) do if not fige.ids[id] then nouveau = true break end end
+                    if nouveau and (libre.atteint or 0) >= math.min(vise, plan.atteint or 0) then autre = libre end
+                end
+            elseif okL and libre then
+                recettes.FigerPlan(fiche, cle, vise, libre)
+            end
             if ok and plan then
-                table.insert(res, { vise = vise, de = de, plan = plan })
+                table.insert(res, { vise = vise, de = de, plan = plan, autre = autre })
                 for objet, n in pairs(plan.utilises or {}) do pris[objet] = (pris[objet] or 0) + n end
             end
             de = vise
         end
     end
     return res
+end
+
+-- Plans figes : { [cle] = { [vise] = { ids = { [idRecette] = true }, refus = { [signature] = true } } } }
+function recettes.IdsDuPlan(plan)
+    local ids = {}
+    for _, etape in ipairs(plan and plan.etapes or {}) do
+        if etape.recette and etape.recette.id then ids[tostring(etape.recette.id)] = true end
+    end
+    return ids
+end
+function recettes.PlanFige(fiche, cle, vise)
+    local t = type(fiche) == "table" and type(fiche.plansFiges) == "table" and fiche.plansFiges[tostring(cle)]
+    local p = type(t) == "table" and t[tostring(vise)]
+    if type(p) == "table" and type(p.ids) == "table" and next(p.ids) then return p end
+    return nil
+end
+function recettes.FigerPlan(fiche, cle, vise, plan)
+    if type(fiche) ~= "table" then return end
+    local ids = recettes.IdsDuPlan(plan)
+    if not next(ids) then return end
+    fiche.plansFiges = type(fiche.plansFiges) == "table" and fiche.plansFiges or {}
+    fiche.plansFiges[tostring(cle)] = type(fiche.plansFiges[tostring(cle)]) == "table" and fiche.plansFiges[tostring(cle)] or {}
+    local ancien = fiche.plansFiges[tostring(cle)][tostring(vise)]
+    fiche.plansFiges[tostring(cle)][tostring(vise)] = { ids = ids, refus = type(ancien) == "table" and ancien.refus or {} }
+end
+-- La signature d'un plan propose : ses recettes, triees.
+function recettes.SignatureDuPlan(plan)
+    local t = {}
+    for id in pairs(recettes.IdsDuPlan(plan)) do table.insert(t, id) end
+    table.sort(t)
+    return table.concat(t, ",")
 end
 
 function recettes.BesoinsDesObjectifs(fiche)
@@ -1067,14 +1131,16 @@ end
 -- (chez le formateur, un vendeur, une quete), des que le rang requis est
 -- atteint en chemin. Jamais celles qui ne tombent que sur des monstres.
 local APPRENABLES = { RECIPES_HOW_TRAINER = true, RECIPES_HOW_VENDOR = true, RECIPES_HOW_QUEST = true }
-function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, dejaPris, apprendre)
+function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, dejaPris, apprendre, limite)
     local resultat = { depart = rangDepart, atteint = rangDepart, etapes = {}, achats = {}, manques = {},
         estime = false, arret = nil, aApprendre = {} }
     if not ligneDeMetier or not rangDepart then resultat.arret = "inconnu" return resultat end
 
     local candidates, apprise, requis = {}, {}, {}
     for _, recette in ipairs((recettes.Pour(ligneDeMetier))) do
-        if type(recette.composants) == "table" and #recette.composants > 0 and recettes.FinDuOrange(recette) then
+        -- `limite` : seulement les recettes du plan deja choisi (plan fige).
+        if type(recette.composants) == "table" and #recette.composants > 0 and recettes.FinDuOrange(recette)
+            and (not limite or limite[tostring(recette.id)]) then
             if recettes.EstApprise(recette.id) then
                 apprise[recette.id] = true
                 table.insert(candidates, recette)
