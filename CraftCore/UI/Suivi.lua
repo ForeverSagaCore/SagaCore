@@ -204,7 +204,9 @@ local function ObjectifsDeProgression(liste)
             elseif total > 0 then pct = (total - manque) / total
             else pct = 0 end
             local fige = plan.fige
-            table.insert(liste, { cle = "prog" .. cle .. ":" .. vise, ligne = ligne, vise = vise, nom = string.format(L.GOAL_PROG, nom, vise), genre = "progression",
+            table.insert(liste, { cle = "prog" .. cle .. ":" .. vise, ligne = ligne, vise = vise, nom = (plan.probable and sien.rang < vise)
+                    and (nom .. " : " .. (NS.ICONE_CHANCE or "") .. string.format(L.GUIDE_TARGET_ONE or "rang %d", vise))
+                    or string.format(L.GOAL_PROG, nom, vise), genre = "progression",
                 planId = type(fige) == "table" and (tostring(fige.creeLe) .. ":" .. tostring(fige.rangDepart)) or nil,
                 detail = string.format(L.GOAL_PROG_DETAIL, sien.rang, vise), pct = pct, atteint = sien.rang >= vise,
                 matieres = Matieres(requis, manques), achats = plan.achats,

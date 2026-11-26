@@ -488,6 +488,10 @@ local function LireBoite()
     end
     local t = EnRouteDuPerso()
     if not t then return end
+    -- Seulement boite ouverte par le joueur : c'est la que l'inventaire la
+    -- releve (un autre add-on peut lire la boite sans qu'elle soit comptee).
+    local boite = _G.MailFrame
+    if not (boite and boite.IsShown and boite:IsShown()) then return end
     -- La boite lue, son contenu est compte dans l'inventaire (courrier) : le
     -- garder aussi "en route" le comptait deux fois. Seuls les achats faits
     -- apres cette lecture restent en route.

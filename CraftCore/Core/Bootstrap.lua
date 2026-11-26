@@ -8,6 +8,9 @@ _G.CraftCore_NS = NS
 
 NS.ADDON_NAME = ADDON_NAME
 NS.VERSION = "0.34.0"
+-- Le de du jeu (jets de butin) : devant un rang qui ne s'atteint qu'avec de la
+-- chance (recettes jaunes), partout ou un rang vise s'affiche.
+NS.ICONE_CHANCE = "|TInterface\\Buttons\\UI-GroupLoot-Dice-Up:14:14:0:-1|t "
 
 -- Le client ne parle que le langage moderne : releve du 13 novembre 2026 sur
 -- Forever 1.60.1 build 70938, palier 16001. Les anciennes lectures globales
