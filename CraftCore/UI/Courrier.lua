@@ -23,14 +23,17 @@ local LARGEUR = 300
 -- Largeur utile d'une colonne du panneau (la barre de defilement gardee).
 local COLONNE = LARGEUR - 2 * 12 - 10 - 22
 -- Un peu plus large a l'hotel des ventes : la place des deux boutons de vente.
-local function LargeurDuLieu(l) return l == "encheres" and (LARGEUR + 90) or LARGEUR end
+-- Plus large encore depuis l'onglet Rentabilite (sa colonne de prix et de
+-- quantites) : la meme largeur pour tous les onglets, rien ne bouge.
+local function LargeurDuLieu(l) return l == "encheres" and (LARGEUR + 170) or LARGEUR end
 -- A l'hotel des ventes : deux onglets sur le bord droit, en bas : acheter
 -- (prix, achats, fabrications) et vendre (ce qu'il y a dans mes sacs).
 local function OngletHV()
     local g = NS.base.ReglagesGeneraux()
-    if g.ongletHV == "vendre" or g.ongletHV == "recettes" then return g.ongletHV end
+    if g.ongletHV == "vendre" or g.ongletHV == "recettes" or g.ongletHV == "rentable" then return g.ongletHV end
     return "acheter"
 end
+local choixRentables = {}  -- onglet Rentabilite : recettes cochees pour un projet commercial
 local statut               -- resultat de la derniere action, montre dans le panneau
 local statutManette        -- indication manette (X : action suivante)
 local panneau
@@ -1650,7 +1653,6 @@ local function Remplir(plan)
         local objets = NS.encheres.ObjetsARelever()
         -- Les releves en haut, sous la main : ce qui manque, puis ce qu'on
         -- peut fabriquer.
-        local aFabriquer = NS.encheres.ObjetsDesFabrications()
         if NS.encheres.EnCours() then
             local r, total = NS.encheres.Avancement()
             Action(string.format(L().AH_SCANNING, math.min(r, total), total), function() end)
@@ -1663,13 +1665,7 @@ local function Remplir(plan)
                     courrier.Actualiser()
                 end)
             end
-            if #aFabriquer > 0 then
-                Action(string.format(L().AH_SCAN_CRAFTS, #aFabriquer), function()
-                    statut = nil
-                    NS.encheres.Relever(NS.encheres.ObjetsDesFabrications())
-                    courrier.Actualiser()
-                end)
-            end
+            -- Le releve de mes fabrications est dans l'onglet Rentabilite.
         end
         Titre(L().AH_TITLE)
         if #objets == 0 then
@@ -1709,33 +1705,74 @@ local function Remplir(plan)
                 end
             end
         end
-        -- Ce qu'on peut fabriquer tout de suite et vendre : prix, benefice.
-        local okR, rentables = pcall(NS.encheres.Rentables)
-        rentables = okR and rentables or {}
-        y = y + 6
-        Titre(L().AH_CRAFT_TITLE)
-        if #rentables == 0 then
+
+    end
+    if lieu == "encheres" and NS.encheres and NS.encheres.Disponible() and OngletHV() == "rentable" then
+        -- Onglet Rentabilite : tout ce que je sais fabriquer, ce qui rapporte
+        -- le plus d'abord, avec ce que je peux deja faire. On coche ce qui
+        -- interesse : un projet commercial se cree dans Mes fabrications.
+        vide = false
+        local okT, toutes = pcall(NS.encheres.ToutesMesFabrications)
+        toutes = okT and toutes or {}
+        local coches = {}
+        for _, f in ipairs(toutes) do if choixRentables[tostring(f.recette.id)] then table.insert(coches, f) end end
+        if NS.encheres.EnCours() then
+            local r, total = NS.encheres.Avancement()
+            Action(string.format(L().AH_SCANNING, math.min(r, total), total), function() end)
+            panneau.boutons[nb]:SetEnabled(false)
+        else
+            local aRelever = NS.encheres.ObjetsDeToutesMesFabrications()
+            if #aRelever > 0 then
+                Action(string.format(L().AH_SCAN_CRAFTS, #aRelever), function()
+                    statut = nil
+                    NS.encheres.Relever(aRelever)
+                    courrier.Actualiser()
+                end)
+            end
+        end
+        Action(string.format(L().AH_TRADE_PROJECT or "%d", #coches), function()
+            if #coches == 0 then return end
+            local n = 1
+            for _, p in ipairs(NS.projets.Tous and NS.projets.Tous(true) or {}) do if p.commercial then n = n + 1 end end
+            local projet = NS.projets.Creer(string.format(L().AH_TRADE_NAME or "%d", n))
+            if not projet then return end
+            projet.commercial = true
+            for _, f in ipairs(coches) do NS.projets.Ajouter(projet.id, f.recette.id, 1) end
+            for k in pairs(choixRentables) do choixRentables[k] = nil end
+            statut = string.format(L().AH_TRADE_DONE or "%s", NS.projets.NomDe(projet))
+            if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
+            if NS.ecran and NS.ecran.Actualiser then pcall(NS.ecran.Actualiser) end
+            courrier.Actualiser()
+        end, "projetCommercial")
+        panneau.boutons[nb]:SetEnabled(#coches > 0)
+        Titre(L().AH_TRADE_TITLE or "")
+        if #toutes == 0 then
             nt = nt + 1
             local t = Texte(nt, "GameFontDisableSmall")
             t:ClearAllPoints()
-            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0 + 0, -y)
+            t:SetPoint("TOPLEFT", panneau.contenu, "TOPLEFT", x0, -y)
             t:SetWidth(largeur)
-            t:SetText(L().AH_CRAFT_NONE)
+            t:SetText(L().AH_TRADE_NONE or "")
             y = y + 16
         else
-            local liste = {}
-            for _, r in ipairs(rentables) do table.insert(liste, { objet = r.recette.objetProduit, r = r }) end
-            Lignes(liste, function(l)
-                local v = l.r.valeur
-                if v.benefice then
-                    local signe = v.benefice >= 0 and "|cff4fd16a" or "|cffff6060"
-                    return "x" .. l.r.n .. "  " .. signe .. string.format(L().AH_PROFIT, v.benefice >= 0 and "+" or "-",
-                        NS.marchands.Monnaie(math.abs(v.benefice))) .. "|r"
+            for _, f in ipairs(toutes) do
+                local droite
+                if f.rapporte then
+                    droite = NS.marchands.Monnaie(f.rapporte)
+                    if f.benefice then
+                        local signe = f.benefice >= 0 and "|cff4fd16a+" or "|cffff6060-"
+                        droite = droite .. "  " .. signe .. NS.marchands.Monnaie(math.abs(f.benefice)) .. "|r"
+                    end
+                else
+                    droite = "|cff8c8c8c" .. (L().AH_NEVER or "") .. "|r"
                 end
-                return "x" .. l.r.n .. "  " .. string.format(L().AH_SELLS, NS.marchands.Monnaie(v.vente))
-            end)
+                droite = droite .. "  " .. (f.n > 0 and "|cffffffff" or "|cff8c8c8c") .. string.format(L().AH_TRADE_CAN or "(%d)", f.n) .. "|r"
+                local id = tostring(f.recette.id)
+                LigneACocher(f.recette.objetProduit, droite, choixRentables[id] == true, function(oui)
+                    choixRentables[id] = oui or nil
+                end)
+            end
         end
-
     end
     if lieu == "encheres" and NS.encheres and NS.encheres.Disponible() and OngletHV() == "vendre" then
         -- Onglet Vendre : ce que j'ai dans mes sacs et qui peut se vendre.
@@ -1845,8 +1882,11 @@ local function Remplir(plan)
     if lieu == "encheres" and NS.CreerOngletLateral then
         panneau.onglets = panneau.onglets or {}
         local defs = {
+            -- Dans l'ordre d'une visite : acheter ce qui manque, vendre ce
+            -- qu'on a, voir ce qui rapporte a fabriquer, les recettes a apprendre.
             { cle = "acheter", icone = "Interface\\Icons\\INV_Misc_Coin_02", aide = L().AH_TAB_BUY },
             { cle = "vendre", icone = "Interface\\Icons\\INV_Misc_Bag_08", aide = L().AH_TAB_SELL },
+            { cle = "rentable", icone = "Interface\\Icons\\INV_Misc_Coin_17", aide = L().AH_TAB_TRADE or "" },
             { cle = "recettes", icone = "Interface\\Icons\\INV_Scroll_03", aide = L().AH_TAB_RECIPES },
         }
         local precedent
