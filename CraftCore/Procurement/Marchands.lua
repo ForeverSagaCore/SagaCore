@@ -22,17 +22,34 @@ end
 -- Releve des prix chez le marchand
 -- ---------------------------------------------------------------------------
 
+-- Un article du marchand : prix (par lot), objets par lot, disponibles,
+-- achetable, cout special (autre monnaie). Les deux formes du jeu : la
+-- fonction d'origine, ou C_MerchantFrame.GetItemInfo (une table).
+function marchands.InfoArticle(i)
+    local C = _G.C_MerchantFrame
+    if C and C.GetItemInfo then
+        local ok, t = pcall(C.GetItemInfo, i)
+        if ok and type(t) == "table" then
+            return tonumber(t.price), tonumber(t.stackCount) or 1, tonumber(t.numAvailable), t.isPurchasable, t.hasExtendedCost
+        end
+    end
+    local f = NS.Lecture("GetMerchantItemInfo")
+    if f then
+        local ok, _, _, cout, quantite, dispo, achetable, _, coutSpecial = pcall(f, i)
+        if ok then return tonumber(cout), tonumber(quantite) or 1, tonumber(dispo), achetable, coutSpecial end
+    end
+    return nil
+end
+
 local function Relever()
     local prix = Base()
     local nombre = NS.Lecture("GetMerchantNumItems")
     local idDe = NS.Lecture("GetMerchantItemID")
-    local infoDe = NS.Lecture("GetMerchantItemInfo")
-    if not (prix and nombre and idDe and infoDe) then return end
+    if not (prix and nombre and idDe) then return end
     for i = 1, tonumber(NS.Appeler(nombre)) or 0 do
         local id = tonumber(NS.Appeler(idDe, i))
-        local ok, _, _, cout, quantite, _, _, _, coutSpecial = pcall(infoDe, i)
-        cout, quantite = tonumber(cout), tonumber(quantite)
-        if ok and id and cout and cout > 0 and quantite and quantite > 0 and not coutSpecial then
+        local cout, quantite, _, _, coutSpecial = marchands.InfoArticle(i)
+        if id and cout and cout > 0 and quantite and quantite > 0 and not coutSpecial then
             prix[id] = cout / quantite
         end
     end
