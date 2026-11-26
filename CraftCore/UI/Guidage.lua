@@ -248,11 +248,12 @@ end)()
 
 TYPES.maitreMetier = (function()
     local t = S().TypePoint({ icone = "Interface\\Minimap\\Tracking\\Profession" })
-    t.Cle = function(p) return tostring(p.ligne) end
+    t.Cle = function(p) return tostring(p.ligne) .. (type(p.cible) == "table" and (":" .. tostring(p.cible.id or p.cible.nom)) or "") end
     t.Libelle = function(p) return string.format(L().RANK_MAX_GUIDE_WHAT or "%s", tostring(p.nom or "?")) end
     t.Preparer = function(p, etat)
         local a = NS.avisRang
-        local pt = a and a.MaitrePlusProche and a.MaitrePlusProche(tonumber(p.ligne), tonumber(p.rangMax))
+        local pt = (type(p.cible) == "table" and p.cible.carte and p.cible)
+            or (a and a.MaitrePlusProche and a.MaitrePlusProche(tonumber(p.ligne), tonumber(p.rangMax)))
         if not pt then Dire(L().RANK_MAX_GUIDE_NONE) return false end
         etat.point = { carte = pt.carte, x = pt.x, y = pt.y, nom = pt.nom }
         return true
@@ -316,8 +317,9 @@ function guidage.Lancer(params)
     if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
     return r
 end
-function guidage.MaitreDeMetier(ligne, nom, rangMax)
-    return S().LancerObjectif("CraftCore", "maitreMetier", { ligne = ligne, nom = nom, rangMax = rangMax })
+function guidage.MaitreDeMetier(ligne, nom, rangMax, cible)
+    local c = type(cible) == "table" and { id = cible.id, carte = cible.carte, x = cible.x, y = cible.y, nom = cible.nom } or nil
+    return S().LancerObjectif("CraftCore", "maitreMetier", { ligne = ligne, nom = nom, rangMax = rangMax, cible = c })
 end
 
 function guidage.Marchand(objet)
