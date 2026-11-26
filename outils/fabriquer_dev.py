@@ -9,7 +9,7 @@ Usage : outils/fabriquer_dev.py <dossier de sortie>
 import os, re, shutil, sys
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ADDONS = ["CraftCore", "QuestCore", "MapCore", "LegacyCore", "StuffCore", "FriendsCore", "AuraCore", "PvPCore", "AchievementCore"]
+ADDONS = ["CraftCore", "QuestCore", "MapCore", "LegacyCore", "StuffCore", "FriendsCore", "AuraCore", "PvPCore", "AchievementCore", "ClassCore"]
 sortie = sys.argv[1]
 
 def dev(nom):

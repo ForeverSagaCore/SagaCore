@@ -10,9 +10,12 @@
 | **LegacyCore** | Arbres d'héritage, défis du compte, temps passé sur chaque niveau. |
 | **StuffCore** | Votre équipement : ce qui l'améliore et d'où ça vient (crafts, butins du monde, quêtes, donjons). Demande CraftCore. |
 | **FriendsCore** | Une petite aide : les add-ons d'autres auteurs qui complètent la suite, et les passerelles qui leur confient une tâche (itinéraires détaillés). |
+| **ClassCore** *(bêta)* | Votre classe : quêtes de classe faites ou à faire, sorts du maître (niveau, coût), arbres de talents, objets de classe, et pour le chasseur le catalogue complet des familiers. |
 | **AuraCore** *(bêta)* | Un anneau discret autour du personnage : améliorations, procs, nourriture, flacon, potion, buffs de groupe, et les effets nuisibles sur leur propre cercle. Aussi publié seul. |
 
 Chaque add-on s'installe aussi seul (StuffCore demande CraftCore). Installés ensemble, ils partagent la même interface (barre des personnages, menus, paramètres), le même personnage choisi et le même guidage, toujours annulable. Tout se joue aussi à la manette, en 7 langues.
+
+**Nouveautés de la 2.5** : ClassCore rejoint les compléments en bêta (quêtes de classe, sorts, talents, familiers), manette au courrier, à la banque et à l'hôtel des ventes, icônes encadrées comme dans le jeu. Le détail : [notes de la 2.5.0](notes/2.5.0.md).
 
 **Nouveautés de la 2.1** : monter un métier vraiment guidé (plan figé, proposé jamais imposé), séries de fabrication complètes, vente à l'hôtel des ventes depuis CraftCore, quêtes et métiers reliés, guidage plus sûr, manette dans toutes les petites fenêtres. Le détail : [notes de la 2.1.0](notes/2.1.0.md), correctif [2.1.1](notes/2.1.1.md).
 
@@ -43,7 +46,7 @@ Si vous aviez déjà installé un des add-ons seul, retirez-le de WowUp avant : 
 ### À la main
 
 1. Téléchargez `ForeverSagaCore-X.Y.Z-forever.zip` depuis la [dernière version](https://github.com/ForeverSagaCore/SagaCore/releases/latest).
-2. Décompressez-le dans `World of Warcraft/_forever_/Interface/AddOns/` : vous obtenez les dossiers `CraftCore`, `QuestCore`, `MapCore`, `LegacyCore`, `StuffCore`, `FriendsCore` et `AuraCore`.
+2. Décompressez-le dans `World of Warcraft/_forever_/Interface/AddOns/` : vous obtenez les dossiers `CraftCore`, `QuestCore`, `MapCore`, `LegacyCore`, `StuffCore`, `FriendsCore`, `AuraCore` et `ClassCore`.
 
 ## Signaler un problème
 

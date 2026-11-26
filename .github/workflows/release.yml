@@ -2,7 +2,7 @@ name: Publier une version
 
 # Chaque nouveau numero dans VERSION, pousse sur main, publie la suite : le zip
 # "ForeverSagaCore-X.Y.Z-forever.zip" avec les dossiers d'add-ons a la racine
-# (CraftCore, QuestCore, MapCore, LegacyCore, StuffCore, FriendsCore, et AuraCore en beta), joint a une release GitHub
+# (CraftCore, QuestCore, MapCore, LegacyCore, StuffCore, FriendsCore, et AuraCore et ClassCore en beta), joint a une release GitHub
 # etiquetee vX.Y.Z. WowUp lit ces releases pour proposer les mises a jour.
 
 on:
@@ -43,7 +43,7 @@ jobs:
         if: steps.version.outputs.nouvelle == 'oui' || github.event_name == 'workflow_dispatch'
         run: |
           mkdir -p build
-          cp -r CraftCore QuestCore MapCore LegacyCore StuffCore FriendsCore AuraCore build/
+          cp -r CraftCore QuestCore MapCore LegacyCore StuffCore FriendsCore AuraCore ClassCore build/
           cd build
           # Numero de la suite dans chaque add-on : sert a prevenir en jeu
           # qu'une version plus recente existe.
@@ -51,7 +51,7 @@ jobs:
             sed -i '/^## X-SagaCore-Version:/d' "$t"
             sed -i "/^## Version:/a ## X-SagaCore-Version: ${{ steps.version.outputs.version }}" "$t"
           done
-          zip -qr "ForeverSagaCore-${{ steps.version.outputs.version }}-forever.zip" CraftCore QuestCore MapCore LegacyCore StuffCore FriendsCore AuraCore
+          zip -qr "ForeverSagaCore-${{ steps.version.outputs.version }}-forever.zip" CraftCore QuestCore MapCore LegacyCore StuffCore FriendsCore AuraCore ClassCore
           # AuraCore seul (complement, publie aussi a part, en beta).
           zip -qr "AuraCore-$(grep -m1 '^## Version:' AuraCore/AuraCore.toc | cut -d' ' -f3 | tr -d '\r')-forever.zip" AuraCore
 

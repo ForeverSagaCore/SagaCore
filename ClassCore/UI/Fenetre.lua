@@ -850,7 +850,7 @@ function F.Construire()
     if S.Seul and S.Seul() then table.insert(pages, PageSuite()) end
     F.w = S.FenetreAPages({
         nom = "ClassCoreFenetre", cle = "ClassCore", icone = NS.classes.ICONE[E().Classe() or ""] or "Interface\\Icons\\INV_Misc_Book_09",
-        titre = function() return "ClassCore" end,
+        titre = function() return T("ClassCore (bêta)", "ClassCore (beta)") end,
         pages = pages,
         manette = Manette,
     })
