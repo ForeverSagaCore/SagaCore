@@ -2311,6 +2311,11 @@ function RendreCommerceBas(contenu, index, y, fiche, gardees)
         end
     end
     table.sort(metiers, function(a, b) return a.nom < b.nom end)
+    if #metiers > 0 and NS.recettes.CocheTexte then
+        local R = NS.recettes
+        y = Paragraphe(contenu, y + ESPACE_SECTION, string.format(L.RECIPES_LEGEND, R.CocheTexte("sur"), R.CocheTexte("probable"), R.CocheTexte("peu")),
+            "GameFontDisableSmall")
+    end
     for _, m in ipairs(metiers) do
         local patrons = C.Patrons(fiche, m.ligne)
         local appris = 0
@@ -2334,6 +2339,19 @@ function RendreCommerceBas(contenu, index, y, fiche, gardees)
             local l
             index, y, l = LigneCommerce(contenu, index, y, p.objet)
             ColonneCourrier(l, true)
+            -- Fera-t-elle monter le metier : la coche coloree en coin
+            -- d'icone, comme dans Mes recettes.
+            if p.point then
+                if not l.palier then
+                    l.palier = l:CreateTexture(nil, "OVERLAY")
+                    l.palier:SetSize(12, 12)
+                    l.palier:SetPoint("BOTTOMRIGHT", l.icone, "BOTTOMRIGHT", 4, -3)
+                    l.palier:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+                end
+                local c = COULEURS_PALIER[p.point]
+                if c then l.palier:SetVertexColor(c[1], c[2], c[3]) end
+                l.palier:SetShown(p.point ~= "rien")
+            end
             l.sacs:SetText(p.rang > 0 and tostring(p.rang) or "")
             l.banque:SetText(p.niveau > 0 and tostring(p.niveau) or "")
             l.courrier:SetText(TextePrix(p.prix, p.estime))
