@@ -1149,6 +1149,12 @@ local function Construire()
     -- Le double carre de la manette entre dans le panneau.
     local S = NS.suite or _G.CoreSuite
     if S and S.ToucheDEntree then S.ToucheDEntree(cadre, "CraftCoreAssistant") end
+    -- Ferme, il rend Y et X au jeu ; en combat, des la fin du combat.
+    cadre:HookScript("OnHide", function() if courrier.LierManette then courrier.LierManette(false) end end)
+    pcall(cadre.RegisterEvent, cadre, "PLAYER_REGEN_ENABLED")
+    cadre:HookScript("OnEvent", function(self, e)
+        if e == "PLAYER_REGEN_ENABLED" and not self:IsShown() and courrier.LierManette then courrier.LierManette(false) end
+    end)
     return cadre
 end
 
@@ -1250,6 +1256,10 @@ end
 local function LierManette(actif)
     if not panneau then return end
     if NS.Appeler(NS.Lecture("InCombatLockdown")) then return end
+    -- Toujours repartir de zero : sans cela Y et X restaient pris par le
+    -- panneau apres la fermeture de l'hotel des ventes, de la banque ou du
+    -- courrier, et ne repondaient plus en jeu.
+    pcall(_G.ClearOverrideBindings, panneau)
     if actif and courrier.ToucheManette() and #(panneau.elements or {}) > 0 then
         Relais()
         RelaisSuivant()
@@ -2175,5 +2185,8 @@ end
 
 function courrier.Ferme(ancienLieu)
     if lieu == ancienLieu then lieu = nil end
-    if panneau and not lieu then panneau:Hide() end
+    if panneau and not lieu then
+        panneau:Hide()
+        LierManette(false)
+    end
 end
