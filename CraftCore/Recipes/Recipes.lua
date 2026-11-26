@@ -1327,12 +1327,20 @@ function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, deja
                     -- au moins) vaut mieux qu'une orange qu'il faut aller
                     -- recolter. Puis les oranges, puis le reste.
                     local palier
-                    if manque == 0 and chance >= 1 then palier = 0
+                    -- Rang vise : le choix ne depend jamais du stock. Sinon,
+                    -- chaque achat (3 etouffantes) faisait preferer la
+                    -- recette qui s'en sert, et le besoin grandissait a
+                    -- mesure qu'on achetait (8 sur 11, puis 11 sur 14). Le
+                    -- stock ne fait que reduire ce qui manque.
+                    local manqueChoix = objectif and 0 or manque
+                    if objectif then
+                        palier = chance >= 1 and 0 or 1e12
+                    elseif manque == 0 and chance >= 1 then palier = 0
                     elseif manque == 0 and chance >= 0.5 then palier = 1e11
                     elseif chance >= 1 then palier = 2e11
                     else palier = 1e12 end
                     local score = palier + (apprise[recette.id] and 0 or 1e9)
-                        + (manque * 100000 + recolte * 1000 + 1) / chance + (1 - chance)
+                        + (manqueChoix * 100000 + recolte * 1000 + 1) / chance + (1 - chance)
                     if not meilleurScore or score < meilleurScore then
                         meilleur, meilleurScore, meilleureChance = recette, score, chance
                     end
