@@ -129,6 +129,22 @@ local function Matieres(requis, manques)
     return liste
 end
 
+-- Caisses suivies du personnage connecte : le pack choisi, ce que le compte
+-- en a (tous personnages du meme camp), ce qui est deja chez lui.
+local function ObjectifsDeCaisses(liste, cle)
+    if not (NS.caisses and NS.caisses.Suivies) then return end
+    for _, c in ipairs(NS.caisses.Suivies(cle)) do
+        local total = NS.inventaire.TotalPossede(c.objet) or 0
+        local requis = c.requis or 1
+        local manque = math.max(0, requis - total)
+        local pct = math.min(1, total / requis)
+        table.insert(liste, { groupe = "caisses", genre = "caisse", caisse = c.caisse, cle = "caisse" .. tostring(c.caisse),
+            nom = NS.inventaire.NomDObjet(c.caisse), titreAnnonce = NS.inventaire.NomDObjet(c.caisse),
+            pct = pct, atteint = pct >= 1, fabriquer = {}, nLignes = 0, lignes = {},
+            matieres = { { objet = c.objet, requis = requis, manque = manque, possede = requis - manque } } })
+    end
+end
+
 -- Rangs vises du personnage connecte.
 local function ObjectifsDeProgression(liste)
     local L = NS.L
@@ -496,6 +512,7 @@ function suivi.Objectifs()
     local cle = NS.ClePersonnage and NS.ClePersonnage()
     local ok, souci = pcall(NS.base.AvecPersonnage, cle, function()
         ObjectifsDeProjets(liste)
+        ObjectifsDeCaisses(liste, cle)
         local rangs = {}
         ObjectifsDeProgression(rangs)
         -- Rang atteint : l'objectif quitte le suivi (felicitations a la place).
@@ -547,7 +564,7 @@ end
 
 local function Vue()
     local g = NS.base.ReglagesGeneraux()
-    if g.vueRecolte == "progressions" or g.vueRecolte == "commandes" then return g.vueRecolte end
+    if g.vueRecolte == "progressions" or g.vueRecolte == "commandes" or g.vueRecolte == "caisses" then return g.vueRecolte end
     return "fabrications"
 end
 suivi.Vue = Vue
@@ -623,6 +640,8 @@ local function Construire()
         suivi.Dessiner()
     end)
     cadre.fermer:SetScript("OnClick", function() cadre:Hide() end)
+    -- Le bouton Assembler (securise, pose a part) part avec le suivi.
+    cadre:HookScript("OnHide", function() if suivi.CacherAssembleur then suivi.CacherAssembleur() end end)
     cadre.textes, cadre.icones, cadre.barres, cadre.boutons = {}, {}, {}, {}
 
     -- Replier / deplier tout le suivi, comme celui des quetes de QuestCore.
@@ -659,11 +678,12 @@ local function Construire()
     -- personnages), progressions (rangs vises).
     cadre.vues = {}
     local largeurZone = LARGEUR_SUIVI - 2 * NS.charte.MARGE - 10
-    local pas = math.floor(largeurZone / 3)
+    local pas = math.floor(largeurZone / 4)
     for rang, v in ipairs({
         { "fabrications", NS.L.TRACK_TAB_CRAFTS, "Interface\\Icons\\Trade_BlackSmithing" },
         { "commandes", NS.L.TRACK_TAB_ORDERS, "Interface\\Icons\\INV_Letter_15" },
-        { "progressions", NS.L.TRACK_TAB_PROGRESSIONS, "Interface\\Icons\\INV_Misc_Book_09" } }) do
+        { "progressions", NS.L.TRACK_TAB_PROGRESSIONS, "Interface\\Icons\\INV_Misc_Book_09" },
+        { "caisses", NS.L.TRACK_TAB_CRATES, "Interface\\Icons\\INV_Crate_02" } }) do
         local b = CreateFrame("Button", nil, cadre)
         b:SetSize(24, 24)
         b:SetPoint("TOPLEFT", cadre.zone, "TOPLEFT", (rang - 1) * pas + 2, 0)
@@ -779,6 +799,7 @@ local function Ouverts()
 end
 
 local function OngletDe(o)
+    if o.genre == "caisse" then return "caisses" end
     if o.groupe == "progression" then return "progressions" end
     if o.commande then return "commandes" end
     return "fabrications"
@@ -1657,6 +1678,7 @@ end
 local function GroupeDe(o, vue)
     local L = NS.L
     if vue == "commandes" then return "commandes", L.TRACK_TAB_ORDERS end
+    if vue == "caisses" then return "caisses", L.TRACK_TAB_CRATES end
     if vue == "progressions" then
         if o.genre == "progression" then return "rangs", L.TRACK_GROUP_RANKS end
         return "plans", L.TRACK_GROUP_PLANS
@@ -1705,6 +1727,34 @@ local function Fusion(memo, cle, actuels, champ, quantite)
     end
     return rendu
 end
+
+-- Assembler une caisse : utiliser l'objet caisse est une action protegee du
+-- jeu, donc un bouton securise (le jeu fait le clic lui-meme). Un seul, pose
+-- sur la caisse prete ; jamais touche en combat.
+local assembleur, assembleurPose
+local function Assembleur()
+    if assembleur then return assembleur end
+    if NS.Appeler(InCombatLockdown) then return nil end
+    local ok, b = pcall(CreateFrame, "Button", "CraftCoreAssembler", UIParent, "SecureActionButtonTemplate, UIPanelButtonTemplate")
+    if not ok or not b then return nil end
+    b:RegisterForClicks("AnyUp", "AnyDown")
+    b:SetAttribute("type", "item")
+    b:SetFrameStrata("HIGH")
+    b:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(NS.L.CRATES_ASSEMBLE, 1, 0.82, 0)
+        GameTooltip:AddLine(NS.L.CRATES_ASSEMBLE_TIP, 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:Hide()
+    assembleur = b
+    return b
+end
+local function CacherAssembleur()
+    if assembleur and not NS.Appeler(InCombatLockdown) then assembleur:Hide() end
+end
+suivi.CacherAssembleur = CacherAssembleur
 
 local function DessinerObjectifs(y, objectifs, vue)
     local L = NS.L
@@ -1989,6 +2039,20 @@ local function DessinerObjectifs(y, objectifs, vue)
                     barre:Show()
                     if b.creer then b.creer:Hide() end
                     b.nom:SetPoint("RIGHT", barre, "LEFT", -6, 0)
+                elseif o.genre == "caisse" and toutEnSacs and not assembleurPose and not NS.Appeler(InCombatLockdown) then
+                    local a = Assembleur()
+                    if a then
+                        assembleurPose = true
+                        a:ClearAllPoints()
+                        a:SetPoint("RIGHT", b, "RIGHT", -placePct, 0)
+                        a:SetSize(76, 16)
+                        a:SetText(L.CRATES_ASSEMBLE)
+                        local txt = a:GetFontString()
+                        if txt then Taille(txt, 10) end
+                        a:SetAttribute("item", "item:" .. tostring(o.caisse))
+                        a:Show()
+                        b.nom:SetPoint("RIGHT", a, "LEFT", -6, 0)
+                    end
                 elseif recettePrete and toutEnSacs then
                     if not b.creer then
                         b.creer = CreateFrame("Button", nil, b, "UIPanelButtonTemplate")
@@ -2280,6 +2344,8 @@ end
 
 function suivi.Dessiner()
     if not cadreSuivi then return end
+    assembleurPose = false
+    CacherAssembleur()
     local L = NS.L
     for _, t in ipairs(cadreSuivi.textes) do t:Hide() end
     for _, i in ipairs(cadreSuivi.icones) do i:Hide() end
@@ -2322,7 +2388,7 @@ function suivi.Dessiner()
     end
     cadreSuivi.resume:Hide()
     local deLOnglet = DeLOnglet(objectifs, vue)
-    local comptes = { fabrications = 0, commandes = 0, progressions = 0 }
+    local comptes = { fabrications = 0, commandes = 0, progressions = 0, caisses = 0 }
     for _, o in ipairs(objectifs) do comptes[OngletDe(o)] = comptes[OngletDe(o)] + 1 end
     for cle, b in pairs(cadreSuivi.vues) do
         b:Compter(comptes[cle])

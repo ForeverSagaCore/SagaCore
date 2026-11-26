@@ -96,6 +96,10 @@ local function BesoinsDe(cle)
                 if manque > 0 then rapatries[objet] = math.max(rapatries[objet] or 0, manque) end
             end
         end
+        -- Les caisses suivies : ce que les autres personnages doivent lui envoyer.
+        if NS.caisses and NS.caisses.BesoinsDe then
+            for objet, n in pairs(NS.caisses.BesoinsDe(cle)) do rapatries[objet] = (rapatries[objet] or 0) + n end
+        end
         return rapatries, pris or {}
     end)
 end

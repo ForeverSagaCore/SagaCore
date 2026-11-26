@@ -442,8 +442,10 @@ local function ReleverMarchand()
     end
 end
 
+-- Redessine la page des caisses seulement si la fenetre est ouverte et sur
+-- cette page : jamais la rouvrir (elle se rouvrait a chaque releve).
 local function Rafraichir()
-    if NS.ecran and NS.ecran.page == "caisses" and NS.ecran.Montrer then pcall(NS.ecran.Montrer, "caisses") end
+    if NS.ecran and NS.ecran.page == "caisses" and NS.ecran.Actualiser then pcall(NS.ecran.Actualiser) end
 end
 
 local prevu = false
