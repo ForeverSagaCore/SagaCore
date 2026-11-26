@@ -2309,6 +2309,52 @@ function RendreCommerceBas(contenu, index, y, fiche, gardees)
             l.sacs:SetText(((p.rangEstime and p.rang > 0) and "|cff8c8c8c~|r" or "") .. rangTexte)
             l.banque:SetText(p.niveau > 0 and tostring(p.niveau) or "")
             l.courrier:SetText(TextePrix(p.prix, p.estime, maFaveur, icone))
+            -- Au survol : l'infobulle du jeu, puis ce que la recette ferait
+            -- gagner (points possibles, surs) et les prix de l'hotel des ventes.
+            -- Au clic : guider vers le vendeur du camp.
+            local pc, idPNJ = p, id
+            l:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                if GameTooltip.SetItemByID then pcall(GameTooltip.SetItemByID, GameTooltip, pc.objet) end
+                local rec = pc.recette and CraftCoreDB.recettes[tostring(pc.recette)]
+                local R = NS.recettes
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("CraftCore", 1, 0.82, 0)
+                if pc.rang > 0 then
+                    GameTooltip:AddDoubleLine(L.TRADEHUB_TIP_RANK, string.format("%d  (%s %d)", pc.rang, L.TRADEHUB_TIP_YOURS, monRang),
+                        1, 1, 1, pc.rang <= monRang and 0.31 or 0.9, pc.rang <= monRang and 0.82 or 0.3, pc.rang <= monRang and 0.41 or 0.3)
+                end
+                if pc.point then
+                    local c = COULEURS_PALIER[pc.point]
+                    GameTooltip:AddLine(R.CocheTexte(pc.point) .. " " .. (L["PALIER_" .. string.upper(pc.point)] or ""), c[1], c[2], c[3])
+                end
+                local niv = type(rec) == "table" and R.Niveaux and R.Niveaux(rec)
+                if niv and niv.gris then
+                    local depart = math.max(monRang, niv.orange or 0)
+                    local possibles = math.max(0, niv.gris - depart)
+                    local surs = math.max(0, (niv.jaune or 0) - depart)
+                    GameTooltip:AddLine(string.format(L.TRADEHUB_TIP_POINTS, possibles, surs, niv.gris), 1, 1, 1, true)
+                end
+                -- Hotel des ventes : le patron, et ce qu'il fabrique.
+                local E, M = NS.encheres, NS.marchands
+                if E and E.Prix and M and M.Monnaie then
+                    local prixP = E.Prix(pc.objet, 1)
+                    local produit = type(rec) == "table" and rec.objetProduit
+                    local prixO = produit and E.Prix(produit, 1)
+                    GameTooltip:AddDoubleLine(L.TRADEHUB_TIP_AH_PATTERN, prixP and M.Monnaie(prixP) or L.TRADEHUB_TIP_AH_NONE, 1, 1, 1, 1, 1, 1)
+                    if produit then
+                        GameTooltip:AddDoubleLine(string.format(L.TRADEHUB_TIP_AH_ITEM, NS.inventaire.NomDObjet(produit)),
+                            prixO and M.Monnaie(prixO) or L.TRADEHUB_TIP_AH_NONE, 1, 1, 1, 1, 1, 1)
+                    end
+                end
+                if idPNJ then GameTooltip:AddLine(L.TRADEHUB_TIP_CLICK, 0.6, 0.6, 0.6) end
+                GameTooltip:Show()
+            end)
+            if idPNJ and NS.guidage and NS.guidage.PNJCommerce then
+                l:SetScript("OnClick", function() NS.guidage.PNJCommerce(idPNJ) ecran.Montrer(ecran.page) end)
+                local surbrillance = l.GetHighlightTexture and l:GetHighlightTexture()
+                if surbrillance then surbrillance:SetAlpha(1) end
+            end
             PoserEtat(l, p)
         end
     end
