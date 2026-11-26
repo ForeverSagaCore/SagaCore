@@ -1189,7 +1189,16 @@ function recettes.Progression(ligneDeMetier, rangDepart, rangMax, objectif, deja
                     -- Puis ce qu'on a deja, puis le moins de recolte par point.
                     -- Une recette a apprendre passe apres celles qu'on connait,
                     -- mais avant une recette jaune : un point sur d'abord.
-                    local score = (chance < 1 and 1e12 or 0) + (apprise[recette.id] and 0 or 1e9)
+                    -- Ce qu'on a deja passe avant tout : une recette dont tous
+                    -- les composants sont la (meme jaune, a une chance sur deux
+                    -- au moins) vaut mieux qu'une orange qu'il faut aller
+                    -- recolter. Puis les oranges, puis le reste.
+                    local palier
+                    if manque == 0 and chance >= 1 then palier = 0
+                    elseif manque == 0 and chance >= 0.5 then palier = 1e11
+                    elseif chance >= 1 then palier = 2e11
+                    else palier = 1e12 end
+                    local score = palier + (apprise[recette.id] and 0 or 1e9)
                         + (manque * 100000 + recolte * 1000 + 1) / chance + (1 - chance)
                     if not meilleurScore or score < meilleurScore then
                         meilleur, meilleurScore, meilleureChance = recette, score, chance
