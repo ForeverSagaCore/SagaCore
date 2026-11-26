@@ -215,6 +215,7 @@ function persos.Visites(cle) return Champ(cle, "visites") end
 function persos.Instances(cle) return Champ(cle, "instances") end
 function persos.Boss(cle) return Champ(cle, "boss") end
 function persos.Reputations(cle) return Champ(cle, "reputations") end
+function persos.ReputationsDetail(cle) return Champ(cle, "reputationsDetail") end
 function persos.JcJ(cle) return Champ(cle, "jcj") end
 
 -- ---------------------------------------------------------------------------

@@ -486,9 +486,54 @@ local function RendreCategorie(page, cat)
         return
     end
     -- L'avancement de ce qu'on regarde, sur les quatre portees.
-    nt = nt + 1
-    y = Titre(page, nt, y, T("Avancement", "Progress"))
-    i, y = Resume(page, i, y, Lecteur(cat, nav))
+    if not cat.plat then
+        nt = nt + 1
+        y = Titre(page, nt, y, T("Avancement", "Progress"))
+        i, y = Resume(page, i, y, Lecteur(cat, nav))
+    end
+    if cat.plat then
+        -- Une liste a plat (reputations) : chaque element sous le titre de
+        -- son groupe, sa barre d'avancement dans le rang actuel, sans
+        -- niveau a ouvrir.
+        page.bRetour:Hide()
+        nav.sous, nav.element = nil, nil
+        if #res.sous == 0 then nn = nn + 1 y = Note(page, nn, y, T("Rien à montrer pour cette portée.", "Nothing to show for this scope.")) end
+        for _, s in ipairs(res.sous) do
+            nt = nt + 1
+            y = Titre(page, nt, y, s.nom)
+            for _, e in ipairs(s.elements) do
+                i = i + 1
+                local o = { icone = e.icone, texte = e.nom, droite = "", auClic = function() end }
+                local rang = tonumber(e.rang) or 0
+                local nomRang = rang > 0 and ref.NomDeRang and ref.NomDeRang(rang) or ""
+                if e.valeur and e.mini and e.maxi and e.maxi > e.mini then
+                    local dans, taille = e.valeur - e.mini, e.maxi - e.mini
+                    if rang >= 8 then
+                        o.fait, o.total, o.texteBarre = 1, 1, nomRang
+                    else
+                        o.fait, o.total = math.max(0, dans), taille
+                        o.texteBarre = string.format("%s  %s / %s", nomRang, NS.Nombre(math.max(0, dans)), NS.Nombre(taille))
+                    end
+                    o.droite = rang >= 8 and "" or string.format("%d %%", math.floor(math.max(0, dans) / taille * 100))
+                else
+                    o.fait, o.total, o.texteBarre = rang >= 8 and 1 or 0, 1, nomRang
+                end
+                o.survol = function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText(e.nom, 1, 0.82, 0)
+                    if nomRang ~= "" then GameTooltip:AddLine(nomRang, 1, 1, 1) end
+                    if e.valeur and e.mini and e.maxi and rang < 8 then
+                        GameTooltip:AddLine(string.format(T("%s sur %s vers %s", "%s of %s to %s"), NS.Nombre(math.max(0, e.valeur - e.mini)),
+                            NS.Nombre(e.maxi - e.mini), ref.NomDeRang(rang + 1)), 0.9, 0.9, 0.9)
+                    end
+                    GameTooltip:Show()
+                end
+                y = Poser(page, i, y, o)
+            end
+        end
+        page.hauteur = page.yZone + y + 10
+        return
+    end
     if not sous then
         nt = nt + 1
         y = Titre(page, nt, y, string.format(T("Pour %s", "For %s"), calcul.NomDePortee(portee)))
@@ -717,6 +762,17 @@ function F.Construire()
         nom = "AchievementCoreFenetre", cle = "AchievementCore", icone = "Interface\\Icons\\INV_Misc_Ribbon_01",
         titre = function() return "AchievementCore" end,
         pages = pages,
+        -- B hors de la page : remonte d'un niveau avant de fermer.
+        manette = function(bouton)
+            if bouton ~= "PAD2" or not F.w then return false end
+            local nav = etat.nav[F.w.page]
+            if not nav or not nav.sous then return false end
+            if nav.element then nav.element = nil else nav.sous = nil end
+            nav.page = 1
+            F.Defiler()
+            F.Rendre()
+            return true
+        end,
     })
     if F.w and F.w.cadre then
         -- A chaque ouverture : les releves des autres add-ons ont pu changer.
