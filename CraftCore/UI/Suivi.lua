@@ -1169,7 +1169,17 @@ function suivi.FeuilleDansLInfobulle(tt, o)
         tt:AddLine(L.ROUTE_THEORETICAL, 0.7, 0.7, 0.7, true)
         Petite(tt)
     end
+    -- Les etapes faites, regroupees en une ligne ; Maj enfoncee : le detail.
+    local detail = IsShiftKeyDown and IsShiftKeyDown()
+    local faites = 0
+    for _, t in ipairs(etapes) do if t.faite then faites = faites + 1 end end
+    if faites > 0 and not detail then
+        tt:AddLine(" ")
+        tt:AddLine(COCHE .. " " .. string.format(L.TIP_STEPS_DONE, faites), VERT[1], VERT[2], VERT[3])
+        Petite(tt)
+    end
     for i, t in ipairs(etapes) do
+      if detail or not t.faite then
         tt:AddLine(" ")
         local tete = t.faite and (COCHE .. " ") or (i .. ". ")
         if t.faite then tt:AddLine(tete .. t.titre, VERT[1], VERT[2], VERT[3]) else tt:AddLine(tete .. t.titre, 1, 0.82, 0) end
@@ -1192,7 +1202,22 @@ function suivi.FeuilleDansLInfobulle(tt, o)
                 LigneDObjet(tt, x.objet, x.n, x.fois, t.faite)
             end
         end
+      end
     end
+end
+
+-- Maj enfoncee ou relachee pendant le survol : l'infobulle se refait (detail
+-- des etapes faites).
+do
+    local veille = CreateFrame("Frame")
+    pcall(veille.RegisterEvent, veille, "MODIFIER_STATE_CHANGED")
+    veille:SetScript("OnEvent", function()
+        local proprio = GameTooltip and GameTooltip:IsShown() and GameTooltip:GetOwner()
+        if proprio and proprio.objectifSuivi then
+            local f = proprio:GetScript("OnEnter")
+            if f then pcall(f, proprio) end
+        end
+    end)
 end
 
 -- Tout est-il dans les sacs (de quoi tout fabriquer tout de suite) ?
@@ -1699,6 +1724,7 @@ local function DessinerObjectifs(y, objectifs, vue)
                 -- prochaine etape et ce qui manque encore dans les sacs (et ou
                 -- le trouver), quand le bouton Creer n'est pas la.
                 local objectif = o
+                b.objectifSuivi = true
                 b:SetScript("OnEnter", function(self)
                     local etapesS = EtapesDeFabrication(objectif.lignes)
                     local e, rangE = ProchaineEtape(etapesS)
@@ -1727,14 +1753,11 @@ local function DessinerObjectifs(y, objectifs, vue)
                                 GameTooltip:AddLine(L.GOAL_LEARN_WHERE, 1, 0.82, 0)
                                 premiere = false
                             end
-                            GameTooltip:AddLine("     " .. a.nom, 1, 1, 1)
+                            -- En une ligne : la recette, et ou (le mot court).
+                            local okC, nature = pcall(NS.recettes.CommentApprendre, a.recette)
+                            local ou = okC and nature and L[nature] or nil
+                            GameTooltip:AddLine("     " .. a.nom .. (ou and ("  |cffb3b3b3" .. ou .. "|r") or ""), 1, 1, 1)
                             Petite(GameTooltip)
-                            local okC, _, lignesSrc = pcall(NS.recettes.CommentApprendre, a.recette)
-                            for k, ls in ipairs(okC and lignesSrc or {}) do
-                                if k > 2 then break end
-                                GameTooltip:AddLine("        " .. tostring(ls), 0.7, 0.7, 0.7)
-                                Petite(GameTooltip)
-                            end
                         end
                     end
                     -- A acheter : seulement ce qui manque encore dans les sacs.

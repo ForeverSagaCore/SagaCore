@@ -360,6 +360,10 @@ cadre:SetScript("OnEvent", function(_, evenement, argument1)
     elseif evenement == "TRADE_SKILL_SHOW" or evenement == "TRADE_SKILL_LIST_UPDATE"
         or evenement == "TRADE_SKILL_DATA_SOURCE_CHANGED" then
         ReleverRecettesBientot()
+    elseif evenement == "TRAINER_UPDATE" or evenement == "LEARNED_SPELL_IN_SKILL_LINE" or evenement == "LEARNED_SPELL_IN_TAB" then
+        -- Une recette apprise chez le formateur : le suivi la passe au vert.
+        if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
+        if ecran and ecran.Actualiser then pcall(ecran.Actualiser) end
     elseif evenement == "NEW_RECIPE_LEARNED" or evenement == "SKILL_LINES_CHANGED" then
         if evenement == "SKILL_LINES_CHANGED" and NS.recettes.ReleverNiveaux then
             pcall(NS.recettes.ReleverNiveaux)
@@ -407,6 +411,9 @@ Brancher("TRADE_SKILL_SHOW")
 Brancher("TRADE_SKILL_LIST_UPDATE")
 Brancher("TRADE_SKILL_DATA_SOURCE_CHANGED")
 Brancher("NEW_RECIPE_LEARNED")
+Brancher("TRAINER_UPDATE")
+Brancher("LEARNED_SPELL_IN_SKILL_LINE")
+Brancher("LEARNED_SPELL_IN_TAB")
 Brancher("SKILL_LINES_CHANGED")
 Brancher("GET_ITEM_INFO_RECEIVED")
 Brancher("PLAYER_EQUIPMENT_CHANGED")
