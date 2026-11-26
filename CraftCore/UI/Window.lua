@@ -3583,8 +3583,13 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
     -- decoche les rangs plus hauts.
     -- Meme chose tant que les achats et la recuperation ne sont pas faits :
     -- tout doit etre dans les sacs avant la premiere fabrication.
+    -- Regle ferme : Creer ne s'active qu'a 100 %, tout reuni (recolte et
+    -- achats compris).
     local bloque
     if next(plan.manques) ~= nil then bloque = L.GUIDE_GATHER_FIRST end
+    for objet, n in pairs(plan.achats or {}) do
+        if (NS.inventaire.TotalPossede(objet) or 0) < n then bloque = L.GUIDE_GATHER_FIRST end
+    end
     -- Achats (fioles...) et objets a sortir de la banque ne bloquent plus
     -- tout : chaque bouton Creer se grise seul s'il lui manque quelque chose
     -- dans les sacs. On fabrique ce qu'on peut deja.

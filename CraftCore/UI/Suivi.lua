@@ -1943,11 +1943,13 @@ local function DessinerObjectifs(y, objectifs, vue)
                 -- Monter un metier : chaque etape se fait des qu'elle a ses
                 -- composants (le bouton se grise seul sinon) ; jamais bloque
                 -- par une recette a apprendre plus tard.
-                local toutEnSacs = (o.pct or 0) >= 1 or o.genre == "progression"
-                for _, m in ipairs(toutEnSacs and o.genre ~= "progression" and o.matieres or {}) do
+                -- Regle ferme, rang vise compris : Creer ne s'active qu'a 100 %,
+                -- tout reuni et dans les sacs.
+                local toutEnSacs = (o.pct or 0) >= 1
+                for _, m in ipairs(toutEnSacs and o.matieres or {}) do
                     if (NS.inventaire.DisponibleDansLesSacs(m.objet) or 0) < (m.requis or 0) then toutEnSacs = false break end
                 end
-                for objet, n in pairs(toutEnSacs and o.genre ~= "progression" and type(o.achats) == "table" and o.achats or {}) do
+                for objet, n in pairs(toutEnSacs and type(o.achats) == "table" and o.achats or {}) do
                     if (NS.inventaire.DisponibleDansLesSacs(objet) or 0) < (tonumber(n) or 0) then toutEnSacs = false break end
                 end
                 -- Une serie de cette recette est en cours : a la place du
