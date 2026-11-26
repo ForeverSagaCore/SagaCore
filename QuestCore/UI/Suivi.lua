@@ -809,6 +809,14 @@ local function RendreQuete(moi, quetes, id, index, y, prefixe)
             choisiesQ[idQuete] = not choisiesQ[idQuete] or nil
             suivi.Rendre()
         end } or nil
+        -- Un guidage en cours et une quete a rendre qui n'en fait pas partie :
+        -- la petite carte l'ajoute a l'itineraire (detour), ou l'en retire.
+        local G = NS.guidage
+        if icones and q.complete == true and G and G.Objectif and G.Objectif() and not G.DansLObjectif(idQuete) then
+            pionQ = { actif = G.EstDetour(idQuete), afaire = false, aide = L.ROUTE_DETOUR_HELP, auClic = function()
+                G.BasculerDetour(idQuete)
+            end }
+        end
         local voirQ = icones and function() VoirSurCarte(idQuete, moi) end or nil
         -- Recompense (XP et or) en premier ; le survol garde le detail complet.
         local resume = NS.ref.ResumeRecompenses(q)
