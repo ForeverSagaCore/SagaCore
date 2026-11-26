@@ -1182,6 +1182,11 @@ local function Construire()
     b:SetSize(120, 22)
     b:SetPoint("BOTTOMRIGHT", cadreA, "BOTTOMRIGHT", -10, 10)
     cadreA.ok = b
+    -- Me guider : vers le maitre le plus proche ; ferme l'avis aussi.
+    local g = CreateFrame("Button", "CraftCoreAvisRangGuider", cadreA, "UIPanelButtonTemplate")
+    g:SetSize(120, 22)
+    g:SetPoint("RIGHT", b, "LEFT", -8, 0)
+    cadreA.guider = g
     cadreA:Hide()
     return cadreA
 end
@@ -1198,6 +1203,16 @@ local function Montrer(m, pres)
     cadreA.titre:SetText(string.format(L.RANK_MAX_TITLE, m.nom or "?", m.rang, m.rangMax))
     cadreA.texte:SetText(pres and string.format(L.RANK_MAX_NEAR, pres) or L.RANK_MAX_TEXT)
     cadreA.ok:SetText(L.RANK_MAX_OK)
+    LireMaitres()
+    cadreA.guider:SetText(L.RANK_MAX_GUIDE or "Guide me")
+    cadreA.guider:SetScript("OnClick", function()
+        local ok = NS.guidage and NS.guidage.MaitreDeMetier and NS.guidage.MaitreDeMetier(m.ligne, m.nom)
+        if ok then
+            Memoire()[tostring(m.ligne)] = m.rangMax
+            cadreA:Hide()
+            enCours = nil
+        end
+    end)
     cadreA.ok:SetScript("OnClick", function()
         Memoire()[tostring(m.ligne)] = m.rangMax
         cadreA:Hide()
@@ -1282,6 +1297,38 @@ local function MaitreProche(ligne, jx, jy, jc)
             end
         end
     end
+end
+
+-- Le maitre d'un metier le plus proche, sur le continent du personnage :
+-- { carte, x (0-1), y (0-1), nom }, ou nil (maitres pas encore lus, aucun).
+function avisRang.MaitrePlusProche(ligne)
+    LireMaitres()
+    if not maitres then return nil end
+    local carteJ = NS.Appeler(NS.Lecture("C_Map.GetBestMapForUnit"), "player")
+    local pos = carteJ and NS.Appeler(NS.Lecture("C_Map.GetPlayerMapPosition"), carteJ, "player")
+    if type(pos) ~= "table" or not pos.GetXY then return nil end
+    local jx, jy, jc = Monde(carteJ, pos:GetXY())
+    if not jx then return nil end
+    local meilleur, cible
+    for _, id in ipairs(maitres[ligne] or {}) do
+        local spawns = LireDB("NpcDB", id, "spawns")
+        for zone, points in pairs(type(spawns) == "table" and spawns or {}) do
+            local carte = CarteDeZone(zone)
+            for _, p in ipairs(carte and type(points) == "table" and points or {}) do
+                if tonumber(p[1]) and tonumber(p[2]) and p[1] >= 0 then
+                    local x, y, c = Monde(carte, p[1] / 100, p[2] / 100)
+                    if x and c == jc then
+                        local d = (x - jx) ^ 2 + (y - jy) ^ 2
+                        if not meilleur or d < meilleur then
+                            meilleur = d
+                            cible = { carte = carte, x = p[1] / 100, y = p[2] / 100, nom = LireDB("NpcDB", id, "name") or "?" }
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return cible
 end
 
 -- Toutes les 3 secondes, tant qu'un metier attend son maitre : est-on pres

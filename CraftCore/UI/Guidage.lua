@@ -243,6 +243,32 @@ TYPES.marchand = (function()
 end)()
 
 -- ---------------------------------------------------------------------------
+-- Maitre de metier : le plus proche du metier bloque a son rang maximum.
+-- ---------------------------------------------------------------------------
+
+TYPES.maitreMetier = (function()
+    local t = S().TypePoint({ icone = "Interface\\Minimap\\Tracking\\Profession" })
+    t.Cle = function(p) return tostring(p.ligne) end
+    t.Libelle = function(p) return string.format(L().RANK_MAX_GUIDE_WHAT or "%s", tostring(p.nom or "?")) end
+    t.Preparer = function(p, etat)
+        local a = NS.avisRang
+        local pt = a and a.MaitrePlusProche and a.MaitrePlusProche(tonumber(p.ligne))
+        if not pt then Dire(L().RANK_MAX_GUIDE_NONE) return false end
+        etat.point = { carte = pt.carte, x = pt.x, y = pt.y, nom = pt.nom }
+        return true
+    end
+    t.Reprendre = function(p, etat) return type(etat.point) == "table" and etat.point.carte ~= nil end
+    t.Etapes = function(p, etat)
+        local pt = etat.point
+        if type(pt) ~= "table" then return nil, "atteint" end
+        local quoi = t.Libelle(p)
+        return { { carte = pt.carte, x = pt.x, y = pt.y, titre = quoi, guidage = quoi,
+            qui = tostring(pt.nom or "?") .. "\n|cffb3b3b3" .. quoi .. "|r", cle = "maitreMetier" } }
+    end
+    return t
+end)()
+
+-- ---------------------------------------------------------------------------
 -- Service : la banque ou la boite aux lettres la plus proche (lieux de
 -- MapCore), pour une etape de la feuille de route.
 -- ---------------------------------------------------------------------------
@@ -290,6 +316,10 @@ function guidage.Lancer(params)
     if NS.suivi and NS.suivi.Dessiner then pcall(NS.suivi.Dessiner) end
     return r
 end
+function guidage.MaitreDeMetier(ligne, nom)
+    return S().LancerObjectif("CraftCore", "maitreMetier", { ligne = ligne, nom = nom })
+end
+
 function guidage.Marchand(objet)
     local r = S().LancerObjectif("CraftCore", "marchand", { objet = objet })
     if r and NS.marchands then
