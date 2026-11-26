@@ -57,7 +57,16 @@ end
 
 local cadre = CreateFrame("Frame")
 for _, e in ipairs({ "MERCHANT_SHOW", "MERCHANT_UPDATE" }) do pcall(cadre.RegisterEvent, cadre, e) end
-cadre:SetScript("OnEvent", function() pcall(Relever) end)
+-- Un releve par ouverture, puis un seul par rafale de mises a jour.
+local releveEnAttente = false
+cadre:SetScript("OnEvent", function(_, e)
+    if e == "MERCHANT_SHOW" then pcall(Relever) return end
+    if releveEnAttente then return end
+    local plusTard = NS.Lecture("C_Timer.After")
+    if not plusTard then pcall(Relever) return end
+    releveEnAttente = true
+    NS.Appeler(plusTard, 1, function() releveEnAttente = false pcall(Relever) end)
+end)
 
 -- Prix d'une unite, en pieces de cuivre, et s'il est exact (vu chez un
 -- marchand) ou estime. nil si on ne sait rien.
