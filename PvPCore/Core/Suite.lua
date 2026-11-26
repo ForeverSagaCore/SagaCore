@@ -7947,6 +7947,12 @@ function Suite.FenetreAPages(o)
                 if okS and pris then return end
             end
             if bouton == "PADBACK" then Entrer(not enZone) return end
+            -- Hors de la page : l'add-on peut prendre une touche (croix
+            -- gauche / droite : personnage precedent / suivant).
+            if not enZone and o.manette then
+                local okM, pris = pcall(o.manette, bouton)
+                if okM and pris then return end
+            end
             if enZone then
                 if bouton == "PAD2" then Entrer(false) return end
                 if bouton == "PADDUP" then Deplacer(0, -1) return end

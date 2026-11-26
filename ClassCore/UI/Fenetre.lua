@@ -1,12 +1,19 @@
 local _, NS = ...
 
--- La fenetre de ClassCore, comme celles de la suite (menu a gauche) :
+-- La fenetre de ClassCore, comme celles de la suite : la barre des
+-- personnages en haut (la meme partout : un clic montre ce personnage, sans
+-- changer de personnage en jeu), le menu a gauche :
 --   Ma classe        l'essentiel d'un coup d'oeil ;
---   Quetes de classe chaque chaine, faite ou non, etape par etape ;
---   Sorts de classe  appris, a apprendre, plus tard ;
+--   Quetes de classe chaque suite de quetes, etape par etape, numerotee ;
+--   Sorts de classe  tous les sorts du maitre, par arbre, rang, niveau, cout ;
 --   Objets de classe reactifs, totems, fragments : sur soi et en banque ;
---   Familiers        (chasseur) le familier, les familles, les techniques ;
+--   Familiers        (chasseurs du compte) les familles, chaque bete ;
 --   Parametres.
+--
+-- Une seule regle de couleur partout (a l'encre sur le parchemin) :
+--   vert   fait, appris ;
+--   encre  a faire maintenant (le texte ordinaire) ;
+--   gris   plus tard (niveau, etape d'avant, talent).
 
 NS.fenetre = {}
 local F = NS.fenetre
@@ -18,12 +25,105 @@ local HAUTEUR = 24
 local RETRAIT = 16
 local COCHE = "Interface\\RaidFrame\\ReadyCheck-Ready"
 local VERT = { 0.31, 0.82, 0.41 }
-local GRIS = { 0.6, 0.6, 0.6 }
-local OR = { 1, 0.82, 0 }
-local BLANC = { 1, 1, 1 }
-local ROUGE = { 1, 0.35, 0.35 }
+local GRIS = { 0.55, 0.55, 0.55 }
+local NORMAL = { 1, 1, 1 }
+local ROUGE = { 0.9, 0.3, 0.3 }
+F.VERT, F.GRIS, F.NORMAL, F.ROUGE = VERT, GRIS, NORMAL, ROUGE
 
-local function S() return _G.CoreSuite end
+local function Su() return _G.CoreSuite end
+
+-- ---------------------------------------------------------------------------
+-- Le personnage montre
+-- ---------------------------------------------------------------------------
+
+local vue = { cle = nil }
+F.vue = vue
+
+local function ClesConnues()
+    local l = {}
+    local S = Su()
+    for _, p in ipairs(S and S.ListePersos and S.ListePersos() or {}) do table.insert(l, p.cle) end
+    return l
+end
+
+function F.Cle()
+    local S = Su()
+    if not vue.cle and S and S.Personnage then
+        local c = S.Personnage()
+        if c then vue.cle = c end
+    end
+    local moi = NS.ClePersonnage()
+    if vue.cle then
+        for _, c in ipairs(ClesConnues()) do if c == vue.cle then return vue.cle end end
+    end
+    return moi
+end
+
+function F.Profil()
+    return Q().Profil(F.Cle())
+end
+
+local function ChoisirPerso(cle)
+    vue.cle = cle
+    local S = Su()
+    if S and S.PoserPersonnage then pcall(S.PoserPersonnage, cle) end
+    if NS.familiers and NS.familiers.Reinitialiser then NS.familiers.Reinitialiser() end
+end
+
+local function NomDeClasse(classe)
+    local t = _G.LOCALIZED_CLASS_NAMES_MALE
+    return (t and t[classe or ""]) or classe or ""
+end
+F.NomDeClasse = NomDeClasse
+
+-- ---------------------------------------------------------------------------
+-- Icones : rond de quete du jeu, ou icone carree a fin liseré
+-- ---------------------------------------------------------------------------
+
+local function AtlasExiste(nom)
+    return C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo(nom) ~= nil
+end
+
+-- Le rond du journal de quetes du jeu, comme dans QuestCore : fond
+-- "UI-QuestPoi-QuestNumber", dessus le point d'exclamation (a prendre), le
+-- symbole en cours, ou le point d'interrogation vert (faite). Gris : plus tard.
+local function Rond(l, etat)
+    local r = l.rond
+    if not r then
+        r = CreateFrame("Frame", nil, l)
+        r:SetSize(18, 18)
+        r.fond = r:CreateTexture(nil, "ARTWORK", nil, 1)
+        r.fond:SetSize(24, 24)
+        r.fond:SetPoint("CENTER")
+        r.symbole = r:CreateTexture(nil, "ARTWORK", nil, 2)
+        r.symbole:SetPoint("CENTER")
+        l.rond = r
+    end
+    if AtlasExiste("UI-QuestPoi-QuestNumber") then
+        r.fond:SetAtlas("UI-QuestPoi-QuestNumber")
+        r.fond:Show()
+    else
+        r.fond:Hide()
+    end
+    local suite = etat == "niveau" or etat == "bloquee"
+    if etat == "faite" and AtlasExiste("UI-QuestIcon-TurnIn-Normal") then
+        r.symbole:SetAtlas("UI-QuestIcon-TurnIn-Normal")
+        r.symbole:SetSize(24, 24)
+    elseif etat == "cours" and AtlasExiste("Quest-In-Progress-Icon-yellow") then
+        r.symbole:SetAtlas("Quest-In-Progress-Icon-yellow")
+        r.symbole:SetSize(24, 24)
+    else
+        r.symbole:SetTexture(etat == "cours" and "Interface\\GossipFrame\\IncompleteQuestIcon" or "Interface\\GossipFrame\\AvailableQuestIcon")
+        r.symbole:SetTexCoord(0, 1, 0, 1)
+        r.symbole:SetSize(12, 12)
+    end
+    r.symbole:SetDesaturated(etat == "faite" or suite)
+    if etat == "faite" then r.symbole:SetVertexColor(0.3, 1, 0.3)
+    elseif suite then r.symbole:SetVertexColor(0.55, 0.55, 0.55)
+    else r.symbole:SetVertexColor(1, 1, 1) end
+    r.fond:SetDesaturated(suite)
+    return r
+end
 
 -- ---------------------------------------------------------------------------
 -- Rendu commun : des blocs (titre de section, puis lignes)
@@ -51,6 +151,7 @@ local function Ligne(page, i)
     l:SetHeight(HAUTEUR)
     pcall(l.RegisterForClicks, l, "LeftButtonUp")
     l:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    -- Icone carree : un fin liseré, comme les pastilles de CraftCore.
     l.bord = l:CreateTexture(nil, "BORDER")
     l.bord:SetSize(18, 18)
     l.bord:SetColorTexture(0.75, 0.6, 0.35, 1)
@@ -83,13 +184,30 @@ local function Ligne(page, i)
     return l
 end
 
--- blocs : { { titre, droite, lignes = { { icone, texte, droite, couleur,
---   couleurDroite, coche, infobulle(tt), bouton = { texte, action }, retrait } } } }
+-- Le cadre d'apercu 3D (familiers) : une seule fois par page.
+local function Apercu(page)
+    if page.apercu then return page.apercu end
+    local ok, m = pcall(CreateFrame, "PlayerModel", nil, page.zone)
+    if not ok or not m then return nil end
+    m:SetSize(220, 200)
+    m.fond = m:CreateTexture(nil, "BACKGROUND")
+    m.fond:SetAllPoints()
+    m.fond:SetColorTexture(0, 0, 0, 0.25)
+    m:EnableMouse(false)
+    page.apercu = m
+    return m
+end
+
+-- blocs : { { titre, droite, lignes = { ligne }, vide, apercu = { display, id, lignes = { textes } } } }
+-- ligne : { quete = etat | icone | coche, texte, droite, couleur, couleurDroite,
+--           infobulle(tt), bouton = { texte, action }, clic, retrait }
 local function Rendre(page, blocs)
     local zone = page.zone
     local largeur = zone:GetWidth() or 780
     for _, t in ipairs(page.titres or {}) do t.fs:Hide() t.filet:Hide() t.droite:Hide() end
     for _, l in ipairs(page.lignes or {}) do l:Hide() end
+    if page.apercu then page.apercu:Hide() end
+    for _, t in ipairs(page.textesApercu or {}) do t:Hide() end
     local y, nT, nL = 0, 0, 0
     for k, b in ipairs(blocs) do
         if k > 1 then y = y + 10 end
@@ -98,11 +216,11 @@ local function Rendre(page, blocs)
             local t = Titre(page, nT)
             t.fs:ClearAllPoints()
             t.fs:SetPoint("TOPLEFT", zone, "TOPLEFT", 0, -y)
-            t.fs:SetPoint("RIGHT", zone, "RIGHT", -200, 0)
+            t.fs:SetPoint("RIGHT", zone, "RIGHT", -260, 0)
             t.fs:SetText(b.titre)
             t.droite:ClearAllPoints()
-            t.droite:SetPoint("TOPRIGHT", zone, "TOPRIGHT", -10, -y - 2)
-            t.droite:SetWidth(190)
+            t.droite:SetPoint("TOPRIGHT", zone, "TOPRIGHT", -10, -y - 3)
+            t.droite:SetWidth(250)
             t.droite:SetText(b.droite or "")
             t.filet:ClearAllPoints()
             t.filet:SetPoint("TOPLEFT", t.fs, "TOPLEFT", 0, -22)
@@ -111,6 +229,41 @@ local function Rendre(page, blocs)
             else t.filet:SetColorTexture(0.8, 0.65, 0.35, 0.35) end
             t.fs:Show() t.filet:Show() t.droite:Show()
             y = y + 30
+        end
+        if b.apercu then
+            local m = Apercu(page)
+            if m then
+                m:ClearAllPoints()
+                m:SetPoint("TOPLEFT", zone, "TOPLEFT", RETRAIT, -y)
+                local okM = false
+                if b.apercu.display and m.SetDisplayInfo then okM = pcall(m.SetDisplayInfo, m, b.apercu.display) end
+                if not okM and b.apercu.id and m.SetCreature then okM = pcall(m.SetCreature, m, b.apercu.id) end
+                if m.SetPortraitZoom then pcall(m.SetPortraitZoom, m, 0) end
+                if m.SetCamDistanceScale then pcall(m.SetCamDistanceScale, m, 1.2) end
+                if m.SetRotation then pcall(m.SetRotation, m, 0.6) end
+                m:Show()
+            end
+            page.textesApercu = page.textesApercu or {}
+            local yy = y + 4
+            for i, txt in ipairs(b.apercu.lignes or {}) do
+                local fs = page.textesApercu[i]
+                if not fs then
+                    fs = zone:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                    fs:SetJustifyH("LEFT")
+                    fs:SetWordWrap(false)
+                    page.textesApercu[i] = fs
+                end
+                fs:ClearAllPoints()
+                fs:SetPoint("TOPLEFT", zone, "TOPLEFT", RETRAIT + 240, -yy)
+                fs:SetPoint("RIGHT", zone, "RIGHT", -10, 0)
+                fs:SetText(txt[1] or "")
+                local c = txt[2] or NORMAL
+                fs:SetTextColor(c[1], c[2], c[3])
+                fs.couleurPropre = nil
+                fs:Show()
+                yy = yy + 20
+            end
+            y = y + 210
         end
         for _, e in ipairs(b.lignes or {}) do
             nL = nL + 1
@@ -121,21 +274,24 @@ local function Rendre(page, blocs)
             l:SetPoint("RIGHT", zone, "RIGHT", -10, 0)
             l.bord:ClearAllPoints()
             l.bord:SetPoint("LEFT", l, "LEFT", x, 0)
-            if e.icone then
+            if l.rond then l.rond:Hide() end
+            l.bord:Hide() l.icone:Hide() l.coche:Hide()
+            if e.quete then
+                local r = Rond(l, e.quete)
+                r:ClearAllPoints()
+                r:SetPoint("LEFT", l, "LEFT", x, 0)
+                r:Show()
+                x = x + 24
+            elseif e.icone then
                 l.icone:SetTexture(e.icone)
-                if e.gris then l.icone:SetDesaturated(true) else l.icone:SetDesaturated(false) end
+                l.icone:SetDesaturated(e.gris and true or false)
                 l.bord:Show() l.icone:Show()
                 x = x + 24
-            else
-                l.bord:Hide() l.icone:Hide()
-            end
-            l.coche:ClearAllPoints()
-            if e.coche then
-                l.coche:SetPoint("LEFT", l, "LEFT", x, 0)
+            elseif e.coche then
+                l.coche:ClearAllPoints()
+                l.coche:SetPoint("LEFT", l, "LEFT", x + 2, 0)
                 l.coche:Show()
-                x = x + 18
-            else
-                l.coche:Hide()
+                x = x + 24
             end
             l.nom:ClearAllPoints()
             l.nom:SetPoint("LEFT", l, "LEFT", x, 0)
@@ -154,20 +310,22 @@ local function Rendre(page, blocs)
             end
             l.droite:ClearAllPoints()
             l.droite:SetPoint("RIGHT", l, "RIGHT", droiteX, 0)
-            l.droite:SetWidth(200)
+            l.droite:SetWidth(e.largeurDroite or 260)
             l.droite:SetText(e.droite or "")
-            local cd = e.couleurDroite or GRIS
+            local cd = e.couleurDroite or e.couleur or NORMAL
             l.droite:SetTextColor(cd[1], cd[2], cd[3])
-            l.droite.couleurPropre = true
+            l.droite.couleurPropre = nil
             l.nom:SetPoint("RIGHT", l.droite, "LEFT", -8, 0)
             l.nom:SetText(e.texte or "")
-            local c = e.couleur or BLANC
+            local c = e.couleur or NORMAL
             l.nom:SetTextColor(c[1], c[2], c[3])
-            l.nom.couleurPropre = e.couleur ~= nil
+            l.nom.couleurPropre = nil
             l.infobulle = e.infobulle
-            -- Une ligne avec infobulle se choisit a la manette (son survol
-            -- s'affiche) ; un clic n'y fait rien d'autre.
-            l:SetScript("OnClick", (e.infobulle or e.clic) and function() if e.clic then pcall(e.clic) if F.w then pcall(F.w.Rendre) end end end or nil)
+            -- Une ligne avec infobulle se choisit aussi a la manette (son
+            -- survol s'affiche) ; un clic ne fait que ce que la ligne dit.
+            l:SetScript("OnClick", (e.infobulle or e.clic) and function()
+                if e.clic then pcall(e.clic) if F.w then pcall(F.w.Rendre) end end
+            end or nil)
             l:Show()
             y = y + HAUTEUR
         end
@@ -177,12 +335,14 @@ local function Rendre(page, blocs)
             l:ClearAllPoints()
             l:SetPoint("TOPLEFT", zone, "TOPLEFT", 0, -y)
             l:SetPoint("RIGHT", zone, "RIGHT", -10, 0)
+            if l.rond then l.rond:Hide() end
             l.bord:Hide() l.icone:Hide() l.coche:Hide() l.bouton:Hide()
             l.nom:ClearAllPoints()
             l.nom:SetPoint("LEFT", l, "LEFT", RETRAIT, 0)
             l.nom:SetPoint("RIGHT", l, "RIGHT", -8, 0)
             l.nom:SetText(b.vide)
             l.nom:SetTextColor(GRIS[1], GRIS[2], GRIS[3])
+            l.nom.couleurPropre = nil
             l.droite:SetText("")
             l.infobulle = nil
             l:SetScript("OnClick", nil)
@@ -192,14 +352,14 @@ local function Rendre(page, blocs)
     end
     return y
 end
+F.RendreBlocs = Rendre
 
--- Une page de blocs, avec une rangee optionnelle en haut (choix).
-local function Page(cle, icone, libelle, titre, intro, blocs, haut)
+-- Une page de blocs : titre, explication, puis les blocs.
+local function Page(cle, icone, libelle, titre, intro, blocs)
     return { cle = cle, icone = icone, libelle = libelle,
         construire = function(page, O)
             page.t1 = O.Section()
             page.intro = O.Detail(36)
-            if haut then haut(page, O) end
             page.zone = O.Rangee(20)
             page.yZone = page.y - 20
         end,
@@ -211,205 +371,222 @@ local function Page(cle, icone, libelle, titre, intro, blocs, haut)
             page.hauteur = page.yZone + math.max(h, 20)
         end }
 end
+F.Page = Page
 
 -- ---------------------------------------------------------------------------
 -- Les quetes
 -- ---------------------------------------------------------------------------
-
-local ICONES_ETAT = {
-    faite = COCHE,
-    cours = "Interface\\GossipFrame\\IncompleteQuestIcon",
-    prendre = "Interface\\GossipFrame\\AvailableQuestIcon",
-    niveau = "Interface\\GossipFrame\\AvailableQuestIcon",
-    bloquee = "Interface\\GossipFrame\\AvailableQuestIcon",
-}
-
-local vue = { perso = nil }
-local function Perso()
-    local moi, cleMoi = Q().Moi()
-    local cle = vue.perso or cleMoi
-    local p = Q().Persos()[cle or ""] or moi
-    return p, cle == cleMoi, cle
-end
 
 local function Guider(ids)
     local api = _G.QuestCoreAPI
     if api and api.GuiderQuetes and #ids > 0 then return api.GuiderQuetes(ids) end
 end
 
-local function InfobulleEtape(e)
+local function CouleurEtape(etat)
+    if etat == "faite" then return VERT end
+    if etat == "cours" or etat == "prendre" then return NORMAL end
+    return GRIS
+end
+
+local function InfobulleEtape(e, c)
     return function(tt)
         tt:AddLine(e.nom)
-        tt:AddLine(Q().LibelleEtat(e), 1, 1, 1)
+        if c then tt:AddLine(string.format(T("%s, étape %d sur %d", "%s, step %d of %d"), c.titre, e.numero or 1, c.total), 1, 1, 1) end
+        tt:AddLine(Q().LibelleEtat(e), 0.9, 0.9, 0.9)
         if (e.niveau or 0) > 0 then tt:AddLine(string.format(T("Quête de niveau %d", "Level %d quest"), e.niveau), 0.8, 0.8, 0.8) end
         local d = Q().Donneur(e.id)
         if d then tt:AddLine(string.format(T("Donnée par %s", "Given by %s"), d), 0.8, 0.8, 0.8) end
     end
 end
 
-local function LigneEtape(e)
-    local couleur = (e.etat == "faite" and GRIS) or ((e.etat == "cours" or e.etat == "prendre") and OR) or BLANC
-    local cd = (e.etat == "faite" and VERT) or ((e.etat == "cours" or e.etat == "prendre") and OR) or GRIS
-    return { coche = e.etat == "faite", icone = e.etat ~= "faite" and ICONES_ETAT[e.etat] or nil,
-        gris = e.etat == "niveau" or e.etat == "bloquee",
-        texte = e.nom, couleur = couleur, droite = Q().LibelleEtat(e), couleurDroite = cd,
-        infobulle = InfobulleEtape(e), retrait = 8 }
-end
-
-local function BlocsQuetes()
+local function ChargementQuetes()
     if not Q().BaseDisponible() then
-        return { { titre = T("Quêtes de classe", "Class quests"), vide = T("Il faut QuestieDB, la base de quêtes : installe-le avec la suite.", "QuestieDB, the quest database, is needed : install it with the suite.") } }
+        return T("Il faut QuestieDB, la base de quêtes : installe-le avec la suite.", "QuestieDB, the quest database, is needed : install it with the suite.")
     end
     if not Q().Pret() then
         Q().Indexer()
         Q().QuandPret(function() if F.w then pcall(F.w.Rendre) end end)
-        return { { titre = T("Quêtes de classe", "Class quests"), vide = T("Lecture de la base de quêtes...", "Reading the quest database...") } }
+        return T("Lecture de la base de quêtes...", "Reading the quest database...")
     end
-    local p, connecte = Perso()
-    local chaines = Q().Chaines(p, connecte)
+    return nil
+end
+
+local function BlocsQuetes()
+    local attente = ChargementQuetes()
+    if attente then return { { titre = T("Quêtes de classe", "Class quests"), vide = attente } } end
+    local p = F.Profil()
+    local chaines = Q().Chaines(p, p and p.connecte)
     local blocs, finies = {}, {}
     for _, c in ipairs(chaines) do
         if c.etat == "faite" then
-            table.insert(finies, { coche = true, texte = c.titre, couleur = GRIS, droite = string.format("%d / %d", c.faites, c.total),
-                couleurDroite = VERT, infobulle = function(tt)
+            table.insert(finies, { quete = "faite", texte = c.titre, couleur = VERT,
+                droite = c.total == 1 and T("Faite", "Done") or string.format(T("%d étapes faites", "%d steps done"), c.total),
+                infobulle = function(tt)
                     tt:AddLine(c.titre)
-                    for _, e in ipairs(c.etapes) do tt:AddLine(e.nom, 0.8, 0.8, 0.8) end
+                    for _, e in ipairs(c.etapes) do tt:AddLine(string.format("%d. %s", e.numero or 0, e.nom), 0.31, 0.82, 0.41) end
                 end })
         else
-            local b = { titre = c.titre, droite = string.format(T("niv. %d  ·  %d / %d", "lvl %d  ·  %d / %d"), c.niveau, c.faites, c.total), lignes = {} }
+            local b = { titre = c.titre, lignes = {},
+                droite = c.total == 1 and string.format(T("Quête de niveau %d", "Level %d quest"), c.niveau)
+                    or string.format(c.faites <= 1 and T("Suite de %d quêtes, %d faite", "Chain of %d quests, %d done") or T("Suite de %d quêtes, %d faites", "Chain of %d quests, %d done"), c.total, c.faites) }
             local aGuider = Q().AGuider(c)
-            local guidable = connecte and #aGuider > 0 and _G.QuestCoreAPI and _G.QuestCoreAPI.GuiderQuetes
-            -- Les etapes faites en une ligne, les autres une par une.
-            if c.faites > 0 then
-                local noms = {}
-                for _, e in ipairs(c.etapes) do if e.etat == "faite" then table.insert(noms, e.nom) end end
-                table.insert(b.lignes, { coche = true, retrait = 8, couleur = GRIS, couleurDroite = VERT,
-                    texte = c.faites == 1 and T("1 étape faite", "1 step done") or string.format(T("%d étapes faites", "%d steps done"), c.faites), droite = T("Faites", "Done"),
-                    infobulle = function(tt) tt:AddLine(T("Étapes faites", "Steps done")) for _, n in ipairs(noms) do tt:AddLine(n, 0.8, 0.8, 0.8) end end })
-            end
-            local premiere = true
+            local guidable = p and p.connecte and #aGuider > 0 and _G.QuestCoreAPI and _G.QuestCoreAPI.GuiderQuetes
+            local bouton = false
             for _, e in ipairs(c.etapes) do
-                if e.etat ~= "faite" then
-                    local l = LigneEtape(e)
-                    if premiere and guidable then
-                        l.bouton = { texte = T("Guider", "Guide"), action = function() Guider(aGuider) end }
-                    end
-                    premiere = false
-                    table.insert(b.lignes, l)
+                local l = { quete = e.etat, couleur = CouleurEtape(e.etat), droite = Q().LibelleEtat(e),
+                    texte = c.total > 1 and string.format("%d. %s", e.numero or 0, e.nom) or e.nom,
+                    infobulle = InfobulleEtape(e, c.total > 1 and c or nil) }
+                if not bouton and guidable and (e.etat == "cours" or e.etat == "prendre") then
+                    l.bouton = { texte = T("Guider", "Guide"), action = function() Guider(aGuider) end }
+                    bouton = true
                 end
+                table.insert(b.lignes, l)
             end
             table.insert(blocs, b)
         end
     end
-    if #finies > 0 then table.insert(blocs, { titre = T("Chaînes terminées", "Finished chains"), droite = tostring(#finies), lignes = finies }) end
+    if #finies > 0 then
+        table.insert(blocs, { titre = T("Quêtes de classe terminées", "Finished class quests"),
+            droite = string.format(#finies == 1 and T("%d suite", "%d chain") or T("%d suites", "%d chains"), #finies), lignes = finies })
+    end
     if #blocs == 0 then table.insert(blocs, { titre = T("Quêtes de classe", "Class quests"), vide = T("Aucune quête de classe connue pour ce personnage.", "No class quest known for this character.") }) end
     return blocs
 end
 
-local function OptionsPersos()
-    local l = {}
-    for _, x in ipairs(Q().ListePersos()) do
-        local nom = x.cle:match("^(.-) %- ") or x.cle
-        local classe = _G.LOCALIZED_CLASS_NAMES_MALE and _G.LOCALIZED_CLASS_NAMES_MALE[x.p.classe] or x.p.classe
-        table.insert(l, { x.cle, string.format("%s (%s %d)", nom, classe or "", x.p.niveau or 0) })
-    end
-    return l
-end
-
-local function PageQuetes()
-    return Page("quetes", "Interface\\Icons\\INV_Misc_Book_08",
-        function() return T("Quêtes de classe", "Class quests") end,
-        function() return T("Les quêtes de classe", "Class quests") end,
-        function() return T("Chaque chaîne de quêtes de la classe, pour la race et le camp du personnage : ce qui est fait, ce qui se prend maintenant, et ce qui vient plus tard. Le survol d'une étape dit qui la donne et où.",
-            "Every class quest chain for the character's race and faction : what is done, what can be taken now, and what comes later. Hover a step to see who gives it and where.") end,
-        BlocsQuetes,
-        function(page, O)
-            page.rPerso = O.Rangee()
-            O.Liste(page.rPerso, OptionsPersos,
-                function() local _, _, cle = Perso() return cle end,
-                function(v) vue.perso = v end)
-            page.rPerso.nom:SetText(T("Personnage", "Character"))
-        end)
-end
-
 -- ---------------------------------------------------------------------------
--- Sorts et objets
+-- Sorts
 -- ---------------------------------------------------------------------------
 
-local function LigneSort(s)
-    local nom, icone = E().Sort(s[1])
+local function LigneDeSort(g, p)
+    local nom, icone = NS.sorts.NomIcone(g)
     if not nom then return nil end
-    local niveau = E().Niveau()
-    local connu = E().SortConnu(s[1])
-    local droite, cd, couleur
-    if connu then droite, cd, couleur = T("Appris", "Learned"), VERT, BLANC
-    elseif s.talent then droite, cd, couleur = T("Talent", "Talent"), GRIS, GRIS
-    elseif niveau >= (s[2] or 1) then droite, cd, couleur = T("À apprendre", "To learn"), OR, OR
-    else droite, cd, couleur = string.format(T("Niveau %d", "Level %d"), s[2] or 1), GRIS, GRIS end
-    return { icone = icone, gris = not connu, coche = connu, texte = nom, couleur = couleur, droite = droite, couleurDroite = cd,
+    local etat, appris, total, prochain, cout = NS.sorts.Etat(g, p)
+    local droite, couleur
+    if etat == "appris" then
+        droite = total > 1 and string.format(T("Appris, rang %d", "Learned, rank %d"), appris) or T("Appris", "Learned")
+        couleur = VERT
+    elseif etat == "apprendre" then
+        droite = (total > 1 and string.format(T("Rang %d : ", "Rank %d : "), prochain.rang > 0 and prochain.rang or appris + 1) or "")
+            .. NS.sorts.Cout(prochain.cout)
+        couleur = NORMAL
+    elseif etat == "quete" then
+        droite = T("Par une quête de classe", "From a class quest")
+        couleur = NORMAL
+    elseif etat == "talent" then
+        droite = T("Talent", "Talent")
+        couleur = GRIS
+    else
+        if prochain and total > 1 then
+            droite = string.format(T("Rang %d au niveau %d", "Rank %d at level %d"), prochain.rang > 0 and prochain.rang or appris + 1, prochain.niveau)
+        elseif prochain then
+            droite = string.format(T("Niveau %d", "Level %d"), prochain.niveau)
+        else
+            droite = ""
+        end
+        couleur = (appris > 0) and VERT or GRIS
+    end
+    return { icone = icone, gris = etat ~= "appris" and appris == 0, texte = nom, couleur = couleur,
+        couleurDroite = (etat == "plus tard") and GRIS or couleur, droite = droite, largeurDroite = 300,
         infobulle = function(tt)
-            if tt.SetSpellByID then pcall(tt.SetSpellByID, tt, s[1]) else tt:AddLine(nom) end
-        end }
+            if tt.SetSpellByID and prochain == nil then pcall(tt.SetSpellByID, tt, g.rangs[#g.rangs].id)
+            else tt:AddLine(nom) end
+            tt:AddLine(NS.sorts.NomArbre(g.arbre), 0.8, 0.8, 0.8)
+            for _, r in ipairs(g.rangs) do
+                local connu = p.connait(r.id)
+                local gauche = (total > 1 and string.format(T("Rang %d", "Rank %d"), r.rang > 0 and r.rang or 1) .. ", " or "")
+                    .. string.format(T("niveau %d", "level %d"), r.niveau)
+                local d = connu and T("appris", "learned") or (r.talent and T("talent", "talent")) or (r.quete and T("quête de classe", "class quest")) or NS.sorts.Cout(r.cout)
+                local c = connu and VERT or (((p.niveau or 1) >= r.niveau) and NORMAL or GRIS)
+                tt:AddDoubleLine(gauche, d, c[1], c[2], c[3], c[1], c[2], c[3])
+            end
+        end }, etat, cout
 end
 
 local function BlocsSorts()
-    local d = E().Donnees()
-    local camp = E().Camp()
-    local blocs = {}
-    for _, section in ipairs(d.sorts or {}) do
-        local b = { titre = section.titre(), lignes = {} }
-        local appris, total = 0, 0
-        for _, s in ipairs(section.liste) do
-            if E().PourLeCamp(s, camp) then
-                local l = LigneSort(s)
-                if l then
-                    table.insert(b.lignes, l)
-                    total = total + 1
-                    if l.coche then appris = appris + 1 end
-                end
-            end
-        end
-        b.droite = string.format(T("%d appris sur %d", "%d of %d learned"), appris, total)
-        if #b.lignes > 0 then table.insert(blocs, b) end
+    local p = F.Profil()
+    if not p then return {} end
+    local liste = NS.sorts.Liste(p.classe)
+    if not p.releve then
+        return { { titre = T("Sorts de classe", "Class spells"), vide = T("Connecte ce personnage une fois pour relever ses sorts.", "Log in this character once to read its spells.") } }
     end
-    if #blocs == 0 then table.insert(blocs, { titre = T("Sorts de classe", "Class spells"), vide = T("Rien à suivre pour cette classe.", "Nothing to track for this class.") }) end
+    if #liste == 0 then
+        return { { titre = T("Sorts de classe", "Class spells"), vide = T("Pas de liste de sorts pour cette classe.", "No spell list for this class.") } }
+    end
+    local parArbre, ordre = {}, {}
+    for _, g in ipairs(liste) do
+      if NS.sorts.PourProfil(g, p) then
+        local a = g.arbre or "General"
+        if not parArbre[a] then parArbre[a] = { lignes = {}, appris = 0, total = 0, cout = 0 } table.insert(ordre, a) end
+        local l, etat, cout = LigneDeSort(g, p)
+        if l then
+            local b = parArbre[a]
+            table.insert(b.lignes, l)
+            b.total = b.total + 1
+            if etat == "appris" then b.appris = b.appris + 1 end
+            b.cout = b.cout + (cout or 0)
+        end
+      end
+    end
+    -- Le general (armures, armes) en dernier.
+    for i, a in ipairs(ordre) do if a == "General" then table.remove(ordre, i) table.insert(ordre, a) break end end
+    local blocs = {}
+    for _, a in ipairs(ordre) do
+        local b = parArbre[a]
+        if #b.lignes > 0 then
+            table.insert(blocs, { titre = NS.sorts.NomArbre(a), lignes = b.lignes,
+                droite = string.format(T("%d appris sur %d", "%d of %d learned"), b.appris, b.total) })
+        end
+    end
     return blocs
 end
 
-local function LigneObjet(o)
+-- ---------------------------------------------------------------------------
+-- Objets
+-- ---------------------------------------------------------------------------
+
+local function LigneObjet(o, p)
     local nom, icone = E().Objet(o.id)
     if not nom then return nil end
-    local sacs, banque = E().Compte(o.id)
+    local sacs, banque = p.compte(o.id)
     local bas = (o.seuil or 0) > 0 and sacs < o.seuil
     local droite = banque > 0 and string.format(T("%d sur toi, %d en banque", "%d on you, %d in bank"), sacs, banque)
         or string.format(T("%d sur toi", "%d on you"), sacs)
-    return { icone = icone, texte = nom, droite = droite, couleurDroite = bas and ROUGE or BLANC,
+    return { icone = icone, texte = nom, droite = droite, couleur = NORMAL, couleurDroite = bas and ROUGE or NORMAL,
         infobulle = function(tt)
             if tt.SetItemByID then pcall(tt.SetItemByID, tt, o.id) else tt:AddLine(nom) end
             if (o.seuil or 0) > 0 then tt:AddLine(string.format(T("Conseillé : %d sur toi", "Advised : %d on you"), o.seuil), 1, 0.82, 0) end
         end }
 end
 
-local function BlocsObjets()
-    local classe = E().Classe()
-    local niveau = E().Niveau()
-    local b = { titre = T("Sur toi et en banque", "On you and in bank"), lignes = {} }
-    for _, o in ipairs(E().ObjetsUtiles(classe, niveau)) do
-        local l = LigneObjet(o)
-        if l then table.insert(b.lignes, l) end
+local function ObjetsUtiles(p)
+    local res = {}
+    for _, o in ipairs(E().Donnees(p.classe).objets or {}) do
+        if (p.niveau or 1) >= (o.niveau or 1) and (not o.jusqua or (p.niveau or 1) <= o.jusqua) then table.insert(res, o) end
     end
-    local blocs = { b }
-    if classe == "HUNTER" then
+    return res
+end
+
+local function BlocsObjets()
+    local p = F.Profil()
+    if not p then return {} end
+    local b = { titre = T("Sur toi et en banque", "On you and in bank"), lignes = {} }
+    if p.releve then
+        for _, o in ipairs(ObjetsUtiles(p)) do
+            local l = LigneObjet(o, p)
+            if l then table.insert(b.lignes, l) end
+        end
+    end
+    if p.connecte and p.classe == "HUNTER" then
         local n, icone = E().Munitions()
         if n then
             table.insert(b.lignes, 1, { icone = icone or "Interface\\Icons\\INV_Ammo_Arrow_02", texte = T("Munitions équipées", "Equipped ammo"),
-                droite = tostring(n), couleurDroite = n < 200 and ROUGE or BLANC })
+                droite = tostring(n), couleurDroite = n < 200 and ROUGE or NORMAL })
         end
     end
-    -- Plus tard : ce qui servira aux niveaux suivants.
+    local blocs = { b }
     local plusTard = { titre = T("Plus tard", "Later"), lignes = {} }
-    for _, o in ipairs(E().Donnees(classe).objets or {}) do
-        if niveau < (o.niveau or 1) then
+    for _, o in ipairs(E().Donnees(p.classe).objets or {}) do
+        if (p.niveau or 1) < (o.niveau or 1) then
             local nom, icone = E().Objet(o.id)
             if nom then
                 table.insert(plusTard.lignes, { icone = icone, gris = true, texte = nom, couleur = GRIS,
@@ -418,7 +595,10 @@ local function BlocsObjets()
             end
         end
     end
-    if #b.lignes == 0 then b.vide = T("Aucun objet de classe à ce niveau.", "No class item at this level.") end
+    if #b.lignes == 0 then
+        b.vide = p.releve and T("Aucun objet de classe à ce niveau.", "No class item at this level.")
+            or T("Connecte ce personnage une fois pour relever ses objets.", "Log in this character once to read its items.")
+    end
     if #plusTard.lignes > 0 then table.insert(blocs, plusTard) end
     return blocs
 end
@@ -427,115 +607,120 @@ end
 -- Ma classe : l'essentiel
 -- ---------------------------------------------------------------------------
 
-local function NomDeClasse(classe)
-    local t = _G.LOCALIZED_CLASS_NAMES_MALE
-    return (t and t[classe]) or classe or ""
-end
-
 local function BlocsClasse()
-    local classe = E().Classe()
-    local niveau = E().Niveau()
+    local p = F.Profil()
+    if not p then return {} end
     local blocs = {}
-    -- Quetes
-    local bq = { titre = T("Quêtes de classe", "Class quests"), lignes = {} }
-    if Q().BaseDisponible() and Q().Pret() then
-        local p = Q().Moi()
-        local r = Q().Resume(p, true)
-        bq.droite = string.format(r.finies <= 1 and T("%d chaîne finie sur %d", "%d of %d chains finished") or T("%d chaînes finies sur %d", "%d of %d chains finished"), r.finies, r.total)
+    -- Quetes a faire maintenant
+    local bq = { titre = T("Quêtes de classe à faire", "Class quests to do"), lignes = {} }
+    local attente = ChargementQuetes()
+    if attente then bq.vide = attente
+    else
+        local r = Q().Resume(p, p.connecte)
+        bq.droite = string.format(r.finies <= 1 and T("%d suite finie sur %d", "%d of %d chains finished") or T("%d suites finies sur %d", "%d of %d chains finished"), r.finies, r.total)
         for i, c in ipairs(r.maintenant) do
-            if i > 5 then break end
+            if i > 6 then break end
+            local suivante
+            for _, e in ipairs(c.etapes) do if e.etat == "cours" or e.etat == "prendre" then suivante = e break end end
             local aGuider = Q().AGuider(c)
-            local l = { icone = c.etat == "cours" and ICONES_ETAT.cours or ICONES_ETAT.prendre, texte = c.titre, couleur = OR,
-                droite = string.format("%d / %d", c.faites, c.total), couleurDroite = GRIS,
+            local l = { quete = c.etat == "cours" and "cours" or "prendre", texte = c.titre, couleur = NORMAL,
+                droite = c.total > 1 and string.format(T("Étape %d sur %d", "Step %d of %d"), suivante and suivante.numero or c.faites + 1, c.total)
+                    or (c.etat == "cours" and T("En cours", "In progress") or T("À prendre", "Available")),
                 clic = function() if F.w then F.w.page = "quetes" end end,
                 infobulle = function(tt)
                     tt:AddLine(c.titre)
                     for _, e in ipairs(c.etapes) do
-                        local col = e.etat == "faite" and VERT or (e.etat == "cours" or e.etat == "prendre") and OR or GRIS
-                        tt:AddDoubleLine(e.nom, Q().LibelleEtat(e), 0.9, 0.9, 0.9, col[1], col[2], col[3])
+                        local col = CouleurEtape(e.etat)
+                        tt:AddDoubleLine(string.format("%d. %s", e.numero or 0, e.nom), Q().LibelleEtat(e), col[1], col[2], col[3], col[1], col[2], col[3])
                     end
                 end }
-            if #aGuider > 0 and _G.QuestCoreAPI and _G.QuestCoreAPI.GuiderQuetes then
+            if p.connecte and #aGuider > 0 and _G.QuestCoreAPI and _G.QuestCoreAPI.GuiderQuetes then
                 l.bouton = { texte = T("Guider", "Guide"), action = function() Guider(aGuider) end }
             end
             table.insert(bq.lignes, l)
         end
         if #bq.lignes == 0 then bq.vide = T("Rien à prendre pour le moment.", "Nothing to take for now.") end
-    elseif Q().BaseDisponible() then
-        Q().Indexer()
-        Q().QuandPret(function() if F.w then pcall(F.w.Rendre) end end)
-        bq.vide = T("Lecture de la base de quêtes...", "Reading the quest database...")
-    else
-        bq.vide = T("Il faut QuestieDB, la base de quêtes.", "QuestieDB, the quest database, is needed.")
     end
     table.insert(blocs, bq)
     -- Sorts a apprendre maintenant
     local bs = { titre = T("À apprendre chez le maître", "To learn at the trainer"), lignes = {} }
-    local camp = E().Camp()
-    for _, section in ipairs(E().Donnees(classe).sorts or {}) do
-        for _, s in ipairs(section.liste) do
-            if E().PourLeCamp(s, camp) and not s.talent and niveau >= (s[2] or 1) and not E().SortConnu(s[1]) then
-                local l = LigneSort(s)
-                if l then table.insert(bs.lignes, l) end
-            end
+    if p.releve then
+        local total = 0
+        for _, g in ipairs(NS.sorts.Liste(p.classe)) do
+            local l, etat, cout = nil, nil, 0
+            if NS.sorts.PourProfil(g, p) then l, etat, cout = LigneDeSort(g, p) end
+            if l and etat == "apprendre" then table.insert(bs.lignes, l) total = total + (cout or 0) end
         end
+        if total > 0 then bs.droite = string.format(T("En tout : %s", "Total : %s"), NS.sorts.Cout(total)) end
+        if #bs.lignes == 0 then bs.vide = T("Tout est appris pour ce niveau.", "Everything is learned for this level.") end
+    else
+        bs.vide = T("Connecte ce personnage une fois pour relever ses sorts.", "Log in this character once to read its spells.")
     end
-    if #bs.lignes == 0 then bs.vide = T("Tout est appris pour ton niveau.", "Everything is learned for your level.") end
     table.insert(blocs, bs)
     -- Objets
-    local bo = { titre = T("Objets de classe", "Class items"), lignes = {} }
-    for _, o in ipairs(E().ObjetsUtiles(classe, niveau)) do
-        local l = LigneObjet(o)
-        if l then table.insert(bo.lignes, l) end
+    if p.releve then
+        local bo = { titre = T("Objets de classe", "Class items"), lignes = {} }
+        for _, o in ipairs(ObjetsUtiles(p)) do
+            local l = LigneObjet(o, p)
+            if l then table.insert(bo.lignes, l) end
+        end
+        if #bo.lignes > 0 then table.insert(blocs, bo) end
     end
-    if classe == "HUNTER" then
-        local n, icone = E().Munitions()
-        if n then table.insert(bo.lignes, 1, { icone = icone or "Interface\\Icons\\INV_Ammo_Arrow_02", texte = T("Munitions équipées", "Equipped ammo"),
-            droite = tostring(n), couleurDroite = n < 200 and ROUGE or BLANC }) end
-    end
-    if #bo.lignes > 0 then table.insert(blocs, bo) end
-    -- Familier
-    if classe == "HUNTER" and NS.familiers then
+    if p.connecte and p.classe == "HUNTER" and NS.familiers then
         local b = NS.familiers.BlocMonFamilier()
         if b then table.insert(blocs, b) end
     end
-    -- Druide : formes
-    if classe == "DRUID" then
+    if p.connecte and p.classe == "DRUID" then
         local n = E().FormesRestantes()
         table.insert(blocs, { titre = T("Changements de forme", "Shapeshifts"), lignes = { {
             icone = select(2, E().Sort(768)) or select(2, E().Sort(5487)),
             texte = T("Possibles avec ta mana", "Possible with your mana"),
-            droite = n and tostring(n) or T("Hors combat", "Out of combat"), couleurDroite = (n and n < 1) and ROUGE or BLANC } } })
+            droite = n and tostring(n) or T("Hors combat", "Out of combat"), couleurDroite = (n and n < 1) and ROUGE or NORMAL } } })
     end
     return blocs
+end
+
+local function NomDuPerso()
+    local cle = F.Cle() or ""
+    return cle:match("^(.-) %- ") or cle
 end
 
 local function PageClasse()
     return Page("classe", "Interface\\Icons\\INV_Misc_Book_09",
         function() return T("Ma classe", "My class") end,
         function()
-            local c, n = NomDeClasse(E().Classe()), E().Niveau()
-            return T(string.format("%s de niveau %d", c, n), string.format("Level %d %s", n, c))
+            local p = F.Profil() or {}
+            local c, n = NomDeClasse(p.classe), p.niveau or 1
+            return T(string.format("%s, %s de niveau %d", NomDuPerso(), c, n), string.format("%s, level %d %s", NomDuPerso(), n, c))
         end,
-        function() return T("L'essentiel de ta classe : les quêtes à faire maintenant, les sorts à apprendre chez le maître et ce qu'il faut avoir sur toi.",
-            "Your class at a glance : quests to do now, spells to learn at the trainer and what to carry.") end,
+        function() return T("Les quêtes de classe à faire maintenant, les sorts à apprendre chez le maître et ce qu'il faut avoir sur soi.",
+            "Class quests to do now, spells to learn at the trainer and what to carry.") end,
         BlocsClasse)
+end
+
+local function PageQuetes()
+    return Page("quetes", "Interface\\Icons\\INV_Misc_Book_08",
+        function() return T("Quêtes de classe", "Class quests") end,
+        function() return string.format(T("Les quêtes de classe de %s", "%s's class quests"), NomDuPerso()) end,
+        function() return T("Chaque suite de quêtes de la classe, étape par étape. En vert : fait. Texte normal : à faire maintenant. En gris : plus tard.",
+            "Every class quest chain, step by step. Green : done. Normal text : to do now. Grey : later.") end,
+        BlocsQuetes)
 end
 
 local function PageSorts()
     return Page("sorts", "Interface\\Icons\\INV_Misc_Book_11",
         function() return T("Sorts de classe", "Class spells") end,
-        function() return T("Les sorts de ta classe", "Your class spells") end,
-        function() return T("Par famille : appris, à apprendre chez le maître (ton niveau suffit), ou plus tard. Le survol montre le sort du jeu.",
-            "By family : learned, to learn at the trainer (your level is enough), or later. Hover to see the game's spell.") end,
+        function() return string.format(T("Les sorts de %s", "%s's spells"), NomDuPerso()) end,
+        function() return T("Tous les sorts du maître, par arbre. En vert : appris. Texte normal : à apprendre maintenant, avec le coût. En gris : plus tard. Le survol donne chaque rang.",
+            "Every trainer spell, by tree. Green : learned. Normal text : to learn now, with the cost. Grey : later. Hover for every rank.") end,
         BlocsSorts)
 end
 
 local function PageObjets()
     return Page("objets", "Interface\\Icons\\INV_Misc_Bag_10",
         function() return T("Objets de classe", "Class items") end,
-        function() return T("Ce qu'il faut avoir sur toi", "What to carry") end,
-        function() return T("Réactifs et objets de classe : combien sur toi, combien en banque. En rouge sous la quantité conseillée.",
+        function() return string.format(T("Ce que %s doit avoir sur soi", "What %s should carry"), NomDuPerso()) end,
+        function() return T("Réactifs et objets de classe : combien sur soi, combien en banque. En rouge sous la quantité conseillée.",
             "Reagents and class items : how many on you, how many in the bank. Red below the advised amount.") end,
         BlocsObjets)
 end
@@ -570,7 +755,6 @@ local function PageReglages()
         end }
 end
 
--- La page de la suite complete (ClassCore installe seul).
 local ADRESSE_SUITE = "https://www.curseforge.com/projects/1817365"
 local function PageSuite()
     return { cle = "suite", icone = "Interface\\Icons\\INV_Misc_Book_11",
@@ -597,24 +781,78 @@ local function PageSuite()
         end }
 end
 
+-- ---------------------------------------------------------------------------
+-- La fenetre
+-- ---------------------------------------------------------------------------
+
+local TAILLE_PORTRAIT = 30
+local function RendreBande()
+    local w = F.w
+    local S = Su()
+    if not (w and w.bande and S and S.BandePersos) then return end
+    local cles = S.BandePersos(w.bande, { choisi = F.Cle(), auClic = function(cle)
+        ChoisirPerso(cle)
+        if F.w then F.w.Rendre() end
+    end })
+    w.bande.ordre = cles
+end
+
+-- Croix gauche / droite (hors de la page) : personnage precedent / suivant.
+local function Manette(bouton)
+    if bouton ~= "PADDLEFT" and bouton ~= "PADDRIGHT" then return false end
+    local ordre = F.w and F.w.bande and F.w.bande.ordre or {}
+    if #ordre < 2 then return true end
+    local actuel = F.Cle()
+    local rang = 1
+    for i, c in ipairs(ordre) do if c == actuel then rang = i end end
+    rang = rang + (bouton == "PADDRIGHT" and 1 or -1)
+    if rang < 1 then rang = #ordre elseif rang > #ordre then rang = 1 end
+    ChoisirPerso(ordre[rang])
+    if F.w then F.w.Rendre() end
+    return true
+end
+
+local function AvecChasseur()
+    if E().Classe() == "HUNTER" then return true end
+    local S = Su()
+    for _, p in ipairs(S and S.ListePersos and S.ListePersos() or {}) do if p.classe == "HUNTER" then return true end end
+    for _, p in pairs(Q().Persos()) do if type(p) == "table" and p.classe == "HUNTER" then return true end end
+    return false
+end
+
 function F.Construire()
-    local Su = S()
-    if F.w or not (Su and Su.FenetreAPages) then return F.w end
+    local S = Su()
+    if F.w or not (S and S.FenetreAPages) then return F.w end
     local pages = { PageClasse(), PageQuetes(), PageSorts(), PageObjets() }
-    if E().Classe() == "HUNTER" and NS.familiers then table.insert(pages, NS.familiers.Page(Page)) end
+    if NS.familiers and AvecChasseur() then table.insert(pages, NS.familiers.Page(Page)) end
     table.insert(pages, PageReglages())
-    if Su.Seul and Su.Seul() then table.insert(pages, PageSuite()) end
-    F.w = Su.FenetreAPages({
+    if S.Seul and S.Seul() then table.insert(pages, PageSuite()) end
+    F.w = S.FenetreAPages({
         nom = "ClassCoreFenetre", cle = "ClassCore", icone = NS.classes.ICONE[E().Classe() or ""] or "Interface\\Icons\\INV_Misc_Book_09",
         titre = function() return "ClassCore" end,
         pages = pages,
+        manette = Manette,
     })
-    return F.w
+    local w = F.w
+    if w and w.cadre then
+        local cadre = w.cadre
+        local bande = CreateFrame("Frame", nil, cadre)
+        bande:SetPoint("LEFT", cadre.entete or cadre, "LEFT", 0, 0)
+        bande:SetPoint("RIGHT", cadre.entete or cadre, "RIGHT", 0, 0)
+        bande:SetHeight(TAILLE_PORTRAIT + 4)
+        w.bande = bande
+        local rendre = w.Rendre
+        w.Rendre = function(...)
+            pcall(RendreBande)
+            return rendre(...)
+        end
+    end
+    return w
 end
 
 function F.Ouvrir()
-    local Su = S()
-    if F.Construire() and Su and Su.Ouvrir then Su.Ouvrir("ClassCore") return true end
+    local S = Su()
+    if F.Construire() and S and S.Ouvrir then S.Ouvrir("ClassCore") return true end
     return false
 end
 
@@ -622,7 +860,6 @@ function F.Actualiser()
     if F.w and F.w.cadre and F.w.cadre:IsShown() then pcall(F.w.Rendre) end
 end
 
--- La fenetre ouverte se tient a jour (sacs, sorts appris, noms charges).
 do
     local f = CreateFrame("Frame")
     for _, ev in ipairs({ "BAG_UPDATE_DELAYED", "SPELLS_CHANGED", "GET_ITEM_INFO_RECEIVED", "QUEST_LOG_UPDATE", "UNIT_PET" }) do

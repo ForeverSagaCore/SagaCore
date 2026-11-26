@@ -71,8 +71,6 @@ D.FAMILLES = {
       regime = { "poisson", "pain", "champignons", "fruits" }, techniques = { "Claw", "Cower" }, unique = "Pinch" },
     { cle = "Crocolisk", nom = function() return T("Crocilisque", "Crocolisk") end, icone = "Interface\\Icons\\Ability_Hunter_Pet_Crocolisk",
       regime = { "viande", "poisson" }, techniques = { "Bite", "Cower" }, unique = "Dismember" },
-    { cle = "Fox", nom = function() return T("Renard", "Fox") end, icone = "Interface\\Icons\\Ability_Hunter_Pet_Wolf",
-      regime = { "fruits", "viande" }, techniques = { "Bite", "Cower", "Dash" }, unique = "Trickster's Dance", forever = true },
     { cle = "Gorilla", nom = function() return T("Gorille", "Gorilla") end, icone = "Interface\\Icons\\Ability_Hunter_Pet_Gorilla",
       regime = { "fruits", "champignons" }, techniques = { "Bite", "Cower", "Thunderstomp" }, unique = "Thunderstomp" },
     { cle = "Hyena", nom = function() return T("Hyène", "Hyena") end, icone = "Interface\\Icons\\Ability_Hunter_Pet_Hyena",
