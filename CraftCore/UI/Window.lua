@@ -566,7 +566,7 @@ local function PoserBoutonFabriquer(ligne, recette, nombre)
         if not ligne.barreFab then ligne.barreFab = NS.actions.BarreDeSerie(ligne) end
         local barre = ligne.barreFab
         barre:ClearAllPoints()
-        barre:SetSize(52, 10)
+        barre:SetSize(b:GetWidth() or 60, b:GetHeight() or 20)
         barre:SetPoint("CENTER", b, "CENTER", 0, 0)
         barre:SetFrameLevel(ligne:GetFrameLevel() + 3)
         barre:Poser(serie.reussis, serie.total)
@@ -5788,7 +5788,7 @@ local function Construire()
     -- La barre d'incantation du jeu (celle des metiers), en plus court.
     local fab = NS.actions.BarreDeSerie(barre)
     fab.sansEncre = true
-    fab:SetSize(180, 10)
+    fab:SetSize(180, 18)
     fab:SetPoint("CENTER", barre, "CENTER", 0, 0)
     fab:SetMinMaxValues(0, 1)
     fab.texte:SetWordWrap(false)
