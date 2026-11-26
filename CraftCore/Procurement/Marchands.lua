@@ -781,6 +781,70 @@ local function Fabricables()
     return rendu
 end
 
+-- Onglet Rentabilite : TOUTES les recettes apprises du personnage connecte
+-- dont l'objet se vend, qu'on ait les composants ou non. { recette, n (ce
+-- qu'on peut deja fabriquer), valeur }, ce qui rapporte le plus d'abord (prix
+-- de vente d'une fabrication) ; sans prix releve, a la fin.
+function encheres.ToutesMesFabrications()
+    local rendu = {}
+    local cle = NS.ClePersonnage and NS.ClePersonnage()
+    pcall(NS.base.AvecPersonnage, cle, function()
+        for _, r in ipairs(NS.recettes.Pour(nil)) do
+            if r.objetProduit and NS.recettes.EstApprise(r.id) and not Lie(r.objetProduit) then
+                local n = NS.recettes.CombienFabricablesAPortee(r) or 0
+                local v = encheres.Valeur(r) or {}
+                local parFois = math.max(1, tonumber(r.quantiteMin) or 1)
+                table.insert(rendu, { recette = r, n = n, valeur = v, parFois = parFois,
+                    rapporte = v.vente and v.vente * parFois or nil,
+                    benefice = v.benefice and v.benefice * parFois or nil })
+            end
+        end
+    end)
+    table.sort(rendu, function(a, b)
+        local ra, rb = a.rapporte or -1, b.rapporte or -1
+        if ra ~= rb then return ra > rb end
+        return tostring(a.recette.nom) < tostring(b.recette.nom)
+    end)
+    return rendu
+end
+-- A relever pour l'onglet Rentabilite : les objets de toutes mes recettes, et
+-- leurs composants (hors marchands).
+function encheres.ObjetsDeToutesMesFabrications()
+    local vus, liste = {}, {}
+    local function Ajouter(objet)
+        objet = tonumber(objet)
+        if objet and not vus[objet] and not marchands.Achetable(objet) then
+            vus[objet] = true
+            table.insert(liste, objet)
+        end
+    end
+    for _, f in ipairs(encheres.ToutesMesFabrications()) do
+        Ajouter(f.recette.objetProduit)
+        for _, c in ipairs(f.recette.composants or {}) do Ajouter(c.objet) end
+    end
+    return liste
+end
+
+-- Ce que rapporterait un projet au prix du moment : { vente, benefice
+-- (si tous les composants ont un prix), complet (tous les objets ont un prix) }.
+function encheres.ValeurDuProjet(projet)
+    local vente, cout, complet, coutComplet = 0, 0, true, true
+    local cat = NS.recettes.Toutes and NS.recettes.Toutes() or {}
+    for _, e in ipairs(type(projet) == "table" and projet.objets or {}) do
+        local r = cat[e.recette] or cat[tostring(e.recette)]
+        local q = tonumber(e.quantite) or 1
+        if type(r) == "table" then
+            local v = encheres.Valeur(r) or {}
+            local parFois = math.max(1, tonumber(r.quantiteMin) or 1)
+            if v.vente then vente = vente + v.vente * parFois * q else complet = false end
+            if v.cout then cout = cout + v.cout * q else coutComplet = false end
+        else
+            complet = false
+        end
+    end
+    return { vente = vente, benefice = (complet and coutComplet) and (vente - cout) or nil, complet = complet }
+end
+
 -- A relever pour estimer ce qu'on fabrique : les objets et leurs composants
 -- (hors marchands).
 function encheres.ObjetsDesFabrications()

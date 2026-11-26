@@ -4639,23 +4639,28 @@ local function Pilote()
         local d = depart and Boite(depart)
         if not d then return end
         local meilleur, scoreMin
-        for _, e in ipairs(liste) do
-            -- Les onglets ont leur propre navigation (LB / RB, LT / RT) : la
-            -- croix ne s'y arrete pas.
-            local b = e ~= depart and not e.ongletPilote and not e.pasPilote and Boite(e)
-            if b then
-                local score
-                if dy ~= 0 then
-                    local avance = (dy > 0) and (d.y - b.y) or (b.y - d.y)
-                    if avance > 4 then score = avance * 4 + math.abs(b.x - d.x) * 0.5 end
-                else
-                    local memeLigne = math.abs(b.y - d.y) < math.max(d.h, b.h) / 2 + 2
-                    local avance = (dx > 0) and (b.x - d.x) or (d.x - b.x)
-                    if memeLigne and avance > 2 then score = avance end
+        -- Les onglets ont aussi leur navigation (LB / RB, LT / RT). La croix
+        -- y va quand rien d'autre n'est dans cette direction (en haut de la
+        -- liste), et passe d'un onglet a l'autre quand on y est.
+        local function Chercher(avecOnglets)
+            for _, e in ipairs(liste) do
+                local b = e ~= depart and (avecOnglets or not e.ongletPilote) and not e.pasPilote and Boite(e)
+                if b then
+                    local score
+                    if dy ~= 0 then
+                        local avance = (dy > 0) and (d.y - b.y) or (b.y - d.y)
+                        if avance > 4 then score = avance * 4 + math.abs(b.x - d.x) * 0.5 end
+                    else
+                        local memeLigne = math.abs(b.y - d.y) < math.max(d.h, b.h) / 2 + 2
+                        local avance = (dx > 0) and (b.x - d.x) or (d.x - b.x)
+                        if memeLigne and avance > 2 then score = avance end
+                    end
+                    if score and (not scoreMin or score < scoreMin) then meilleur, scoreMin = e, score end
                 end
-                if score and (not scoreMin or score < scoreMin) then meilleur, scoreMin = e, score end
             end
         end
+        Chercher(depart.ongletPilote and dx ~= 0)
+        if not meilleur then Chercher(true) end
         if meilleur then p.choix = meilleur end
     end
     function p.Onglet(pas, niveau)

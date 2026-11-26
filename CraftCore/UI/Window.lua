@@ -2921,6 +2921,23 @@ local function RendreListeDeProjets(contenu, progressions)
             else
                 index, y = RendreEntrees(contenu, projet.id, index, y, 1)
             end
+            -- Projet commercial : ce qu'il rapporterait au prix du moment a
+            -- l'hotel des ventes (quantites reglees ci-dessus).
+            if projet.commercial and NS.encheres and NS.encheres.ValeurDuProjet then
+                local okV, v = pcall(NS.encheres.ValeurDuProjet, projet)
+                if okV and v then
+                    local texte
+                    if v.vente > 0 and v.benefice then
+                        texte = string.format(L.AH_TRADE_GAIN_PROFIT, NS.marchands.Monnaie(v.vente),
+                            (v.benefice >= 0 and "|cff4fd16a" or "|cffff6060-") .. NS.marchands.Monnaie(math.abs(v.benefice)) .. "|r")
+                    elseif v.vente > 0 then
+                        texte = string.format(L.AH_TRADE_GAIN, NS.marchands.Monnaie(v.vente))
+                    else
+                        texte = L.AH_TRADE_GAIN_NONE
+                    end
+                    y = Paragraphe(contenu, y + 4, texte, "GameFontHighlightSmall")
+                end
+            end
 
             -- Actions du projet, sur leur propre ligne.
             local cles = { "renommer" .. projet.id, "archiver" .. projet.id, "supprimer" .. projet.id }
