@@ -1174,25 +1174,56 @@ function Suite.PoserVisagePerso(texture, p)
     local vivant = Calque(texture, "calqueVivant", 1)
     local depose = Calque(texture, "calqueDepose", 2)
     vivant:Hide() depose:Hide()
+    -- Le vrai portrait et l'image deposee, decoupes en rond.
+    for _, c in ipairs({ vivant, depose }) do
+        if c.SetMask and not c.rond then c.rond = true pcall(c.SetMask, c, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+    end
     pcall(texture.SetTexCoord, texture, 0, 1, 0, 1)
     -- L'icone ronde de la classe, celle du jeu (recherche de groupe, cadre
     -- de cible), dans un anneau a la couleur de la classe.
+    local rond = Suite.IconeRondeDeClasse(texture, p.classe)
     local coords = _G.CLASS_ICON_TCOORDS and p.classe and _G.CLASS_ICON_TCOORDS[p.classe]
-    if coords then
-        texture:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
-        pcall(texture.SetTexCoord, texture, coords[1], coords[2], coords[3], coords[4])
-    else
-        texture:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+    if not rond then
+        if coords then
+            texture:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
+            pcall(texture.SetTexCoord, texture, coords[1], coords[2], coords[3], coords[4])
+        else
+            texture:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+        end
     end
+    -- L'anneau de couleur : seulement autour du vrai portrait (l'icone ronde
+    -- du jeu a deja le sien).
     local anneau = texture:GetParent() and texture:GetParent().anneauClasse
     if anneau then
         local c = _G.RAID_CLASS_COLORS and p.classe and _G.RAID_CLASS_COLORS[p.classe]
         anneau:SetDesaturated(c ~= nil)
         if c then anneau:SetVertexColor(c.r, c.g, c.b) else anneau:SetVertexColor(1, 1, 1) end
+        anneau:SetShown(p.moi == true or not rond)
     end
     if p.moi and SetPortraitTexture and pcall(SetPortraitTexture, vivant, "player") then vivant:Show() end
     local ok, reussi = pcall(depose.SetTexture, depose, "Interface\\AddOns\\SagaCorePortraits\\" .. tostring(p.nom))
     if ok and reussi ~= false then depose:Show() end
+end
+
+-- L'icone ronde de classe du jeu, celle de la recherche de groupe : un
+-- cercle a la couleur de la classe, son embleme dedans. Rend true si le
+-- client la connait (atlas), et la pose.
+local ATLAS_CLASSE = { "groupfinder-icon-class-%s", "classicon-%s", "GarrMission_ClassIcon-%s" }
+function Suite.IconeRondeDeClasse(texture, classe)
+    if not (texture and texture.SetAtlas and type(classe) == "string") then return false end
+    local info = _G.C_Texture and _G.C_Texture.GetAtlasInfo
+    local noms = {}
+    for _, modele in ipairs(ATLAS_CLASSE) do table.insert(noms, string.format(modele, string.lower(classe))) end
+    -- Le nom que le client donne lui-meme pour cette classe.
+    local okA, duJeu = pcall(_G.GetClassAtlas or function() end, classe)
+    if okA and type(duJeu) == "string" then table.insert(noms, 2, duJeu) end
+    for _, nom in ipairs(noms) do
+        if not info or info(nom) then
+            local ok, pose = pcall(texture.SetAtlas, texture, nom)
+            if ok and pose ~= false then return true end
+        end
+    end
+    return false
 end
 
 -- Un visage rond : la texture masquee en cercle et un anneau a la couleur
@@ -1200,12 +1231,13 @@ end
 -- lignes de personnage des fenetres.
 function Suite.AnneauDeClasse(texture, classe)
     if not (texture and texture.GetParent) then return end
+    if texture.anneauRond then texture.anneauRond:Hide() end
+    if Suite.IconeRondeDeClasse(texture, classe) then return true end
     local a = texture.anneauRond
     if not a then
         a = texture:GetParent():CreateTexture(nil, "OVERLAY")
         a:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
         texture.anneauRond = a
-        if texture.SetMask then pcall(texture.SetMask, texture, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
         if hooksecurefunc then
             hooksecurefunc(texture, "Hide", function() a:Hide() end)
             hooksecurefunc(texture, "Show", function() a:Show() end)
@@ -1235,7 +1267,6 @@ local function PortraitDeBande(bande)
     b.visage = b:CreateTexture(nil, "ARTWORK")
     b.visage:SetPoint("TOPLEFT", 2, -2)
     b.visage:SetPoint("BOTTOMRIGHT", -2, 2)
-    if b.visage.SetMask then pcall(b.visage.SetMask, b.visage, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
     b.anneauClasse = b:CreateTexture(nil, "OVERLAY")
     b.anneauClasse:SetSize(TAILLE_PORTRAIT_BANDE * 1.7, TAILLE_PORTRAIT_BANDE * 1.7)
     b.anneauClasse:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
@@ -7636,6 +7667,15 @@ function Suite.FenetreAPages(o)
     w.cadre = cadre
     local portrait = cadre.portrait or (cadre.PortraitContainer and cadre.PortraitContainer.portrait)
     if portrait then portrait:SetTexture(o.icone) end
+    -- La bande des personnages en haut, la meme dans toutes les fenetres de
+    -- la suite (o.sansBande : la fenetre pose la sienne).
+    if not o.sansBande then
+        local bande = CreateFrame("Frame", nil, cadre)
+        bande:SetPoint("LEFT", cadre.entete or cadre, "LEFT", 0, 0)
+        bande:SetPoint("RIGHT", cadre.entete or cadre, "RIGHT", 0, 0)
+        bande:SetHeight(34)
+        w.bande = bande
+    end
 
     local menu = CreateFrame("Frame", nil, cadre)
     menu:SetPoint("TOPLEFT", cadre.zone, "TOPLEFT", 0, 0)
@@ -7889,6 +7929,18 @@ function Suite.FenetreAPages(o)
     function w.Rendre()
         if not cadre:IsShown() then return end
         if not fondMenu:IsShown() then pcall(charte.FondDuJournal, fondMenu) end
+        if w.bande and not o.sansBande then
+            pcall(function()
+                local choisi = o.persoChoisi and o.persoChoisi()
+                if not choisi then
+                    for _, p in ipairs(Suite.ListePersos()) do if p.moi then choisi = p.cle end end
+                end
+                w.bande.ordre = Suite.BandePersos(w.bande, { choisi = choisi, auClic = o.choisirPerso and function(cle)
+                    o.choisirPerso(cle)
+                    w.Rendre()
+                end or nil })
+            end)
+        end
         local page = PageCourante()
         if cadre.titre then cadre.titre:SetText(o.titre()) end
         for cle, b in pairs(w.boutonsMenu) do
