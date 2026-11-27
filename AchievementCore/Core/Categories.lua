@@ -242,6 +242,8 @@ local function CategorieQuetes()
                     s.fait, s.total = s.fait + e.fait, s.total + e.total
                     local groupes = e.groupes
                     e.groupes = nil
+                    local nz = s.cle == "zones" and idx.niveauZone[e.cle]
+                    if nz then e.detail = string.format(T("Niveau %d  %d / %d", "Level %d  %d / %d"), nz, e.fait, e.total) end
                     e.Detail = function() return CriteresDeQuetes(ctx, idx, groupes) end
                 end
             end
@@ -433,18 +435,26 @@ local function CategorieDonjons()
                     local fait, total = 0, 0
                     if avecEntree then total = 1 if Un(Entre) then fait = 1 end end
                     total = total + #boss
-                    for _, b in ipairs(boss) do if Un(function(p) return Battu(p, b) end) then fait = fait + 1 end end
+                    local bossFaits, raresFaits, quetes, quetesFaites = 0, 0, 0, 0
+                    for _, b in ipairs(boss) do if Un(function(p) return Battu(p, b) end) then fait = fait + 1 bossFaits = bossFaits + 1 end end
                     local critRares = CriteresDeRares(ctx, raresIci, nomsBoss)
                     total = total + #critRares
-                    for _, c in ipairs(critRares) do if c.fait then fait = fait + 1 end end
+                    for _, c in ipairs(critRares) do if c.fait then fait = fait + 1 raresFaits = raresFaits + 1 end end
                     for _, g in ipairs(groupes) do
                         local q, faite = Groupe(ctx, idx, g, faites)
                         if q then
                             total = total + 1
-                            if faite then fait = fait + 1 end
+                            quetes = quetes + 1
+                            if faite then fait = fait + 1 quetesFaites = quetesFaites + 1 end
                         end
                     end
-                    Ajouter(res, s, { cle = "d" .. tostring(d.zone), nom = d.nom, ordre = rang,
+                    -- Le detail de la carte : boss, rares et quetes.
+                    local morceaux = {}
+                    if #boss > 0 then table.insert(morceaux, string.format(T("Boss %d/%d", "Bosses %d/%d"), bossFaits, #boss)) end
+                    if #critRares > 0 then table.insert(morceaux, string.format(T("Rares %d/%d", "Rares %d/%d"), raresFaits, #critRares)) end
+                    if quetes > 0 then table.insert(morceaux, string.format(T("Quêtes %d/%d", "Quests %d/%d"), quetesFaites, quetes)) end
+                    if avecEntree and not Un(Entre) and fait == 0 then morceaux = { T("Jamais entré", "Never entered") } end
+                    Ajouter(res, s, { cle = "d" .. tostring(d.zone), nom = d.nom, ordre = rang, detail = table.concat(morceaux, "  "),
                         icone = d.raid and "Interface\\Icons\\INV_Misc_Head_Dragon_01" or "Interface\\Icons\\INV_Misc_Key_14",
                         fait = fait, total = total,
                         Detail = function()
@@ -494,6 +504,7 @@ local function CategorieRares()
                     for _, x in ipairs(crit) do if x.fait then fait = fait + 1 end end
                     local niveau = liste[1] and liste[1].niveau or 0
                     Ajouter(res, s, { cle = zone, nom = NomDeZone(zone), ordre = niveau, zone = zone,
+                        detail = string.format(T("Niveau %d  %d / %d", "Level %d  %d / %d"), niveau, fait, #crit),
                         icone = "Interface\\Icons\\INV_Misc_Head_Dragon_Black", fait = fait, total = #crit,
                         Detail = function() return CriteresDeRares(ctx, liste) end })
                 end

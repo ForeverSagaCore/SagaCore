@@ -226,7 +226,7 @@ if not _G.SagaCoreUnifieur then
     end)
 end
 
-local VERSION = 151
+local VERSION = 152
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -7740,6 +7740,39 @@ function Suite.FenetreAPages(o)
         bande:SetHeight(34)
         w.bande = bande
     end
+    -- Precedent / suivant, tout a droite de l'en-tete (o.historique : la
+    -- fenetre tient l'historique de ce qu'on a regarde). Les fleches de page
+    -- du grimoire, comme les valeurs entre fleches.
+    if o.historique then
+        local function Fleche(sens)
+            local b = CreateFrame("Button", nil, cadre)
+            b:SetSize(26, 26)
+            local nom = sens < 0 and "PrevPage" or "NextPage"
+            b:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-" .. nom .. "-Up")
+            b:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-" .. nom .. "-Down")
+            b:SetDisabledTexture("Interface\\Buttons\\UI-SpellbookIcon-" .. nom .. "-Disabled")
+            b:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+            b:SetScript("OnClick", function()
+                if sens < 0 then pcall(o.historique.Reculer) else pcall(o.historique.Avancer) end
+            end)
+            b:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+                local ok, texte = pcall(o.historique.Libelle, sens)
+                GameTooltip:SetText((sens < 0 and TR("Précédent", "Back") or TR("Suivant", "Forward"))
+                    .. ((ok and texte) and (" : " .. texte) or ""), 1, 0.82, 0)
+                GameTooltip:Show()
+            end)
+            b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            return b
+        end
+        w.suivant = Fleche(1)
+        w.suivant:SetPoint("RIGHT", cadre.entete or cadre, "RIGHT", -4, 0)
+        w.precedent = Fleche(-1)
+        w.precedent:SetPoint("RIGHT", w.suivant, "LEFT", 0, 0)
+        if w.bande then
+            w.bande:SetPoint("RIGHT", w.precedent, "LEFT", -12, 0)
+        end
+    end
 
     local menu = CreateFrame("Frame", nil, cadre)
     menu:SetPoint("TOPLEFT", cadre.zone, "TOPLEFT", 0, 0)
@@ -7992,6 +8025,7 @@ function Suite.FenetreAPages(o)
 
     function w.Rendre()
         if not cadre:IsShown() then return end
+        if o.historique then pcall(o.historique.Noter) end
         if not fondMenu:IsShown() then pcall(charte.FondDuJournal, fondMenu) end
         if w.bande and not o.sansBande then
             pcall(function()
@@ -8026,6 +8060,12 @@ function Suite.FenetreAPages(o)
         -- Les controles se dessinent apres l'encre du parchemin : leurs
         -- couleurs (listes, panneaux sombres) restent les leurs.
         for _, c in ipairs(page.controles or {}) do pcall(c.Rendre) end
+        if o.historique then
+            local okR, r = pcall(o.historique.PeutReculer)
+            local okA, a = pcall(o.historique.PeutAvancer)
+            w.precedent:SetEnabled(okR and r == true)
+            w.suivant:SetEnabled(okA and a == true)
+        end
         if w.ApresRendu then w.ApresRendu() end
     end
 
@@ -8064,6 +8104,10 @@ function Suite.FenetreAPages(o)
     end
     local function Elements()
         local liste = {}
+        -- Les fleches precedent / suivant d'abord : croix haut y mene.
+        for _, f in ipairs({ w.precedent, w.suivant }) do
+            if f and f:IsVisible() and f:IsEnabled() then table.insert(liste, f) end
+        end
         Parcourir(contenu, liste, 1)
         return liste
     end
@@ -8172,7 +8216,8 @@ function Suite.FenetreAPages(o)
                 .. Glyphe("PADBACK") .. "  " .. TR("Naviguer dans la page", "Navigate the page") .. esp
                 .. Glyphe("PADDUP") .. " " .. Glyphe("PADDDOWN") .. "  " .. TR("Défiler", "Scroll") .. esp
                 .. Glyphe("PADLSTICK") .. " " .. Glyphe("PADRSTICK") .. "  " .. TR("Add-ons", "Add-ons") .. esp
-                .. Glyphe("PAD2") .. "  " .. TX("Close"))
+                .. Glyphe("PAD2") .. "  " .. ((o.historique and select(2, pcall(o.historique.PeutReculer)) == true)
+                    and TR("Précédent", "Back") or TX("Close")))
         end
         barre:SetWidth((barre.texte:GetStringWidth() or 400) + 24)
         barre:Show()
