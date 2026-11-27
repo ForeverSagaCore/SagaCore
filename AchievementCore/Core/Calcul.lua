@@ -242,8 +242,9 @@ local function Dater(cle, cleCat, faits)
     local init = NS.base.Table(f, "hautsFaitsInit")
     local maintenant = NS.Appeler(time) or 0
     for k, x in pairs(faits) do
+        if x.cat == cleCat and hf[k] and not hf[k].icone then hf[k].icone = x.icone end
         if x.cat == cleCat and not hf[k] then
-            hf[k] = { t = init[cleCat] and maintenant or 0, nom = x.nom, pts = x.pts }
+            hf[k] = { t = init[cleCat] and maintenant or 0, nom = x.nom, pts = x.pts, icone = x.icone }
         end
     end
     init[cleCat] = true
@@ -284,7 +285,7 @@ function calcul.Derniers(max)
         local f = NS.base.DB().persos[p.cle]
         for k, x in pairs(type(f) == "table" and type(f.hautsFaits) == "table" and f.hautsFaits or {}) do
             if type(x) == "table" and (x.t or 0) > 0 then
-                table.insert(liste, { cle = k, nom = x.nom, pts = x.pts, quand = x.t, perso = p })
+                table.insert(liste, { cle = k, nom = x.nom, pts = x.pts, quand = x.t, perso = p, icone = x.icone })
             end
         end
     end
