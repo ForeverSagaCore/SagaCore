@@ -195,7 +195,7 @@ local function CategorieQuetes()
             local faites = QuetesFaites(ctx)
             local res = { sous = {} }
             local sZones = Sous(res, "zones", T("Par zone", "By zone"), 1, "Interface\\Icons\\INV_Misc_Map_01")
-            local sSuites = Sous(res, "suites", T("Suites de quêtes", "Quest chains"), 2, "Interface\\Icons\\INV_Misc_Book_09")
+            local sSuites = Sous(res, "suites", T("Suites de quêtes de classe", "Class quest chains"), 2, "Interface\\Icons\\INV_Misc_Book_09")
             local sThemes = Sous(res, "themes", T("Classes, métiers et fêtes", "Classes, professions and holidays"), 3, "Interface\\Icons\\INV_Misc_Note_01")
             local sCamps = Sous(res, "camps", T("Par camp", "By side"), 4, "Interface\\Icons\\INV_BannerPVP_02")
             local parZone, parChaine, parCamp = {}, {}, {}
@@ -227,8 +227,11 @@ local function CategorieQuetes()
                         local ordre = (th and th.classe and 1) or (th and th.metier and 2) or (th and th.fete and 3) or 4
                         Compter(Element(sThemes, parZone, zone, ref.NomDeTheme(zone), ordre, "Interface\\Icons\\INV_Misc_Note_01"))
                     end
-                    if q.chaine and idx.chaines[q.chaine] then
-                        local c = idx.chaines[q.chaine]
+                    -- Seules les suites de quetes de classe comptent (les suites
+                    -- du jeu ordinaire ne sont pas des hauts faits).
+                    local c = q.chaine and idx.chaines[q.chaine]
+                    local thC = c and ref.THEMES[c.zone or 0]
+                    if c and thC and thC.classe then
                         Compter(Element(sSuites, parChaine, q.chaine, NomDeQuete(c.premiere), c.niveau or 0, "Interface\\Icons\\INV_Misc_Book_09"))
                     end
                     local camp = q.camp or "N"
@@ -400,7 +403,7 @@ local function CategorieDonjons()
                 local duJournal = rencontres and rencontres.parZone[d.zone]
                 if duJournal then
                     for _, b in ipairs(duJournal) do
-                        table.insert(boss, { cle = b.cle, nom = NomDeBoss(b), ids = b.ids })
+                        table.insert(boss, { cle = b.cle, nom = NomDeBoss(b), ids = b.ids, pnj = b.pnj })
                         nomsBoss[NS.Cle(b.nom)] = true
                     end
                 else
@@ -421,13 +424,46 @@ local function CategorieDonjons()
                     end
                 end
                 local groupes = groupesDe[d.zone] or {}
+                -- Un boss est aussi vaincu quand une quete faite demandait de
+                -- le tuer, ou un objet que lui seul donne : { [pnj] = { quetes } }.
+                local quetesDuBoss = {}
+                do
+                    local parPnj = {}
+                    for _, b in ipairs(boss) do if b.pnj then parPnj[b.pnj] = b end end
+                    if next(parPnj) then
+                        for _, g in ipairs(groupes) do
+                            for _, qid in ipairs(g.ids) do
+                                local obj = base.Lire("QuestDB", qid, "objectives")
+                                local function Noter(pnj)
+                                    if parPnj[pnj] then
+                                        quetesDuBoss[pnj] = quetesDuBoss[pnj] or {}
+                                        table.insert(quetesDuBoss[pnj], qid)
+                                    end
+                                end
+                                if type(obj) == "table" then
+                                    for _, o in ipairs(type(obj[1]) == "table" and obj[1] or {}) do Noter(tonumber(o[1])) end
+                                    for _, o in ipairs(type(obj[3]) == "table" and obj[3] or {}) do
+                                        local drops = base.Lire("ItemDB", tonumber(o[1]), "npcDrops")
+                                        if type(drops) == "table" and #drops == 1 then Noter(tonumber(drops[1])) end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
                 if d.forever or #boss > 0 or #groupes > 0 then
                     local function Entre(p) return persos.Instances(p.cle)[d.zone] == true end
                     local function Battu(p, b)
                         local t = persos.Boss(p.cle)[d.zone]
-                        if type(t) ~= "table" then return false end
-                        if t[b.cle] then return true end
-                        for id in pairs(b.ids or {}) do if t["renc:" .. id] then return true end end
+                        if type(t) == "table" then
+                            if t[b.cle] then return true end
+                            for id in pairs(b.ids or {}) do if t["renc:" .. id] then return true end end
+                        end
+                        local qs = b.pnj and quetesDuBoss[b.pnj]
+                        if qs then
+                            local f = persos.Quetes(p.cle)
+                            for _, qid in ipairs(qs) do if f[qid] then return true end end
+                        end
                         return false
                     end
                     local function Un(test) for _, p in ipairs(ctx.persos) do if test(p) then return true end end return false end

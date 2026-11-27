@@ -483,7 +483,11 @@ local function Depuis(quand)
     return string.format(T("il y a %d jours", "%d days ago"), jours)
 end
 
-local function TextePoints(n) return string.format(T("%s points", "%s points"), NS.Nombre(n)) end
+-- Les points obtenus, et sur combien (le maximum de la portee).
+local function TextePoints(n, sur)
+    if sur and sur > 0 then return string.format(T("%s / %s points", "%s / %s points"), NS.Nombre(n), NS.Nombre(sur)) end
+    return string.format(T("%s points", "%s points"), NS.Nombre(n))
+end
 
 -- La ligne d'un personnage : portrait, nom a sa couleur, niveau et race.
 local function DetailPerso(p)
@@ -758,7 +762,7 @@ local function RendreCompte(page)
     page.t1:SetText(T("Mon compte", "My account"))
     page.intro:SetText(T("Tout ce que le compte a fait, et tout ce qui reste, Alliance et Horde.",
         "Everything the account did, and everything left, Alliance and Horde."))
-    PoserPoints(page, TextePoints((calcul.Points("deux"))))
+    PoserPoints(page, TextePoints(calcul.Points("deux")))
     local y, nn = 0, 0
     y = Titre2(page, T("Mes personnages", "My characters"), y)
     local liste = {}
@@ -767,7 +771,7 @@ local function RendreCompte(page)
         local ptsP, possibleP = calcul.Points(pp)
         local v = possibleP > 0 and ptsP / possibleP or 0
         table.insert(liste, { perso = p, nom = p.nom, couleurNom = ref.CouleurDeClasse(p.classe), sous = DetailPerso(p),
-            droite = NS.Nombre(ptsP), barre = v, couleurBarre = Couleur(v, pp),
+            droite = NS.Nombre(ptsP) .. " / " .. NS.Nombre(possibleP), barre = v, couleurBarre = Couleur(v, pp),
             auClic = function() F.PoserPortee(pp) if F.w then F.w.page = "perso" end F.Defiler() F.Rendre() end })
     end
     y = Grille(page, y, liste)
@@ -856,7 +860,7 @@ local function RendrePerso(page)
     local v, n = calcul.Global(portee)
     if n > 0 then table.insert(morceaux, string.format(T("%d %% du jeu", "%d %% of the game"), math.floor(v * 100))) end
     y = Banniere(page, y, { perso = p, nom = p.nom, couleurNom = ref.CouleurDeClasse(p.classe), sous = table.concat(morceaux, ", "),
-        droite = TextePoints((calcul.Points(portee))), points = true, barre = n > 0 and v or 0, couleurBarre = Couleur(v, portee) })
+        droite = TextePoints(calcul.Points(portee)), points = true, barre = n > 0 and v or 0, couleurBarre = Couleur(v, portee) })
     local attente = TexteAttente()
     if attente then nn = nn + 1 y = Note2(page, nn, attente, y) end
     y = Titre2(page, T("Catégories", "Categories"), y)
@@ -1105,10 +1109,11 @@ end
 -- ---------------------------------------------------------------------------
 
 local function PointsDe(cleCat, portee)
-    local _, _, faits = calcul.Points(portee)
-    local n = 0
+    local _, _, faits, possibles = calcul.Points(portee)
+    local n, sur = 0, 0
     for _, x in pairs(faits or {}) do if x.cat == cleCat then n = n + x.pts end end
-    return n
+    for k, v in pairs(possibles or {}) do if k:match("^([^|]+)") == cleCat then sur = sur + v end end
+    return n, sur
 end
 
 local function IconeDePortee(portee)
