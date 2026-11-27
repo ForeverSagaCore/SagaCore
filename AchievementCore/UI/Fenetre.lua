@@ -534,7 +534,7 @@ end
 
 local C = NS.cartes
 local ECART = C.ECART
-local H_CAT, H_LIGNE = 48, 38
+local H_CAT, H_LIGNE, H_BARRE = 48, 38, 48
 
 -- Les cartes de chaque page, gardees d'un rendu a l'autre.
 local function Reserves(page)
@@ -555,26 +555,26 @@ local function Reserves(page)
         return f
     end)
     -- Carte de liste : icone (ou portrait), nom et valeur sur la ligne 1,
-    -- detail et barre sur la ligne 2.
+    -- detail sur la ligne 2, barre pleine largeur dessous (jamais sur un
+    -- texte).
     r.ligne = C.Reserve(function()
         local f = C.Panneau(z, true)
         f.ic = C.Icone(f, 26)
-        f.ic:SetPoint("LEFT", f, "LEFT", 6, 0)
         f.porteur = CreateFrame("Frame", nil, f)
         f.porteur:SetSize(26, 26)
-        f.porteur:SetPoint("LEFT", f, "LEFT", 6, 0)
         f.visage = f.porteur:CreateTexture(nil, "ARTWORK")
         f.visage:SetAllPoints()
-        f.droite = C.Texte(f, "GameFontNormal", C.OR, "RIGHT")
-        f.droite:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, -6)
+        f.droite = C.Texte(f, "chiffres", C.OR, "RIGHT")
+        f.droite:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -7)
         f.nom = C.Texte(f, "GameFontHighlight", C.BLANC)
-        f.nom:SetPoint("TOPLEFT", f, "TOPLEFT", 40, -6)
+        f.nom:SetPoint("TOPLEFT", f, "TOPLEFT", 42, -9)
         f.nom:SetPoint("RIGHT", f.droite, "LEFT", -8, 0)
         f.detail = C.Texte(f, "GameFontHighlightSmall", C.GRIS)
-        f.detail:SetPoint("TOPLEFT", f.nom, "BOTTOMLEFT", 0, -3)
+        f.detail:SetPoint("TOPLEFT", f.nom, "BOTTOMLEFT", 0, -4)
+        f.detail:SetPoint("RIGHT", f, "RIGHT", -10, 0)
         f.barre = C.Barre(f, 6)
-        f.barre:SetPoint("RIGHT", f, "RIGHT", -8, 0)
-        f.barre:SetPoint("TOP", f.detail, "TOP", 0, -2)
+        f.barre:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 42, 9)
+        f.barre:SetPoint("RIGHT", f, "RIGHT", -10, 0)
         return f
     end)
     r.titre = C.Reserve(function() return C.TitreDeColonne(z) end)
@@ -590,7 +590,13 @@ end
 -- couleurDroite, barre (0..1), couleurBarre, auClic, survol.
 local function CarteLigne(page, x, y, l, o)
     local f = Reserves(page).ligne.Prendre(page.zone)
-    C.Placer(f, page.zone, x, y, l, H_LIGNE)
+    local h = o.barre and H_BARRE or H_LIGNE
+    C.Placer(f, page.zone, x, y, l, h)
+    -- L'icone ou le portrait, au milieu de la hauteur de la carte.
+    f.ic:ClearAllPoints()
+    f.ic:SetPoint("LEFT", f, "LEFT", 8, 0)
+    f.porteur:ClearAllPoints()
+    f.porteur:SetPoint("LEFT", f, "LEFT", 8, 0)
     if o.perso then
         f.ic:Hide()
         f.porteur:Show()
@@ -599,29 +605,28 @@ local function CarteLigne(page, x, y, l, o)
         f.porteur:Hide()
         f.ic:Show()
         f.ic.icone:SetTexture(o.icone or ICONE_POINTS)
+        f.ic.icone:SetDesaturated(o.desature == true)
     end
     f.nom:SetText(o.nom or "")
-    local cn = o.couleurNom or C.BLANC
-    C.Couleurer(f.nom, cn)
-    f.nom.couleurPropre = o.perso and true or nil
+    C.Couleurer(f.nom, o.couleurNom or C.BLANC)
     f.nom.nomDePerso = o.perso and true or nil
     f.detail:SetText(o.detail or "")
+    f.detail:SetShown(o.detail ~= nil and o.detail ~= "")
     f.droite:SetText(o.droite or "")
     C.Couleurer(f.droite, o.couleurDroite or C.OR)
+    -- Sans detail ni barre : le nom au milieu de la carte.
+    f.nom:ClearAllPoints()
+    local seul = not o.barre and not f.detail:IsShown()
+    if seul then f.nom:SetPoint("LEFT", f, "LEFT", 42, 0) else f.nom:SetPoint("TOPLEFT", f, "TOPLEFT", 42, -9) end
+    f.nom:SetPoint("RIGHT", f.droite, "LEFT", -8, 0)
+    f.droite:ClearAllPoints()
+    if seul then f.droite:SetPoint("RIGHT", f, "RIGHT", -10, 0) else f.droite:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -7) end
     f.barre:SetShown(o.barre ~= nil)
-    f.detail:ClearAllPoints()
-    f.detail:SetPoint("TOPLEFT", f.nom, "BOTTOMLEFT", 0, -3)
-    if o.barre then
-        C.PoserBarre(f.barre, o.barre, o.couleurBarre)
-        f.barre:SetWidth(math.floor(l / 2) - 8)
-        f.detail:SetPoint("RIGHT", f.barre, "LEFT", -10, 0)
-    else
-        f.detail:SetPoint("RIGHT", f, "RIGHT", -8, 0)
-    end
-    f:SetScript("OnClick", o.auClic)
+    if o.barre then C.PoserBarre(f.barre, o.barre, o.couleurBarre) end
+    f:SetScript("OnClick", o.auClic or function() end)
     f:EnableMouse(true)
     C.Survol(f, o.survol)
-    return y + H_LIGNE + ECART
+    return y + h + ECART
 end
 
 -- La grille des categories d'une portee : quatre cartes par rangee.
@@ -700,14 +705,17 @@ local function PageHautsFaits(cle, icone, libelle, rendre, section, avant)
             page.t1 = O.Section()
             page.t1:SetWordWrap(false)
             page.t1:SetPoint("RIGHT", page.cadre, "RIGHT", -260, 0)
-            page.points = page.cadre:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            page.points:SetPoint("TOPRIGHT", page.cadre, "TOPRIGHT", -10, -2)
-            page.points:SetJustifyH("RIGHT")
-            page.points:SetWordWrap(false)
-            page.pastille = C.Pastille(page.cadre, 20)
-            page.pastille:SetPoint("RIGHT", page.points, "LEFT", -8, 4)
             page.intro = O.Detail(18)
             page.intro:SetWordWrap(false)
+            page.intro:SetWidth(O.LARGEUR - 240)
+            -- Les points sous le filet du titre, a droite de l'explication :
+            -- rien sur la ligne du titre.
+            page.points = C.Texte(page.cadre, "chiffres", C.OR, "RIGHT")
+            page.points.couleurPropre = nil
+            page.points:SetPoint("RIGHT", page.cadre, "RIGHT", -10, 0)
+            page.points:SetPoint("TOP", page.intro, "TOP", 0, 1)
+            page.pastille = C.Pastille(page.cadre, 20)
+            page.pastille:SetPoint("RIGHT", page.points, "LEFT", -6, 0)
             page.zone = CreateFrame("Frame", nil, page.cadre)
             page.zone:SetSize(O.LARGEUR - 10, 10)
             O.Placer(page.zone, 1, 14)
@@ -765,7 +773,7 @@ local function RendreCompte(page)
         local ptsP, possibleP = calcul.Points(pp)
         local v = possibleP > 0 and ptsP / possibleP or 0
         yD = CarteLigne(page, xD, yD, lD, { perso = p, nom = p.nom, couleurNom = ref.CouleurDeClasse(p.classe),
-            detail = DetailPerso(p), droite = NS.Nombre(ptsP), barre = v,
+            detail = DetailPerso(p), droite = NS.Nombre(ptsP), barre = v, couleurBarre = ref.CouleurDeClasse(p.classe),
             auClic = function() F.PoserPortee(pp) if F.w then F.w.page = "perso" end F.Defiler() F.Rendre() end })
     end
     page.hauteur = page.yZone + math.max(yG, yD) + 10
@@ -827,12 +835,12 @@ local function Banniere(page)
     f.texteBarre:SetPoint("LEFT", f.barre, "RIGHT", 10, 0)
     f.anneau = C.Anneau(f)
     f.anneau:SetPoint("RIGHT", f, "RIGHT", -14, 0)
-    f.points = C.Texte(f, "GameFontNormal", C.OR, "RIGHT")
-    f.points:SetPoint("BOTTOMRIGHT", f.anneau, "LEFT", -12, 2)
+    f.points = C.Texte(f, "chiffres", C.OR, "RIGHT")
+    f.points:SetPoint("RIGHT", f.anneau, "LEFT", -12, 7)
     f.pastille = C.Pastille(f, 20)
-    f.pastille:SetPoint("RIGHT", f.points, "LEFT", -8, 4)
+    f.pastille:SetPoint("RIGHT", f.points, "LEFT", -6, 0)
     f.duJeu = C.Texte(f, "GameFontDisableSmall", C.GRIS, "RIGHT")
-    f.duJeu:SetPoint("TOPRIGHT", f.anneau, "LEFT", -12, -4)
+    f.duJeu:SetPoint("TOPRIGHT", f.points, "BOTTOMRIGHT", 0, -3)
     page.banniere = f
     return f
 end
@@ -875,7 +883,7 @@ local function RendrePerso(page)
     b.detail:SetText(table.concat(morceaux, ", "))
     local xp, maxi = moi and tonumber(NS.Sur(NS.Jeu("UnitXP", "player"))), moi and tonumber(NS.Sur(NS.Jeu("UnitXPMax", "player")))
     if xp and maxi and maxi > 0 then
-        C.PoserBarre(b.barre, xp / maxi, C.VIOLET)
+        C.PoserBarre(b.barre, xp / maxi, c)
         b.texteBarre:SetText(string.format(T("%d %% du niveau %d", "%d %% of level %d"), math.floor(xp / maxi * 100), p.niveau or 0))
         b.barre:Show() b.texteBarre:Show()
     else
@@ -1241,10 +1249,10 @@ local function BanniereCat(page)
     f.detail:SetPoint("RIGHT", f, "RIGHT", -230, 0)
     f.anneau = C.Anneau(f)
     f.anneau:SetPoint("RIGHT", f, "RIGHT", -14, 0)
-    f.points = C.Texte(f, "GameFontNormal", C.OR, "RIGHT")
+    f.points = C.Texte(f, "chiffres", C.OR, "RIGHT")
     f.points:SetPoint("RIGHT", f.anneau, "LEFT", -12, 0)
     f.pastille = C.Pastille(f, 20)
-    f.pastille:SetPoint("RIGHT", f.points, "LEFT", -8, 4)
+    f.pastille:SetPoint("RIGHT", f.points, "LEFT", -6, 0)
     page.banCat = f
     return f
 end
@@ -1275,19 +1283,20 @@ local function TuilesDePortee(page, y, lire)
         if p then o.perso, o.couleurNom = p, ref.CouleurDeClasse(p.classe) else o.icone = IconeDePortee(portee) end
         if total and total > 0 then
             o.barre = fait / total
-            o.couleurBarre = C.Etat(fait, total)
+            o.couleurBarre = p and ref.CouleurDeClasse(p.classe) or C.Etat(fait, total)
             o.droite = NS.Pct(fait, total) .. "%"
             o.couleurDroite = C.Etat(fait, total)
         else
             o.detail = total and T("rien à faire", "nothing to do") or T("en préparation", "preparing")
             o.droite = ""
         end
+        if not o.barre then o.barre = 0 end
         CarteLigne(page, (k - 1) * (l + ECART), y, l, o)
         local f = Reserves(page).ligne.liste[Reserves(page).ligne.n]
         f.actif = portee == choisie or nil
         C.Teinter(f)
     end
-    return y + H_LIGNE + ECART
+    return y + H_BARRE + ECART
 end
 
 -- Le detail a droite d'un critere : coche, ou qui l'a fait, ou les deux camps.
@@ -1395,7 +1404,7 @@ local function RendreCategorie(page, cat)
             local yy = y
             for k, e in ipairs(s.elements) do
                 local col = (k - 1) % 2
-                if col == 0 and k > 1 then yy = yy + H_LIGNE + ECART end
+                if col == 0 and k > 1 then yy = yy + H_BARRE + ECART end
                 local rang = tonumber(e.rang) or 0
                 local nomRang = rang > 0 and ref.NomDeRang and ref.NomDeRang(rang) or ""
                 local couleurs = _G.FACTION_BAR_COLORS
@@ -1413,7 +1422,7 @@ local function RendreCategorie(page, cat)
                 end
                 CarteLigne(page, col * (l + ECART), yy, l, o)
             end
-            if #s.elements > 0 then y = yy + H_LIGNE + ECART end
+            if #s.elements > 0 then y = yy + H_BARRE + ECART end
         end
         page.hauteur = page.yZone + y + 10
         return
@@ -1470,9 +1479,7 @@ local function RendreCategorie(page, cat)
             CarteLigne(page, col * (l + ECART), yy, l, { icone = icone or cat.icone, nom = nom,
                 couleurNom = f and C.BLANC or C.VIDE, detail = DetailCritere(c, portee),
                 droite = DroiteCarte(c, portee), couleurDroite = C.VERT,
-                survol = Infobulle(c), auClic = function() end })
-            local carte = Reserves(page).ligne.liste[Reserves(page).ligne.n]
-            carte.ic.icone:SetDesaturated(not f)
+                survol = Infobulle(c), auClic = function() end, desature = not f })
         end
         if #morceau > 0 then y = yy + H_LIGNE + ECART end
     else
@@ -1651,9 +1658,10 @@ function F.Construire()
         end,
         choisirPerso = function(cle) F.PoserPortee("perso:" .. cle) end,
         historique = F.historique,
-        -- Hors de la page : B revient en arriere (historique), sinon remonte
-        -- d'un niveau, sinon ferme ; croix gauche / droite : personnage
-        -- precedent / suivant (comme la bande l'indique).
+        -- Hors de la page : B remonte d'un niveau dans une categorie, sinon
+        -- ferme, comme dans toute la suite (l'historique, ce sont les fleches
+        -- de l'en-tete) ; croix gauche / droite : personnage precedent /
+        -- suivant (comme la bande l'indique).
         manette = function(bouton)
             if not F.w then return false end
             if bouton == "PADDLEFT" or bouton == "PADDRIGHT" then
@@ -1668,7 +1676,6 @@ function F.Construire()
                 return true
             end
             if bouton ~= "PAD2" then return false end
-            if F.historique.PeutReculer() then F.historique.Reculer() return true end
             local nav = etat.nav[F.w.page]
             if not nav or not nav.sous then return false end
             if nav.element then nav.element = nil else nav.sous = nil end

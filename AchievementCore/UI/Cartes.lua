@@ -1,9 +1,9 @@
 local _, NS = ...
 
--- Les cartes de GloryCore : panneaux legers a liseré d'or (on voit le
--- parchemin dessous), anneaux d'avancement, petites tuiles de chiffres.
--- Les textes s'encrent sur le parchemin comme partout dans la suite ; seuls
--- les noms de personnage gardent leur couleur de classe.
+-- Les cartes de GloryCore : le fond de la bande du haut de la fenetre (la
+-- roche du jeu et son degrade), un peu transparent, liseré d'or ; anneaux
+-- d'avancement, petites tuiles de chiffres. Les cartes sont sombres : leurs
+-- textes gardent leurs couleurs (jamais a l'encre du parchemin).
 -- La couleur dit l'etat, jamais la categorie : or en cours, vert fini,
 -- gris rien a faire ; violet pour l'XP ; couleur de classe pour les noms.
 
@@ -15,7 +15,6 @@ local MASQUE_ROND = "Interface\\Masks\\CircleMaskScalable"
 local TEINTE = { 0.09, 0.066, 0.04 }
 local BORD = { 0.55, 0.42, 0.2 }
 local OR_JEU = { 1, 0.82, 0 }
-local PAPIER = { 0.87, 0.79, 0.62 }
 
 C.OR = OR_JEU
 C.BLANC = { 1, 1, 1 }
@@ -34,10 +33,26 @@ function C.Etat(fait, total)
     return OR_JEU
 end
 
+-- Les chiffres en valeur : la police du jeu, a la taille des titres (15).
+local function PoliceChiffres()
+    if _G.GloryCoreChiffres then return "GloryCoreChiffres" end
+    if not CreateFont then return "GameFontNormal" end
+    local f = CreateFont("GloryCoreChiffres")
+    local fichier, _, drapeaux = (GameFontNormal or GameFontHighlight):GetFont()
+    local taille = (NS.charte and NS.charte.TAILLE_TITRE) or 15
+    if fichier then f:SetFont(NS.Police and NS.Police(fichier) or fichier, taille, drapeaux) end
+    f:SetShadowOffset(1, -1)
+    f:SetShadowColor(0, 0, 0, 1)
+    return "GloryCoreChiffres"
+end
+C.PoliceChiffres = PoliceChiffres
+
 local function Texte(parent, police, couleur, justif)
+    if police == "chiffres" then police = PoliceChiffres() end
     local fs = parent:CreateFontString(nil, "OVERLAY", police or "GameFontHighlightSmall")
     fs:SetJustifyH(justif or "LEFT")
     fs:SetWordWrap(false)
+    fs.couleurPropre = true
     local c = couleur or C.BLANC
     fs:SetTextColor(c[1], c[2], c[3])
     return fs
@@ -48,13 +63,15 @@ function C.Couleurer(fs, c) fs:SetTextColor(c[1], c[2], c[3]) end
 
 -- Fond et liseré d'une carte selon le fond de la fenetre, allumee ou non.
 local function Teinter(f)
-    if not f.SetBackdropColor then return end
+    if not f.SetBackdropBorderColor then return end
     local p = Parchemin()
     local a
-    if f.allumee or f.actif then a = p and 0.26 or 0.35
-    elseif f.tuile then a = 0.10
-    else a = p and 0.12 or 0.20 end
-    f:SetBackdropColor(TEINTE[1], TEINTE[2], TEINTE[3], a)
+    if f.allumee or f.actif then a = p and 0.85 or 1
+    elseif f.tuile then a = 0.35
+    else a = p and 0.6 or 0.8 end
+    if f.roche then f.roche:SetAlpha(a) end
+    if f.stries then f.stries:SetAlpha(a) end
+    if f.lueur then f.lueur:SetShown(f.allumee == true) end
     if f.allumee or f.actif then
         f:SetBackdropBorderColor(OR_JEU[1], OR_JEU[2], OR_JEU[3], 1)
     else
@@ -73,21 +90,43 @@ function C.Panneau(parent, cliquable, tuile)
     local ok, f = pcall(CreateFrame, cliquable and "Button" or "Frame", nil, parent, "BackdropTemplate")
     if not ok or not f then f = CreateFrame(cliquable and "Button" or "Frame", nil, parent) end
     if f.SetBackdrop then
-        f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+        f:SetBackdrop({ edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12 })
+    end
+    -- Le fond de la bande du haut de la fenetre : la roche du jeu en motif,
+    -- assombrie, et le degrade du haut des fenetres du jeu.
+    f.roche = f:CreateTexture(nil, "BACKGROUND", nil, -7)
+    f.roche:SetPoint("TOPLEFT", 3, -3)
+    f.roche:SetPoint("BOTTOMRIGHT", -3, 3)
+    if not pcall(f.roche.SetTexture, f.roche, "Interface\\FrameGeneral\\UI-Background-Rock", "REPEAT", "REPEAT") then
+        f.roche:SetTexture("Interface\\FrameGeneral\\UI-Background-Rock")
+    end
+    if f.roche.SetHorizTile then f.roche:SetHorizTile(true) f.roche:SetVertTile(true) end
+    f.roche:SetVertexColor(0.42, 0.38, 0.34)
+    f.stries = f:CreateTexture(nil, "BACKGROUND", nil, -6)
+    f.stries:SetPoint("TOPLEFT", 3, -3)
+    f.stries:SetPoint("BOTTOMRIGHT", -3, 3)
+    local okA = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("_UI-Frame-TopTileStreaks")
+        and pcall(f.stries.SetAtlas, f.stries, "_UI-Frame-TopTileStreaks")
+    if not okA then
+        f.stries:SetTexture("Interface\\Buttons\\WHITE8X8")
+        local okG = _G.CreateColor and pcall(f.stries.SetGradient, f.stries, "VERTICAL",
+            _G.CreateColor(0, 0, 0, 0.45), _G.CreateColor(0.25, 0.22, 0.18, 0.1))
+        if not okG then f.stries:SetColorTexture(0, 0, 0, 0.2) end
+    end
+    if cliquable then
+        -- Allumee : une lueur doree du jeu sur toute la carte.
+        f.lueur = f:CreateTexture(nil, "BORDER", nil, 1)
+        f.lueur:SetPoint("TOPLEFT", 4, -4)
+        f.lueur:SetPoint("BOTTOMRIGHT", -4, 4)
+        f.lueur:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+        f.lueur:SetBlendMode("ADD")
+        f.lueur:SetAlpha(0.45)
+        f.lueur:Hide()
     end
     f.tuile = tuile
     Teinter(f)
     if cliquable then
         pcall(f.RegisterForClicks, f, "LeftButtonUp")
-        f:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-        local hl = f:GetHighlightTexture()
-        if hl then
-            hl:ClearAllPoints()
-            hl:SetPoint("TOPLEFT", 4, -4)
-            hl:SetPoint("BOTTOMRIGHT", -4, 4)
-            hl:SetAlpha(0.35)
-        end
         if hooksecurefunc then
             hooksecurefunc(f, "LockHighlight", Allumer)
             hooksecurefunc(f, "UnlockHighlight", Eteindre)
@@ -165,15 +204,11 @@ end
 function C.PoserAnneau(a, v, couleur, texte)
     v = math.max(0, math.min(1, tonumber(v) or 0))
     local c = couleur or OR_JEU
-    -- Piste et trou selon le fond : clairs sur le parchemin, sombres sinon.
-    if Parchemin() then
-        a.piste:SetVertexColor(0.36, 0.24, 0.10, 0.30)
-        a.trou:SetVertexColor(PAPIER[1], PAPIER[2], PAPIER[3], 1)
-    else
-        a.piste:SetVertexColor(0.24, 0.18, 0.10, 1)
-        a.trou:SetVertexColor(0.07, 0.05, 0.03, 1)
-    end
+    a.piste:SetVertexColor(0.24, 0.18, 0.10, 1)
+    a.trou:SetVertexColor(0.07, 0.05, 0.03, 1)
     a.plein:SetVertexColor(c[1], c[2], c[3], 1)
+    -- Fini : la coche du jeu (100 % ne tiendrait pas dans le trou).
+    if not texte and v >= 0.995 then texte = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14|t" end
     a.texte:SetText(texte or (math.floor(v * 100) .. "%"))
     local arc = false
     if a.cd and v > 0.005 and v < 0.995 then
@@ -253,11 +288,14 @@ end
 function C.Icone(parent, taille)
     local f = CreateFrame("Frame", nil, parent)
     f:SetSize(taille, taille)
+    -- L'icone seule, rognee, sur un fin liseré sombre : la carte l'encadre deja.
+    f.bord = f:CreateTexture(nil, "BORDER")
+    f.bord:SetPoint("TOPLEFT", -1, 1)
+    f.bord:SetPoint("BOTTOMRIGHT", 1, -1)
+    f.bord:SetColorTexture(0, 0, 0, 0.8)
     f.icone = f:CreateTexture(nil, "ARTWORK")
     f.icone:SetAllPoints()
     f.icone:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-    local S = _G.CoreSuite
-    if S and S.HabillerIcone then pcall(S.HabillerIcone, f, f.icone) end
     if f.EnableMouse then f:EnableMouse(false) end
     return f
 end
