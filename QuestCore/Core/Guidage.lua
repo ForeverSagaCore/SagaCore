@@ -248,6 +248,17 @@ end
 
 -- Les etapes d'une liste de quetes, la plus proche d'abord, puis la plus
 -- proche de la precedente.
+-- Le compte montre (« Etape X sur Y ») : pour un itineraire, le numero de
+-- l'etape visee dans l'itineraire, meme quand une autre etape passe avant
+-- parce qu'elle est sur le chemin ; on sait toujours ou l'on en est.
+local function Ajuster(ordre, compte)
+    if type(compte) == "table" and compte.rangDe and type(ordre) == "table" and ordre[1] and ordre[1].id then
+        local r = compte.rangDe(ordre[1].id)
+        if r then return { fait = r - 1, total = compte.total } end
+    end
+    return compte
+end
+
 local function EtapesDeQuetes(ids, moi, etat, compte, suite)
     -- Les detours encore a rendre s'ajoutent (une seule fois chacun).
     local d = Detours(moi)
@@ -304,7 +315,7 @@ local function EtapesDeQuetes(ids, moi, etat, compte, suite)
         -- son continent (l'add-on d'itineraire sait y mener ; la fleche de la
         -- suite dit ou aller).
         local ailleurs = Ailleurs(ids, moi)
-        if ailleurs then return { ailleurs }, nil, nil, compte end
+        if ailleurs then return { ailleurs }, nil, nil, Ajuster({ ailleurs }, compte) end
         return nil, "loin", OuAller(moi, ids)
     end
     etat.chaine = type(etat.chaine) == "table" and etat.chaine or {}
@@ -316,36 +327,10 @@ local function EtapesDeQuetes(ids, moi, etat, compte, suite)
         -- un detour que si elle est sur le chemin (deux fois plus pres que
         -- cette cible). Rien de commence : la plus proche a prendre.
         local P = NS.parcours
-        local commences, aPrendre, rendus, objectifs = {}, {}, {}, {}
+        local commences, aPrendre = {}, {}
         for _, pt in ipairs(points) do
             local e = P.EtatEtape(moi, pt.id)
             if e == "cours" or e == "rendre" then table.insert(commences, pt) else table.insert(aPrendre, pt) end
-            if e == "rendre" then table.insert(rendus, pt) elseif e == "cours" then table.insert(objectifs, pt) end
-        end
-        -- Une quete finie se rend d'abord (l'XP tout de suite, et la suite
-        -- qu'elle debloque) : la plus proche a rendre est la cible ; ce qui
-        -- est deux fois plus pres sur le chemin (un objectif, une quete a
-        -- prendre) passe avant ; le reste vient apres.
-        if #rendus > 0 then
-            local ordre = S().Lieux.Chaine(rendus, ici, nil, etat.chaine)
-            local dCible = S().Lieux.Distance(ici, ordre[1])
-            local detours = {}
-            for _, pt in ipairs(objectifs) do
-                if S().Lieux.Distance(ici, pt) * 2 < dCible then table.insert(detours, pt) end
-            end
-            for _, pt in ipairs(aPrendre) do
-                if S().Lieux.Distance(ici, pt) * 2 < dCible then table.insert(detours, pt) end
-            end
-            if #detours > 0 then
-                local avant = S().Lieux.Chaine(detours, ici)
-                for k = #avant, 1, -1 do table.insert(ordre, 1, avant[k]) end
-            end
-            local dejaLa = {}
-            for _, pt in ipairs(ordre) do dejaLa[pt] = true end
-            for _, pt in ipairs(S().Lieux.Chaine(objectifs, ici)) do
-                if not dejaLa[pt] then table.insert(ordre, pt) end
-            end
-            return ordre, nil, nil, compte
         end
         if #commences > 0 then
             local ordre = S().Lieux.Chaine(commences, ici, nil, etat.chaine)
@@ -359,11 +344,11 @@ local function EtapesDeQuetes(ids, moi, etat, compte, suite)
                 local avant = S().Lieux.Chaine(detours, ici)
                 for k = #avant, 1, -1 do table.insert(ordre, 1, avant[k]) end
             end
-            return ordre, nil, nil, compte
+            return ordre, nil, nil, Ajuster(ordre, compte)
         end
     end
     local ordre = S().Lieux.Chaine(points, ici, nil, etat.chaine)
-    return ordre, nil, nil, compte
+    return ordre, nil, nil, Ajuster(ordre, compte)
 end
 
 -- Une quete de la liste est finie : rendue (faite), ou sortie du journal
@@ -428,7 +413,20 @@ local function Commun(def)
         if S() and S().OuvrirPlanDuDonjon and S().OuvrirPlanDuDonjon() then return end
         if NS.pageCarte and NS.pageCarte.Filigrane then pcall(NS.pageCarte.Filigrane) end
     end
-    def.Fin = function()
+    def.Fin = function(_, _, raison)
+        -- Un passage pour rendre des quetes, demande au milieu d'un autre
+        -- guidage : une fois tout rendu, le guidage d'avant reprend la ou il
+        -- en etait. Arrete a la main : rien ne reprend.
+        local reprise = NS.repriseApres
+        if reprise and reprise.par == def then
+            NS.repriseApres = nil
+            if raison == "atteint" and reprise.inst then
+                local inst = reprise.inst
+                local apres = NS.Lecture and NS.Lecture("C_Timer.After")
+                local function Reprendre() pcall(S().LancerObjectif, inst.proprietaire, inst.type, inst.params, inst) end
+                if apres then apres(1, Reprendre) else Reprendre() end
+            end
+        end
         -- Les detours etaient pour cet itineraire : ils partent avec lui.
         local moi = Moi()
         if moi then moi.detours = nil end
@@ -613,7 +611,10 @@ TYPES.parcours = Commun({
             elseif e == "prendre" and prises < A_PRENDRE then prises = prises + 1 table.insert(ids, id) end
         end
         if #ids == 0 then return nil, "loin", OuAller(moi, pc.etapes) end
-        return EtapesDeQuetes(ids, moi, etat, { fait = faites, total = total }, true)
+        local rangs = {}
+        for k, id in ipairs(pc.etapes or {}) do rangs[id] = k end
+        return EtapesDeQuetes(ids, moi, etat, { fait = faites, total = #(pc.etapes or {}),
+            rangDe = function(id) return rangs[id] end }, true)
     end,
 })
 
@@ -723,6 +724,14 @@ end
 -- Pour CraftCore : les quetes qui demandent cet objet.
 api.QuetesDemandant = function(objet) return NS.ref.QuetesDemandant(objet) end
 api.GuiderNiveau = function(n) return guidage.Lancer("niveau", { niveau = tonumber(n) }) end
+-- Aller rendre ces quetes, puis reprendre le guidage en cours (s'il y en a
+-- un) la ou il en etait.
+api.RendreEtReprendre = function(ids)
+    local avant = S().ObjectifActif and S().ObjectifActif()
+    local lance = guidage.Lancer("quetes", { ids = Copie(ids) })
+    if lance and avant then NS.repriseApres = { inst = avant, par = TYPES.quetes } end
+    return lance
+end
 api.GuiderParcours = function(uid) return guidage.Lancer("parcours", { uid = uid }) end
 -- Ancien appel : guider les quetes a rendre, ou arreter le guidage de QuestCore.
 api.Guider = function(oui)

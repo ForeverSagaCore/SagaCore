@@ -23,6 +23,10 @@ local function Definir()
         { cle = "terminee", libelle = T("Quête terminée, à rendre", "Quest complete, to turn in"),
           texte = T("« {quete} » est terminée, à rendre.", "\"{quete}\" is complete, ready to turn in."),
           valeurs = { "quete" }, exemples = { quete = "Les loups affamés" }, actions = { T("Guider", "Guide") } },
+        { cle = "rendreGroupe", libelle = T("Quêtes à rendre au même endroit", "Quests to turn in at the same place"),
+          texte = T("{quetes} quêtes à rendre chez {qui}{sacs}.", "{quetes} quests to turn in to {qui}{sacs}."),
+          valeurs = { "quetes", "qui", "sacs" }, exemples = { quetes = 3, qui = "Gryan Rudemanteau", sacs = "" },
+          actions = { T("Aller les rendre", "Go turn them in"), T("Plus tard", "Later") } },
         { cle = "donjon", libelle = T("Donjon accessible", "Dungeon available"),
           texte = T("{donjon} est maintenant à ta portée.", "{donjon} is now within your reach."),
           valeurs = { "donjon" }, exemples = { donjon = "Les Mortemines" }, actions = { T("Voir le donjon", "See the dungeon") } },
@@ -59,6 +63,57 @@ local function XP(id)
     return NS.ref and NS.ref.XPDeLaBase and tonumber((NS.ref.XPDeLaBase(id, niveau))) or 0
 end
 
+-- Places libres dans les sacs (sacs ordinaires seulement).
+local function PlacesLibres()
+    local f = (C_Container and C_Container.GetContainerNumFreeSlots) or _G.GetContainerNumFreeSlots
+    if not f then return nil end
+    local n = 0
+    for sac = 0, 4 do
+        local ok, libres, famille = pcall(f, sac)
+        if ok and tonumber(libres) and (famille == nil or famille == 0) then n = n + tonumber(libres) end
+    end
+    return n
+end
+
+-- Plusieurs quetes finies se rendent au meme endroit : on propose d'aller
+-- les rendre (trois ou plus, ou deux avec les sacs presque pleins). Accepte,
+-- le guidage y mene, puis reprend celui d'avant la ou il en etait. Une seule
+-- fois par groupe de quetes.
+local proposes = {}
+local function ProposerRendus(p)
+    local Lire = NS.ref and NS.ref.Lire
+    if not Lire then return end
+    local parReceveur = {}
+    for id, q in pairs(p.quetes or {}) do
+        if type(q) == "table" and q.complete == true then
+            local fin = Lire("QuestDB", id, "finishedBy")
+            local pnj = type(fin) == "table" and type(fin[1]) == "table" and fin[1][1]
+            if pnj then
+                parReceveur[pnj] = parReceveur[pnj] or {}
+                table.insert(parReceveur[pnj], id)
+            end
+        end
+    end
+    local libres = PlacesLibres()
+    local pleins = libres ~= nil and libres <= 2
+    for pnj, ids in pairs(parReceveur) do
+        if #ids >= 3 or (#ids >= 2 and pleins) then
+            table.sort(ids)
+            local signature = pnj .. ":" .. table.concat(ids, ",")
+            if not proposes[signature] then
+                proposes[signature] = true
+                local qui = Lire("NpcDB", pnj, "name") or "?"
+                local liste = ids
+                Dire("rendreGroupe", { quetes = #ids, qui = qui, sacs = pleins and T(", sacs presque pleins", ", bags almost full") or "" },
+                    { { T("Aller les rendre", "Go turn them in"), function()
+                        local api = _G.QuestCoreAPI
+                        if api and api.RendreEtReprendre then api.RendreEtReprendre(liste) end
+                    end }, { T("Plus tard", "Later"), function() end, non = true } }, signature)
+            end
+        end
+    end
+end
+
 local completes = nil
 local function Examiner()
     local p = Moi()
@@ -82,6 +137,7 @@ local function Examiner()
         end
     end
     completes = maintenant
+    pcall(ProposerRendus, p)
     local reste = (UnitXPMax("player") or 0) - (UnitXP("player") or 0)
     local maxi = _G.GetMaxPlayerLevel and _G.GetMaxPlayerLevel() or 60
     if n > 0 and reste > 0 and total >= reste and niveau < maxi then
@@ -103,7 +159,7 @@ local function ExaminerBientot()
 end
 
 local cadre = CreateFrame("Frame")
-for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "QUEST_LOG_UPDATE", "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP" }) do
+for _, e in ipairs({ "PLAYER_ENTERING_WORLD", "QUEST_LOG_UPDATE", "PLAYER_XP_UPDATE", "PLAYER_LEVEL_UP", "BAG_UPDATE_DELAYED" }) do
     pcall(cadre.RegisterEvent, cadre, e)
 end
 cadre:SetScript("OnEvent", function(_, ev, a1)
@@ -115,7 +171,7 @@ cadre:SetScript("OnEvent", function(_, ev, a1)
             end
             pcall(Examiner)
         end)
-    elseif ev == "QUEST_LOG_UPDATE" then
+    elseif ev == "QUEST_LOG_UPDATE" or ev == "BAG_UPDATE_DELAYED" then
         ExaminerBientot()
     elseif ev == "PLAYER_XP_UPDATE" then
         local xp, maxi = UnitXP("player") or 0, UnitXPMax("player") or 0
