@@ -786,7 +786,7 @@ local function RendreCompte(page)
         local cat, sous, element = Morceaux(x.cle)
         local p = x.perso
         local c = calcul.Categorie(cat)
-        table.insert(liste, { icone = c and c.icone, nom = x.nom,
+        table.insert(liste, { icone = x.icone or (c and c.icone), nom = x.nom,
             sous = ref.Hex(ref.CouleurDeClasse(p.classe)) .. p.nom .. "|r, " .. Depuis(x.quand),
             droite = "+" .. tostring(x.pts or 0), auClic = function() F.Aller(cat, sous, element, "perso:" .. p.cle) end })
     end
@@ -826,7 +826,7 @@ local function OptionElement(cleCat, x, portee, nom, sous)
     local cat = calcul.Categorie(cleCat)
     local v = x.e.total > 0 and x.e.fait / x.e.total or 0
     local sCle, eCle = x.s.cle, x.e.cle
-    return { icone = cat and cat.icone, nom = nom, sous = sous,
+    return { icone = x.e.icone or (cat and cat.icone), nom = nom, sous = sous,
         droite = string.format(T("encore %d", "%d left"), x.e.total - x.e.fait),
         barre = v, couleurBarre = Couleur(v, portee), auClic = function() F.Aller(cleCat, sCle, eCle, portee) end }
 end
@@ -1057,7 +1057,7 @@ local function RendreObjectifs(page)
     for _, x in ipairs(objectifs) do
         local cat = calcul.Categorie(x.cat)
         local vO = x.e and x.e.total > 0 and x.e.fait / x.e.total or 0
-        table.insert(liste, { icone = (cat and cat.icone), nom = x.e and x.e.nom or T("En préparation", "Preparing"),
+        table.insert(liste, { icone = (x.e and x.e.icone) or (cat and cat.icone), nom = x.e and x.e.nom or T("En préparation", "Preparing"),
             sous = cat and cat.nom() or "", droite = (x.e and vO >= 1) and T("Fini !", "Done !") or (x.e and string.format(T("encore %d", "%d left"), x.e.total - x.e.fait) or ""),
             barre = vO, couleurBarre = Couleur(vO, portee), auClic = function() F.Aller(x.cat, x.sous, x.element, portee) end })
     end
@@ -1135,6 +1135,27 @@ local function OptionPortee(portee, lire)
     return o
 end
 
+-- Ce que compte une sous-categorie, dit sur sa carte.
+local AIDES = {
+    quetes = { zones = { "quêtes par zone", "quests by zone" }, suites = { "suites menées au bout", "chains completed" },
+        themes = { "quêtes de classe, métier, fête", "class, profession, holiday quests" }, camps = { "quêtes par camp", "quests by side" } },
+    donjons = { donjons = { "boss, rares et quêtes", "bosses, rares and quests" }, raids = { "boss, rares et quêtes", "bosses, rares and quests" } },
+    metiers = { principaux = { "paliers et recettes", "ranks and recipes" }, secondaires = { "paliers et recettes", "ranks and recipes" } },
+    races = { classes = { "paliers de niveau 10 à 60", "level steps 10 to 60" }, races = { "paliers de niveau 10 à 60", "level steps 10 to 60" },
+        combinaisons = { "race et classe au niveau maximum", "race and class at max level" } },
+    jcj = { jcj = { "rangs et champs de bataille", "ranks and battlegrounds" } },
+    heritage = { arbres = { "paliers d'héritage", "legacy steps" } },
+    exploration = { "zones et lieux découverts", "zones and places discovered" },
+    rares = { "rares tués", "rares killed" },
+    objets = { "objets obtenus", "items obtained" },
+}
+local function AideDe(cleCat, cleSous)
+    local a = AIDES[cleCat]
+    if type(a) == "table" and type(a[1]) == "string" then return T(a[1], a[2]) end
+    a = type(a) == "table" and a[cleSous]
+    return a and T(a[1], a[2]) or nil
+end
+
 local function DetailCritere(c, portee)
     local morceaux = {}
     if c.niveau and c.niveau > 0 then table.insert(morceaux, string.format(T("Niveau %d", "Level %d"), c.niveau)) end
@@ -1209,7 +1230,7 @@ local function RendreCategorie(page, cat)
     local x = element or sous or res
     local v = (x.total or 0) > 0 and x.fait / x.total or 0
     y = Banniere(page, y, { icone = (element and element.icone) or (sous and sous.icone) or cat.icone, nom = titre,
-        sous = string.format("%s / %s   %s", NS.Nombre(x.fait or 0), NS.Nombre(x.total or 0), calcul.NomDePortee(portee)),
+        sous = string.format(T("%s critères remplis sur %s, pour %s", "%s criteria met out of %s, for %s"), NS.Nombre(x.fait or 0), NS.Nombre(x.total or 0), calcul.NomDePortee(portee)),
         droite = TextePoints(PointsDe(cat.cle, portee)), points = true, barre = v, couleurBarre = Couleur(v, portee) })
     -- Les camps (tous, le camp du personnage, l'autre), puis le personnage :
     -- sa carte ouvre le detail de ce qu'on regarde, pour lui.
@@ -1220,6 +1241,7 @@ local function RendreCategorie(page, cat)
         local pPerso = pp and persos.Par(pp:match("^perso:(.+)$"))
         local monCamp = (pPerso and pPerso.faction == "Horde") and "Horde" or "Alliance"
         local autre = monCamp == "Horde" and "Alliance" or "Horde"
+        y = Titre2(page, T("Tous mes personnages", "All my characters"), y)
         y = Grille(page, y, { OptionPortee("deux", lire), OptionPortee(monCamp, lire), OptionPortee(autre, lire) })
         if pp then carteDuPerso = OptionPortee(pp, lire) end
     end
@@ -1252,7 +1274,12 @@ local function RendreCategorie(page, cat)
     end
     -- Le detail : sous la carte du personnage (ou le nom du camp choisi).
     local function EnTete()
-        if carteDuPerso then y = Grille(page, y, { carteDuPerso }) end
+        if carteDuPerso then
+            local pp = PorteePerso()
+            local estMoi = pp == "perso:" .. tostring(NS.ClePersonnage())
+            y = Titre2(page, estMoi and T("Mon personnage", "My character") or T("Personnage choisi", "Chosen character"), y)
+            y = Grille(page, y, { carteDuPerso })
+        end
         if not portee:match("^perso:") then y = Titre2(page, string.format(T("Pour %s", "For %s"), calcul.NomDePortee(portee)), y) end
     end
     if not sous then
@@ -1262,7 +1289,9 @@ local function RendreCategorie(page, cat)
         for _, s in ipairs(res.sous) do
             local cle = s.cle
             local vS = s.total > 0 and s.fait / s.total or 0
-            table.insert(liste, { anneau = { v = vS, couleur = Couleur(vS, portee) }, nom = s.nom, sous = NS.Nombre(s.fait) .. " / " .. NS.Nombre(s.total),
+            local aide = AideDe(cat.cle, s.cle)
+            table.insert(liste, { anneau = { v = vS, couleur = Couleur(vS, portee) }, nom = s.nom,
+                sous = NS.Nombre(s.fait) .. " / " .. NS.Nombre(s.total) .. (aide and ("   " .. aide) or ""),
                 auClic = function() nav.sous, nav.element, nav.page = cle, nil, 1 F.Defiler() F.Rendre() end })
         end
         y = Grille(page, y, liste)
