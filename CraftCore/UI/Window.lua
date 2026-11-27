@@ -1180,7 +1180,7 @@ local function LigneDePersonnage(ligne, fiche, estConnecte, couleur, detail, dro
     if not ligne.cadreVisage then
         ligne.cadreVisage = ligne:CreateTexture(nil, "BORDER")
         ligne.cadreVisage:SetSize(34, 34)
-        ligne.cadreVisage:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
+        ligne.cadreVisage:SetColorTexture(0, 0, 0, 0) -- rond : l'anneau de classe remplace le cadre carre
         ligne.visage = ligne:CreateTexture(nil, "ARTWORK")
         ligne.visage:SetPoint("TOPLEFT", ligne.cadreVisage, "TOPLEFT", 5, -5)
         ligne.visage:SetPoint("BOTTOMRIGHT", ligne.cadreVisage, "BOTTOMRIGHT", -5, 5)
@@ -6155,9 +6155,15 @@ end
 NS.PortraitDepose = PortraitDepose
 
 PoserVisage = function(texture, fiche, estConnecte)
+    -- Rond, dans un anneau a la couleur de la classe (comme la recherche de groupe).
+    if _G.CoreSuite and _G.CoreSuite.AnneauDeClasse then _G.CoreSuite.AnneauDeClasse(texture, fiche and (fiche.jetonClasse or fiche.classeJeu)) end
+
     local vivant = Calque(texture, "calqueVivant", 1)
     local depose = Calque(texture, "calqueDepose", 2)
     vivant:Hide() depose:Hide()
+    for _, c in ipairs({ vivant, depose }) do
+        if c.SetMask and not c.rond then c.rond = true pcall(c.SetMask, c, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+    end
     -- L'image deposee par le joueur passe avant tout.
     if PortraitDepose(depose, fiche) then depose:Show() end
     -- Le vrai portrait pour le personnage connecte, quand le client le donne.
@@ -6183,9 +6189,10 @@ PoserVisage = function(texture, fiche, estConnecte)
         end
         if jeton then fiche.jetonClasse = jeton end
     end
+    if _G.CoreSuite and _G.CoreSuite.AnneauDeClasse then _G.CoreSuite.AnneauDeClasse(texture, jeton) end
     local coords = CLASS_ICON_TCOORDS and jeton and CLASS_ICON_TCOORDS[jeton]
     if coords then
-        texture:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
+        texture:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
         pcall(texture.SetTexCoord, texture, coords[1], coords[2], coords[3], coords[4])
         return
     end

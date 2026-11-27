@@ -114,7 +114,7 @@ local function Ligne(contenu, index)
     -- Portrait d'un personnage, dans son cadre.
     l.cadreVisage = l:CreateTexture(nil, "BORDER")
     l.cadreVisage:SetSize(34, 34)
-    l.cadreVisage:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
+    l.cadreVisage:SetColorTexture(0, 0, 0, 0) -- rond : l'anneau de classe remplace le cadre carre
     l.cadreVisage:Hide()
     l.visage = l:CreateTexture(nil, "ARTWORK")
     l.visage:SetPoint("TOPLEFT", l.cadreVisage, "TOPLEFT", 5, -5)
@@ -713,7 +713,7 @@ local function RendreDefis(contenu, index, y)
         end
         index = index + 1
         -- Meme retrait et meme place d'icone que les metiers : tout s'aligne.
-        y = Poser(contenu, index, y, { retrait = RETRAIT, icone = "Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES",
+        y = Poser(contenu, index, y, { retrait = RETRAIT, icone = "Interface\\TargetingFrame\\UI-Classes-Circles",
             desature = not c.meilleur, texte = NomDeClasse(c.classe),
             couleur = c.meilleur and CouleurDeClasse(c.classe) or GRIS, droite = table.concat(morceaux, "     "),
             detail = detail, apres = 4 })
@@ -963,11 +963,14 @@ end
 -- ---------------------------------------------------------------------------
 
 PoserVisage = function(texture, p, estConnecte)
+    -- Rond, dans un anneau a la couleur de la classe (comme la recherche de groupe).
+    if _G.CoreSuite and _G.CoreSuite.AnneauDeClasse then _G.CoreSuite.AnneauDeClasse(texture, p and p.classe) end
+
     texture:SetTexCoord(0, 1, 0, 1)
     if estConnecte and SetPortraitTexture and pcall(SetPortraitTexture, texture, "player") then return end
     local coords = _G.CLASS_ICON_TCOORDS and p.classe and _G.CLASS_ICON_TCOORDS[p.classe]
     if coords then
-        texture:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
+        texture:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
         pcall(texture.SetTexCoord, texture, coords[1], coords[2], coords[3], coords[4])
         return
     end

@@ -129,7 +129,7 @@ local function Ligne(page, i)
     l:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
     l.cadreVisage = l:CreateTexture(nil, "BORDER")
     l.cadreVisage:SetSize(34, 34)
-    l.cadreVisage:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
+    l.cadreVisage:SetColorTexture(0, 0, 0, 0) -- rond : l'anneau de classe remplace le cadre carre
     l.visage = l:CreateTexture(nil, "ARTWORK")
     l.visage:SetPoint("TOPLEFT", l.cadreVisage, "TOPLEFT", 5, -5)
     l.visage:SetPoint("BOTTOMRIGHT", l.cadreVisage, "BOTTOMRIGHT", -5, 5)

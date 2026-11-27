@@ -1180,35 +1180,78 @@ function Suite.PoserVisagePerso(texture, p)
     local depose = Calque(texture, "calqueDepose", 2)
     vivant:Hide() depose:Hide()
     pcall(texture.SetTexCoord, texture, 0, 1, 0, 1)
+    -- L'icone ronde de la classe, celle du jeu (recherche de groupe, cadre
+    -- de cible), dans un anneau a la couleur de la classe.
     local coords = _G.CLASS_ICON_TCOORDS and p.classe and _G.CLASS_ICON_TCOORDS[p.classe]
     if coords then
-        texture:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
+        texture:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
         pcall(texture.SetTexCoord, texture, coords[1], coords[2], coords[3], coords[4])
     else
         texture:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+    end
+    local anneau = texture:GetParent() and texture:GetParent().anneauClasse
+    if anneau then
+        local c = _G.RAID_CLASS_COLORS and p.classe and _G.RAID_CLASS_COLORS[p.classe]
+        anneau:SetDesaturated(c ~= nil)
+        if c then anneau:SetVertexColor(c.r, c.g, c.b) else anneau:SetVertexColor(1, 1, 1) end
     end
     if p.moi and SetPortraitTexture and pcall(SetPortraitTexture, vivant, "player") then vivant:Show() end
     local ok, reussi = pcall(depose.SetTexture, depose, "Interface\\AddOns\\SagaCorePortraits\\" .. tostring(p.nom))
     if ok and reussi ~= false then depose:Show() end
 end
 
+-- Un visage rond : la texture masquee en cercle et un anneau a la couleur
+-- de la classe autour (le meme que la bande des personnages). Pour les
+-- lignes de personnage des fenetres.
+function Suite.AnneauDeClasse(texture, classe)
+    if not (texture and texture.GetParent) then return end
+    local a = texture.anneauRond
+    if not a then
+        a = texture:GetParent():CreateTexture(nil, "OVERLAY")
+        a:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+        texture.anneauRond = a
+        if texture.SetMask then pcall(texture.SetMask, texture, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+        if hooksecurefunc then
+            hooksecurefunc(texture, "Hide", function() a:Hide() end)
+            hooksecurefunc(texture, "Show", function() a:Show() end)
+        end
+    end
+    local w = texture:GetWidth()
+    if not w or w <= 0 then w = 24 end
+    a:ClearAllPoints()
+    a:SetSize(w * 1.7, w * 1.7)
+    a:SetPoint("TOPLEFT", texture, "TOPLEFT", 0, 0)
+    local c = _G.RAID_CLASS_COLORS and classe and _G.RAID_CLASS_COLORS[classe]
+    a:SetDesaturated(c ~= nil)
+    if c then a:SetVertexColor(c.r, c.g, c.b) else a:SetVertexColor(1, 1, 1) end
+    a:SetShown(texture:IsShown())
+end
+
 local TAILLE_PORTRAIT_BANDE = 30
 local function PortraitDeBande(bande)
     local b = CreateFrame("Button", nil, bande)
     b:SetSize(TAILLE_PORTRAIT_BANDE, TAILLE_PORTRAIT_BANDE)
+    -- Rond, comme les classes de la recherche de groupe : le visage dans un
+    -- cercle, un anneau a la couleur de la classe.
     b.cadre = b:CreateTexture(nil, "BACKGROUND")
-    b.cadre:SetAllPoints()
-    b.cadre:SetTexture("Interface\\Buttons\\UI-EmptySlot-Disabled")
+    b.cadre:SetPoint("CENTER")
+    b.cadre:SetSize(TAILLE_PORTRAIT_BANDE - 2, TAILLE_PORTRAIT_BANDE - 2)
+    b.cadre:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
     b.visage = b:CreateTexture(nil, "ARTWORK")
-    b.visage:SetPoint("TOPLEFT", 4, -4)
-    b.visage:SetPoint("BOTTOMRIGHT", -4, 4)
-    b.halo = b:CreateTexture(nil, "OVERLAY")
-    b.halo:SetPoint("TOPLEFT", b, "TOPLEFT", -2, 2)
-    b.halo:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 2, -2)
-    b.halo:SetTexture("Interface\\Buttons\\CheckButtonHilight")
+    b.visage:SetPoint("TOPLEFT", 2, -2)
+    b.visage:SetPoint("BOTTOMRIGHT", -2, 2)
+    if b.visage.SetMask then pcall(b.visage.SetMask, b.visage, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+    b.anneauClasse = b:CreateTexture(nil, "OVERLAY")
+    b.anneauClasse:SetSize(TAILLE_PORTRAIT_BANDE * 1.7, TAILLE_PORTRAIT_BANDE * 1.7)
+    b.anneauClasse:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
+    b.anneauClasse:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    b.halo = b:CreateTexture(nil, "OVERLAY", nil, 2)
+    b.halo:SetPoint("TOPLEFT", b, "TOPLEFT", -3, 3)
+    b.halo:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 3, -3)
+    b.halo:SetTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
     b.halo:SetBlendMode("ADD")
     b.halo:Hide()
-    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     return b
 end
