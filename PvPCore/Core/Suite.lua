@@ -1234,12 +1234,11 @@ function Suite.IconeRondeDeClasse(texture, classe)
     for _, nom in ipairs(noms) do
         local a = info and info(nom)
         if a and a.file and a.leftTexCoord then
-            -- Le liseré sombre du bord, rogne un peu : le cercle de couleur
-            -- suffit, avec une ombre tres legere.
-            local dx = (a.rightTexCoord - a.leftTexCoord) * 0.07
-            local dy = (a.bottomTexCoord - a.topTexCoord) * 0.07
             texture:SetTexture(a.file)
-            texture:SetTexCoord(a.leftTexCoord + dx, a.rightTexCoord - dx, a.topTexCoord + dy, a.bottomTexCoord - dy)
+            texture:SetTexCoord(a.leftTexCoord, a.rightTexCoord, a.topTexCoord, a.bottomTexCoord)
+            -- Le liseré sombre du bord ote par un masque rond un peu plus
+            -- petit : un vrai cercle, sans bord plat, juste la couleur.
+            Suite.ArrondirSansBord(texture)
             return true
         elseif not info then
             local ok, pose = pcall(texture.SetAtlas, texture, nom)
@@ -1247,6 +1246,37 @@ function Suite.IconeRondeDeClasse(texture, classe)
         end
     end
     return false
+end
+
+-- Masque rond pose un peu en dedans du bord (ote le liseré sombre).
+-- Suite.RetirerRond le retire quand la texture sert a autre chose.
+function Suite.ArrondirSansBord(texture)
+    local parent = texture.GetParent and texture:GetParent()
+    if not (parent and parent.CreateMaskTexture and texture.AddMaskTexture) then return end
+    local m = texture.masqueRond
+    if not m then
+        local ok, cree = pcall(parent.CreateMaskTexture, parent)
+        if not ok or not cree then return end
+        m = cree
+        m:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        texture.masqueRond = m
+    end
+    local w = texture:GetWidth()
+    if not w or w <= 0 then w = 18 end
+    local r = math.max(1, w * 0.08)
+    m:ClearAllPoints()
+    m:SetPoint("TOPLEFT", texture, "TOPLEFT", r, -r)
+    m:SetPoint("BOTTOMRIGHT", texture, "BOTTOMRIGHT", -r, r)
+    if not texture.masqueRondActif then
+        pcall(texture.AddMaskTexture, texture, m)
+        texture.masqueRondActif = true
+    end
+end
+function Suite.RetirerRond(texture)
+    if texture and texture.masqueRond and texture.masqueRondActif and texture.RemoveMaskTexture then
+        pcall(texture.RemoveMaskTexture, texture, texture.masqueRond)
+        texture.masqueRondActif = false
+    end
 end
 
 -- Un visage rond : la texture masquee en cercle et un anneau a la couleur
@@ -1277,7 +1307,7 @@ function Suite.AnneauDeClasse(texture, classe)
     a:SetShown(texture:IsShown())
 end
 
-local TAILLE_PORTRAIT_BANDE = 32
+local TAILLE_PORTRAIT_BANDE = 29
 local function PortraitDeBande(bande)
     local b = CreateFrame("Button", nil, bande)
     b:SetSize(TAILLE_PORTRAIT_BANDE, TAILLE_PORTRAIT_BANDE)
@@ -1321,9 +1351,14 @@ function Suite.BandePersos(bande, o)
         b:ClearAllPoints()
         b:SetPoint("LEFT", bande, "LEFT", 2 + (rang - 1) * (TAILLE_PORTRAIT_BANDE + 6), 0)
         Suite.PoserVisagePerso(b.visage, p)
+        -- Le personnage choisi en couleur ; les autres en gris, en
+        -- sous-brillance. Pas de halo.
         local estChoisi = p.nom == nomChoisi
-        b.halo:SetShown(estChoisi)
-        b:SetAlpha(estChoisi and 1 or 0.7)
+        b.halo:Hide()
+        b:SetAlpha(estChoisi and 1 or 0.6)
+        for _, t in ipairs({ b.visage, b.visage.calqueVivant, b.visage.calqueDepose }) do
+            if t then t:SetDesaturated(not estChoisi) end
+        end
         local perso = p
         b:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
