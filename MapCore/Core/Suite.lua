@@ -226,7 +226,7 @@ if not _G.SagaCoreUnifieur then
     end)
 end
 
-local VERSION = 202
+local VERSION = 203
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -9522,8 +9522,7 @@ function Suite.FenetreAPages(o)
                 .. Glyphe("PADBACK") .. "  " .. TR("Naviguer dans la page", "Navigate the page") .. esp
                 .. Glyphe("PADDUP") .. " " .. Glyphe("PADDDOWN") .. "  " .. TR("Défiler", "Scroll") .. esp
                 .. Glyphe("PADLSTICK") .. " " .. Glyphe("PADRSTICK") .. "  " .. TR("Add-ons", "Add-ons") .. esp
-                .. Glyphe("PAD2") .. "  " .. ((o.historique and select(2, pcall(o.historique.PeutReculer)) == true)
-                    and TR("Précédent", "Back") or TX("Close")))
+                .. Glyphe("PAD2") .. "  " .. TX("Close"))
         end
         barre:SetWidth((barre.texte:GetStringWidth() or 400) + 24)
         barre:Show()
