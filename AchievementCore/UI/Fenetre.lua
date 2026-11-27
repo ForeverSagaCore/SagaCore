@@ -1434,6 +1434,35 @@ F.historique = {
 -- La page de la suite complete (AchievementCore installe seul)
 -- ---------------------------------------------------------------------------
 
+-- Les Parametres : l'annonce des hauts faits, la danse.
+local function PageReglages()
+    return { cle = "reglages", section = "GloryCore",
+        construire = function(page, O)
+            page.t1 = O.Section()
+            page.rAnnonce = O.Rangee()
+            O.Case(page.rAnnonce, function(v) NS.base.Reglages().annoncerHautsFaits = v and true or false end)
+                :SetPoint("RIGHT", page.rAnnonce, "RIGHT", -10, 0)
+            page.dAnnonce = O.Detail(18)
+            page.rDanse = O.Rangee()
+            O.Case(page.rDanse, function(v) NS.base.Reglages().danserHautFait = v and true or false end)
+                :SetPoint("RIGHT", page.rDanse, "RIGHT", -10, 0)
+            page.dDanse = O.Detail(18)
+        end,
+        rendre = function(page)
+            local r = NS.base.Reglages()
+            page.t1:SetText(T("Hauts faits obtenus", "Feats earned"))
+            page.rAnnonce.nom:SetText(T("Annoncer chaque haut fait", "Announce each feat"))
+            page.dAnnonce:SetText(T("Le bandeau du milieu de l'écran et un son, avec les points gagnés.", "The banner in the middle of the screen and a sound, with the points earned."))
+            page.rDanse.nom:SetText(T("Faire danser mon personnage", "Make my character dance"))
+            page.dDanse:SetText(T("Une petite danse à chaque haut fait (jamais en combat).", "A little dance at each feat (never in combat)."))
+            for _, x in ipairs({ { page.rAnnonce, r.annoncerHautsFaits ~= false }, { page.rDanse, r.danserHautFait == true } }) do
+                for _, enfant in ipairs({ x[1]:GetChildren() }) do
+                    if enfant.SetChecked then enfant:SetChecked(x[2]) end
+                end
+            end
+        end }
+end
+
 local ADRESSE_SUITE = "https://www.curseforge.com/projects/1817365"
 local function PageSuite()
     return { cle = "suite", icone = "Interface\\Icons\\INV_Misc_Book_11",
@@ -1489,6 +1518,7 @@ function F.Construire()
             table.insert(pages, pc)
         end
     end
+    table.insert(pages, PageReglages())
     if S.Seul and S.Seul() then table.insert(pages, PageSuite()) end
     F.w = S.FenetreAPages({
         nom = "AchievementCoreFenetre", cle = "AchievementCore", icone = "Interface\\Icons\\INV_Misc_Ribbon_01",

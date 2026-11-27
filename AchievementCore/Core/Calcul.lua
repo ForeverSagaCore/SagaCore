@@ -235,19 +235,28 @@ end
 
 -- Les dates d'obtention, dans la fiche du personnage : ce qui etait deja
 -- fini au premier releve d'une categorie n'a pas de date (0).
+-- Un nouveau releve d'une categorie (nouvelle facon de compter) repart
+-- comme un premier releve : rien n'est annonce d'un coup.
+local VERSION_HF = 2
+calcul.nouveaux = {}
 local function Dater(cle, cleCat, faits)
     local f = NS.base.Fiche(cle)
     if not f then return end
     local hf = NS.base.Table(f, "hautsFaits")
     local init = NS.base.Table(f, "hautsFaitsInit")
     local maintenant = NS.Appeler(time) or 0
+    local deja = init[cleCat] == VERSION_HF
     for k, x in pairs(faits) do
         if x.cat == cleCat and hf[k] and not hf[k].icone then hf[k].icone = x.icone end
         if x.cat == cleCat and not hf[k] then
-            hf[k] = { t = init[cleCat] and maintenant or 0, nom = x.nom, pts = x.pts, icone = x.icone }
+            hf[k] = { t = deja and maintenant or 0, nom = x.nom, pts = x.pts, icone = x.icone }
+            -- Obtenu a l'instant par le personnage connecte : a annoncer.
+            if deja and cle == NS.ClePersonnage() then
+                table.insert(calcul.nouveaux, { cle = k, nom = x.nom, pts = x.pts, icone = x.icone })
+            end
         end
     end
-    init[cleCat] = true
+    init[cleCat] = VERSION_HF
 end
 
 local memoPoints = {}

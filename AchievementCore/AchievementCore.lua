@@ -53,6 +53,7 @@ local function RareTue(id)
     if rares[id] then return end
     rares[id] = NS.Appeler(time) or true
     NS.Changer("rares", "donjons")
+    if NS.VerifierHautsFaits then NS.VerifierHautsFaits() end
 end
 
 local band = _G.bit and _G.bit.band
@@ -94,6 +95,34 @@ local function MortDansLeJournal()
     end
 end
 
+-- Un haut fait obtenu : le bandeau du milieu de l'ecran (celui de
+-- QuestCore), un son, et si le joueur l'a choisi, son personnage danse.
+local function Annoncer(x)
+    local reglages = NS.base.Reglages()
+    if reglages.annoncerHautsFaits == false then return end
+    local api = _G.QuestCoreAPI
+    local titre = T("Haut fait : ", "Feat : ") .. tostring(x.nom or "?")
+    local detail = string.format(T("+%d points", "+%d points"), x.pts or 0)
+    if not (api and api.Bandeau and api.Bandeau(titre, detail, true)) then NS.Dire(titre .. "  " .. detail) end
+    local son = _G.SOUNDKIT and (_G.SOUNDKIT.UI_ACHIEVEMENT_AWARDED or _G.SOUNDKIT.LEVELUPSOUND) or 888
+    pcall(PlaySound, son)
+    if reglages.danserHautFait == true and _G.DoEmote and not (InCombatLockdown and InCombatLockdown()) then
+        pcall(_G.DoEmote, "DANCE")
+    end
+end
+
+-- Apres un changement : les hauts faits du personnage connecte, un peu plus
+-- tard, et ceux obtenus a l'instant sont annonces (trois au plus a la fois).
+local function VerifierHautsFaits()
+    local cle = NS.ClePersonnage()
+    if not cle then return end
+    NS.calcul.Points("perso:" .. cle)
+    local liste = NS.calcul.nouveaux
+    NS.calcul.nouveaux = {}
+    for k = 1, math.min(3, #liste) do Annoncer(liste[k]) end
+end
+NS.VerifierHautsFaits = function() Bientot("hautsFaits", 3, VerifierHautsFaits) end
+
 local EVENEMENTS = {
     "PLAYER_ENTERING_WORLD", "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA",
     "QUEST_TURNED_IN", "BAG_UPDATE_DELAYED", "PLAYER_EQUIPMENT_CHANGED", "BANKFRAME_OPENED", "PLAYERBANKSLOTS_CHANGED",
@@ -115,8 +144,15 @@ cadre:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4, a5)
         -- grandes listes ensuite, par petits morceaux.
         Bientot("tout", 4, releve.Tout)
         Bientot("preparer", 15, NS.base.Preparer)
+        -- Un premier releve des hauts faits, une fois les listes pretes.
+        Bientot("hautsFaitsInit", 40, VerifierHautsFaits)
         return
     end
+    -- Ce qui peut faire un haut fait (pas les sacs : trop frequent).
+    local HF = { QUEST_TURNED_IN = true, ZONE_CHANGED_NEW_AREA = true, ZONE_CHANGED = true, ENCOUNTER_END = true, BOSS_KILL = true,
+        SKILL_LINES_CHANGED = true, NEW_RECIPE_LEARNED = true, UPDATE_FACTION = true, PLAYER_LEVEL_UP = true,
+        PLAYER_PVP_RANK_CHANGED = true, UPDATE_BATTLEFIELD_STATUS = true }
+    if HF[ev] then NS.VerifierHautsFaits() end
     if ev == "PLAYER_ENTERING_WORLD" or ev:find("^ZONE_CHANGED") then
         Bientot("zone", 1, function() releve.ZoneActuelle() SuivreLeJournal() end)
     elseif ev == "QUEST_TURNED_IN" then
