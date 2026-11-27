@@ -176,3 +176,49 @@ ref.XP_NIVEAU = { 400, 900, 1400, 2100, 2800, 3600, 4500, 5400, 6500, 7600, 8800
     16000, 17700, 19400, 21300, 23200, 25200, 27300, 29400, 31700, 34000, 36400, 38900, 41400, 44300, 47400,
     50800, 54500, 58600, 62800, 67100, 71600, 76100, 80800, 85700, 90700, 95800, 101000, 106300, 111800, 117500,
     123200, 129100, 135100, 141200, 147500, 153900, 160400, 167100, 173900, 180800, 187900, 195000, 202300, 209800 }
+
+-- Ce que chaque classe peut porter (Classic) : familles du jeu 2 (armes) et
+-- 4 (armures), par sous-famille. Les autres sous-familles (bijoux, divers,
+-- cannes a peche) valent pour tous.
+local A = { tissu = 1, cuir = 2, maille = 3, plaque = 4, bouclier = 6, libram = 7, idole = 8, totem = 9 }
+local ARMURES = {
+    WARRIOR = { A.tissu, A.cuir, A.maille, A.plaque, A.bouclier },
+    PALADIN = { A.tissu, A.cuir, A.maille, A.plaque, A.bouclier, A.libram },
+    HUNTER = { A.tissu, A.cuir, A.maille },
+    ROGUE = { A.tissu, A.cuir },
+    PRIEST = { A.tissu },
+    SHAMAN = { A.tissu, A.cuir, A.maille, A.bouclier, A.totem },
+    MAGE = { A.tissu },
+    WARLOCK = { A.tissu },
+    DRUID = { A.tissu, A.cuir, A.idole },
+}
+-- 0 hache, 1 hache 2M, 2 arc, 3 fusil, 4 masse, 5 masse 2M, 6 arme d'hast,
+-- 7 epee, 8 epee 2M, 10 baton, 13 arme de pugilat, 15 dague, 16 arme de jet,
+-- 18 arbalete, 19 baguette.
+local ARMES = {
+    WARRIOR = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 13, 15, 16, 18 },
+    PALADIN = { 0, 1, 4, 5, 6, 7, 8 },
+    HUNTER = { 0, 1, 2, 3, 6, 7, 8, 10, 13, 15, 16, 18 },
+    ROGUE = { 2, 3, 4, 7, 13, 15, 16, 18 },
+    PRIEST = { 4, 10, 15, 19 },
+    SHAMAN = { 0, 1, 4, 5, 10, 13, 15 },
+    MAGE = { 7, 10, 15, 19 },
+    WARLOCK = { 7, 10, 15, 19 },
+    DRUID = { 4, 5, 10, 13, 15 },
+}
+local LIMITEES = { [2] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 13, 15, 16, 18, 19 },
+    [4] = { A.tissu, A.cuir, A.maille, A.plaque, A.bouclier, A.libram, A.idole, A.totem } }
+local function Ensemble(l) local t = {} for _, v in ipairs(l or {}) do t[v] = true end return t end
+local limitees = { [2] = Ensemble(LIMITEES[2]), [4] = Ensemble(LIMITEES[4]) }
+local portables = {}
+-- Vrai si la classe peut porter un objet de cette famille et sous-famille
+-- (classe inconnue : oui).
+function ref.Portable(classe, famille, sous)
+    local lim = limitees[famille]
+    if not (lim and lim[sous]) then return true end
+    local liste = (famille == 2 and ARMES or ARMURES)[classe or ""]
+    if not liste then return true end
+    local cle = tostring(classe) .. ":" .. famille
+    portables[cle] = portables[cle] or Ensemble(liste)
+    return portables[cle][sous] == true
+end

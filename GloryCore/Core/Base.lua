@@ -592,12 +592,16 @@ function base.Rencontres()
     end
     local r = { parZone = {}, deId = {}, extra = {}, zoneDeNom = {} }
     -- Le PNJ de chaque boss, dans les fiches du journal : { [donjon] = { [nom] = pnj } }.
-    local pnjs = {}
+    local pnjs, fiches = {}, {}
     for nomD, dj in pairs(type(fdj.DB) == "table" and fdj.DB or {}) do
         for _, b in ipairs(type(dj) == "table" and type(dj.bosses) == "table" and dj.bosses or {}) do
-            if type(b) == "table" and type(b.name) == "string" and tonumber(b.npcID) then
-                pnjs[nomD] = pnjs[nomD] or {}
-                pnjs[nomD][b.name] = tonumber(b.npcID)
+            if type(b) == "table" and type(b.name) == "string" then
+                fiches[nomD] = fiches[nomD] or {}
+                fiches[nomD][b.name] = b
+                if tonumber(b.npcID) then
+                    pnjs[nomD] = pnjs[nomD] or {}
+                    pnjs[nomD][b.name] = tonumber(b.npcID)
+                end
             end
         end
     end
@@ -615,7 +619,8 @@ function base.Rencontres()
             index[zone] = index[zone] or {}
             local b = index[zone][cle]
             if not b then
-                b = { cle = cle, nom = info[2], ids = {}, pnj = pnjs[info[1]] and pnjs[info[1]][info[2]] or nil }
+                b = { cle = cle, nom = info[2], ids = {}, pnj = pnjs[info[1]] and pnjs[info[1]][info[2]] or nil,
+                    donjon = info[1], fiche = fiches[info[1]] and fiches[info[1]][info[2]] or nil }
                 index[zone][cle] = b
                 r.parZone[zone] = r.parZone[zone] or {}
                 table.insert(r.parZone[zone], b)

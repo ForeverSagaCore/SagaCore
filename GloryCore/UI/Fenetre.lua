@@ -621,8 +621,34 @@ local function Carte(page, x, y, l, o, h)
         f.anneau:Show()
         C.PoserAnneau(f.anneau, o.anneau.v, o.anneau.couleur, o.anneau.texte)
     else
-        f.rond.icone:SetTexture(o.icone or ICONE_POINTS)
-        f.rond.icone:SetDesaturated(o.desature == true)
+        local ic = f.rond.icone
+        -- Un portrait pris au journal des donjons se rend avant de reservir.
+        local FDJ = _G.ForeverDungeonJournal_NS
+        if f.rond.portrait then
+            if type(FDJ) == "table" and FDJ.ReleasePortrait then pcall(FDJ.ReleasePortrait, ic) end
+            if ic.SetMask then pcall(ic.SetMask, ic, "") end
+            f.rond.portrait = nil
+        end
+        ic:SetTexture(o.icone or ICONE_POINTS)
+        ic:SetDesaturated(o.desature == true)
+        -- Les icones de quete du jeu (le point d'exclamation) ont leur propre
+        -- rond : plus petites dans l'anneau, entieres.
+        local taille = f.rond:GetWidth() or IMAGE
+        local gossip = type(o.icone) == "string" and o.icone:find("GossipFrame", 1, true) ~= nil
+        ic:SetSize(taille * (gossip and 0.5 or 13 / 20), taille * (gossip and 0.5 or 13 / 20))
+        if gossip then ic:SetTexCoord(0, 1, 0, 1) else ic:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+        -- Le vrai portrait du boss, rendu par le journal des donjons (une
+        -- simple texture : le journal ne s'ouvre pas) ; l'icone sinon.
+        if o.portrait and type(FDJ) == "table" and type(FDJ.SetBossPortrait) == "function" then
+            local ok, oui = pcall(FDJ.SetBossPortrait, ic, o.portrait.donjon, o.portrait.fiche)
+            if ok and oui then
+                f.rond.portrait = true
+                ic:SetTexCoord(0, 1, 0, 1)
+                if ic.SetMask then pcall(ic.SetMask, ic, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+            else
+                ic:SetTexture(o.icone or ICONE_POINTS)
+            end
+        end
         f.rond:Show()
     end
     f.nom:SetText(o.nom or "")
@@ -1331,7 +1357,7 @@ local function RendreCategorie(page, cat)
             local f = CritereFait(it, portee)
             local icone = it.icone
             if it.objet then icone = NS.IconeDObjet(it.objet) end
-            table.insert(liste, { icone = icone or cat.icone, desature = not f, nom = it.nom, sous = DetailCritere(it, portee),
+            table.insert(liste, { icone = icone or cat.icone, portrait = it.portrait, desature = not f, nom = it.nom, sous = DetailCritere(it, portee),
                 droite = (portee == "deux") and DroiteDeCritere(it, portee) or (f and COCHE or ""), survol = Infobulle(it) })
         else
             local cle = it.cle
