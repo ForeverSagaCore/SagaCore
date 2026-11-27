@@ -403,7 +403,8 @@ local function CategorieDonjons()
                 local duJournal = rencontres and rencontres.parZone[d.zone]
                 if duJournal then
                     for _, b in ipairs(duJournal) do
-                        table.insert(boss, { cle = b.cle, nom = NomDeBoss(b), ids = b.ids, pnj = b.pnj })
+                        table.insert(boss, { cle = b.cle, nom = NomDeBoss(b), ids = b.ids, pnj = b.pnj,
+                            portrait = b.fiche and { donjon = b.donjon, fiche = b.fiche } or nil })
                         nomsBoss[NS.Cle(b.nom)] = true
                     end
                 else
@@ -502,7 +503,8 @@ local function CategorieDonjons()
                             for _, b in ipairs(boss) do
                                 local bb = b
                                 table.insert(liste, Critere(b.cle, b.nom, Un(function(p) return Battu(p, bb) end),
-                                    { qui = Qui(ctx, function(p) return Battu(p, bb) end), icone = "Interface\\Icons\\INV_Misc_Head_Dragon_01" }))
+                                    { qui = Qui(ctx, function(p) return Battu(p, bb) end), icone = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
+                                      portrait = bb.portrait }))
                             end
                             for _, c in ipairs(critRares) do table.insert(liste, c) end
                             if idx then
@@ -591,10 +593,14 @@ local function CategorieObjets()
                 if cle then faitPar[cle] = (faitPar[cle] or 0) + 1 end
             end
             local res = { sous = {} }
+            -- Un personnage : seulement ce que sa classe peut porter (ni
+            -- plaque ni maille pour un mage).
+            local classe = ctx.genre ~= "camp" and ctx.perso and ctx.perso.classe or nil
             for famille, cles in pairs(idx.familles) do
                 local s = Sous(res, "f" .. famille, NomDeFamille(famille), famille, ICONES_FAMILLE[famille])
                 for _, cle in ipairs(cles) do
                     local ps = idx.parSous[cle]
+                    if ref.Portable(classe, ps.famille, ps.sous) then
                     Ajouter(res, s, { cle = "s" .. cle, nom = NomDeSousFamille(ps.famille, ps.sous), ordre = ps.sous,
                         icone = ICONES_FAMILLE[famille] or "Interface\\Icons\\INV_Misc_Gift_02",
                         fait = faitPar[cle] or 0, total = #ps.ids,
@@ -608,6 +614,7 @@ local function CategorieObjets()
                             table.sort(liste, function(a, b) return a.nom < b.nom end)
                             return liste
                         end })
+                    end
                 end
             end
             return Finir(res)
