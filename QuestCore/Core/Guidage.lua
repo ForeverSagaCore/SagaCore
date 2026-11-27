@@ -316,10 +316,36 @@ local function EtapesDeQuetes(ids, moi, etat, compte, suite)
         -- un detour que si elle est sur le chemin (deux fois plus pres que
         -- cette cible). Rien de commence : la plus proche a prendre.
         local P = NS.parcours
-        local commences, aPrendre = {}, {}
+        local commences, aPrendre, rendus, objectifs = {}, {}, {}, {}
         for _, pt in ipairs(points) do
             local e = P.EtatEtape(moi, pt.id)
             if e == "cours" or e == "rendre" then table.insert(commences, pt) else table.insert(aPrendre, pt) end
+            if e == "rendre" then table.insert(rendus, pt) elseif e == "cours" then table.insert(objectifs, pt) end
+        end
+        -- Une quete finie se rend d'abord (l'XP tout de suite, et la suite
+        -- qu'elle debloque) : la plus proche a rendre est la cible ; ce qui
+        -- est deux fois plus pres sur le chemin (un objectif, une quete a
+        -- prendre) passe avant ; le reste vient apres.
+        if #rendus > 0 then
+            local ordre = S().Lieux.Chaine(rendus, ici, nil, etat.chaine)
+            local dCible = S().Lieux.Distance(ici, ordre[1])
+            local detours = {}
+            for _, pt in ipairs(objectifs) do
+                if S().Lieux.Distance(ici, pt) * 2 < dCible then table.insert(detours, pt) end
+            end
+            for _, pt in ipairs(aPrendre) do
+                if S().Lieux.Distance(ici, pt) * 2 < dCible then table.insert(detours, pt) end
+            end
+            if #detours > 0 then
+                local avant = S().Lieux.Chaine(detours, ici)
+                for k = #avant, 1, -1 do table.insert(ordre, 1, avant[k]) end
+            end
+            local dejaLa = {}
+            for _, pt in ipairs(ordre) do dejaLa[pt] = true end
+            for _, pt in ipairs(S().Lieux.Chaine(objectifs, ici)) do
+                if not dejaLa[pt] then table.insert(ordre, pt) end
+            end
+            return ordre, nil, nil, compte
         end
         if #commences > 0 then
             local ordre = S().Lieux.Chaine(commences, ici, nil, etat.chaine)
@@ -546,6 +572,9 @@ local function EtapesDuKit(moi, pc, etat)
     return true, EtapesDeQuetes(ids, moi, etat, { fait = faites, total = math.max(total, faites + 1) }, true)
 end
 
+-- Un itineraire : les quetes a prendre visees a la fois, dans son ordre.
+local A_PRENDRE = 4
+
 TYPES.parcours = Commun({
     Cle = function(p) return tostring(p.uid) end,
     Libelle = function(p)
@@ -574,10 +603,14 @@ TYPES.parcours = Commun({
         if total > 0 and faites >= total then return nil, "atteint" end
         -- Le compte affiche, lui, avance a chaque geste (prendre, faire, rendre).
         faites, total = NS.parcours.AvancementGestes(moi, pc)
-        local ids = {}
+        -- Ce qui est vise : tout ce qui est commence (objectifs, rendus), et
+        -- seulement les prochaines quetes a prendre dans l'ordre de
+        -- l'itineraire (jamais une quete de la fin avant celles du debut).
+        local ids, prises = {}, 0
         for _, id in ipairs(pc.etapes or {}) do
             local e = NS.parcours.EtatEtape(moi, id)
-            if e ~= "attente" and e ~= "faite" then table.insert(ids, id) end
+            if e == "cours" or e == "rendre" then table.insert(ids, id)
+            elseif e == "prendre" and prises < A_PRENDRE then prises = prises + 1 table.insert(ids, id) end
         end
         if #ids == 0 then return nil, "loin", OuAller(moi, pc.etapes) end
         return EtapesDeQuetes(ids, moi, etat, { fait = faites, total = total }, true)
