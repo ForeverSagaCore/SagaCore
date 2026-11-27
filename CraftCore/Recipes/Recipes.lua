@@ -861,6 +861,12 @@ function recettes.CommentApprendre(recette)
         local lignes = recettes.LignesDeSource(recette.source)
         if #lignes > 0 then return recettes.NatureDeLaSource(recette.source), lignes end
     end
+    -- Recette d'un patron du camp (commerce des caisses) : chez son vendeur,
+    -- jamais chez un maitre.
+    if NS.commerce and NS.commerce.TexteVendeur then
+        local okV, texte = pcall(NS.commerce.TexteVendeur, recette)
+        if okV and texte then return "RECIPES_HOW_VENDOR", { string.format(L.RECIPES_SRC_CAMP or "%s", texte) } end
+    end
     local donnee = SOURCES[Cle(recette.nom) or ""]
     if not donnee and recette.objetProduit then
         local info = NS.objets.Info(recette.objetProduit)
