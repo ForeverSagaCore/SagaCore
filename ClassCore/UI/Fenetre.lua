@@ -934,6 +934,7 @@ function F.Construire()
         nom = "ClassCoreFenetre", cle = "ClassCore", icone = NS.classes.ICONE[E().Classe() or ""] or "Interface\\Icons\\INV_Misc_Book_09",
         titre = function() return T("ClassCore (bêta)", "ClassCore (beta)") end,
         pages = pages,
+        sansBande = true,
         manette = Manette,
     })
     local w = F.w

@@ -6155,8 +6155,6 @@ end
 NS.PortraitDepose = PortraitDepose
 
 PoserVisage = function(texture, fiche, estConnecte)
-    -- Rond, dans un anneau a la couleur de la classe (comme la recherche de groupe).
-    if _G.CoreSuite and _G.CoreSuite.AnneauDeClasse then _G.CoreSuite.AnneauDeClasse(texture, fiche and (fiche.jetonClasse or fiche.classeJeu)) end
 
     local vivant = Calque(texture, "calqueVivant", 1)
     local depose = Calque(texture, "calqueDepose", 2)
@@ -6189,10 +6187,11 @@ PoserVisage = function(texture, fiche, estConnecte)
         end
         if jeton then fiche.jetonClasse = jeton end
     end
-    if _G.CoreSuite and _G.CoreSuite.AnneauDeClasse then _G.CoreSuite.AnneauDeClasse(texture, jeton) end
+    -- L'icone ronde de classe du jeu (recherche de groupe), quand le client l'a.
+    if _G.CoreSuite and _G.CoreSuite.IconeRondeDeClasse and _G.CoreSuite.IconeRondeDeClasse(texture, jeton) then return end
     local coords = CLASS_ICON_TCOORDS and jeton and CLASS_ICON_TCOORDS[jeton]
     if coords then
-        texture:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
+        texture:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
         pcall(texture.SetTexCoord, texture, coords[1], coords[2], coords[3], coords[4])
         return
     end

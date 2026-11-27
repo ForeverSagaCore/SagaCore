@@ -238,14 +238,14 @@ end
 
 -- Couleur et portrait, comme les lignes de personnage de LegacyCore.
 function persos.Visage(texture, p)
-    -- Rond, dans un anneau a la couleur de la classe (comme la recherche de groupe).
-    if _G.CoreSuite and _G.CoreSuite.AnneauDeClasse then _G.CoreSuite.AnneauDeClasse(texture, p and p.classe) end
 
     texture:SetTexCoord(0, 1, 0, 1)
     if p.cle == NS.ClePersonnage() and _G.SetPortraitTexture and pcall(_G.SetPortraitTexture, texture, "player") then return end
+    -- L'icone ronde de classe du jeu (recherche de groupe), quand le client l'a.
+    if _G.CoreSuite and _G.CoreSuite.IconeRondeDeClasse and _G.CoreSuite.IconeRondeDeClasse(texture, p.classe) then return end
     local coords = _G.CLASS_ICON_TCOORDS and p.classe and _G.CLASS_ICON_TCOORDS[p.classe]
     if coords then
-        texture:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
+        texture:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
         pcall(texture.SetTexCoord, texture, coords[1], coords[2], coords[3], coords[4])
         return
     end

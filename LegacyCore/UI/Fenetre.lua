@@ -147,6 +147,7 @@ local function Poser(contenu, index, y, o)
         l.icone:ClearAllPoints()
         l.icone:SetPoint("TOPLEFT", l, "TOPLEFT", x, -1)
         l.icone:SetTexture(o.icone)
+        l.icone:SetTexCoord(0, 1, 0, 1)
         l.icone:SetDesaturated(o.desature == true)
         l.icone:Show()
         x = x + 22
@@ -713,13 +714,18 @@ local function RendreDefis(contenu, index, y)
         end
         index = index + 1
         -- Meme retrait et meme place d'icone que les metiers : tout s'aligne.
-        y = Poser(contenu, index, y, { retrait = RETRAIT, icone = "Interface\\TargetingFrame\\UI-Classes-Circles",
+        y = Poser(contenu, index, y, { retrait = RETRAIT, icone = "Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES",
             desature = not c.meilleur, texte = NomDeClasse(c.classe),
             couleur = c.meilleur and CouleurDeClasse(c.classe) or GRIS, droite = table.concat(morceaux, "     "),
             detail = detail, apres = 4 })
         local l = contenu.lignes[index]
         local coords = _G.CLASS_ICON_TCOORDS and _G.CLASS_ICON_TCOORDS[c.classe]
-        if coords then l.icone:SetTexCoord(coords[1], coords[2], coords[3], coords[4]) end
+        -- L'icone ronde de classe du jeu (recherche de groupe), sinon la planche.
+        local S = _G.CoreSuite
+        if not (S and S.IconeRondeDeClasse and S.IconeRondeDeClasse(l.icone, c.classe)) and coords then
+            l.icone:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+        end
+        l.icone:SetDesaturated(not c.meilleur)
         if prochain and estMoi and api and api.GuiderNiveau then
             local palier = prochain
             l:EnableMouse(true)
@@ -963,14 +969,14 @@ end
 -- ---------------------------------------------------------------------------
 
 PoserVisage = function(texture, p, estConnecte)
-    -- Rond, dans un anneau a la couleur de la classe (comme la recherche de groupe).
-    if _G.CoreSuite and _G.CoreSuite.AnneauDeClasse then _G.CoreSuite.AnneauDeClasse(texture, p and p.classe) end
 
     texture:SetTexCoord(0, 1, 0, 1)
     if estConnecte and SetPortraitTexture and pcall(SetPortraitTexture, texture, "player") then return end
+    -- L'icone ronde de classe du jeu (recherche de groupe), quand le client l'a.
+    if _G.CoreSuite and _G.CoreSuite.IconeRondeDeClasse and _G.CoreSuite.IconeRondeDeClasse(texture, p.classe) then return end
     local coords = _G.CLASS_ICON_TCOORDS and p.classe and _G.CLASS_ICON_TCOORDS[p.classe]
     if coords then
-        texture:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
+        texture:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
         pcall(texture.SetTexCoord, texture, coords[1], coords[2], coords[3], coords[4])
         return
     end
