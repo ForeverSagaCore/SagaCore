@@ -1452,10 +1452,10 @@ local function PageReglages()
             local r = NS.base.Reglages()
             page.t1:SetText(T("Hauts faits obtenus", "Feats earned"))
             page.rAnnonce.nom:SetText(T("Annoncer chaque haut fait", "Announce each feat"))
-            page.dAnnonce:SetText(T("Le bandeau du milieu de l'écran et un son, avec les points gagnés.", "The banner in the middle of the screen and a sound, with the points earned."))
+            page.dAnnonce:SetText(T("Le bandeau du milieu de l'écran et le son du passage de niveau, avec les points gagnés.", "The banner in the middle of the screen and the level up sound, with the points earned."))
             page.rDanse.nom:SetText(T("Faire danser mon personnage", "Make my character dance"))
-            page.dDanse:SetText(T("Une petite danse à chaque haut fait (jamais en combat).", "A little dance at each feat (never in combat)."))
-            for _, x in ipairs({ { page.rAnnonce, r.annoncerHautsFaits ~= false }, { page.rDanse, r.danserHautFait == true } }) do
+            page.dDanse:SetText(T("Une petite danse à chaque haut fait, une fois arrêté, jamais en combat.", "A little dance at each feat, once standing still, never in combat."))
+            for _, x in ipairs({ { page.rAnnonce, r.annoncerHautsFaits ~= false }, { page.rDanse, r.danserHautFait ~= false } }) do
                 for _, enfant in ipairs({ x[1]:GetChildren() }) do
                     if enfant.SetChecked then enfant:SetChecked(x[2]) end
                 end

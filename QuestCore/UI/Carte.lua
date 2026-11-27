@@ -628,8 +628,9 @@ _G.QuestCoreAPI = {
     end,
     -- Le bandeau d'avancement, pour les autres add-ons de la suite (CraftCore :
     -- projet termine). Memes reglages, meme place que pour les quetes.
-    Bandeau = function(titre, detail, terminee, detail2)
-        if NS.bandeau and NS.bandeau.Montrer then NS.bandeau.Montrer(titre, detail, terminee, detail2) return true end
+    -- opts (facultatif) : { clignote = true, icone = texture } pour un haut fait.
+    Bandeau = function(titre, detail, terminee, detail2, opts)
+        if NS.bandeau and NS.bandeau.Montrer then NS.bandeau.Montrer(titre, detail, terminee, detail2, opts) return true end
         return false
     end,
     Points = function() return carte.TousLesPoints() end,
