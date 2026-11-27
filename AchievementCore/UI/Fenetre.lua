@@ -720,23 +720,185 @@ local function Attente(page, nn, y)
 end
 
 -- Une page des hauts faits : titre, explication, zone (et ses boutons).
+-- ---------------------------------------------------------------------------
+-- Les pages des hauts faits, en cartes (comme la maquette)
+-- ---------------------------------------------------------------------------
+
+local C = NS.cartes
+local ECART = 12
+
+-- Les cartes de chaque page, gardees d'un rendu a l'autre.
+local function Reserves(page)
+    if page.r then return page.r end
+    local z = page.zone
+    local r = {}
+    -- Carte de categorie : anneau, nom, detail.
+    r.cat = C.Reserve(function()
+        local f = C.Panneau(z, true)
+        f.anneau = C.Anneau(f, 50)
+        f.anneau:SetPoint("LEFT", f, "LEFT", 10, 0)
+        f.nom = C.Texte(f, "GameFontNormal", C.OR)
+        f.nom:SetPoint("TOPLEFT", f, "TOPLEFT", 70, -17)
+        f.nom:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+        f.detail = C.Texte(f, "GameFontHighlightSmall", C.GRIS)
+        f.detail:SetPoint("TOPLEFT", f.nom, "BOTTOMLEFT", 0, -6)
+        f.detail:SetPoint("RIGHT", f, "RIGHT", -8, 0)
+        return f
+    end)
+    -- Carte de liste : icone, nom, detail, valeur a droite, barre en bas.
+    r.ligne = C.Reserve(function()
+        local f = C.Panneau(z, true)
+        f.ic = C.Icone(f, 30)
+        f.ic:SetPoint("LEFT", f, "LEFT", 10, 0)
+        f.visage = f:CreateTexture(nil, "ARTWORK")
+        f.visage:SetSize(30, 30)
+        f.visage:SetPoint("LEFT", f, "LEFT", 10, 0)
+        f.droite = C.Texte(f, "GameFontNormal", C.OR, "RIGHT")
+        f.droite:SetPoint("RIGHT", f, "RIGHT", -12, 0)
+        f.nom = C.Texte(f, "GameFontHighlightSmall", C.CLAIR)
+        f.nom:SetPoint("TOPLEFT", f, "TOPLEFT", 50, -9)
+        f.nom:SetPoint("RIGHT", f.droite, "LEFT", -10, 0)
+        f.detail = C.Texte(f, "GameFontHighlightSmall", C.GRIS)
+        f.detail:SetPoint("TOPLEFT", f.nom, "BOTTOMLEFT", 0, -5)
+        f.detail:SetPoint("RIGHT", f.droite, "LEFT", -10, 0)
+        f.barre = C.Barre(f, 6)
+        f.barre:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 50, 9)
+        f.barre:SetPoint("RIGHT", f, "RIGHT", -12, 0)
+        return f
+    end)
+    r.titre = C.Reserve(function() return C.TitreDeColonne(z) end)
+    page.r = r
+    return r
+end
+
+local function CacherCartes(page)
+    for _, x in pairs(page.r or {}) do x.Cacher() end
+end
+
+-- Une carte de liste. o : icone | perso, nom, couleurNom, detail, droite,
+-- couleurDroite, barre (0..1), couleurBarre, auClic, survol.
+local function CarteLigne(page, x, y, l, o)
+    local f = Reserves(page).ligne.Prendre(page.zone)
+    local h = o.barre and 56 or 46
+    C.Placer(f, page.zone, x, y, l, h)
+    if o.perso then
+        f.ic:Hide()
+        f.visage:Show()
+        persos.Visage(f.visage, o.perso)
+    else
+        f.visage:Hide()
+        f.ic:Show()
+        f.ic.icone:SetTexture(o.icone or ICONE_POINTS)
+    end
+    f.nom:SetText(o.nom or "")
+    C.Couleurer(f.nom, o.couleurNom or C.CLAIR)
+    f.nom.nomDePerso = o.perso and true or nil
+    f.detail:SetText(o.detail or "")
+    f.droite:SetText(o.droite or "")
+    C.Couleurer(f.droite, o.couleurDroite or C.OR)
+    f.barre:SetShown(o.barre ~= nil)
+    if o.barre then C.PoserBarre(f.barre, o.barre, o.couleurBarre) end
+    -- Sans barre : nom et detail au milieu de la carte.
+    f.nom:ClearAllPoints()
+    f.nom:SetPoint("TOPLEFT", f, "TOPLEFT", 50, o.barre and -8 or -9)
+    f.nom:SetPoint("RIGHT", f.droite, "LEFT", -10, 0)
+    f:SetScript("OnClick", o.auClic)
+    f:EnableMouse(o.auClic ~= nil or o.survol ~= nil)
+    C.Survol(f, o.survol)
+    return y + h + 8
+end
+
+-- La grille des categories d'une portee : quatre cartes par rangee.
+local function GrilleDeCategories(page, y, portee)
+    local L = page.zone:GetWidth()
+    local cols = 4
+    local l = math.floor((L - (cols - 1) * ECART) / cols)
+    local k = 0
+    for _, cat in ipairs(NS.categories) do
+        if not (cat.Absente and cat.Absente()) or cat.cle == "quetes" or cat.cle == "objets" then
+            local r = calcul.Resultat(cat.cle, portee)
+            local f = Reserves(page).cat.Prendre(page.zone)
+            local col, rang = k % cols, math.floor(k / cols)
+            C.Placer(f, page.zone, col * (l + ECART), y + rang * (70 + ECART), l, 70)
+            f.nom:SetText(cat.nom())
+            local couleur = C.Couleur(cat.cle)
+            if r and r.total > 0 then
+                C.PoserAnneau(f.anneau, r.fait / r.total, couleur)
+                f.detail:SetText(NS.Nombre(r.fait) .. " / " .. NS.Nombre(r.total))
+            else
+                C.PoserAnneau(f.anneau, 0, couleur, "")
+                f.detail:SetText(not r and ((cat.Absente and cat.Absente()) and T("sans QuestieDB", "no QuestieDB") or T("en préparation", "preparing"))
+                    or T("rien à faire", "nothing to do"))
+            end
+            local cle = cat.cle
+            f:SetScript("OnClick", function() if F.w then F.PoserPortee(portee) F.w.page = cle F.Defiler() F.Rendre() end end)
+            k = k + 1
+        end
+    end
+    local rangs = math.ceil(k / cols)
+    return y + rangs * (70 + ECART)
+end
+
+local function TitreColonne(page, texte, x, y, l)
+    local t = Reserves(page).titre.Prendre(page.zone)
+    return C.PoserTitre(t, texte, x, y, l, page.zone)
+end
+
+local function NoteColonne(page, nn, texte, x, y, l)
+    page.notes = page.notes or {}
+    local n = page.notes[nn]
+    if not n then
+        n = page.zone:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        n:SetJustifyH("LEFT")
+        n:SetWordWrap(false)
+        page.notes[nn] = n
+    end
+    n:ClearAllPoints()
+    n:SetPoint("TOPLEFT", page.zone, "TOPLEFT", x + 4, -(y + 2))
+    n:SetWidth(l - 8)
+    n:SetText(texte)
+    n:SetTextColor(SECONDAIRE[1], SECONDAIRE[2], SECONDAIRE[3])
+    n:Show()
+    return y + 26
+end
+
+local function TexteAttente()
+    local attente = {}
+    for _, cat in ipairs(NS.categories) do
+        if cat.Pret and not cat.Pret() and not (cat.Absente and cat.Absente()) then
+            table.insert(attente, string.format("%s %d %%", cat.nom(), math.floor(((cat.Progres and cat.Progres()) or 0) * 100)))
+        end
+    end
+    return #attente > 0 and (T("En préparation : ", "Preparing : ") .. table.concat(attente, "   ")) or nil
+end
+
+-- Une page des hauts faits : titre, explication, (sa carte fixe), zone.
 local function PageHautsFaits(cle, icone, libelle, rendre, section, avant)
     return { cle = cle, icone = icone, libelle = libelle, section = section,
         construire = function(page, O)
             page.t1 = O.Section()
             page.t1:SetWordWrap(false)
             page.t1:SetPoint("RIGHT", page.cadre, "RIGHT", -260, 0)
+            -- A droite du titre : les points.
+            page.points = page.cadre:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            page.points:SetPoint("TOPRIGHT", page.cadre, "TOPRIGHT", -10, -2)
+            page.points:SetJustifyH("RIGHT")
+            page.points:SetWordWrap(false)
+            page.points.couleurPropre = true
+            page.points:SetTextColor(C.OR[1], C.OR[2], C.OR[3])
             page.intro = O.Detail(18)
             page.intro:SetWordWrap(false)
             if avant then avant(page, O) end
             page.zone = CreateFrame("Frame", nil, page.cadre)
             page.zone:SetSize(O.LARGEUR - 10, 10)
-            O.Placer(page.zone, 1, 12)
+            O.Placer(page.zone, 1, 14)
             page.yZone = page.y - 1
         end,
         rendre = function(page)
             if NS.base.Preparer then NS.base.Preparer() end
             ToutCacher(page)
+            CacherCartes(page)
+            page.points:SetText("")
             rendre(page)
         end }
 end
@@ -747,49 +909,46 @@ end
 
 local function RendreCompte(page)
     page.t1:SetText(T("Mon compte", "My account"))
-    page.intro:SetText(T("Tous tes personnages, Horde et Alliance : chaque haut fait compte une fois pour le compte.",
-        "All your characters, Horde and Alliance : each feat counts once for the account."))
-    local i, y, nt, nn = 0, 0, 0, 0
-    nt = nt + 1
-    y = Titre(page, nt, y, T("Points", "Points"))
+    page.intro:SetText(T("Tout ce que le compte a fait, et tout ce qui reste, Alliance et Horde.",
+        "Everything the account did, and everything left, Alliance and Horde."))
     local pts, possible = calcul.Points("deux")
-    i = i + 1
-    y = Poser(page, i, y, { icone = ICONE_POINTS, texte = T("Le compte", "The account"), police = "GameFontNormal",
-        fait = pts, total = math.max(1, possible), texteBarre = string.format("%s / %s", NS.Nombre(pts), NS.Nombre(possible)),
-        droite = TextePoints(pts) })
-    for _, p in ipairs(persos.Liste()) do
-        local pp = "perso:" .. p.cle
-        local ptsP, possibleP = calcul.Points(pp)
-        i = i + 1
-        y = Poser(page, i, y, { retrait = 4, visage = p, texte = p.nom, couleur = ref.CouleurDeClasse(p.classe),
-            detail = DetailPerso(p), fait = ptsP, total = math.max(1, possibleP),
-            texteBarre = string.format("%s / %s", NS.Nombre(ptsP), NS.Nombre(possibleP)), droite = TextePoints(ptsP),
-            auClic = function() F.PoserPortee(pp) if F.w then F.w.page = "perso" end F.Defiler() F.Rendre() end })
-    end
-    nn, y = Attente(page, nn, y)
-    nt = nt + 1
-    y = Titre(page, nt, y, T("Catégories", "Categories"))
-    i, y = LignesDeCategories(page, i, y, "deux")
-    nt = nt + 1
-    y = Titre(page, nt, y, T("Derniers hauts faits", "Latest feats"))
-    local derniers = calcul.Derniers(8)
+    page.points:SetText("|T" .. ICONE_POINTS .. ":16|t  " .. TextePoints(pts))
+    local L = page.zone:GetWidth()
+    local y = GrilleDeCategories(page, 0, "deux")
+    local attente = TexteAttente()
+    local nn = 0
+    if attente then nn = nn + 1 y = NoteColonne(page, nn, attente, 0, y, L) end
+    y = y + 6
+    -- Deux colonnes : les derniers hauts faits, puis chaque personnage.
+    local lG = math.floor(L * 0.55)
+    local xD = lG + ECART + 6
+    local lD = L - xD
+    local yG = TitreColonne(page, T("Derniers hauts faits", "Latest feats"), 0, y, lG)
+    local derniers = calcul.Derniers(6)
     if #derniers == 0 then
         nn = nn + 1
-        y = Note(page, nn, y, T("Les prochains hauts faits obtenus s'afficheront ici.", "The next feats you earn will show here."))
+        yG = NoteColonne(page, nn, T("Les prochains hauts faits obtenus s'afficheront ici.", "The next feats you earn will show here."), 0, yG, lG)
     end
     for _, x in ipairs(derniers) do
         local cat, sous, element = Morceaux(x.cle)
         local p = x.perso
-        i = i + 1
-        y = Poser(page, i, y, { icone = ICONE_POINTS, texte = x.nom,
-            detail = ref.Hex(ref.CouleurDeClasse(p.classe)) .. p.nom .. "|r  " .. Depuis(x.quand),
-            droite = "+" .. tostring(x.pts or 0), couleurDroite = { 1, 0.82, 0 },
-            auClic = function() F.Aller(cat, sous, element, "perso:" .. p.cle) end })
+        local c = calcul.Categorie(cat)
+        yG = CarteLigne(page, 0, yG, lG, { icone = c and c.icone, nom = x.nom,
+            detail = ref.Hex(ref.CouleurDeClasse(p.classe)) .. p.nom .. "|r, " .. Depuis(x.quand),
+            droite = tostring(x.pts or 0), auClic = function() F.Aller(cat, sous, element, "perso:" .. p.cle) end })
     end
-    page.hauteur = page.yZone + y + 10
+    local yD = TitreColonne(page, T("Par personnage", "By character"), xD, y, lD)
+    for _, p in ipairs(persos.Liste()) do
+        local pp = "perso:" .. p.cle
+        local ptsP, possibleP = calcul.Points(pp)
+        local v = possibleP > 0 and ptsP / possibleP or 0
+        yD = CarteLigne(page, xD, yD, lD, { perso = p, nom = p.nom, couleurNom = ref.CouleurDeClasse(p.classe),
+            detail = DetailPerso(p), droite = TextePoints(ptsP), barre = v,
+            auClic = function() F.PoserPortee(pp) if F.w then F.w.page = "perso" end F.Defiler() F.Rendre() end })
+    end
+    page.hauteur = page.yZone + math.max(yG, yD) + 10
 end
 
--- ---------------------------------------------------------------------------
 -- Mon personnage
 -- ---------------------------------------------------------------------------
 
@@ -818,14 +977,37 @@ local function Chercher(cleCat, portee, test)
     return trouves
 end
 
-local function LigneElement(page, i, y, cleCat, x, portee, detail)
-    local cat = calcul.Categorie(cleCat)
-    local sCle, eCle = x.s.cle, x.e.cle
-    i = i + 1
-    y = Poser(page, i, y, { icone = x.e.icone or (cat and cat.icone), coords = x.e.coords, texte = x.e.nom,
-        detail = detail or (cat and cat.nom()), fait = x.e.fait, total = x.e.total,
-        auClic = function() F.Aller(cleCat, sCle, eCle, portee) end })
-    return i, y
+
+-- La banniere du personnage : portrait, nom, niveau et sa barre d'XP,
+-- l'avancement du jeu dans un grand anneau, les points.
+local function Banniere(page)
+    if page.banniere then return page.banniere end
+    local f = C.Panneau(page.zone, false)
+    C.Fort(f, true)
+    f.fond = f:CreateTexture(nil, "BACKGROUND", nil, 1)
+    f.fond:SetPoint("TOPLEFT", 4, -4)
+    f.fond:SetPoint("BOTTOMRIGHT", -4, 4)
+    f.fond:SetTexture("Interface\\Buttons\\WHITE8X8")
+    f.visage = f:CreateTexture(nil, "ARTWORK")
+    f.visage:SetSize(66, 66)
+    f.visage:SetPoint("LEFT", f, "LEFT", 18, 0)
+    f.nom = C.Texte(f, "GameFontNormal", C.OR)
+    f.nom:SetPoint("TOPLEFT", f, "TOPLEFT", 100, -20)
+    f.detail = C.Texte(f, "GameFontHighlightSmall", C.CLAIR)
+    f.detail:SetPoint("TOPLEFT", f.nom, "BOTTOMLEFT", 0, -6)
+    f.barre = C.Barre(f, 12)
+    f.barre:SetPoint("TOPLEFT", f.detail, "BOTTOMLEFT", 0, -10)
+    f.barre:SetWidth(300)
+    f.texteBarre = C.Texte(f, "GameFontHighlightSmall", C.GRIS)
+    f.texteBarre:SetPoint("LEFT", f.barre, "RIGHT", 10, 0)
+    f.anneau = C.Anneau(f, 72)
+    f.anneau:SetPoint("RIGHT", f, "RIGHT", -22, 4)
+    f.duJeu = C.Texte(f, "GameFontHighlightSmall", C.GRIS, "CENTER")
+    f.duJeu:SetPoint("TOP", f.anneau, "BOTTOM", 0, -2)
+    f.points = C.Texte(f, "GameFontNormal", C.OR, "RIGHT")
+    f.points:SetPoint("RIGHT", f.anneau, "LEFT", -18, 0)
+    page.banniere = f
+    return f
 end
 
 local function RendrePerso(page)
@@ -833,30 +1015,61 @@ local function RendrePerso(page)
     page.t1:SetText(T("Mon personnage", "My character"))
     page.intro:SetText(T("Ce que ce personnage a fait, ce qui l'attend autour de lui, et ce qu'il a presque fini.",
         "What this character did, what awaits around him, and what he has almost finished."))
-    local i, y, nt, nn = 0, 0, 0, 0
+    local b = Banniere(page)
+    local L = page.zone:GetWidth()
     local p = portee and persos.Par(portee:match("^perso:(.+)$"))
     if not p then
-        nn = nn + 1
-        y = Note(page, nn, y, T("Aucun personnage connu pour l'instant.", "No known character yet."))
-        page.hauteur = page.yZone + y + 10
+        b:Hide()
+        NoteColonne(page, 1, T("Aucun personnage connu pour l'instant.", "No known character yet."), 0, 0, L)
+        page.hauteur = page.yZone + 40
         return
     end
+    local moi = p.cle == NS.ClePersonnage()
+    C.Placer(b, page.zone, 0, 0, L, 108)
+    b:Show()
+    local c = ref.CouleurDeClasse(p.classe)
+    -- Un voile de la couleur de la classe, qui s'efface vers la droite.
+    local okG = _G.CreateColor and pcall(b.fond.SetGradient, b.fond, "HORIZONTAL",
+        _G.CreateColor(c[1] * 0.3, c[2] * 0.3, c[3] * 0.3, 0.9), _G.CreateColor(0.09, 0.066, 0.04, 0))
+    if not okG then b.fond:SetColorTexture(c[1] * 0.2, c[2] * 0.2, c[3] * 0.2, 0.5) end
+    persos.Visage(b.visage, p)
+    b.nom:SetText(p.nom)
+    C.Couleurer(b.nom, c)
+    b.nom.nomDePerso = true
+    local morceaux = {}
+    if p.classe and ref.NomDeClasse then table.insert(morceaux, ref.NomDeClasse(p.classe)) end
+    if p.race then table.insert(morceaux, ref.NomDeRace(p.race)) end
+    if p.niveau then table.insert(morceaux, string.format(T("niveau %d", "level %d"), p.niveau)) end
+    if moi then
+        local _, zone = IciMaintenant()
+        if zone then table.insert(morceaux, NS.NomDeZoneGarde(zone)) end
+    end
+    b.detail:SetText(table.concat(morceaux, ", "))
+    -- La barre d'XP du niveau en cours (personnage connecte).
+    local xp, maxi = moi and tonumber(NS.Sur(NS.Jeu("UnitXP", "player"))), moi and tonumber(NS.Sur(NS.Jeu("UnitXPMax", "player")))
+    if xp and maxi and maxi > 0 then
+        C.PoserBarre(b.barre, xp / maxi, { 0.71, 0.55, 0.85 })
+        b.texteBarre:SetText(string.format(T("%d %% du niveau %d", "%d %% of level %d"), math.floor(xp / maxi * 100), p.niveau or 0))
+        b.barre:Show() b.texteBarre:Show()
+    else
+        b.barre:Hide() b.texteBarre:Hide()
+    end
     local v, n = calcul.Global(portee)
-    local pts = calcul.Points(portee)
-    local pct = math.floor(v * 100)
-    i = i + 1
-    y = Poser(page, i, y, { retrait = 4, visage = p, texte = p.nom, police = "GameFontNormal", couleur = ref.CouleurDeClasse(p.classe),
-        detail = DetailPerso(p), fait = n > 0 and pct or 0, total = 100,
-        texteBarre = n > 0 and string.format(T("%d %% du jeu", "%d %% of the game"), pct) or T("en préparation", "preparing"),
-        droite = TextePoints(pts), couleurDroite = { 1, 0.82, 0 } })
-    nn, y = Attente(page, nn, y)
-    nt = nt + 1
-    y = Titre(page, nt, y, T("Catégories", "Categories"))
-    i, y = LignesDeCategories(page, i, y, portee)
+    C.PoserAnneau(b.anneau, n > 0 and v or 0, C.OR, n > 0 and (math.floor(v * 100) .. "%") or "")
+    b.duJeu:SetText(T("du jeu", "of the game"))
+    b.points:SetText(TextePoints((calcul.Points(portee))))
+    local y = GrilleDeCategories(page, 108 + ECART + 4, portee)
+    local nn = 0
+    local attente = TexteAttente()
+    if attente then nn = nn + 1 y = NoteColonne(page, nn, attente, 0, y, L) end
+    y = y + 6
+    local lG = math.floor(L * 0.55)
+    local xD = lG + ECART + 6
+    local lD = L - xD
     -- Autour de toi : seulement pour le personnage connecte.
-    if p.cle == NS.ClePersonnage() then
-        nt = nt + 1
-        y = Titre(page, nt, y, T("Autour de toi", "Around you"))
+    local yG = y
+    if moi then
+        yG = TitreColonne(page, T("Autour de toi, ce qui reste à faire", "Around you, what is left"), 0, y, lG)
         local carte, zone = IciMaintenant()
         local ici = {}
         local function Pas(x) return x.e.fait < x.e.total end
@@ -871,18 +1084,22 @@ local function RendrePerso(page)
         end
         if #ici == 0 then
             nn = nn + 1
-            y = Note(page, nn, y, zone and T("Rien qui reste à faire dans cette zone.", "Nothing left to do in this zone.")
-                or T("Cette zone n'a pas de liste à suivre.", "This zone has no list to follow."))
+            yG = NoteColonne(page, nn, zone and T("Rien qui reste à faire dans cette zone.", "Nothing left to do in this zone.")
+                or T("Cette zone n'a pas de liste à suivre.", "This zone has no list to follow."), 0, yG, lG)
         end
         for _, z in ipairs(ici) do
             local cat = calcul.Categorie(z[1])
-            local reste = z[2].e.total - z[2].e.fait
-            i, y = LigneElement(page, i, y, z[1], z[2], portee, string.format(T("%s : encore %d", "%s : %d left"), cat.nom(), reste))
+            local x = z[2]
+            local sCle, eCle, cc = x.s.cle, x.e.cle, z[1]
+            yG = CarteLigne(page, 0, yG, lG, { icone = cat.icone, nom = cat.nom() .. " : " .. tostring(x.e.nom),
+                detail = string.format(T("%d sur %d", "%d of %d"), x.e.fait, x.e.total),
+                droite = string.format(T("encore %d", "%d left"), x.e.total - x.e.fait), couleurDroite = C.Couleur(cc),
+                auClic = function() F.Aller(cc, sCle, eCle, portee) end })
         end
     end
     -- Presque fini : ce qui demande le moins pour un haut fait.
-    nt = nt + 1
-    y = Titre(page, nt, y, T("Presque fini", "Almost done"))
+    local xP, lP = moi and xD or 0, moi and lD or L
+    local yD = TitreColonne(page, T("Presque fini", "Almost done"), xP, y, lP)
     local presque = {}
     for _, cat in ipairs(NS.categories) do
         if cat.cle ~= "objets" then
@@ -894,24 +1111,26 @@ local function RendrePerso(page)
             end
         end
     end
-    table.sort(presque, function(a, b)
-        local ra, rb = a.e.total - a.e.fait, b.e.total - b.e.fait
+    table.sort(presque, function(a, b2)
+        local ra, rb = a.e.total - a.e.fait, b2.e.total - b2.e.fait
         if ra ~= rb then return ra < rb end
-        return a.e.fait / a.e.total > b.e.fait / b.e.total
+        return a.e.fait / a.e.total > b2.e.fait / b2.e.total
     end)
     if #presque == 0 then
         nn = nn + 1
-        y = Note(page, nn, y, T("Rien n'est encore à moitié fait.", "Nothing is half done yet."))
+        yD = NoteColonne(page, nn, T("Rien n'est encore à moitié fait.", "Nothing is half done yet."), xP, yD, lP)
     end
-    for k = 1, math.min(8, #presque) do
+    for k = 1, math.min(6, #presque) do
         local x = presque[k]
-        local cat = calcul.Categorie(x.cat)
-        i, y = LigneElement(page, i, y, x.cat, x, portee, string.format(T("%s : encore %d", "%s : %d left"), cat.nom(), x.e.total - x.e.fait))
+        local cc, sCle, eCle = x.cat, x.s.cle, x.e.cle
+        local cat = calcul.Categorie(cc)
+        yD = CarteLigne(page, xP, yD, lP, { icone = x.e.icone or cat.icone, nom = x.e.nom, detail = cat.nom(),
+            droite = string.format(T("encore %d", "%d left"), x.e.total - x.e.fait), barre = x.e.fait / x.e.total,
+            couleurBarre = C.Couleur(cc), auClic = function() F.Aller(cc, sCle, eCle, portee) end })
     end
-    page.hauteur = page.yZone + y + 10
+    page.hauteur = page.yZone + math.max(yG, yD) + 10
 end
 
--- ---------------------------------------------------------------------------
 -- Objectifs et parcours
 -- ---------------------------------------------------------------------------
 
@@ -951,154 +1170,218 @@ local function NiveauVise(portee, p)
     return math.min(60, n)
 end
 
+
+local function Duree(secondes)
+    local minutes = math.floor(secondes / 60 + 0.5)
+    if minutes < 60 then return string.format("≈ %d min", math.max(1, minutes)) end
+    return string.format("≈ %d h %02d", math.floor(minutes / 60), minutes % 60)
+end
+
+local VIOLET = { 0.71, 0.55, 0.85 }
+
+-- La carte du niveau vise, fixe en haut de la page : son anneau, le temps
+-- estime, la barre du chemin, trois tuiles de chiffres, le niveau vise
+-- (fleches) et Me guider.
+local HAUTEUR_NIVEAU = 196
+local function AvantObjectifs(page, O)
+    local f = C.Panneau(page.cadre, false)
+    C.Fort(f, true)
+    O.Placer(f, HAUTEUR_NIVEAU, 12)
+    f:SetWidth(O.LARGEUR - 10)
+    page.carteNiveau = f
+    f.anneau = C.Anneau(f, 56)
+    f.anneau:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -14)
+    f.nom = C.Texte(f, "GameFontNormal", C.OR)
+    f.nom:SetPoint("TOPLEFT", f, "TOPLEFT", 86, -22)
+    f.detail = C.Texte(f, "GameFontHighlightSmall", C.GRIS)
+    f.detail:SetPoint("TOPLEFT", f.nom, "BOTTOMLEFT", 0, -6)
+    f.temps = C.Texte(f, "GameFontNormal", C.CLAIR, "RIGHT")
+    f.temps:SetPoint("TOPRIGHT", f, "TOPRIGHT", -18, -22)
+    f.sousTemps = C.Texte(f, "GameFontHighlightSmall", C.GRIS, "RIGHT")
+    f.sousTemps:SetPoint("TOPRIGHT", f.temps, "BOTTOMRIGHT", 0, -6)
+    f.barre = C.Barre(f, 12)
+    f.barre:SetPoint("TOPLEFT", f, "TOPLEFT", 18, -84)
+    f.barre:SetPoint("RIGHT", f, "RIGHT", -18, 0)
+    f.tuiles = {}
+    for k = 1, 3 do
+        local t = C.Panneau(f, false)
+        t.libelle = C.Texte(t, "GameFontHighlightSmall", C.GRIS)
+        t.libelle:SetPoint("TOPLEFT", t, "TOPLEFT", 10, -9)
+        t.libelle:SetPoint("RIGHT", t, "RIGHT", -8, 0)
+        t.valeur = C.Texte(t, "GameFontNormal", C.CLAIR)
+        t.valeur:SetPoint("TOPLEFT", t.libelle, "BOTTOMLEFT", 0, -6)
+        t.valeur:SetPoint("RIGHT", t, "RIGHT", -8, 0)
+        f.tuiles[k] = t
+    end
+    local largeur = O.LARGEUR - 10 - 36
+    local lt = math.floor((largeur - 2 * 10) / 3)
+    for k, t in ipairs(f.tuiles) do
+        t:SetSize(lt, 46)
+        t:SetPoint("TOPLEFT", f, "TOPLEFT", 18 + (k - 1) * (lt + 10), -106)
+    end
+    f.source = C.Texte(f, "GameFontHighlightSmall", { 0.56, 0.81, 0.42 })
+    f.source:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 18, 20)
+    -- En bas a droite : Me guider, et le niveau vise entre ses fleches.
+    page.bGuiderNiveau = O.Bouton(f, 90, function()
+        local portee = PorteePerso()
+        local p = portee and persos.Par(portee:match("^perso:(.+)$"))
+        local api = _G.QuestCoreAPI
+        if p and api and api.GuiderNiveau then pcall(api.GuiderNiveau, NiveauVise(portee, p)) end
+    end)
+    page.bGuiderNiveau:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 14)
+    local r = CreateFrame("Frame", nil, f)
+    r:SetSize(330, 26)
+    r:SetPoint("RIGHT", page.bGuiderNiveau, "LEFT", -6, 0)
+    r.nom = C.Texte(r, "GameFontHighlightSmall", C.CLAIR)
+    r.nom:SetPoint("LEFT", r, "LEFT", 0, 0)
+    page.rNiveau = r
+    O.Curseur(r, 2, 60, 1, function()
+        local portee = PorteePerso()
+        local p = portee and persos.Par(portee:match("^perso:(.+)$"))
+        return NiveauVise(portee, p)
+    end, function(v)
+        local fiche = FicheDe(PorteePerso())
+        if fiche then fiche.niveauVise = v end
+        F.Rendre()
+    end, nil, nil, 5)
+end
+
 local function RendreObjectifs(page)
     local portee = PorteePerso()
     local p = portee and persos.Par(portee:match("^perso:(.+)$"))
     page.t1:SetText(T("Objectifs et parcours", "Goals and routes"))
     page.intro:SetText(T("Ce que tu vises, estimé à ton rythme réel ; ce que QuestCore et CraftCore suivent déjà.",
         "What you aim for, estimated at your real pace ; what QuestCore and CraftCore already track."))
+    local L = page.zone:GetWidth()
+    local f = page.carteNiveau
     local moi = p and p.cle == NS.ClePersonnage()
     local api = _G.QuestCoreAPI
-    page.bGuiderNiveau:SetShown(moi == true and api ~= nil and api.GuiderNiveau ~= nil and (p.niveau or 60) < 60)
-    page.bGuiderNiveau:SetText(T("Me guider", "Guide me"))
-    page.rNiveau:SetShown(p ~= nil and (p.niveau or 60) < 60)
-    page.rNiveau.nom:SetText(T("Niveau visé", "Target level"))
-    local i, y, nt, nn = 0, 0, 0, 0
     if not p then
-        nn = nn + 1
-        y = Note(page, nn, y, T("Aucun personnage connu pour l'instant.", "No known character yet."))
-        page.hauteur = page.yZone + y + 10
+        f:Hide()
+        NoteColonne(page, 1, T("Aucun personnage connu pour l'instant.", "No known character yet."), 0, 0, L)
+        page.hauteur = page.yZone + 40
         return
     end
-    -- Le niveau vise : l'XP qui manque, le temps a ton rythme, les quetes
-    -- de ton niveau.
-    nt = nt + 1
-    y = Titre(page, nt, y, string.format(T("Niveau %d", "Level %d"), NiveauVise(portee, p)))
-    if (p.niveau or 60) >= 60 then
-        nn = nn + 1
-        y = Note(page, nn, y, T("Niveau maximum atteint.", "Maximum level reached."))
+    f:Show()
+    if p.nom then page.points:SetText(ref.Hex(ref.CouleurDeClasse(p.classe)) .. p.nom .. "|r") end
+    local maxi = (p.niveau or 60) >= 60
+    page.bGuiderNiveau:SetText(T("Me guider", "Guide me"))
+    page.bGuiderNiveau:SetShown(moi == true and api ~= nil and api.GuiderNiveau ~= nil and not maxi)
+    page.rNiveau:SetShown(not maxi)
+    page.rNiveau.nom:SetText(T("Niveau visé", "Target level"))
+    local cible = NiveauVise(portee, p)
+    if maxi then
+        C.PoserAnneau(f.anneau, 1, VIOLET, tostring(p.niveau or 60))
+        f.nom:SetText(T("Niveau maximum", "Maximum level"))
+        f.detail:SetText(T("Plus rien à viser de ce côté.", "Nothing left to aim for here."))
+        f.temps:SetText("") f.sousTemps:SetText("")
+        f.barre:Hide() f.source:SetText("")
+        for _, t in ipairs(f.tuiles) do t:Hide() end
     else
-        local e = calcul.Estimation(p, NiveauVise(portee, p))
-        i = i + 1
-        y = Poser(page, i, y, { icone = "Interface\\Icons\\INV_Misc_Book_07", texte = string.format(T("Il manque %s XP", "%s XP missing"), NS.Nombre(e.xp)),
-            droite = "" })
-        local source
-        if e.secondes and e.source then source = string.format(T("D'après le rythme de %s à ces niveaux", "From %s's pace at these levels"), e.source)
-        elseif e.secondes then source = T("D'après ton rythme mesuré", "From your measured pace")
-        else source = T("Ton rythme se mesure en jouant : quelques minutes suffisent", "Your pace is measured as you play : a few minutes are enough") end
-        i = i + 1
-        y = Poser(page, i, y, { icone = "Interface\\Icons\\INV_Misc_PocketWatch_01", texte = e.secondes and string.format(T("À ton rythme : %s", "At your pace : %s"), Duree(e.secondes)) or T("Temps estimé : pas encore mesuré", "Estimated time : not measured yet"),
-            detail = source, droite = "" })
+        local e = calcul.Estimation(p, cible)
+        -- Le chemin : de l'XP du niveau actuel jusqu'au niveau vise.
+        local deja = moi and tonumber(NS.Sur(NS.Jeu("UnitXP", "player"))) or 0
+        local v = (deja + e.xp) > 0 and deja / (deja + e.xp) or 0
+        C.PoserAnneau(f.anneau, v, VIOLET, tostring(cible))
+        f.nom:SetText(string.format(T("Niveau %d", "Level %d"), cible))
+        f.detail:SetText(string.format(T("Depuis le niveau %d", "From level %d"), p.niveau or 1))
+        f.temps:SetText(e.secondes and Duree(e.secondes) or "?")
+        f.sousTemps:SetText(e.secondes and T("estimé à ton rythme", "estimated at your pace") or T("rythme pas encore mesuré", "pace not measured yet"))
+        f.barre:Show()
+        C.PoserBarre(f.barre, v, VIOLET)
         -- Les quetes qui restent dans les zones de ton niveau.
-        local zones, n = {}, 0
+        local zones, nq = {}, 0
         local idx = NS.base.Quetes()
         for _, x in ipairs(Chercher("quetes", portee, function(s, el)
             local nz = type(idx) == "table" and idx.niveauZone[el.cle]
             return s.cle == "zones" and nz and math.abs(nz - (p.niveau or 1)) <= 3 and el.fait < el.total
         end)) do
-            n = n + x.e.total - x.e.fait
+            nq = nq + x.e.total - x.e.fait
             table.insert(zones, x)
         end
         table.sort(zones, function(a, b) return (a.e.total - a.e.fait) > (b.e.total - b.e.fait) end)
-        local noms = {}
-        for k = 1, math.min(3, #zones) do table.insert(noms, string.format("%s (%d)", zones[k].e.nom, zones[k].e.total - zones[k].e.fait)) end
-        i = i + 1
-        y = Poser(page, i, y, { icone = "Interface\\GossipFrame\\AvailableQuestIcon", texte = string.format(T("%d quêtes de ton niveau à faire", "%d quests of your level to do"), n),
-            detail = #noms > 0 and table.concat(noms, "  ") or nil, droite = "",
-            auClic = zones[1] and function() F.Aller("quetes", "zones", zones[1].e.cle, portee) end or nil })
+        for _, t in ipairs(f.tuiles) do t:Show() end
+        f.tuiles[1].libelle:SetText(T("Il manque", "Missing"))
+        f.tuiles[1].valeur:SetText(NS.Nombre(e.xp) .. " XP")
+        C.Couleurer(f.tuiles[1].valeur, VIOLET)
+        f.tuiles[2].libelle:SetText(T("Quêtes de ton niveau", "Quests of your level"))
+        f.tuiles[2].valeur:SetText(tostring(nq))
+        f.tuiles[3].libelle:SetText(T("Zone la plus riche", "Richest zone"))
+        f.tuiles[3].valeur:SetText(zones[1] and string.format("%s (%d)", zones[1].e.nom, zones[1].e.total - zones[1].e.fait) or "-")
+        if e.secondes and e.source then
+            f.source:SetText(string.format(T("%s a déjà fait ce chemin : son rythme sert de base.", "%s already went this way : his pace is the base."), e.source))
+        elseif e.secondes then
+            f.source:SetText(T("Ton rythme mesuré sur ce personnage.", "Your pace measured on this character."))
+        else
+            f.source:SetText(T("Ton rythme se mesure en jouant : quelques minutes suffisent.", "Your pace is measured as you play : a few minutes are enough."))
+        end
     end
-    -- Mes objectifs : ce que tu as choisi de suivre.
-    nt = nt + 1
-    y = Titre(page, nt, y, T("Mes objectifs", "My goals"))
+    -- Deux colonnes : mes objectifs, ce qui est deja suivi ailleurs.
+    local lG = math.floor(L * 0.55)
+    local xD = lG + ECART + 6
+    local lD = L - xD
+    local nn = 0
+    local yG = TitreColonne(page, T("Mes objectifs", "My goals"), 0, 0, lG)
     local liste = {}
     for k, o in pairs(F.Objectifs(portee)) do
         local cat, sous, element = Morceaux(k)
         local r = calcul.Resultat(cat, portee)
         local e = r and Trouver(r, sous, element)
-        table.insert(liste, { k = k, cat = cat, sous = sous, element = element, e = e, depuis = type(o) == "table" and o.depuis or 0 })
+        table.insert(liste, { cat = cat, sous = sous, element = element, e = e, depuis = type(o) == "table" and o.depuis or 0 })
     end
     table.sort(liste, function(a, b) return (a.depuis or 0) > (b.depuis or 0) end)
     if #liste == 0 then
         nn = nn + 1
-        y = Note(page, nn, y, T("Aucun objectif : ouvre un élément d'une catégorie, puis Suivre.", "No goal : open an element of a category, then Track."))
+        yG = NoteColonne(page, nn, T("Ouvre un élément d'une catégorie, puis Suivre.", "Open an element of a category, then Track."), 0, yG, lG)
     end
     for _, x in ipairs(liste) do
         local cat = calcul.Categorie(x.cat)
         local fini = x.e and x.e.fait >= x.e.total
-        i = i + 1
-        y = Poser(page, i, y, { icone = (x.e and x.e.icone) or (cat and cat.icone), texte = x.e and x.e.nom or T("En préparation", "Preparing"),
-            detail = fini and T("Fini !", "Done !") or (cat and string.format(T("%s : encore %d", "%s : %d left"), cat.nom(), x.e and (x.e.total - x.e.fait) or 0)),
-            fait = x.e and x.e.fait or 0, total = x.e and math.max(1, x.e.total) or 1,
-            auClic = function() F.Aller(x.cat, x.sous, x.element, portee) end })
+        yG = CarteLigne(page, 0, yG, lG, { icone = (x.e and x.e.icone) or (cat and cat.icone), nom = x.e and x.e.nom or T("En préparation", "Preparing"),
+            detail = cat and cat.nom() or "",
+            droite = fini and T("Fini !", "Done !") or (x.e and string.format(T("encore %d", "%d left"), x.e.total - x.e.fait) or ""),
+            couleurDroite = fini and VERT or C.OR, barre = x.e and x.e.total > 0 and x.e.fait / x.e.total or 0,
+            couleurBarre = C.Couleur(x.cat), auClic = function() F.Aller(x.cat, x.sous, x.element, portee) end })
     end
-    -- Deja suivis ailleurs : seulement pour le personnage connecte (QuestCore
-    -- et CraftCore suivent le personnage connecte).
-    if moi then
-        nt = nt + 1
-        y = Titre(page, nt, y, T("Déjà suivis ailleurs", "Already tracked elsewhere"))
+    local yD = TitreColonne(page, T("Déjà suivis ailleurs", "Already tracked elsewhere"), xD, 0, lD)
+    if not moi then
+        nn = nn + 1
+        yD = NoteColonne(page, nn, T("Seulement pour le personnage connecté.", "Only for the connected character."), xD, yD, lD)
+    else
         local S = _G.CoreSuite
-        local ailleurs = 0
+        local n = 0
         local function Ouvrir(cle) return function() if S and S.Ouvrir then S.Ouvrir(cle) end end end
+        local OR_QC, VERT_CC = { 0.91, 0.76, 0.35 }, { 0.56, 0.81, 0.42 }
+        local function Ajouter(nom, source, couleur, fait, total, ouvrir)
+            n = n + 1
+            local v = total > 0 and fait / total or 0
+            yD = CarteLigne(page, xD, yD, lD, { icone = source == "CraftCore" and "Interface\\Icons\\Trade_BlackSmithing" or "Interface\\Icons\\INV_Misc_Book_09",
+                nom = nom, detail = ref.Hex(couleur) .. source .. "|r", droite = math.floor(v * 100 + 0.5) .. "%",
+                barre = v, couleurBarre = couleur, auClic = Ouvrir(ouvrir) })
+        end
         if api and api.Circuit then
             local ok, c = pcall(api.Circuit)
-            if ok and type(c) == "table" and (c.total or 0) > 0 then
-                ailleurs = ailleurs + 1
-                i = i + 1
-                y = Poser(page, i, y, { icone = "Interface\\Icons\\INV_Misc_Map_01", texte = tostring(c.nom or "?"),
-                    detail = T("QuestCore : guidage en cours", "QuestCore : guidance running"), fait = c.total - c.reste, total = c.total,
-                    auClic = Ouvrir("QuestCore") })
-            end
+            if ok and type(c) == "table" and (c.total or 0) > 0 then Ajouter(tostring(c.nom or "?"), "QuestCore", OR_QC, c.total - c.reste, c.total, "QuestCore") end
         end
         if api and api.Itineraires then
             local ok, l = pcall(api.Itineraires)
             for _, it in ipairs(ok and type(l) == "table" and l or {}) do
-                if not it.guide then
-                    ailleurs = ailleurs + 1
-                    i = i + 1
-                    y = Poser(page, i, y, { icone = "Interface\\Icons\\INV_Misc_Book_09", texte = tostring(it.nom or "?"),
-                        detail = T("QuestCore : itinéraire", "QuestCore : route"), fait = it.faites or 0, total = math.max(1, it.total or 1),
-                        auClic = Ouvrir("QuestCore") })
-                end
+                if not it.guide then Ajouter(tostring(it.nom or "?"), "QuestCore", OR_QC, it.faites or 0, it.total or 0, "QuestCore") end
             end
         end
         local capi = _G.CraftCoreAPI
         if capi and capi.Suivis then
             local ok, l = pcall(capi.Suivis)
             for _, o in ipairs(ok and type(l) == "table" and l or {}) do
-                ailleurs = ailleurs + 1
-                local pctO = math.floor((tonumber(o.pct) or 0) * 100 + 0.5)
-                i = i + 1
-                y = Poser(page, i, y, { icone = "Interface\\Icons\\Trade_BlackSmithing", texte = tostring(o.nom or "?"),
-                    detail = "CraftCore" .. (o.detail and (" : " .. tostring(o.detail)) or ""), fait = pctO, total = 100,
-                    texteBarre = pctO .. " %", auClic = Ouvrir("CraftCore") })
+                Ajouter(tostring(o.nom or "?"), "CraftCore", VERT_CC, tonumber(o.pct) or 0, 1, "CraftCore")
             end
         end
-        if ailleurs == 0 then
+        if n == 0 then
             nn = nn + 1
-            y = Note(page, nn, y, T("Ni QuestCore ni CraftCore ne suivent rien en ce moment.", "Neither QuestCore nor CraftCore tracks anything right now."))
+            yD = NoteColonne(page, nn, T("Rien n'est suivi en ce moment.", "Nothing is tracked right now."), xD, yD, lD)
         end
     end
-    page.hauteur = page.yZone + y + 10
-end
-
-local function AvantObjectifs(page, O)
-    page.bGuiderNiveau = O.Bouton(page.cadre, 90, function()
-        local portee = PorteePerso()
-        local p = portee and persos.Par(portee:match("^perso:(.+)$"))
-        local api = _G.QuestCoreAPI
-        if p and api and api.GuiderNiveau then pcall(api.GuiderNiveau, NiveauVise(portee, p)) end
-    end)
-    page.bGuiderNiveau:SetPoint("TOPRIGHT", page.cadre, "TOPRIGHT", -10, 0)
-    page.rNiveau = O.Rangee()
-    O.Curseur(page.rNiveau, 2, 60, 1, function()
-        local portee = PorteePerso()
-        local p = portee and persos.Par(portee:match("^perso:(.+)$"))
-        return NiveauVise(portee, p)
-    end, function(v)
-        local f = FicheDe(PorteePerso())
-        if f then f.niveauVise = v end
-        F.Rendre()
-    end, nil, nil, 5)
+    page.hauteur = page.yZone + math.max(yG, yD) + 10
 end
 
 -- ---------------------------------------------------------------------------
