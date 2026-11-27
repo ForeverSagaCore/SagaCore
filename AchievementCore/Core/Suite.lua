@@ -1179,9 +1179,18 @@ function Suite.PoserVisagePerso(texture, p)
     local vivant = Calque(texture, "calqueVivant", 1)
     local depose = Calque(texture, "calqueDepose", 2)
     vivant:Hide() depose:Hide()
-    -- Le vrai portrait et l'image deposee, decoupes en rond.
+    -- Le vrai portrait et l'image deposee, decoupes en rond ; dans la bande,
+    -- poses dans le cercle de classe (sa couleur en fait le tour).
+    local dansCercle = texture:GetParent() and texture:GetParent().portraitDansCercle
     for _, c in ipairs({ vivant, depose }) do
         if c.SetMask and not c.rond then c.rond = true pcall(c.SetMask, c, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+        if dansCercle and not c.retrait then
+            c.retrait = true
+            local r = math.floor((texture:GetWidth() or 32) * 0.14 + 0.5)
+            c:ClearAllPoints()
+            c:SetPoint("TOPLEFT", texture, "TOPLEFT", r, -r)
+            c:SetPoint("BOTTOMRIGHT", texture, "BOTTOMRIGHT", -r, r)
+        end
     end
     pcall(texture.SetTexCoord, texture, 0, 1, 0, 1)
     -- L'icone ronde de la classe, celle du jeu (recherche de groupe, cadre
@@ -1223,7 +1232,16 @@ function Suite.IconeRondeDeClasse(texture, classe)
     local okA, duJeu = pcall(_G.GetClassAtlas or function() end, classe)
     if okA and type(duJeu) == "string" then table.insert(noms, 2, duJeu) end
     for _, nom in ipairs(noms) do
-        if not info or info(nom) then
+        local a = info and info(nom)
+        if a and a.file and a.leftTexCoord then
+            -- Le liseré sombre du bord, rogne un peu : le cercle de couleur
+            -- suffit, avec une ombre tres legere.
+            local dx = (a.rightTexCoord - a.leftTexCoord) * 0.07
+            local dy = (a.bottomTexCoord - a.topTexCoord) * 0.07
+            texture:SetTexture(a.file)
+            texture:SetTexCoord(a.leftTexCoord + dx, a.rightTexCoord - dx, a.topTexCoord + dy, a.bottomTexCoord - dy)
+            return true
+        elseif not info then
             local ok, pose = pcall(texture.SetAtlas, texture, nom)
             if ok and pose ~= false then return true end
         end
@@ -1259,23 +1277,21 @@ function Suite.AnneauDeClasse(texture, classe)
     a:SetShown(texture:IsShown())
 end
 
-local TAILLE_PORTRAIT_BANDE = 30
+local TAILLE_PORTRAIT_BANDE = 32
 local function PortraitDeBande(bande)
     local b = CreateFrame("Button", nil, bande)
     b:SetSize(TAILLE_PORTRAIT_BANDE, TAILLE_PORTRAIT_BANDE)
     -- Rond, comme les classes de la recherche de groupe : le visage dans un
     -- cercle, un anneau a la couleur de la classe.
     b.cadre = b:CreateTexture(nil, "BACKGROUND")
-    b.cadre:SetPoint("CENTER")
-    b.cadre:SetSize(TAILLE_PORTRAIT_BANDE - 2, TAILLE_PORTRAIT_BANDE - 2)
-    b.cadre:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
+    b.cadre:SetAllPoints()
+    b.cadre:SetColorTexture(0, 0, 0, 0)
+    -- Tous de la meme taille : le cercle de classe remplit le bouton ; le
+    -- vrai portrait se pose dedans, un peu plus petit, et le cercle de
+    -- couleur en fait le tour.
     b.visage = b:CreateTexture(nil, "ARTWORK")
-    b.visage:SetPoint("TOPLEFT", 2, -2)
-    b.visage:SetPoint("BOTTOMRIGHT", -2, 2)
-    b.anneauClasse = b:CreateTexture(nil, "OVERLAY")
-    b.anneauClasse:SetSize(TAILLE_PORTRAIT_BANDE * 1.7, TAILLE_PORTRAIT_BANDE * 1.7)
-    b.anneauClasse:SetPoint("TOPLEFT", b, "TOPLEFT", 0, 0)
-    b.anneauClasse:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    b.visage:SetAllPoints()
+    b.portraitDansCercle = true
     b.halo = b:CreateTexture(nil, "OVERLAY", nil, 2)
     b.halo:SetPoint("TOPLEFT", b, "TOPLEFT", -3, 3)
     b.halo:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 3, -3)
@@ -3192,8 +3208,10 @@ function Suite.HabillerIcone(porteur, icone, inactif)
         end
         if icone and icone ~= porteur then
             icone:ClearAllPoints()
-            icone:SetPoint("TOPLEFT", porteur, "TOPLEFT", 2 * k, -2 * k)
-            icone:SetPoint("BOTTOMRIGHT", porteur, "BOTTOMRIGHT", -2 * k, 2 * k)
+            -- Un peu en retrait : le bord du cadre reste visible, meme sur
+            -- une icone claire.
+            icone:SetPoint("TOPLEFT", porteur, "TOPLEFT", 3 * k, -3.5 * k)
+            icone:SetPoint("BOTTOMRIGHT", porteur, "BOTTOMRIGHT", -3 * k, 3 * k)
             if icone.SetTexCoord then pcall(icone.SetTexCoord, icone, 0, 1, 0, 1) end
             if not porteur.masqueIcone and porteur.CreateMaskTexture and AtlasExiste("spellbook-item-spellicon-mask") then
                 local okM, m = pcall(porteur.CreateMaskTexture, porteur)
