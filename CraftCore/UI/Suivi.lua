@@ -493,7 +493,11 @@ local function ObjectifsDeProjets(liste)
                 genre = "projet", rapides = projet.rapides,
                 titreAnnonce = nomBloc, fabriquer = fabriquer, nLignes = #lignes, lignes = lignes,
                 nom = (projet.rapides or deProg or commande) and nomBloc or string.format(L.GOAL_PROJECT, nomBloc), pct = pct, atteint = pct >= 1,
-                matieres = Matieres(requis or {}, manques or {}) })
+                matieres = Matieres(requis or {}, manques or {}),
+                -- La composition (recettes) : si elle change (une recette
+                -- retiree dans la fenetre), la memoire de ce qui etait fait
+                -- repart de zero, au lieu de garder la recette retiree en vert.
+                planId = "compo:" .. (function() local t = {} for _, l in ipairs(lignes) do table.insert(t, tostring(l.recette)) end table.sort(t) return table.concat(t, ",") end)() })
         end
       end
     end
@@ -1712,7 +1716,16 @@ end
 -- une etape ou une matiere qui sort du calcul (consommee, faite) reste a sa
 -- place, en vert, jusqu'a ce que l'objectif soit atteint. La fenetre ne
 -- saute plus a chaque fabrication.
-local memoEtapes, memoMatieres = {}, {}
+local memoEtapes, memoMatieres, memoCompo = {}, {}, {}
+-- La composition d'un objectif a change (recette retiree, ajoutee) : ce qui
+-- en etait montre comme fait n'a plus cours.
+local function VerifierComposition(o)
+    if not o.planId then return end
+    if memoCompo[o.cle] ~= o.planId then
+        memoCompo[o.cle] = o.planId
+        memoEtapes[o.cle], memoMatieres[o.cle] = nil, nil
+    end
+end
 
 local function Fusion(memo, cle, actuels, champ, quantite)
     local m = memo[cle] or {}
@@ -2142,6 +2155,7 @@ local function DessinerObjectifs(y, objectifs, vue)
                 y = y + 20
                 -- Tout est reuni et il y a plusieurs etapes : elles s'affichent
                 -- dessous, dans l'ordre, chacune avec son etat.
+                VerifierComposition(o)
                 local vues = (((o.pct or 0) >= 1 and etapes and #etapes > 1) or (memoEtapes[o.cle] and #memoEtapes[o.cle] > 1))
                     and Fusion(memoEtapes, o.cle, etapes or {}, "objet", "besoin") or nil
                 if vues and #vues > 1 then
@@ -2302,6 +2316,7 @@ local function DessinerObjectifs(y, objectifs, vue)
                         t:SetTextColor(0.8, 0.8, 0.8)
                         y = y + 16
                     end
+                    VerifierComposition(o)
                     for _, v in ipairs(Fusion(memoMatieres, o.cle, o.matieres or {}, "objet", "requis")) do
                         local m = v.e
                         if v.fini then m = { objet = m.objet, requis = v.quantite, possede = v.quantite, manque = 0, fini = true } end
