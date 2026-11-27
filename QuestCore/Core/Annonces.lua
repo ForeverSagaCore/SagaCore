@@ -74,6 +74,7 @@ local function PlacesLibres()
     end
     return n
 end
+NS.PlacesLibres = PlacesLibres
 
 -- Plusieurs quetes finies se rendent au meme endroit : on propose d'aller
 -- les rendre (trois ou plus, ou deux avec les sacs presque pleins). Accepte,
@@ -96,8 +97,13 @@ local function ProposerRendus(p)
     end
     local libres = PlacesLibres()
     local pleins = libres ~= nil and libres <= 2
+    -- L'itineraire guide y va deja : rien a proposer.
+    local g = NS.guidage
+    local premiere = g and g.ParcoursGuide and g.ParcoursGuide() and (g.Etapes() or {})[1]
     for pnj, ids in pairs(parReceveur) do
-        if #ids >= 3 or (#ids >= 2 and pleins) then
+        local dejaVise = false
+        for _, id in ipairs(ids) do if premiere and premiere.id == id then dejaVise = true end end
+        if not dejaVise and (#ids >= 3 or (#ids >= 2 and pleins)) then
             table.sort(ids)
             local signature = pnj .. ":" .. table.concat(ids, ",")
             if not proposes[signature] then

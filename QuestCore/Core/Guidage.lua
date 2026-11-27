@@ -103,7 +103,8 @@ local function PointDeQuete(id, moi, continent, jx, jy, utilises)
             if x and not deja then
                 local d = (x - jx) ^ 2 + (y - jy) ^ 2
                 if not meilleur or d < meilleur then
-                    meilleur, lieu = d, { x = x, y = y, qui = pt.quoi, objectif = voulu == "objectif" or nil }
+                    meilleur, lieu = d, { x = x, y = y, qui = pt.quoi, objectif = voulu == "objectif" or nil,
+                        butin = (voulu == "objectif" and pt.icone == "butin") or nil }
                 end
             end
         end
@@ -259,6 +260,341 @@ local function Ajuster(ordre, compte)
     return compte
 end
 
+-- ---------------------------------------------------------------------------
+-- Itineraire : la prochaine visite la plus rentable
+-- ---------------------------------------------------------------------------
+-- Les points faisables sont groupes en visites : tout ce qui se fait a moins
+-- de PLAN.RAYON du meme endroit (rendre, prendre la suite, un autre donneur,
+-- un objectif voisin) compte pour une seule visite. Chaque action a une
+-- valeur ; une valeur obtenue plus tard compte moins (demi-vie
+-- PLAN.DEMI_VIE). On essaie tous les enchainements de PLAN.HORIZON visites
+-- parmi les PLAN.LARGEUR meilleures ; la premiere visite du meilleur est
+-- visee. La cible d'avant compte 20 % plus pres (la meme regle que la
+-- chaine) : elle ne change que pour nettement mieux, ou si quelque chose a
+-- change (quete prise, rendue, objectif fini, lieu visite, sacs, journal).
+local PLAN = {
+    VITESSE = 7,        -- yards par seconde, a pied (comme la duree de la fleche)
+    RAYON = 40,         -- une meme visite : un camp, le centre d'un village
+    T_VISITE = 5,       -- secondes sur place par visite
+    T_ACTION = 3,       -- et par action (parler, accepter, rendre)
+    T_DONJON = 900,     -- un donjon : un quart d'heure au moins
+    DEMI_VIE = 180,     -- une action dans 3 minutes vaut moitie moins
+    HORIZON = 3,        -- visites planifiees a l'avance
+    LARGEUR = 6,        -- parmi les 6 meilleures visites prises seules
+    GARDE = 0.8,        -- le trajet vers la cible d'avant compte 20 % de moins
+    V_RENDRE = 1.0, V_OBJECTIF = 0.7, V_PRENDRE = 0.5, V_DONJON = 0.5,
+    V_SUITE = 0.3,      -- par suite debloquee : la chaine continue
+    V_SUITE_ICI = 0.5,  -- et sa prise sur place, dans la meme visite
+    V_ORDRE = 0.2,      -- la visite qui porte l'etape suivante de l'itineraire
+    V_SAC = 0.5,        -- par place de sac liberee, sacs pleins
+    SAC_SEUIL = 6,      -- la pression des sacs commence sous 6 places libres
+    BUTIN_PLEIN = 0.3,  -- un objectif a ramasser, sacs pleins
+    V_JOURNAL = 0.3,    -- un rendu, journal presque plein
+    JOURNAL_MAX = 20,
+    V_NIVEAU = 0.5,     -- par etape que le niveau gagne rend prenable (2 au plus)
+    ECHELLE = 30000,    -- yards par unite de carte de continent, si le jeu ne le dit pas
+}
+
+-- Yards par unite de la carte du continent, en x et en y.
+local echelles = {}
+local function Echelle(continent)
+    local e = echelles[continent]
+    if e then return e[1], e[2] end
+    local Li = S() and S().Lieux
+    if Li and Li.Monde then
+        local ok0, a0, b0 = pcall(Li.Monde, continent, 0, 0)
+        local ok1, a1, b1 = pcall(Li.Monde, continent, 1, 0)
+        local ok2, a2, b2 = pcall(Li.Monde, continent, 0, 1)
+        if ok0 and ok1 and ok2 and a0 and a1 and a2 then
+            local sx = math.sqrt((a1 - a0) ^ 2 + (b1 - b0) ^ 2)
+            local sy = math.sqrt((a2 - a0) ^ 2 + (b2 - b0) ^ 2)
+            if sx > 0 and sy > 0 then echelles[continent] = { sx, sy } return sx, sy end
+        end
+    end
+    return PLAN.ECHELLE, PLAN.ECHELLE
+end
+
+local function Yards(a, b, sx, sy)
+    return math.sqrt(((a.x - b.x) * sx) ^ 2 + ((a.y - b.y) * sy) ^ 2)
+end
+
+-- XP d'une quete : celle du journal, sinon la base.
+local function XPDe(id, moi)
+    local q = moi.quetes and moi.quetes[id]
+    local connue = q and q.recompenses and tonumber(q.recompenses.xp)
+    if connue and connue > 0 then return connue end
+    local ok, xp = pcall(NS.ref.XPDeLaBase, id, moi.niveau)
+    return ok and tonumber(xp) or nil
+end
+
+-- Le poids d'une quete : son XP rapportee a la mediane des quetes visees,
+-- entre 0,5 et 2 (1 si elle est inconnue).
+local function Poids(xp, ref)
+    if not (xp and ref and ref > 0) then return 1 end
+    return math.max(0.5, math.min(2, xp / ref))
+end
+
+-- Une suite que le rendu de `rendue` rend prenable (et qui ne l'est pas deja).
+local function PrenableApres(moi, s, rendue)
+    if (moi.faites and moi.faites[s]) or (moi.quetes and moi.quetes[s]) then return false end
+    if NS.parcours.Prenable(moi, s) then return false end
+    local niveau = tonumber(NS.ref.Lire("QuestDB", s, "requiredLevel")) or 0
+    if moi.niveau and niveau > moi.niveau then return false end
+    local groupe, une = NS.ref.Prerequis(s)
+    local function Fait(x) return x == rendue or (moi.faites and moi.faites[x] == true) end
+    for _, x in ipairs(groupe) do if not Fait(x) then return false end end
+    if #une > 0 then
+        for _, x in ipairs(une) do if Fait(x) then return true end end
+        return false
+    end
+    return true
+end
+
+-- Les suites debloquees par un rendu, et si leur donneur est sur place.
+local function SuitesDebloquees(pt, moi, continent, sx, sy, cache)
+    if cache[pt.id] then return cache[pt.id] end
+    local res = {}
+    local ok, suites = pcall(NS.ref.Suites, pt.id)
+    for _, s in ipairs(ok and suites or {}) do
+        if #res >= 3 then break end
+        if PrenableApres(moi, s, pt.id) then
+            local ici = false
+            local okP, dons = pcall(NS.carte.PointsPour, s, moi)
+            for _, d in ipairs(okP and dons or {}) do
+                if d.genre == "prendre" then
+                    local x, y = NS.carte.Reporter(d, continent)
+                    if x and Yards({ x = x, y = y }, pt, sx, sy) <= PLAN.RAYON then ici = true break end
+                end
+            end
+            table.insert(res, { id = s, ici = ici, xp = XPDe(s, moi) })
+        end
+    end
+    cache[pt.id] = res
+    return res
+end
+
+-- Ce que chaque point fait, et son identite (stable quand le lieu bouge).
+local function Qualifier(points, moi, ctx)
+    for _, pt in ipairs(points) do
+        if pt.entree then pt.genre = "entree"
+        elseif pt.objectif then pt.genre = "objectif"
+        elseif pt.etatQuete == "rendre" then pt.genre = "rendre"
+        else pt.genre = "prendre" end
+        pt.ident = pt.entree and pt.cle or ("q" .. tostring(pt.id) .. ":" .. pt.genre)
+        pt.xp = XPDe(pt.id, moi)
+        pt.rang = ctx.rangDe and ctx.rangDe(pt.id) or nil
+        if pt.genre == "rendre" then
+            local q = moi.quetes and moi.quetes[pt.id]
+            local n = 0
+            for _, o in ipairs(q and q.objectifs or {}) do if o.type == "item" then n = n + 1 end end
+            pt.libere = n
+        end
+    end
+end
+
+-- Sacs, journal, niveau : ce qui pese sur toutes les visites.
+local function Contexte(moi, points, compte)
+    local ctx = { rangDe = type(compte) == "table" and compte.rangDe or nil }
+    Qualifier(points, moi, ctx)
+    local xps = {}
+    for _, pt in ipairs(points) do
+        if pt.xp and pt.xp > 0 then table.insert(xps, pt.xp) end
+        if pt.rang and (not ctx.rangMin or pt.rang < ctx.rangMin) then ctx.rangMin = pt.rang end
+    end
+    table.sort(xps)
+    ctx.xpRef = xps[math.floor((#xps + 1) / 2)]
+    local libres = NS.PlacesLibres and NS.PlacesLibres()
+    ctx.pression = libres and math.max(0, (PLAN.SAC_SEUIL - libres) / PLAN.SAC_SEUIL) or 0
+    ctx.sacsPleins = libres == 0
+    ctx.palierSacs = (libres == nil and "?") or (libres == 0 and "0") or (libres <= 2 and "2") or "+"
+    local n = 0
+    for _ in pairs(moi.quetes or {}) do n = n + 1 end
+    local maxi = tonumber((NS.Appeler(NS.Lecture("C_QuestLog.GetMaxNumQuestsCanAccept")))) or PLAN.JOURNAL_MAX
+    ctx.journalPlein = n >= maxi
+    ctx.journalPresquePlein = n >= maxi - 2
+    ctx.palierJournal = ctx.journalPlein and "plein" or (ctx.journalPresquePlein and "presque" or "ok")
+    -- Le niveau que les rendus feraient gagner : les etapes qu'il ouvre.
+    ctx.xpManquante = NS.disponibles and NS.disponibles.XPManquante and NS.disponibles.XPManquante() or nil
+    ctx.debloqueNiveau = 0
+    if type(compte) == "table" and type(compte.etapes) == "table" and moi.niveau then
+        for k, id in ipairs(compte.etapes) do
+            if k > 40 then break end
+            if NS.parcours.EtatEtape(moi, id) == "attente"
+                and tonumber(NS.ref.Lire("QuestDB", id, "requiredLevel")) == moi.niveau + 1
+                and NS.parcours.PrerequisRemplis(moi, id) then
+                ctx.debloqueNiveau = ctx.debloqueNiveau + 1
+            end
+        end
+    end
+    return ctx
+end
+
+local function ValeurAction(pt, ctx)
+    local b = Poids(pt.xp, ctx.xpRef)
+    if pt.genre == "rendre" then
+        local v = PLAN.V_RENDRE * b + ctx.pression * PLAN.V_SAC * (pt.libere or 0)
+        if ctx.journalPresquePlein then v = v + PLAN.V_JOURNAL end
+        for _, s in ipairs(pt.suites or {}) do
+            v = v + PLAN.V_SUITE
+            if s.ici then v = v + PLAN.V_SUITE_ICI * Poids(s.xp, ctx.xpRef) end
+        end
+        return v
+    elseif pt.genre == "prendre" then
+        return ctx.journalPlein and 0 or PLAN.V_PRENDRE * b
+    elseif pt.genre == "objectif" then
+        local v = PLAN.V_OBJECTIF * b
+        if pt.butin and ctx.sacsPleins then v = v * PLAN.BUTIN_PLEIN end
+        return v
+    end
+    return PLAN.V_DONJON * math.max(1, #(pt.ids or {}))
+end
+
+-- Dans une visite : rendre, puis prendre (la suite est prenable une fois
+-- rendue), puis les objectifs ; puis l'ordre de l'itineraire.
+local ORDRE_GENRE = { rendre = 1, prendre = 2, objectif = 3, entree = 4 }
+local function AvantDans(a, b)
+    local ga, gb = ORDRE_GENRE[a.genre] or 9, ORDRE_GENRE[b.genre] or 9
+    if ga ~= gb then return ga < gb end
+    local ra, rb = a.rang or 1e9, b.rang or 1e9
+    if ra ~= rb then return ra < rb end
+    return a.ident < b.ident
+end
+
+local function Grappes(points, ctx)
+    local tries = {}
+    for _, pt in ipairs(points) do table.insert(tries, pt) end
+    table.sort(tries, AvantDans)
+    local grappes = {}
+    for _, pt in ipairs(tries) do
+        local g
+        if pt.genre ~= "entree" then
+            for _, h in ipairs(grappes) do
+                if not h.entree and Yards(h, pt, ctx.sx, ctx.sy) <= PLAN.RAYON then g = h break end
+            end
+        end
+        if not g then
+            g = { x = pt.x, y = pt.y, actions = {}, entree = (pt.genre == "entree") or nil, cle = pt.ident }
+            table.insert(grappes, g)
+        end
+        table.insert(g.actions, pt)
+    end
+    for _, g in ipairs(grappes) do
+        local v, xpRendue, suivante = 0, 0, false
+        for _, a in ipairs(g.actions) do
+            v = v + ValeurAction(a, ctx)
+            if a.genre == "rendre" then xpRendue = xpRendue + (a.xp or 0) end
+            if ctx.rangMin and a.rang == ctx.rangMin then suivante = true end
+        end
+        if suivante then v = v + PLAN.V_ORDRE end
+        if ctx.xpManquante and xpRendue > 0 and xpRendue >= ctx.xpManquante then
+            v = v + PLAN.V_NIVEAU * math.min(2, ctx.debloqueNiveau or 0)
+        end
+        g.valeur = v
+        g.duree = PLAN.T_VISITE + PLAN.T_ACTION * #g.actions + (g.entree and PLAN.T_DONJON or 0)
+    end
+    return grappes
+end
+
+local function Demi(t) return 0.5 ^ (t / PLAN.DEMI_VIE) end
+
+-- Le meilleur enchainement de visites depuis `ici`. La cible d'avant
+-- (plan.visee) y est comptee 20 % plus pres (PLAN.GARDE), comme dans la chaine.
+-- Rend la liste des visites, ou nil.
+local function Planifier(points, ici, plan, ctx)
+    local vivantes = {}
+    for _, g in ipairs(Grappes(points, ctx)) do
+        if g.valeur > 0 then
+            g.seule = g.valeur * Demi(Yards(ici, g, ctx.sx, ctx.sy) / PLAN.VITESSE)
+            table.insert(vivantes, g)
+        end
+    end
+    if #vivantes == 0 then return nil end
+    table.sort(vivantes, function(a, b)
+        if a.seule ~= b.seule then return a.seule > b.seule end
+        return a.cle < b.cle
+    end)
+    local cand = {}
+    for k = 1, math.min(PLAN.LARGEUR, #vivantes) do cand[k] = vivantes[k] end
+    local gVisee
+    if plan.visee then
+        for _, g in ipairs(vivantes) do
+            for _, a in ipairs(g.actions) do if a.ident == plan.visee then gVisee = g end end
+        end
+        local dedans = false
+        for _, g in ipairs(cand) do if g == gVisee then dedans = true end end
+        if gVisee and not dedans then table.insert(cand, gVisee) end
+    end
+    local h = math.min(PLAN.HORIZON, #cand)
+    local meilleur
+    local chemin, pris = {}, {}
+    local function Explorer(pos, t, score)
+        if #chemin == h then
+            if not meilleur or score > meilleur.score then meilleur = { score = score, chemin = { unpack(chemin) } } end
+            return
+        end
+        for k, g in ipairs(cand) do
+            if not pris[k] then
+                local trajet = Yards(pos, g, ctx.sx, ctx.sy) / PLAN.VITESSE
+                -- La cible d'avant compte 20 % plus pres : elle ne cede la
+                -- place qu'a un enchainement nettement meilleur.
+                if #chemin == 0 and g == gVisee then trajet = trajet * PLAN.GARDE end
+                local arrivee = t + trajet
+                pris[k] = true
+                table.insert(chemin, g)
+                Explorer(g, arrivee + g.duree, score + g.valeur * Demi(arrivee))
+                table.remove(chemin)
+                pris[k] = nil
+            end
+        end
+    end
+    Explorer(ici, 0, 0)
+    plan.visee = meilleur.chemin[1].actions[1].ident
+    plan.score = meilleur.score
+    return meilleur.chemin
+end
+
+-- Ce qui a change depuis le dernier choix : la cible se rechoisit librement.
+local function Signature(points, moi, ctx)
+    local m = {}
+    for _, pt in ipairs(points) do
+        local q = moi.quetes and moi.quetes[pt.id]
+        local f = 0
+        for _, o in ipairs(q and q.objectifs or {}) do if o.fait then f = f + 1 end end
+        table.insert(m, pt.ident .. "=" .. f)
+    end
+    table.sort(m)
+    return table.concat(m, ",") .. "|" .. ctx.palierSacs .. "|" .. ctx.palierJournal
+end
+
+-- L'ordre des etapes d'un itineraire : les visites planifiees, puis le
+-- reste, le plus proche du precedent d'abord.
+local function OrdreDItineraire(points, ici, moi, continent, etat, compte)
+    local ctx = Contexte(moi, points, compte)
+    ctx.sx, ctx.sy = Echelle(continent)
+    local sig = Signature(points, moi, ctx)
+    if type(etat.plan) ~= "table" or etat.plan.signature ~= sig then
+        etat.plan = { signature = sig, suites = {}, visee = nil }
+    end
+    for _, pt in ipairs(points) do
+        if pt.genre == "rendre" then pt.suites = SuitesDebloquees(pt, moi, continent, ctx.sx, ctx.sy, etat.plan.suites) end
+    end
+    local chemin = Planifier(points, ici, etat.plan, ctx)
+    if not chemin then return nil end
+    local ordre, pris = {}, {}
+    for _, g in ipairs(chemin) do
+        for _, a in ipairs(g.actions) do table.insert(ordre, a) pris[a] = true end
+    end
+    local reste = {}
+    for _, pt in ipairs(points) do if not pris[pt] then table.insert(reste, pt) end end
+    if #reste > 0 then
+        for _, pt in ipairs(S().Lieux.Chaine(reste, ordre[#ordre])) do table.insert(ordre, pt) end
+    end
+    return ordre
+end
+
+-- Pour les essais hors du jeu.
+guidage.PLAN, guidage.Planifier, guidage.OrdreDItineraire = PLAN, Planifier, OrdreDItineraire
+
 local function EtapesDeQuetes(ids, moi, etat, compte, suite)
     -- Les detours encore a rendre s'ajoutent (une seule fois chacun).
     local d = Detours(moi)
@@ -294,9 +630,11 @@ local function EtapesDeQuetes(ids, moi, etat, compte, suite)
         if lieu and lieu.entree then
             -- Plusieurs quetes du meme donjon : une seule etape, son entree.
             if not entrees[lieu.entree] then
-                entrees[lieu.entree] = true
-                table.insert(points, { carte = continent, x = lieu.x, y = lieu.y, cle = "entree:" .. lieu.entree, id = id,
-                    titre = lieu.entree, qui = string.format(L.GUIDE_ENTER_DUNGEON, lieu.entree), entree = lieu.entree })
+                entrees[lieu.entree] = { carte = continent, x = lieu.x, y = lieu.y, cle = "entree:" .. lieu.entree, id = id,
+                    titre = lieu.entree, qui = string.format(L.GUIDE_ENTER_DUNGEON, lieu.entree), entree = lieu.entree, ids = { id } }
+                table.insert(points, entrees[lieu.entree])
+            else
+                table.insert(entrees[lieu.entree].ids, id)
             end
         elseif lieu then
             local cleP = "q" .. id .. (lieu.objectif and (":" .. CleDePoint(id, lieu.x, lieu.y)) or "")
@@ -306,7 +644,8 @@ local function EtapesDeQuetes(ids, moi, etat, compte, suite)
             if sautee and sautee ~= etatQ then etat.sautees[cleP] = nil sautee = nil end
             if not sautee then
                 table.insert(points, { carte = continent, x = lieu.x, y = lieu.y, cle = cleP, id = id,
-                    titre = Titre(id, moi), qui = Qui(id, moi, lieu), objectif = lieu.objectif, etatQuete = etatQ })
+                    titre = Titre(id, moi), qui = Qui(id, moi, lieu), objectif = lieu.objectif, etatQuete = etatQ,
+                    butin = lieu.butin })
             end
         end
     end
@@ -321,31 +660,10 @@ local function EtapesDeQuetes(ids, moi, etat, compte, suite)
     etat.chaine = type(etat.chaine) == "table" and etat.chaine or {}
     local ici = { x = jx, y = jy }
     if suite then
-        -- Une suite de quetes, la meme regle pour toutes : d'abord finir ce
-        -- qui est commence (quetes de la suite dans le journal : objectifs
-        -- ou rendu), la plus proche ; une quete de la suite a prendre n'est
-        -- un detour que si elle est sur le chemin (deux fois plus pres que
-        -- cette cible). Rien de commence : la plus proche a prendre.
-        local P = NS.parcours
-        local commences, aPrendre = {}, {}
-        for _, pt in ipairs(points) do
-            local e = P.EtatEtape(moi, pt.id)
-            if e == "cours" or e == "rendre" then table.insert(commences, pt) else table.insert(aPrendre, pt) end
-        end
-        if #commences > 0 then
-            local ordre = S().Lieux.Chaine(commences, ici, nil, etat.chaine)
-            local cible = ordre[1]
-            local dCible = S().Lieux.Distance(ici, cible)
-            local detours = {}
-            for _, pt in ipairs(aPrendre) do
-                if S().Lieux.Distance(ici, pt) * 2 < dCible then table.insert(detours, pt) end
-            end
-            if #detours > 0 then
-                local avant = S().Lieux.Chaine(detours, ici)
-                for k = #avant, 1, -1 do table.insert(ordre, 1, avant[k]) end
-            end
-            return ordre, nil, nil, Ajuster(ordre, compte)
-        end
+        -- Un itineraire : la visite la plus rentable (OrdreDItineraire). En
+        -- cas d'erreur, l'ordre simple ci-dessous.
+        local ok, ordre = pcall(OrdreDItineraire, points, ici, moi, continent, etat, compte)
+        if ok and type(ordre) == "table" and ordre[1] then return ordre, nil, nil, Ajuster(ordre, compte) end
     end
     local ordre = S().Lieux.Chaine(points, ici, nil, etat.chaine)
     return ordre, nil, nil, Ajuster(ordre, compte)
@@ -399,6 +717,7 @@ local function Commun(def)
             etat.sautees = type(etat.sautees) == "table" and etat.sautees or {}
             etat.sautees[cible.cle] = cible.etatQuete or true
         end
+        etat.plan = nil
     end
     -- Arrive sur un lieu d'objectif : il est fait, le suivant est vise.
     def.Arrivee = def.Arrivee or function(_, etat, cible)
@@ -406,6 +725,7 @@ local function Commun(def)
             etat.utilises = type(etat.utilises) == "table" and etat.utilises or {}
             etat.utilises[CleDePoint(cible.id, cible.x, cible.y)] = true
         end
+        if type(etat) == "table" then etat.plan = nil end
         return "suivante"
     end
     def.Evenements = def.Evenements or { "QUEST_LOG_UPDATE", "QUEST_TURNED_IN", "ZONE_CHANGED_NEW_AREA" }
@@ -566,7 +886,7 @@ local function EtapesDuKit(moi, pc, etat)
         return true, nil, "loin", OuAller(moi, pc.etapes)
     end
     -- Nouvelle rubrique : la cible d'avant ne compte plus.
-    if etat.phase ~= phase then etat.phase, etat.chaine = phase, {} end
+    if etat.phase ~= phase then etat.phase, etat.chaine, etat.plan = phase, {}, nil end
     return true, EtapesDeQuetes(ids, moi, etat, { fait = faites, total = math.max(total, faites + 1) }, true)
 end
 
@@ -614,7 +934,7 @@ TYPES.parcours = Commun({
         local rangs = {}
         for k, id in ipairs(pc.etapes or {}) do rangs[id] = k end
         return EtapesDeQuetes(ids, moi, etat, { fait = faites, total = #(pc.etapes or {}),
-            rangDe = function(id) return rangs[id] end }, true)
+            rangDe = function(id) return rangs[id] end, etapes = pc.etapes }, true)
     end,
 })
 
