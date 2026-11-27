@@ -339,11 +339,35 @@ end
 -- Donjons et raids
 -- ---------------------------------------------------------------------------
 
+-- Un rare : tue par un personnage ?
+local function RareTue(p, id) return persos.Rares(p.cle)[id] ~= nil end
+
+-- Les criteres de rares d'une liste (sans ceux dont le nom est un boss).
+local function CriteresDeRares(ctx, liste, exclus)
+    local crit = {}
+    for _, r in ipairs(liste or {}) do
+        if not (exclus and exclus[NS.Cle(r.nom)]) then
+            local id = r.id
+            local function Tue(p) return RareTue(p, id) end
+            local un = false
+            for _, p in ipairs(ctx.persos) do if Tue(p) then un = true break end end
+            table.insert(crit, Critere("rare:" .. id, r.nom, un, { qui = Qui(ctx, Tue), niveau = r.niveau,
+                icone = "Interface\\Icons\\INV_Misc_Head_Dragon_Black", pnj = id }))
+        end
+    end
+    return crit
+end
+
+local function NomDeBoss(b)
+    local n = base.DB().nomsBoss
+    return (type(n) == "table" and n[b.cle]) or b.nom
+end
+
 local function CategorieDonjons()
-    return { cle = "donjons", icone = "Interface\\Icons\\INV_Misc_Key_14", versions = { "donjons", "quetes" },
+    return { cle = "donjons", icone = "Interface\\Icons\\INV_Misc_Key_14", versions = { "donjons", "quetes", "rares" },
         nom = function() return T("Donjons et raids", "Dungeons and raids") end,
-        intro = function() return T("Chaque donjon et raid : y être entré, ses boss vaincus et ses quêtes. Les boss de donjon s'ajoutent dès qu'on les bat.",
-            "Every dungeon and raid : having entered it, its bosses defeated and its quests. Dungeon bosses are added once defeated.") end,
+        intro = function() return T("Un donjon n'est fini qu'avec tous ses boss, tous ses rares et toutes ses quêtes.",
+            "A dungeon is only done with all its bosses, all its rares and all its quests.") end,
         Calculer = function(ctx)
             local res = { sous = {} }
             local idx = type(base.Quetes()) == "table" and base.Quetes() or nil
@@ -356,50 +380,123 @@ local function CategorieDonjons()
             end
             local faites = idx and QuetesFaites(ctx) or {}
             local dbRencontres = base.DB().rencontres
-            for rang, d in ipairs(base.Donjons()) do
+            local rares = type(base.Rares()) == "table" and base.Rares() or nil
+            local rencontres = base.Rencontres()
+            -- Les donjons de la base, puis ceux que seul le journal connait.
+            local liste = {}
+            for _, d in ipairs(base.Donjons()) do table.insert(liste, d) end
+            local nomsDonjons = type(base.DB().nomsDonjons) == "table" and base.DB().nomsDonjons or {}
+            for zone, nom in pairs(rencontres and rencontres.extra or {}) do
+                table.insert(liste, { zone = zone, nom = nomsDonjons[zone] or nom, raid = false, autres = {}, forever = true, horsBase = true })
+            end
+            for rang, d in ipairs(liste) do
                 local s = d.raid and Sous(res, "raids", T("Raids", "Raids"), 2, "Interface\\Icons\\INV_Misc_Head_Dragon_01")
                     or Sous(res, "donjons", T("Donjons", "Dungeons"), 1, "Interface\\Icons\\INV_Misc_Key_14")
-                -- Boss : ceux de la base (raids), puis ceux rencontres en jeu.
-                local boss, vus = {}, {}
-                for _, b in ipairs(base.BossDeZone(d.zone) or {}) do
-                    table.insert(boss, { cle = "pnj:" .. b.id, nom = b.nom }) vus["pnj:" .. b.id] = true
-                end
-                for cle, nom in pairs(type(dbRencontres[d.zone]) == "table" and dbRencontres[d.zone] or {}) do
-                    if not vus[cle] then table.insert(boss, { cle = cle, nom = tostring(nom) }) vus[cle] = true end
-                end
-                table.sort(boss, function(a, b) return a.nom < b.nom end)
-                local function Entre(p) return persos.Instances(p.cle)[d.zone] == true end
-                local function Battu(p, cle)
-                    local t = persos.Boss(p.cle)[d.zone]
-                    return type(t) == "table" and t[cle] == true
-                end
-                local function Un(test) for _, p in ipairs(ctx.persos) do if test(p) then return true end end return false end
-                local fait, total = Un(Entre) and 1 or 0, 1 + #boss
-                for _, b in ipairs(boss) do if Un(function(p) return Battu(p, b.cle) end) then fait = fait + 1 end end
-                local groupes = groupesDe[d.zone] or {}
-                for _, g in ipairs(groupes) do
-                    local q, faite = Groupe(ctx, idx, g, faites)
-                    if q then
-                        total = total + 1
-                        if faite then fait = fait + 1 end
+                -- Boss : ceux du journal des donjons (numeros de rencontre),
+                -- sinon ceux de la base (raids), sinon ceux deja rencontres.
+                local boss, vus, nomsBoss = {}, {}, {}
+                local duJournal = rencontres and rencontres.parZone[d.zone]
+                if duJournal then
+                    for _, b in ipairs(duJournal) do
+                        table.insert(boss, { cle = b.cle, nom = NomDeBoss(b), ids = b.ids })
+                        nomsBoss[NS.Cle(b.nom)] = true
+                    end
+                else
+                    for _, b in ipairs(base.BossDeZone(d.zone) or {}) do
+                        table.insert(boss, { cle = "pnj:" .. b.id, nom = b.nom }) vus["pnj:" .. b.id] = true
+                        nomsBoss[NS.Cle(b.nom)] = true
+                    end
+                    for cle, nom in pairs(type(dbRencontres[d.zone]) == "table" and dbRencontres[d.zone] or {}) do
+                        if not vus[cle] then table.insert(boss, { cle = cle, nom = tostring(nom) }) vus[cle] = true end
                     end
                 end
-                Ajouter(res, s, { cle = "d" .. d.zone, nom = d.nom, ordre = rang,
-                    icone = d.raid and "Interface\\Icons\\INV_Misc_Head_Dragon_01" or "Interface\\Icons\\INV_Misc_Key_14",
-                    fait = fait, total = total,
-                    Detail = function()
-                        local liste = { Critere("entre", T("Y être entré", "Entered"), Un(Entre),
-                            { qui = Qui(ctx, Entre), icone = "Interface\\Icons\\INV_Misc_Key_14" }) }
-                        for _, b in ipairs(boss) do
-                            local cle = b.cle
-                            table.insert(liste, Critere(cle, b.nom, Un(function(p) return Battu(p, cle) end),
-                                { qui = Qui(ctx, function(p) return Battu(p, cle) end), icone = "Interface\\Icons\\INV_Misc_Head_Dragon_01" }))
+                table.sort(boss, function(a, b) return a.nom < b.nom end)
+                -- Les rares de l'instance (et de ses autres zones).
+                local raresIci = {}
+                if rares then
+                    for _, z in ipairs({ d.zone, unpack(d.autres or {}) }) do
+                        for _, r in ipairs(rares.parZone[z] or {}) do table.insert(raresIci, r) end
+                    end
+                end
+                local groupes = groupesDe[d.zone] or {}
+                if d.forever or #boss > 0 or #groupes > 0 then
+                    local function Entre(p) return persos.Instances(p.cle)[d.zone] == true end
+                    local function Battu(p, b)
+                        local t = persos.Boss(p.cle)[d.zone]
+                        if type(t) ~= "table" then return false end
+                        if t[b.cle] then return true end
+                        for id in pairs(b.ids or {}) do if t["renc:" .. id] then return true end end
+                        return false
+                    end
+                    local function Un(test) for _, p in ipairs(ctx.persos) do if test(p) then return true end end return false end
+                    local avecEntree = not d.horsBase
+                    local fait, total = 0, 0
+                    if avecEntree then total = 1 if Un(Entre) then fait = 1 end end
+                    total = total + #boss
+                    for _, b in ipairs(boss) do if Un(function(p) return Battu(p, b) end) then fait = fait + 1 end end
+                    local critRares = CriteresDeRares(ctx, raresIci, nomsBoss)
+                    total = total + #critRares
+                    for _, c in ipairs(critRares) do if c.fait then fait = fait + 1 end end
+                    for _, g in ipairs(groupes) do
+                        local q, faite = Groupe(ctx, idx, g, faites)
+                        if q then
+                            total = total + 1
+                            if faite then fait = fait + 1 end
                         end
-                        if idx then
-                            for _, c in ipairs(CriteresDeQuetes(ctx, idx, groupes)) do table.insert(liste, c) end
-                        end
-                        return liste
-                    end })
+                    end
+                    Ajouter(res, s, { cle = "d" .. tostring(d.zone), nom = d.nom, ordre = rang,
+                        icone = d.raid and "Interface\\Icons\\INV_Misc_Head_Dragon_01" or "Interface\\Icons\\INV_Misc_Key_14",
+                        fait = fait, total = total,
+                        Detail = function()
+                            local liste = {}
+                            if avecEntree then
+                                table.insert(liste, Critere("entre", T("Y être entré", "Entered"), Un(Entre),
+                                    { qui = Qui(ctx, Entre), icone = "Interface\\Icons\\INV_Misc_Key_14" }))
+                            end
+                            for _, b in ipairs(boss) do
+                                local bb = b
+                                table.insert(liste, Critere(b.cle, b.nom, Un(function(p) return Battu(p, bb) end),
+                                    { qui = Qui(ctx, function(p) return Battu(p, bb) end), icone = "Interface\\Icons\\INV_Misc_Head_Dragon_01" }))
+                            end
+                            for _, c in ipairs(critRares) do table.insert(liste, c) end
+                            if idx then
+                                for _, c in ipairs(CriteresDeQuetes(ctx, idx, groupes)) do table.insert(liste, c) end
+                            end
+                            return liste
+                        end })
+                end
+            end
+            return Finir(res)
+        end }
+end
+
+-- ---------------------------------------------------------------------------
+-- Rares du monde (ceux des instances comptent dans leur donjon)
+-- ---------------------------------------------------------------------------
+
+local function CategorieRares()
+    return { cle = "rares", icone = "Interface\\Icons\\INV_Misc_Head_Dragon_Black", versions = { "rares" },
+        nom = function() return T("Rares", "Rares") end,
+        intro = function() return T("Chaque monstre rare du monde, zone par zone : il compte quand toi ou ton groupe l'avez tué.",
+            "Every rare monster of the world, zone by zone : it counts once you or your group killed it.") end,
+        Absente = function() return base.Rares() == false end,
+        Pret = function() return type(base.Rares()) == "table" end,
+        Calculer = function(ctx)
+            local res = { sous = {} }
+            local rares = base.Rares()
+            for zone, liste in pairs(rares.parZone) do
+                if not base.DonjonDeZone(zone) then
+                    local c = base.ContinentDeZone(zone)
+                    local s = Sous(res, c and ("c" .. c.id) or "autres", c and c.nom or T("Autres lieux", "Other places"),
+                        c and c.id or 99999, "Interface\\Icons\\INV_Misc_Map_01")
+                    local crit = CriteresDeRares(ctx, liste)
+                    local fait = 0
+                    for _, x in ipairs(crit) do if x.fait then fait = fait + 1 end end
+                    local niveau = liste[1] and liste[1].niveau or 0
+                    Ajouter(res, s, { cle = zone, nom = NomDeZone(zone), ordre = niveau, zone = zone,
+                        icone = "Interface\\Icons\\INV_Misc_Head_Dragon_Black", fait = fait, total = #crit,
+                        Detail = function() return CriteresDeRares(ctx, liste) end })
+                end
             end
             return Finir(res)
         end }
@@ -832,6 +929,6 @@ end
 
 -- L'ordre des pages : celui du journal des hauts faits.
 NS.categories = {
-    CategorieExploration(), CategorieQuetes(), CategorieDonjons(), CategorieObjets(), CategorieMetiers(),
+    CategorieExploration(), CategorieQuetes(), CategorieDonjons(), CategorieRares(), CategorieObjets(), CategorieMetiers(),
     CategorieRaces(), CategorieReputations(), CategorieJcJ(), CategorieHeritage(),
 }

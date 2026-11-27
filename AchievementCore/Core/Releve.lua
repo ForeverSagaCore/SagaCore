@@ -155,11 +155,30 @@ function releve.Rencontre(idRencontre, nom, reussi)
     if reussi ~= 1 and reussi ~= true then return end
     local f = Fiche()
     if not f then return end
+    local d = NS.base.DB()
+    -- Une rencontre connue (journal des donjons) : son donjon et son boss,
+    -- meme dans un donjon que la base ne connait pas. Le nom du boss et
+    -- celui du donjon dans la langue du jeu sont appris au passage.
+    local r = NS.base.Rencontres()
+    local connue = r and tonumber(idRencontre) and r.deId[tonumber(idRencontre)]
+    if connue then
+        d.nomsBoss = type(d.nomsBoss) == "table" and d.nomsBoss or {}
+        if type(nom) == "string" and nom ~= "" then d.nomsBoss[connue.cle] = nom end
+        local nomInstance = Jeu("GetInstanceInfo")
+        d.nomsDonjons = type(d.nomsDonjons) == "table" and d.nomsDonjons or {}
+        if type(connue.zone) == "string" and type(nomInstance) == "string" and nomInstance ~= "" then d.nomsDonjons[connue.zone] = nomInstance end
+        local instances = NS.base.Table(f, "instances")
+        instances[connue.zone] = true
+        local boss = NS.base.Table(f, "boss")
+        boss[connue.zone] = type(boss[connue.zone]) == "table" and boss[connue.zone] or {}
+        boss[connue.zone]["renc:" .. tonumber(idRencontre)] = true
+        NS.Changer("donjons")
+        return
+    end
     local zone = releve.instance or releve.Instance()
     if not zone then return end
     local cleBoss = NS.base.CleBoss(zone, idRencontre, nom)
     if not cleBoss then return end
-    local d = NS.base.DB()
     d.rencontres[zone] = type(d.rencontres[zone]) == "table" and d.rencontres[zone] or {}
     if not d.rencontres[zone][cleBoss] then d.rencontres[zone][cleBoss] = type(nom) == "string" and nom or tostring(cleBoss) end
     local boss = NS.base.Table(f, "boss")
@@ -451,6 +470,35 @@ end
 -- ---------------------------------------------------------------------------
 -- Tout a la connexion (court : quelques dizaines de lectures)
 -- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- Rythme : l'XP gagnee et le temps passe, par niveau. Un temps sans gain de
+-- plus de 10 minutes ne compte que pour 10 (absence, pause).
+-- ---------------------------------------------------------------------------
+
+local dernier
+local PAUSE_MAX = 600
+function releve.Rythme()
+    local f = Fiche()
+    if not f then return end
+    local xp, maxi = tonumber(NS.Sur(Jeu("UnitXP", "player"))), tonumber(NS.Sur(Jeu("UnitXPMax", "player")))
+    local niveau = tonumber(NS.Sur(Jeu("UnitLevel", "player")))
+    local t = tonumber(Jeu("GetTime"))
+    if not (xp and maxi and niveau and t) then return end
+    local avant = dernier
+    dernier = { xp = xp, maxi = maxi, niveau = niveau, t = t }
+    if not avant then return end
+    local gain
+    if niveau == avant.niveau then gain = xp - avant.xp
+    elseif niveau == avant.niveau + 1 then gain = (avant.maxi - avant.xp) + xp
+    else return end
+    if gain <= 0 then return end
+    local duree = math.min(PAUSE_MAX, math.max(0, t - avant.t))
+    local rythme = NS.base.Table(f, "rythme")
+    local r = type(rythme[avant.niveau]) == "table" and rythme[avant.niveau] or { xp = 0, s = 0 }
+    r.xp, r.s = (r.xp or 0) + gain, (r.s or 0) + duree
+    rythme[avant.niveau] = r
+end
 
 function releve.Tout()
     NS.Proteger("identite", releve.Identite)

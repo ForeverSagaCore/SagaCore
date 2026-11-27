@@ -1,13 +1,13 @@
 ## Interface: 16001
-## Title: AchievementCore
-## Notes: Finish the game : every zone explored, every quest, dungeon, item, profession, race and class, reputation and PvP rank, with your progress in percent for each character, the Horde, the Alliance and both.
-## Notes-frFR: Finir le jeu : chaque zone explorée, chaque quête, donjon, objet, métier, race et classe, réputation et rang JcJ, avec votre avancement en pourcentage pour chaque personnage, la Horde, l'Alliance et les deux.
+## Title: GloryCore
+## Notes: Finish the game : points for every feat, goals at your real pace, every zone explored, every quest, dungeon with all its bosses and rares, item, profession, race and class, reputation and PvP rank, with your progress in percent for each character, the Horde, the Alliance and both.
+## Notes-frFR: Finir le jeu : des points pour chaque haut fait, des objectifs à ton rythme réel, chaque zone explorée, chaque quête, chaque donjon avec tous ses boss et ses rares, objet, métier, race et classe, réputation et rang JcJ, avec votre avancement en pourcentage pour chaque personnage, la Horde, l'Alliance et les deux.
 ## Author: ForeverSagaCore
-## Version: 0.1.0
+## Version: 0.2.0-beta
 ## IconTexture: Interface\Icons\INV_Misc_Ribbon_01
 ## X-Category: Achievements
 ## X-Website: https://github.com/ForeverSagaCore/SagaCore
-## OptionalDeps: QuestieDB, CraftCore, QuestCore, MapCore, LegacyCore, AuraCore, PvPCore
+## OptionalDeps: QuestieDB, ForeverDungeonJournal, CraftCore, QuestCore, MapCore, LegacyCore, AuraCore, PvPCore
 ## SavedVariables: AchievementCoreDB, CoreSuiteDB
 
 Core\Socle.lua

@@ -468,6 +468,26 @@ local function RendreCategorie(page, cat)
     page.t1:SetText((element and element.nom) or (sous and sous.nom) or cat.nom())
     page.bRetour:SetText(T("Retour", "Back"))
     page.bRetour:SetShown(nav.sous ~= nil)
+    -- Un element ouvert, pour un personnage : le suivre comme objectif, et
+    -- pour le personnage connecte, se faire guider vers ses quetes.
+    local surPerso = portee:match("^perso:") ~= nil
+    page.bSuivre:SetShown(element ~= nil and surPerso)
+    page.bGuider:Hide()
+    if element and surPerso then
+        page.bSuivre:SetText(F.Suivi(portee, cat.cle, nav.sous, nav.element) and T("Ne plus suivre", "Stop tracking") or T("Suivre", "Track"))
+        local api = _G.QuestCoreAPI
+        if portee == "perso:" .. tostring(NS.ClePersonnage()) and api and api.GuiderQuetes then
+            local ids = {}
+            for _, c in ipairs(element.Detail and element.Detail() or {}) do
+                if c.quete and not c.fait then table.insert(ids, c.quete) end
+            end
+            if #ids > 0 then
+                page.idsAGuider = ids
+                page.bGuider:SetText(T("Me guider", "Guide me"))
+                page.bGuider:Show()
+            end
+        end
+    end
     page.intro:SetText(cat.intro())
     page.rPortee.nom:SetText(T("Avancement affiché", "Progress shown"))
     local i, y, nt, nn = 0, 0, 0, 0
@@ -597,7 +617,7 @@ local function PageCategorie(cat)
         construire = function(page, O)
             page.t1 = O.Section()
             page.t1:SetWordWrap(false)
-            page.t1:SetPoint("RIGHT", page.cadre, "RIGHT", -120, 0)
+            page.t1:SetPoint("RIGHT", page.cadre, "RIGHT", -330, 0)
             page.bRetour = O.Bouton(page.cadre, 90, function()
                 local nav = Nav(page)
                 if nav.element then nav.element = nil else nav.sous = nil end
@@ -605,6 +625,16 @@ local function PageCategorie(cat)
                 F.Defiler()
             end)
             page.bRetour:SetPoint("TOPRIGHT", page.cadre, "TOPRIGHT", -10, 0)
+            page.bSuivre = O.Bouton(page.cadre, 90, function()
+                local nav = Nav(page)
+                F.BasculerSuivi(F.Portee(), cat.cle, nav.sous, nav.element)
+            end)
+            page.bSuivre:SetPoint("RIGHT", page.bRetour, "LEFT", -8, 0)
+            page.bGuider = O.Bouton(page.cadre, 90, function()
+                local api = _G.QuestCoreAPI
+                if api and api.GuiderQuetes and page.idsAGuider then pcall(api.GuiderQuetes, page.idsAGuider) end
+            end)
+            page.bGuider:SetPoint("RIGHT", page.bSuivre, "LEFT", -8, 0)
             page.intro = O.Detail(18)
             page.intro:SetWordWrap(false)
             page.rPortee = O.Rangee()
@@ -618,34 +648,64 @@ local function PageCategorie(cat)
 end
 
 -- ---------------------------------------------------------------------------
--- Vue d'ensemble : toutes les categories et tous les personnages
+-- Aller a un element, depuis n'importe quelle page
 -- ---------------------------------------------------------------------------
 
-local function RendreEnsemble(page)
-    local portee = F.Portee()
-    if NS.base.Preparer then NS.base.Preparer() end
-    ToutCacher(page)
-    page.t1:SetText(T("Vue d'ensemble", "Overview"))
-    page.intro:SetText(T("Tout ce qui est faisable pour finir le jeu : par personnage, pour la Horde, pour l'Alliance et pour les deux camps.",
-        "Everything you can do to finish the game : by character, for the Horde, for the Alliance and for both sides."))
-    page.rPortee.nom:SetText(T("Avancement affiché", "Progress shown"))
-    local i, y, nt, nn = 0, 0, 0, 0
-    nt = nt + 1
-    y = Titre(page, nt, y, T("Avancement général", "Overall progress"))
-    i, y = Resume(page, i, y, function(p)
-        local v, n, attendues = calcul.Global(p)
-        if n == 0 then return nil end
-        local r = math.floor(v * 1000 + 0.5)
-        return r, 1000
-    end)
-    for k = 1, i do
-        local l = page.lignes[k]
-        if l and l.barre:IsShown() then
-            -- Une moyenne : la barre dit le pourcentage, pas un nombre.
-            l.barre.texte:SetText(l.droite:GetText() or "")
+function F.Aller(cleCat, sous, element, portee)
+    if not F.w then return end
+    if portee then F.PoserPortee(portee) end
+    etat.nav[cleCat] = { page = 1, filtre = "tout", sous = sous, element = element }
+    F.w.page = cleCat
+    F.Defiler()
+    F.Rendre()
+end
+
+local function Morceaux(cle)
+    local cat, sous, element = tostring(cle):match("^([^|]+)|([^|]*)|(.*)$")
+    return cat, tonumber(sous) or sous, tonumber(element) or element
+end
+
+local ICONE_POINTS = "Interface\\Icons\\INV_Misc_Ribbon_01"
+
+-- Il y a combien de temps, en mots.
+local function Depuis(quand)
+    local maintenant = NS.Appeler(time) or quand
+    local jours = math.floor((maintenant - quand) / 86400)
+    if jours <= 0 then return T("aujourd'hui", "today") end
+    if jours == 1 then return T("hier", "yesterday") end
+    return string.format(T("il y a %d jours", "%d days ago"), jours)
+end
+
+local function TextePoints(n) return string.format(T("%s points", "%s points"), NS.Nombre(n)) end
+
+-- La ligne d'un personnage : portrait, nom a sa couleur, niveau et race.
+local function DetailPerso(p)
+    local morceaux = {}
+    if p.niveau then table.insert(morceaux, string.format(T("Niveau %d", "Level %d"), p.niveau)) end
+    if p.race then table.insert(morceaux, ref.NomDeRace(p.race)) end
+    if p.classe and ref.NomDeClasse then table.insert(morceaux, ref.NomDeClasse(p.classe)) end
+    return table.concat(morceaux, "  ")
+end
+
+-- Les categories pour une portee, chacune ouvre sa page.
+local function LignesDeCategories(page, i, y, portee)
+    for _, cat in ipairs(NS.categories) do
+        if not (cat.Absente and cat.Absente()) or cat.cle == "quetes" or cat.cle == "objets" then
+            local r = calcul.Resultat(cat.cle, portee)
+            local cle = cat.cle
+            local o = { icone = cat.icone, texte = cat.nom(),
+                auClic = function() if F.w then F.PoserPortee(portee) F.w.page = cle F.Defiler() F.Rendre() end end }
+            if r then o.fait, o.total = r.fait, r.total
+            else o.fait, o.total, o.texteBarre, o.droite = 0, 1, (cat.Absente and cat.Absente()) and T("sans QuestieDB", "no QuestieDB") or T("en préparation", "preparing"), "" end
+            if r and r.total == 0 then o.texteBarre, o.droite = T("rien à faire", "nothing to do"), "" end
+            i = i + 1
+            y = Poser(page, i, y, o)
         end
     end
-    -- Ce qui se prepare encore.
+    return i, y
+end
+
+local function Attente(page, nn, y)
     local attente = {}
     for _, cat in ipairs(NS.categories) do
         if cat.Pret and not cat.Pret() and not (cat.Absente and cat.Absente()) then
@@ -656,56 +716,389 @@ local function RendreEnsemble(page)
         nn = nn + 1
         y = Note(page, nn, y, T("En préparation : ", "Preparing : ") .. table.concat(attente, "   "))
     end
-    nt = nt + 1
-    y = Titre(page, nt, y, string.format(T("Catégories pour %s", "Categories for %s"), calcul.NomDePortee(portee)))
-    for _, cat in ipairs(NS.categories) do
-        if not (cat.Absente and cat.Absente()) or cat.cle == "quetes" or cat.cle == "objets" then
-            local r = calcul.Resultat(cat.cle, portee)
-            local cle = cat.cle
-            local o = { icone = cat.icone, texte = cat.nom(),
-                auClic = function() if F.w then F.w.page = cle F.Defiler() F.Rendre() end end }
-            if r then o.fait, o.total = r.fait, r.total
-            else o.fait, o.total, o.texteBarre, o.droite = 0, 1, (cat.Absente and cat.Absente()) and T("sans QuestieDB", "no QuestieDB") or T("en préparation", "preparing"), "" end
-            if r and r.total == 0 then o.texteBarre, o.droite = T("rien à faire", "nothing to do"), "" end
-            i = i + 1
-            y = Poser(page, i, y, o)
-        end
-    end
-    nt = nt + 1
-    y = Titre(page, nt, y, T("Personnages", "Characters"))
-    for _, p in ipairs(persos.Liste()) do
-        local pp = "perso:" .. p.cle
-        local v, n = calcul.Global(pp)
-        local morceaux = {}
-        if p.niveau then table.insert(morceaux, string.format(T("Niveau %d", "Level %d"), p.niveau)) end
-        if p.race then table.insert(morceaux, ref.NomDeRace(p.race)) end
-        if p.faction then table.insert(morceaux, p.faction == "Horde" and T("Horde", "Horde") or T("Alliance", "Alliance")) end
-        local pct = math.floor(v * 100)
-        local o = { retrait = 4, visage = p, texte = p.nom, police = "GameFontNormal", couleur = ref.CouleurDeClasse(p.classe),
-            detail = table.concat(morceaux, "     "),
-            auClic = function() F.PoserPortee(pp) F.Rendre() end }
-        if n > 0 then o.fait, o.total, o.texteBarre, o.droite = pct, 100, pct .. " %", pct .. " %" end
-        i = i + 1
-        y = Poser(page, i, y, o)
-    end
-    page.hauteur = page.yZone + y + 10
+    return nn, y
 end
 
-local function PageEnsemble()
-    return { cle = "ensemble", icone = "Interface\\Icons\\INV_Misc_Ribbon_01",
-        libelle = function() return T("Vue d'ensemble", "Overview") end,
+-- Une page des hauts faits : titre, explication, zone (et ses boutons).
+local function PageHautsFaits(cle, icone, libelle, rendre, section, avant)
+    return { cle = cle, icone = icone, libelle = libelle, section = section,
         construire = function(page, O)
             page.t1 = O.Section()
+            page.t1:SetWordWrap(false)
+            page.t1:SetPoint("RIGHT", page.cadre, "RIGHT", -260, 0)
             page.intro = O.Detail(18)
             page.intro:SetWordWrap(false)
-            page.rPortee = O.Rangee()
-            O.Liste(page.rPortee, OptionsPortee, F.Portee, F.PoserPortee)
+            if avant then avant(page, O) end
             page.zone = CreateFrame("Frame", nil, page.cadre)
             page.zone:SetSize(O.LARGEUR - 10, 10)
             O.Placer(page.zone, 1, 12)
             page.yZone = page.y - 1
         end,
-        rendre = RendreEnsemble }
+        rendre = function(page)
+            if NS.base.Preparer then NS.base.Preparer() end
+            ToutCacher(page)
+            rendre(page)
+        end }
+end
+
+-- ---------------------------------------------------------------------------
+-- Mon compte
+-- ---------------------------------------------------------------------------
+
+local function RendreCompte(page)
+    page.t1:SetText(T("Mon compte", "My account"))
+    page.intro:SetText(T("Tous tes personnages, Horde et Alliance : chaque haut fait compte une fois pour le compte.",
+        "All your characters, Horde and Alliance : each feat counts once for the account."))
+    local i, y, nt, nn = 0, 0, 0, 0
+    nt = nt + 1
+    y = Titre(page, nt, y, T("Points", "Points"))
+    local pts, possible = calcul.Points("deux")
+    i = i + 1
+    y = Poser(page, i, y, { icone = ICONE_POINTS, texte = T("Le compte", "The account"), police = "GameFontNormal",
+        fait = pts, total = math.max(1, possible), texteBarre = string.format("%s / %s", NS.Nombre(pts), NS.Nombre(possible)),
+        droite = TextePoints(pts) })
+    for _, p in ipairs(persos.Liste()) do
+        local pp = "perso:" .. p.cle
+        local ptsP, possibleP = calcul.Points(pp)
+        i = i + 1
+        y = Poser(page, i, y, { retrait = 4, visage = p, texte = p.nom, couleur = ref.CouleurDeClasse(p.classe),
+            detail = DetailPerso(p), fait = ptsP, total = math.max(1, possibleP),
+            texteBarre = string.format("%s / %s", NS.Nombre(ptsP), NS.Nombre(possibleP)), droite = TextePoints(ptsP),
+            auClic = function() F.PoserPortee(pp) if F.w then F.w.page = "perso" end F.Defiler() F.Rendre() end })
+    end
+    nn, y = Attente(page, nn, y)
+    nt = nt + 1
+    y = Titre(page, nt, y, T("Catégories", "Categories"))
+    i, y = LignesDeCategories(page, i, y, "deux")
+    nt = nt + 1
+    y = Titre(page, nt, y, T("Derniers hauts faits", "Latest feats"))
+    local derniers = calcul.Derniers(8)
+    if #derniers == 0 then
+        nn = nn + 1
+        y = Note(page, nn, y, T("Les prochains hauts faits obtenus s'afficheront ici.", "The next feats you earn will show here."))
+    end
+    for _, x in ipairs(derniers) do
+        local cat, sous, element = Morceaux(x.cle)
+        local p = x.perso
+        i = i + 1
+        y = Poser(page, i, y, { icone = ICONE_POINTS, texte = x.nom,
+            detail = ref.Hex(ref.CouleurDeClasse(p.classe)) .. p.nom .. "|r  " .. Depuis(x.quand),
+            droite = "+" .. tostring(x.pts or 0), couleurDroite = { 1, 0.82, 0 },
+            auClic = function() F.Aller(cat, sous, element, "perso:" .. p.cle) end })
+    end
+    page.hauteur = page.yZone + y + 10
+end
+
+-- ---------------------------------------------------------------------------
+-- Mon personnage
+-- ---------------------------------------------------------------------------
+
+-- La zone ou l'on est : sa carte de zone (pas un sous-niveau) et sa zone de la base.
+local function IciMaintenant()
+    local carte = tonumber(NS.Jeu("C_Map.GetBestMapForUnit", "player"))
+    local garde = 0
+    while carte and garde < 6 do
+        local info = NS.Jeu("C_Map.GetMapInfo", carte)
+        if type(info) ~= "table" then break end
+        if info.mapType == 3 or info.mapType == 4 then return carte, NS.base.ZoneDeCarte(carte) end
+        carte = info.parentMapID
+        garde = garde + 1
+    end
+    return nil, nil
+end
+
+local function Chercher(cleCat, portee, test)
+    local r = calcul.Resultat(cleCat, portee)
+    local trouves = {}
+    for _, s in ipairs(r and r.sous or {}) do
+        for _, e in ipairs(s.elements or {}) do
+            if test(s, e) then table.insert(trouves, { s = s, e = e }) end
+        end
+    end
+    return trouves
+end
+
+local function LigneElement(page, i, y, cleCat, x, portee, detail)
+    local cat = calcul.Categorie(cleCat)
+    local sCle, eCle = x.s.cle, x.e.cle
+    i = i + 1
+    y = Poser(page, i, y, { icone = x.e.icone or (cat and cat.icone), coords = x.e.coords, texte = x.e.nom,
+        detail = detail or (cat and cat.nom()), fait = x.e.fait, total = x.e.total,
+        auClic = function() F.Aller(cleCat, sCle, eCle, portee) end })
+    return i, y
+end
+
+local function RendrePerso(page)
+    local portee = PorteePerso()
+    page.t1:SetText(T("Mon personnage", "My character"))
+    page.intro:SetText(T("Ce que ce personnage a fait, ce qui l'attend autour de lui, et ce qu'il a presque fini.",
+        "What this character did, what awaits around him, and what he has almost finished."))
+    local i, y, nt, nn = 0, 0, 0, 0
+    local p = portee and persos.Par(portee:match("^perso:(.+)$"))
+    if not p then
+        nn = nn + 1
+        y = Note(page, nn, y, T("Aucun personnage connu pour l'instant.", "No known character yet."))
+        page.hauteur = page.yZone + y + 10
+        return
+    end
+    local v, n = calcul.Global(portee)
+    local pts = calcul.Points(portee)
+    local pct = math.floor(v * 100)
+    i = i + 1
+    y = Poser(page, i, y, { retrait = 4, visage = p, texte = p.nom, police = "GameFontNormal", couleur = ref.CouleurDeClasse(p.classe),
+        detail = DetailPerso(p), fait = n > 0 and pct or 0, total = 100,
+        texteBarre = n > 0 and string.format(T("%d %% du jeu", "%d %% of the game"), pct) or T("en préparation", "preparing"),
+        droite = TextePoints(pts), couleurDroite = { 1, 0.82, 0 } })
+    nn, y = Attente(page, nn, y)
+    nt = nt + 1
+    y = Titre(page, nt, y, T("Catégories", "Categories"))
+    i, y = LignesDeCategories(page, i, y, portee)
+    -- Autour de toi : seulement pour le personnage connecte.
+    if p.cle == NS.ClePersonnage() then
+        nt = nt + 1
+        y = Titre(page, nt, y, T("Autour de toi", "Around you"))
+        local carte, zone = IciMaintenant()
+        local ici = {}
+        local function Pas(x) return x.e.fait < x.e.total end
+        for _, x in ipairs(Chercher("quetes", portee, function(s, e) return s.cle == "zones" and zone and e.cle == zone end)) do
+            if Pas(x) then table.insert(ici, { "quetes", x }) end
+        end
+        for _, x in ipairs(Chercher("exploration", portee, function(_, e) return carte and e.cle == "z" .. carte end)) do
+            if Pas(x) then table.insert(ici, { "exploration", x }) end
+        end
+        for _, x in ipairs(Chercher("rares", portee, function(_, e) return zone and e.cle == zone end)) do
+            if Pas(x) then table.insert(ici, { "rares", x }) end
+        end
+        if #ici == 0 then
+            nn = nn + 1
+            y = Note(page, nn, y, zone and T("Rien qui reste à faire dans cette zone.", "Nothing left to do in this zone.")
+                or T("Cette zone n'a pas de liste à suivre.", "This zone has no list to follow."))
+        end
+        for _, z in ipairs(ici) do
+            local cat = calcul.Categorie(z[1])
+            local reste = z[2].e.total - z[2].e.fait
+            i, y = LigneElement(page, i, y, z[1], z[2], portee, string.format(T("%s : encore %d", "%s : %d left"), cat.nom(), reste))
+        end
+    end
+    -- Presque fini : ce qui demande le moins pour un haut fait.
+    nt = nt + 1
+    y = Titre(page, nt, y, T("Presque fini", "Almost done"))
+    local presque = {}
+    for _, cat in ipairs(NS.categories) do
+        if cat.cle ~= "objets" then
+            for _, x in ipairs(Chercher(cat.cle, portee, function(s, e)
+                return calcul.Valeur(cat.cle, s.cle) > 0 and e.total > 0 and e.fait < e.total and e.fait / e.total >= 0.5
+            end)) do
+                x.cat = cat.cle
+                table.insert(presque, x)
+            end
+        end
+    end
+    table.sort(presque, function(a, b)
+        local ra, rb = a.e.total - a.e.fait, b.e.total - b.e.fait
+        if ra ~= rb then return ra < rb end
+        return a.e.fait / a.e.total > b.e.fait / b.e.total
+    end)
+    if #presque == 0 then
+        nn = nn + 1
+        y = Note(page, nn, y, T("Rien n'est encore à moitié fait.", "Nothing is half done yet."))
+    end
+    for k = 1, math.min(8, #presque) do
+        local x = presque[k]
+        local cat = calcul.Categorie(x.cat)
+        i, y = LigneElement(page, i, y, x.cat, x, portee, string.format(T("%s : encore %d", "%s : %d left"), cat.nom(), x.e.total - x.e.fait))
+    end
+    page.hauteur = page.yZone + y + 10
+end
+
+-- ---------------------------------------------------------------------------
+-- Objectifs et parcours
+-- ---------------------------------------------------------------------------
+
+local function FicheDe(portee)
+    local cle = type(portee) == "string" and portee:match("^perso:(.+)$")
+    return cle and NS.base.Fiche(cle) or nil, cle
+end
+
+function F.Objectifs(portee)
+    local f = FicheDe(portee)
+    return f and NS.base.Table(f, "objectifs") or {}
+end
+
+local function CleObjectif(cat, sous, element) return cat .. "|" .. tostring(sous) .. "|" .. tostring(element) end
+
+function F.Suivi(portee, cat, sous, element)
+    return F.Objectifs(portee)[CleObjectif(cat, sous, element)] ~= nil
+end
+
+function F.BasculerSuivi(portee, cat, sous, element)
+    local o = F.Objectifs(portee)
+    local k = CleObjectif(cat, sous, element)
+    if o[k] then o[k] = nil else o[k] = { depuis = NS.Appeler(time) or 0 } end
+end
+
+local function Duree(secondes)
+    local minutes = math.floor(secondes / 60 + 0.5)
+    if minutes < 60 then return string.format(T("≈ %d min", "≈ %d min"), math.max(1, minutes)) end
+    return string.format(T("≈ %d h %02d", "≈ %d h %02d"), math.floor(minutes / 60), minutes % 60)
+end
+
+local function NiveauVise(portee, p)
+    local f = FicheDe(portee)
+    local n = f and tonumber(f.niveauVise)
+    local actuel = p and p.niveau or 1
+    if not n or n <= actuel then n = actuel + 1 end
+    return math.min(60, n)
+end
+
+local function RendreObjectifs(page)
+    local portee = PorteePerso()
+    local p = portee and persos.Par(portee:match("^perso:(.+)$"))
+    page.t1:SetText(T("Objectifs et parcours", "Goals and routes"))
+    page.intro:SetText(T("Ce que tu vises, estimé à ton rythme réel ; ce que QuestCore et CraftCore suivent déjà.",
+        "What you aim for, estimated at your real pace ; what QuestCore and CraftCore already track."))
+    local moi = p and p.cle == NS.ClePersonnage()
+    local api = _G.QuestCoreAPI
+    page.bGuiderNiveau:SetShown(moi == true and api ~= nil and api.GuiderNiveau ~= nil and (p.niveau or 60) < 60)
+    page.bGuiderNiveau:SetText(T("Me guider", "Guide me"))
+    page.rNiveau:SetShown(p ~= nil and (p.niveau or 60) < 60)
+    page.rNiveau.nom:SetText(T("Niveau visé", "Target level"))
+    local i, y, nt, nn = 0, 0, 0, 0
+    if not p then
+        nn = nn + 1
+        y = Note(page, nn, y, T("Aucun personnage connu pour l'instant.", "No known character yet."))
+        page.hauteur = page.yZone + y + 10
+        return
+    end
+    -- Le niveau vise : l'XP qui manque, le temps a ton rythme, les quetes
+    -- de ton niveau.
+    nt = nt + 1
+    y = Titre(page, nt, y, string.format(T("Niveau %d", "Level %d"), NiveauVise(portee, p)))
+    if (p.niveau or 60) >= 60 then
+        nn = nn + 1
+        y = Note(page, nn, y, T("Niveau maximum atteint.", "Maximum level reached."))
+    else
+        local e = calcul.Estimation(p, NiveauVise(portee, p))
+        i = i + 1
+        y = Poser(page, i, y, { icone = "Interface\\Icons\\INV_Misc_Book_07", texte = string.format(T("Il manque %s XP", "%s XP missing"), NS.Nombre(e.xp)),
+            droite = "" })
+        local source
+        if e.secondes and e.source then source = string.format(T("D'après le rythme de %s à ces niveaux", "From %s's pace at these levels"), e.source)
+        elseif e.secondes then source = T("D'après ton rythme mesuré", "From your measured pace")
+        else source = T("Ton rythme se mesure en jouant : quelques minutes suffisent", "Your pace is measured as you play : a few minutes are enough") end
+        i = i + 1
+        y = Poser(page, i, y, { icone = "Interface\\Icons\\INV_Misc_PocketWatch_01", texte = e.secondes and string.format(T("À ton rythme : %s", "At your pace : %s"), Duree(e.secondes)) or T("Temps estimé : pas encore mesuré", "Estimated time : not measured yet"),
+            detail = source, droite = "" })
+        -- Les quetes qui restent dans les zones de ton niveau.
+        local zones, n = {}, 0
+        local idx = NS.base.Quetes()
+        for _, x in ipairs(Chercher("quetes", portee, function(s, el)
+            local nz = type(idx) == "table" and idx.niveauZone[el.cle]
+            return s.cle == "zones" and nz and math.abs(nz - (p.niveau or 1)) <= 3 and el.fait < el.total
+        end)) do
+            n = n + x.e.total - x.e.fait
+            table.insert(zones, x)
+        end
+        table.sort(zones, function(a, b) return (a.e.total - a.e.fait) > (b.e.total - b.e.fait) end)
+        local noms = {}
+        for k = 1, math.min(3, #zones) do table.insert(noms, string.format("%s (%d)", zones[k].e.nom, zones[k].e.total - zones[k].e.fait)) end
+        i = i + 1
+        y = Poser(page, i, y, { icone = "Interface\\GossipFrame\\AvailableQuestIcon", texte = string.format(T("%d quêtes de ton niveau à faire", "%d quests of your level to do"), n),
+            detail = #noms > 0 and table.concat(noms, "  ") or nil, droite = "",
+            auClic = zones[1] and function() F.Aller("quetes", "zones", zones[1].e.cle, portee) end or nil })
+    end
+    -- Mes objectifs : ce que tu as choisi de suivre.
+    nt = nt + 1
+    y = Titre(page, nt, y, T("Mes objectifs", "My goals"))
+    local liste = {}
+    for k, o in pairs(F.Objectifs(portee)) do
+        local cat, sous, element = Morceaux(k)
+        local r = calcul.Resultat(cat, portee)
+        local e = r and Trouver(r, sous, element)
+        table.insert(liste, { k = k, cat = cat, sous = sous, element = element, e = e, depuis = type(o) == "table" and o.depuis or 0 })
+    end
+    table.sort(liste, function(a, b) return (a.depuis or 0) > (b.depuis or 0) end)
+    if #liste == 0 then
+        nn = nn + 1
+        y = Note(page, nn, y, T("Aucun objectif : ouvre un élément d'une catégorie, puis Suivre.", "No goal : open an element of a category, then Track."))
+    end
+    for _, x in ipairs(liste) do
+        local cat = calcul.Categorie(x.cat)
+        local fini = x.e and x.e.fait >= x.e.total
+        i = i + 1
+        y = Poser(page, i, y, { icone = (x.e and x.e.icone) or (cat and cat.icone), texte = x.e and x.e.nom or T("En préparation", "Preparing"),
+            detail = fini and T("Fini !", "Done !") or (cat and string.format(T("%s : encore %d", "%s : %d left"), cat.nom(), x.e and (x.e.total - x.e.fait) or 0)),
+            fait = x.e and x.e.fait or 0, total = x.e and math.max(1, x.e.total) or 1,
+            auClic = function() F.Aller(x.cat, x.sous, x.element, portee) end })
+    end
+    -- Deja suivis ailleurs : seulement pour le personnage connecte (QuestCore
+    -- et CraftCore suivent le personnage connecte).
+    if moi then
+        nt = nt + 1
+        y = Titre(page, nt, y, T("Déjà suivis ailleurs", "Already tracked elsewhere"))
+        local S = _G.CoreSuite
+        local ailleurs = 0
+        local function Ouvrir(cle) return function() if S and S.Ouvrir then S.Ouvrir(cle) end end end
+        if api and api.Circuit then
+            local ok, c = pcall(api.Circuit)
+            if ok and type(c) == "table" and (c.total or 0) > 0 then
+                ailleurs = ailleurs + 1
+                i = i + 1
+                y = Poser(page, i, y, { icone = "Interface\\Icons\\INV_Misc_Map_01", texte = tostring(c.nom or "?"),
+                    detail = T("QuestCore : guidage en cours", "QuestCore : guidance running"), fait = c.total - c.reste, total = c.total,
+                    auClic = Ouvrir("QuestCore") })
+            end
+        end
+        if api and api.Itineraires then
+            local ok, l = pcall(api.Itineraires)
+            for _, it in ipairs(ok and type(l) == "table" and l or {}) do
+                if not it.guide then
+                    ailleurs = ailleurs + 1
+                    i = i + 1
+                    y = Poser(page, i, y, { icone = "Interface\\Icons\\INV_Misc_Book_09", texte = tostring(it.nom or "?"),
+                        detail = T("QuestCore : itinéraire", "QuestCore : route"), fait = it.faites or 0, total = math.max(1, it.total or 1),
+                        auClic = Ouvrir("QuestCore") })
+                end
+            end
+        end
+        local capi = _G.CraftCoreAPI
+        if capi and capi.Suivis then
+            local ok, l = pcall(capi.Suivis)
+            for _, o in ipairs(ok and type(l) == "table" and l or {}) do
+                ailleurs = ailleurs + 1
+                local pctO = math.floor((tonumber(o.pct) or 0) * 100 + 0.5)
+                i = i + 1
+                y = Poser(page, i, y, { icone = "Interface\\Icons\\Trade_BlackSmithing", texte = tostring(o.nom or "?"),
+                    detail = "CraftCore" .. (o.detail and (" : " .. tostring(o.detail)) or ""), fait = pctO, total = 100,
+                    texteBarre = pctO .. " %", auClic = Ouvrir("CraftCore") })
+            end
+        end
+        if ailleurs == 0 then
+            nn = nn + 1
+            y = Note(page, nn, y, T("Ni QuestCore ni CraftCore ne suivent rien en ce moment.", "Neither QuestCore nor CraftCore tracks anything right now."))
+        end
+    end
+    page.hauteur = page.yZone + y + 10
+end
+
+local function AvantObjectifs(page, O)
+    page.bGuiderNiveau = O.Bouton(page.cadre, 90, function()
+        local portee = PorteePerso()
+        local p = portee and persos.Par(portee:match("^perso:(.+)$"))
+        local api = _G.QuestCoreAPI
+        if p and api and api.GuiderNiveau then pcall(api.GuiderNiveau, NiveauVise(portee, p)) end
+    end)
+    page.bGuiderNiveau:SetPoint("TOPRIGHT", page.cadre, "TOPRIGHT", -10, 0)
+    page.rNiveau = O.Rangee()
+    O.Curseur(page.rNiveau, 2, 60, 1, function()
+        local portee = PorteePerso()
+        local p = portee and persos.Par(portee:match("^perso:(.+)$"))
+        return NiveauVise(portee, p)
+    end, function(v)
+        local f = FicheDe(PorteePerso())
+        if f then f.niveauVise = v end
+        F.Rendre()
+    end, nil, nil, 5)
 end
 
 -- ---------------------------------------------------------------------------
@@ -752,16 +1145,32 @@ end
 function F.Construire()
     local S = _G.CoreSuite
     if F.w or not (S and S.FenetreAPages) then return F.w end
-    local pages = { PageEnsemble() }
+    local hautsFaits = function() return T("Hauts faits", "Feats") end
+    local pages = {
+        PageHautsFaits("compte", "Interface\\Icons\\INV_Misc_Ribbon_01", function() return T("Mon compte", "My account") end, RendreCompte, hautsFaits),
+        PageHautsFaits("perso", "Interface\\Icons\\INV_Misc_GroupNeedMore", function() return T("Mon personnage", "My character") end, RendrePerso),
+        PageHautsFaits("objectifs", "Interface\\Icons\\INV_Misc_Map_01", function() return T("Objectifs et parcours", "Goals and routes") end, RendreObjectifs, nil, AvantObjectifs),
+    }
+    local premiere = true
     for _, cat in ipairs(NS.categories) do
         -- L'heritage seulement quand LegacyCore a des releves.
-        if not (cat.cle == "heritage" and cat.Absente and cat.Absente()) then table.insert(pages, PageCategorie(cat)) end
+        if not (cat.cle == "heritage" and cat.Absente and cat.Absente()) then
+            local pc = PageCategorie(cat)
+            if premiere then pc.section = function() return T("Catégories", "Categories") end premiere = false end
+            table.insert(pages, pc)
+        end
     end
     if S.Seul and S.Seul() then table.insert(pages, PageSuite()) end
     F.w = S.FenetreAPages({
         nom = "AchievementCoreFenetre", cle = "AchievementCore", icone = "Interface\\Icons\\INV_Misc_Ribbon_01",
-        titre = function() return "AchievementCore" end,
+        titre = function() return "GloryCore" end,
         pages = pages,
+        -- La bande des personnages choisit le personnage montre.
+        persoChoisi = function()
+            local p = PorteePerso()
+            return p and p:match("^perso:(.+)$") or nil
+        end,
+        choisirPerso = function(cle) F.PoserPortee("perso:" .. cle) end,
         -- B hors de la page : remonte d'un niveau avant de fermer.
         manette = function(bouton)
             if bouton ~= "PAD2" or not F.w then return false end

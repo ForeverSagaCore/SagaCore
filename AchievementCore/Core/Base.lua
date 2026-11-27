@@ -57,6 +57,38 @@ local function TableDesZones(nom)
     return type(brut) == "table" and brut or nil
 end
 
+-- Zones de la base (areaID) et cartes du jeu (uiMapID), dans les deux sens.
+local tablesZones = {}
+local function TableGardee(nom)
+    if tablesZones[nom] == nil then tablesZones[nom] = TableDesZones(nom) or false end
+    return tablesZones[nom] or nil
+end
+function base.CarteDeZone(zone)
+    local t = TableGardee("areaIdToUiMapId")
+    return t and tonumber(t[tonumber(zone) or 0]) or nil
+end
+function base.ZoneDeCarte(carte)
+    local t = TableGardee("uiMapIdToAreaId")
+    return t and tonumber(t[tonumber(carte) or 0]) or nil
+end
+-- Le continent d'une zone de la base : { id, nom } de sa carte, ou nil.
+local continents = {}
+function base.ContinentDeZone(zone)
+    local carte = base.CarteDeZone(zone)
+    if not carte then return nil end
+    if continents[carte] ~= nil then return continents[carte] or nil end
+    local c, garde, trouve = carte, 0, false
+    while c and garde < 8 do
+        local info = NS.Jeu("C_Map.GetMapInfo", c)
+        if type(info) ~= "table" then break end
+        if info.mapType == 2 then trouve = { id = c, nom = info.name } break end
+        c = info.parentMapID
+        garde = garde + 1
+    end
+    continents[carte] = trouve
+    return trouve or nil
+end
+
 local function NomDeZone(zone)
     local nom = Jeu("C_Map.GetAreaInfo", zone)
     if type(nom) == "string" and nom ~= "" then return nom end
@@ -147,6 +179,12 @@ function base.Donjons()
     for zone, d in pairs(t or {}) do
         if type(d) == "table" then Ajouter(zone, d[1], d[2]) end
     end
+    -- La table de la base connait aussi des donjons absents de Forever : ils
+    -- sont marques, et ne restent dans les categories que s'ils ont des boss
+    -- ou des quetes (voir Categories.lua).
+    local deForever = {}
+    for _, z in ipairs(ref.DONJONS) do deForever[z] = true end
+    for _, d in ipairs(liste) do d.forever = deForever[d.zone] == true end
     -- Sans la table de QuestieDB : la liste de reference.
     if not t then for _, zone in ipairs(ref.DONJONS) do Ajouter(zone) end end
     table.sort(liste, function(a, b)
@@ -408,13 +446,30 @@ end
 -- raids (la base n'a qu'une partie des boss de donjon) et seulement les PNJ
 -- hostiles qui ne donnent ni ne reprennent de quete (pas les dragons amis
 -- de la fin d'Ahn'Qiraj, ni Malfurion dans le temple).
+-- Dans le meme passage : les rares (rang 2 « rare elite » et 4 « rare »),
+-- hostiles, places dans le monde, qui ne donnent ni ne reprennent de quete.
+-- Ceux d'une instance comptent dans son donjon, les autres par zone.
 local function ConstruireBoss()
     local ids = TousLesIds("NpcDB")
-    if not ids then etat.boss = false return end
+    if not ids then etat.boss = false etat.rares = false return end
     local parZone = {}
+    local rares = { parZone = {}, zoneDe = {}, total = 0 }
     for rang, id in ipairs(ids) do
         if rang % 5 == 0 then Pause() end
-        if tonumber(Lire("NpcDB", id, "rank")) == 3 then
+        local rangPnj = tonumber(Lire("NpcDB", id, "rank"))
+        if rangPnj == 2 or rangPnj == 4 then
+            local zone = tonumber(Lire("NpcDB", id, "zoneID"))
+            local ami = Lire("NpcDB", id, "friendlyToFaction")
+            local parle = Lire("NpcDB", id, "questStarts") or Lire("NpcDB", id, "questEnds")
+            if zone and zone > 0 and ami == nil and not (type(parle) == "table" and #parle > 0) and APosition("NpcDB", id) then
+                rares.parZone[zone] = rares.parZone[zone] or {}
+                table.insert(rares.parZone[zone], { id = id, nom = Lire("NpcDB", id, "name") or ("#" .. id),
+                    niveau = tonumber(Lire("NpcDB", id, "minLevel")) or 0 })
+                rares.zoneDe[id] = zone
+                rares.total = rares.total + 1
+            end
+        end
+        if rangPnj == 3 then
             local zone = tonumber(Lire("NpcDB", id, "zoneID"))
             local d = zone and base.DonjonDeZone(zone)
             local ami = Lire("NpcDB", id, "friendlyToFaction")
@@ -426,8 +481,15 @@ local function ConstruireBoss()
         end
     end
     for _, l in pairs(parZone) do table.sort(l, function(a, b) return tostring(a.nom) < tostring(b.nom) end) end
+    for _, l in pairs(rares.parZone) do
+        table.sort(l, function(a, b)
+            if a.niveau ~= b.niveau then return a.niveau < b.niveau end
+            return tostring(a.nom) < tostring(b.nom)
+        end)
+    end
     etat.boss = parZone
-    NS.Changer("donjons")
+    etat.rares = rares
+    NS.Changer("donjons", "rares")
 end
 
 -- ---------------------------------------------------------------------------
@@ -481,8 +543,8 @@ function base.Preparer()
         else travail.Lancer("quetes", ConstruireQuetes, nil, function() etat.quetes = false end) end
     end
     if etat.boss == nil and not travail.EnCours("boss") then
-        if not base.QDB("NpcDB") then etat.boss = false
-        else travail.Lancer("boss", ConstruireBoss, nil, function() etat.boss = false end) end
+        if not base.QDB("NpcDB") then etat.boss = false etat.rares = false
+        else travail.Lancer("boss", ConstruireBoss, nil, function() etat.boss = false etat.rares = false end) end
     end
     if etat.objets == nil and not travail.EnCours("objets") then
         if not base.QDB("ItemDB") then etat.objets = false
@@ -493,6 +555,72 @@ end
 function base.Quetes() return etat.quetes end
 function base.Objets() return etat.objets end
 function base.BossDeZone(zone) return type(etat.boss) == "table" and etat.boss[zone] or nil end
+-- Les rares : { parZone, zoneDe, total }, false sans QuestieDB, nil en preparation.
+function base.Rares() return etat.rares end
+function base.EstRare(id) return type(etat.rares) == "table" and etat.rares.zoneDe[id] ~= nil end
+
+-- ---------------------------------------------------------------------------
+-- Boss de donjon : les rencontres du jeu (numero de rencontre, le meme dans
+-- toutes les langues). La liste vient du journal des donjons de Forever
+-- (add-on DungeonJournal) quand il est installe ; sans lui, les boss
+-- s'ajoutent au fil des victoires, comme avant.
+-- ---------------------------------------------------------------------------
+
+-- Un nom de donjon ramene a l'essentiel : sans article, sans aile, sans
+-- « haut » ni « bas » (les ailes d'un donjon comptent dans le meme donjon).
+local ALIAS_DONJON = { ["sunken temple"] = "temple of atal'hakkar" }
+local function NomDeBase(nom)
+    local c = tostring(nom or ""):lower()
+    c = c:gsub(":.*$", ""):gsub("^the ", ""):gsub("^lower ", ""):gsub("^upper ", "")
+    c = c:gsub("^%s+", ""):gsub("%s+$", "")
+    return ALIAS_DONJON[c] or c
+end
+
+local rencontres
+-- { parZone = { [zone] = { { cle, nom, ids = { [id] = true } } } },
+--   deId = { [id] = { zone, cle } }, extra = { [zone] = nom } }.
+-- La zone est celle de la base (un nombre), ou "x:<nom>" pour un donjon que
+-- la base ne connait pas encore.
+function base.Rencontres()
+    if rencontres then return rencontres end
+    local fdj = _G.ForeverDungeonJournal_NS
+    local t = type(fdj) == "table" and type(fdj.RUNLOG_ENCOUNTERS) == "table" and fdj.RUNLOG_ENCOUNTERS or nil
+    if not t then return nil end
+    local parNom = {}
+    for _, d in ipairs(base.Donjons()) do
+        if d.nomBase then parNom[NomDeBase(d.nomBase)] = d.zone end
+    end
+    local r = { parZone = {}, deId = {}, extra = {} }
+    local index = {}
+    for id, info in pairs(t) do
+        id = tonumber(id)
+        if id and type(info) == "table" and type(info[1]) == "string" and type(info[2]) == "string" then
+            local zone = parNom[NomDeBase(info[1])]
+            if not zone then
+                zone = "x:" .. NomDeBase(info[1])
+                r.extra[zone] = r.extra[zone] or (info[1]:gsub(":.*$", ""))
+            end
+            local cle = "b:" .. NS.Cle(info[2])
+            index[zone] = index[zone] or {}
+            local b = index[zone][cle]
+            if not b then
+                b = { cle = cle, nom = info[2], ids = {} }
+                index[zone][cle] = b
+                r.parZone[zone] = r.parZone[zone] or {}
+                table.insert(r.parZone[zone], b)
+            end
+            b.ids[id] = true
+            r.deId[id] = { zone = zone, cle = cle }
+        end
+    end
+    for _, l in pairs(r.parZone) do table.sort(l, function(a, b) return a.nom < b.nom end) end
+    rencontres = r
+    return r
+end
+function base.RencontresDeZone(zone)
+    local r = base.Rencontres()
+    return r and r.parZone[zone] or nil
+end
 
 -- Les objets fabriques par une recette connue du compte comptent aussi.
 function base.ObjetsFabriques()
