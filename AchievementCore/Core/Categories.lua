@@ -639,7 +639,7 @@ local function CategorieMetiers()
                 end
                 local nom = libre and T("Métier principal à apprendre", "Main profession to learn") or ref.NomDeMetier(ligne, nomConnu)
                 -- Chaque palier atteint (75, 150, 225, 300) est un haut fait a part.
-                Ajouter(res, s, { cle = "m" .. tostring(ligne), nom = nom, ordre = rang, paliers = paliers,
+                Ajouter(res, s, { cle = "m" .. tostring(ligne), nom = nom, ordre = rang, paliers = paliers, nbPaliers = #ref.RANGS_METIER,
                     detail = libre and T("À apprendre", "To learn") or string.format(T("Rang %d  Recettes %d / %d", "Rank %d  Recipes %d / %d"), meilleur, apprises, #recettes),
                     icone = m and m.icone or "Interface\\Icons\\INV_Misc_QuestionMark",
                     fait = fait, total = #ref.RANGS_METIER + #recettes,
@@ -723,10 +723,16 @@ local function CategorieRaces()
             local sC = Sous(res, "classes", T("Classes", "Classes"), 1, "Interface\\Icons\\INV_Misc_Book_11")
             local sR = Sous(res, "races", T("Races", "Races"), 2, "Interface\\Icons\\INV_Misc_GroupNeedMore")
             local sK = Sous(res, "combinaisons", T("Combinaisons", "Combinations"), 3, "Interface\\Icons\\INV_Misc_GroupNeedMore")
-            local function Paliers(e, test)
+            local function Paliers(e, test, avecPoints)
                 local n = Meilleur(test)
                 e.fait, e.total = 0, #paliers
                 for _, pal in ipairs(paliers) do if n >= pal then e.fait = e.fait + 1 end end
+                -- Chaque palier de niveau d'une classe est un petit haut fait
+                -- (pas ceux des races : les memes niveaux compteraient deux fois).
+                if avecPoints then
+                    e.paliers, e.nbPaliers, e.formatPalier = {}, #paliers, T("%s : niveau %d", "%s : level %d")
+                    for _, pal in ipairs(paliers) do if n >= pal then table.insert(e.paliers, pal) end end
+                end
                 e.Detail = function()
                     local liste = {}
                     for _, pal in ipairs(paliers) do
@@ -740,7 +746,7 @@ local function CategorieRaces()
             for rang, classe in ipairs(classes) do
                 local icone, coords = IconeDeClasse(classe)
                 Ajouter(res, sC, Paliers({ cle = "c" .. classe, nom = ref.NomDeClasse(classe), ordre = ref.ID_CLASSE[classe] or rang,
-                    icone = icone, coords = coords, couleur = ref.CouleurDeClasse(classe) }, function(p) return p.classe == classe end))
+                    icone = icone, coords = coords, couleur = ref.CouleurDeClasse(classe) }, function(p) return p.classe == classe end, true))
             end
             for rang, race in ipairs(races) do
                 local icone, coords = IconeDeRace(race)
