@@ -1821,6 +1821,21 @@ RendreVueParcours = function(moi, index, y)
                     return ici
                 end
                 enCours, aRendre = Trier(enCours), Trier(aRendre)
+                -- Itineraire de zone : un rendu hors de la zone se fait en la
+                -- quittant (le guidage ne la quitte pas tant qu'il y reste a
+                -- faire) ; il dit ou, et s'il ouvre une suite.
+                local enPartant = {}
+                local carteZone = pc.genre == "zone" and pc.zone and NS.carte and NS.carte.CarteDeZone
+                    and NS.carte.CarteDeZone(pc.zone) or nil
+                if carteZone and NS.guidage and NS.guidage.RenduHorsZone then
+                    local garde = {}
+                    for _, t in ipairs(aRendre) do
+                        local okH, ou, suite = pcall(NS.guidage.RenduHorsZone, moi, t.id, carteZone)
+                        if okH and ou then t.ou, t.ouvreSuite = ou, suite table.insert(enPartant, t)
+                        else table.insert(garde, t) end
+                    end
+                    aRendre = garde
+                end
                 -- Itineraire guide : le plan en direct, en tete.
                 if NS.guidage and NS.guidage.EstActif and NS.guidage.EstActif("parcours", { uid = pc.uid }) then
                     index, y = RendrePlan(moi, pc, index, y)
@@ -1857,6 +1872,15 @@ RendreVueParcours = function(moi, index, y)
                     Groupe(L.TRACK_SECTION_DONE, #aRendreEnBas, { 1, 0.6, 0.2 })
                     for _, t in ipairs(aRendreEnBas) do
                         index, y = RendreAvecChaine(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
+                    end
+                end
+                if #enPartant > 0 then
+                    Groupe(L.ROUTE_GROUP_LEAVING, #enPartant, { 1, 0.6, 0.2 })
+                    for _, t in ipairs(enPartant) do
+                        index, y = RendreAvecChaine(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
+                        index = index + 1
+                        y = Poser(index, y, string.format(t.ouvreSuite and L.ROUTE_LEAVING_CHAIN or L.ROUTE_LEAVING_DETAIL, t.ou),
+                            { uneLigne = true, retrait = 22, couleur = { 0.5, 0.5, 0.55 }, police = "GameFontHighlightSmall", petit = true }) + 4
                     end
                 end
                 if #ailleurs > 0 then
