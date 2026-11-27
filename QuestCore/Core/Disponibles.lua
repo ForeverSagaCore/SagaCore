@@ -25,6 +25,38 @@ end
 
 function dispo.Invalider() cache = nil end
 
+-- Le suivi des quetes de bas niveau du jeu (minicarte : Suivi) : allume, les
+-- quetes grises comptent comme les autres, partout dans QuestCore. Lu au plus
+-- une fois toutes les 2 secondes ; lecture seule.
+local basNiveau, luBasNiveau = false, -10
+local function SuiviBasNiveau(nom, texture)
+    local n = type(nom) == "string" and nom:lower() or ""
+    if n:find("bas niveau", 1, true) or n:find("low level", 1, true) or n:find("trivial", 1, true) then return true end
+    return type(texture) == "string" and texture:lower():find("trivial", 1, true) ~= nil
+end
+function dispo.BasNiveau()
+    local maintenant = (_G.GetTime and _G.GetTime()) or 0
+    if maintenant - luBasNiveau < 2 then return basNiveau end
+    luBasNiveau = maintenant
+    local actif = false
+    local M = _G.C_Minimap
+    local nombre = (M and M.GetNumTrackingTypes) or _G.GetNumTrackingTypes
+    local lire = (M and M.GetTrackingInfo) or _G.GetTrackingInfo
+    local okN, n = pcall(nombre or function() return 0 end)
+    for i = 1, (okN and tonumber(n) or 0) do
+        local ok, a, b, c = pcall(lire, i)
+        if ok then
+            if type(a) == "table" then
+                if a.active and SuiviBasNiveau(a.name, a.texture) then actif = true end
+            elseif c and SuiviBasNiveau(a, b) then
+                actif = true
+            end
+        end
+    end
+    basNiveau = actif
+    return actif
+end
+
 local function Exclue(p, id)
     for _, autre in ipairs(Lire("QuestDB", id, "exclusiveTo") or {}) do
         if p.faites and p.faites[autre] then return true end
@@ -62,7 +94,8 @@ end
 -- Liste { id, niveau, zone, gris } des quetes prenables, par zone puis niveau.
 function dispo.Liste(p)
     if not p then return {} end
-    local cle = p.cle .. ":" .. tostring(p.niveau)
+    local bas = dispo.BasNiveau()
+    local cle = p.cle .. ":" .. tostring(p.niveau) .. ":" .. tostring(bas)
     if cache and cleCache == cle then return cache end
     local base = NS.ref.Base("QuestDB")
     local ids = base and base.GetAllIds and base.GetAllIds() or {}
@@ -78,7 +111,7 @@ function dispo.Liste(p)
             if type(debut) == "table" and (Localisable(debut) or DansLesSacs(debut[3])) then
                 local niveau = tonumber(Lire("QuestDB", id, "questLevel")) or 0
                 table.insert(liste, { id = id, niveau = niveau, zone = tonumber(Lire("QuestDB", id, "zoneOrSort")) or 0,
-                    gris = Grise(niveau, p.niveau) })
+                    gris = (not bas) and Grise(niveau, p.niveau) })
             end
         end
     end

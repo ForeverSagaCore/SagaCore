@@ -340,6 +340,14 @@ local PLAN = {
     VOL_VITESSE = 25,   -- yards par seconde en vol, detours compris
     T_VOL = 30,         -- parler, decoller, atterrir
     VOL_MIN = 700,      -- pas de vol pour moins de 700 yards
+    -- Ce qui reste apres l'enchainement : il faudra y aller. Les RESIDU_N
+    -- meilleures visites non faites comptent depuis le dernier lieu atteint,
+    -- a RESIDU de leur valeur : partir loin pour une seule action coute le
+    -- retour vers tout le reste.
+    RESIDU = 0.5, RESIDU_N = 4,
+    -- Itineraire de zone : un rendu hors de la zone attend que la zone soit
+    -- finie (il est fait en la quittant), meme s'il debloque une suite.
+    F_HORS_ZONE = 0.02,
 }
 
 -- Yards par unite de la carte du continent, en x et en y.
@@ -860,6 +868,7 @@ local function Contexte(moi, points, compte)
 end
 
 local function ValeurAction(pt, ctx)
+    if pt.horsZone and ctx.zoneActive then return PLAN.F_HORS_ZONE end
     local b = Poids(pt.xp, ctx.xpRef)
     if pt.genre == "rendre" then
         local v = PLAN.V_RENDRE * b
@@ -1073,6 +1082,14 @@ local function Planifier(points, ici, plan, ctx)
     local function Explorer(pos, t, score, s, attente)
         if #chemin == h then
             local fin = score
+            -- Le reste de l'itineraire, vu depuis le dernier lieu atteint.
+            local vus, restes = {}, {}
+            for _, g in ipairs(chemin) do vus[g] = true end
+            for _, g in ipairs(vivantes) do
+                if not vus[g] then table.insert(restes, g.valeur * Demi(t + Trajet(pos, g, ctx))) end
+            end
+            table.sort(restes, function(a, b) return a > b end)
+            for k = 1, math.min(PLAN.RESIDU_N, #restes) do fin = fin + PLAN.RESIDU * restes[k] end
             -- Les rendus qui restent : apres l'enchainement, chez leur receveur.
             for _, o in ipairs(attente) do
                 if o.recv then fin = fin + o.vRendu * Demi(t + Trajet(pos, o.recv, ctx)) end
@@ -1130,6 +1147,17 @@ end
 local function OrdreDItineraire(points, ici, moi, continent, etat, compte)
     local ctx = Contexte(moi, points, compte)
     ctx.sx, ctx.sy = Echelle(continent)
+    -- Itineraire de zone : les rendus hors de la zone attendent qu'elle soit
+    -- finie, tant qu'il y reste quelque chose a faire.
+    if type(compte) == "table" and compte.carteZone then
+        for _, pt in ipairs(points) do
+            if pt.genre == "rendre" then
+                local okH, hors = pcall(guidage.RenduHorsZone, moi, pt.id, compte.carteZone)
+                pt.horsZone = okH and hors ~= nil or nil
+            end
+            if not pt.horsZone then ctx.zoneActive = true end
+        end
+    end
     local okG, grille = pcall(ServicesDuContinent, continent, ctx.sx, ctx.sy)
     ctx.grille = okG and grille or nil
     local okV, vols = pcall(VolsDuContinent, moi, continent)
@@ -1158,6 +1186,41 @@ local function OrdreDItineraire(points, ici, moi, continent, etat, compte)
         for _, pt in ipairs(S().Lieux.Chaine(reste, ordre[#ordre])) do table.insert(ordre, pt) end
     end
     return ordre
+end
+
+-- Une carte, ou l'une de ses sous-cartes (grotte, quartier) : dans `racine` ?
+local function DansLaCarte(carte, racine)
+    local info = NS.Lecture("C_Map.GetMapInfo")
+    for _ = 1, 6 do
+        if not carte then return false end
+        if carte == racine then return true end
+        local i = info and NS.Appeler(info, carte)
+        if type(i) ~= "table" then return false end
+        carte = i.parentMapID
+    end
+    return false
+end
+-- Le rendu d'une quete finie se fait hors de la carte `carteZone` : rend le
+-- nom de la carte ou il se fait (et si ce rendu debloque une suite), sinon nil.
+function guidage.RenduHorsZone(moi, id, carteZone)
+    local q = moi and moi.quetes and moi.quetes[id]
+    if not (q and q.complete == true and carteZone) then return nil end
+    local ok, pts = pcall(NS.carte.PointsPour, id, moi)
+    local carte
+    for _, pt in ipairs(ok and type(pts) == "table" and pts or {}) do
+        if pt.carte then
+            if DansLaCarte(pt.carte, carteZone) then return nil end
+            carte = carte or pt.carte
+        end
+    end
+    if not carte then return nil end
+    local info = NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), carte)
+    local okS, suites = pcall(NS.ref.Suites, id)
+    local suite = false
+    for _, sId in ipairs(okS and suites or {}) do
+        if not (moi.faites and moi.faites[sId]) then suite = true end
+    end
+    return (type(info) == "table" and info.name) or "?", suite
 end
 
 -- Pour les essais hors du jeu.
@@ -1494,17 +1557,22 @@ TYPES.parcours = Commun({
         -- Ce qui est vise : tout ce qui est commence (objectifs, rendus), et
         -- seulement les prochaines quetes a prendre dans l'ordre de
         -- l'itineraire (jamais une quete de la fin avant celles du debut).
+        -- Un itineraire de zone n'a pas d'ordre impose : toutes ses quetes a
+        -- prendre sont visees, l'itineraire choisit les plus rentables.
+        local zone = pc.genre == "zone" and pc.zone or nil
+        local maxPrises = zone and 1000 or A_PRENDRE
         local ids, prises = {}, 0
         for _, id in ipairs(pc.etapes or {}) do
             local e = NS.parcours.EtatEtape(moi, id)
             if e == "cours" or e == "rendre" then table.insert(ids, id)
-            elseif e == "prendre" and prises < A_PRENDRE then prises = prises + 1 table.insert(ids, id) end
+            elseif e == "prendre" and prises < maxPrises then prises = prises + 1 table.insert(ids, id) end
         end
         if #ids == 0 then return nil, "loin", OuAller(moi, pc.etapes) end
         local rangs = {}
         for k, id in ipairs(pc.etapes or {}) do rangs[id] = k end
+        local carteZone = zone and NS.carte and NS.carte.CarteDeZone and NS.carte.CarteDeZone(zone) or nil
         return EtapesDeQuetes(ids, moi, etat, { fait = faites, total = #(pc.etapes or {}),
-            rangDe = function(id) return rangs[id] end, etapes = pc.etapes }, true)
+            rangDe = function(id) return rangs[id] end, etapes = pc.etapes, carteZone = carteZone }, true)
     end,
 })
 
