@@ -177,6 +177,10 @@ cadre:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4, a5)
         SKILL_LINES_CHANGED = true, NEW_RECIPE_LEARNED = true, UPDATE_FACTION = true, PLAYER_LEVEL_UP = true,
         PLAYER_PVP_RANK_CHANGED = true, UPDATE_BATTLEFIELD_STATUS = true }
     if HF[ev] then NS.VerifierHautsFaits() end
+    if ev == "PLAYER_ENTERING_WORLD" or ev == "ZONE_CHANGED_NEW_AREA" or ev == "ENCOUNTER_END" or ev == "BOSS_KILL" then
+        -- Le journal des donjons note ses victoires a sa facon : relu apres lui.
+        Bientot("journalDonjons", 5, releve.JournalDesDonjons)
+    end
     if ev == "PLAYER_ENTERING_WORLD" or ev:find("^ZONE_CHANGED") then
         Bientot("zone", 1, function() releve.ZoneActuelle() SuivreLeJournal() end)
     elseif ev == "QUEST_TURNED_IN" then

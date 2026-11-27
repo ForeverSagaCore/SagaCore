@@ -189,6 +189,37 @@ function releve.Rencontre(idRencontre, nom, reussi)
     end
 end
 
+-- Les victoires deja notees par le journal des donjons (ForeverDungeonJournal)
+-- pour ce personnage : toutes ses sorties, meme d'avant GloryCore. Lecture
+-- seule de sa sauvegarde par personnage.
+function releve.JournalDesDonjons()
+    local f = Fiche()
+    local cdb = _G.ForeverDungeonJournalCharacterDB
+    local runs = f and type(cdb) == "table" and type(cdb.runLog) == "table" and cdb.runLog.runs
+    if type(runs) ~= "table" then return end
+    local r = NS.base.Rencontres()
+    if not r then return end
+    local boss = NS.base.Table(f, "boss")
+    local instances = NS.base.Table(f, "instances")
+    local change = false
+    for _, run in ipairs(runs) do
+        local zone = type(run) == "table" and type(run.dungeon) == "string" and NS.base.ZoneDuJournal(run.dungeon)
+        if zone then
+            if not instances[zone] then instances[zone] = true change = true end
+            local connus = {}
+            for _, b in ipairs(r.parZone[zone] or {}) do connus[b.cle] = true end
+            for _, k in ipairs(type(run.kills) == "table" and run.kills or {}) do
+                local cle = type(k) == "table" and type(k.b) == "string" and ("b:" .. NS.Cle(k.b))
+                if cle and connus[cle] then
+                    boss[zone] = type(boss[zone]) == "table" and boss[zone] or {}
+                    if not boss[zone][cle] then boss[zone][cle] = true change = true end
+                end
+            end
+        end
+    end
+    if change then NS.Changer("donjons") end
+end
+
 -- ---------------------------------------------------------------------------
 -- Objets eus : sacs, banque, equipement
 -- ---------------------------------------------------------------------------

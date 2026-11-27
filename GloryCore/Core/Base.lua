@@ -590,7 +590,17 @@ function base.Rencontres()
     for _, d in ipairs(base.Donjons()) do
         if d.nomBase then parNom[NomDeBase(d.nomBase)] = d.zone end
     end
-    local r = { parZone = {}, deId = {}, extra = {} }
+    local r = { parZone = {}, deId = {}, extra = {}, zoneDeNom = {} }
+    -- Le PNJ de chaque boss, dans les fiches du journal : { [donjon] = { [nom] = pnj } }.
+    local pnjs = {}
+    for nomD, dj in pairs(type(fdj.DB) == "table" and fdj.DB or {}) do
+        for _, b in ipairs(type(dj) == "table" and type(dj.bosses) == "table" and dj.bosses or {}) do
+            if type(b) == "table" and type(b.name) == "string" and tonumber(b.npcID) then
+                pnjs[nomD] = pnjs[nomD] or {}
+                pnjs[nomD][b.name] = tonumber(b.npcID)
+            end
+        end
+    end
     local index = {}
     for id, info in pairs(t) do
         id = tonumber(id)
@@ -600,11 +610,12 @@ function base.Rencontres()
                 zone = "x:" .. NomDeBase(info[1])
                 r.extra[zone] = r.extra[zone] or (info[1]:gsub(":.*$", ""))
             end
+            r.zoneDeNom[NomDeBase(info[1])] = zone
             local cle = "b:" .. NS.Cle(info[2])
             index[zone] = index[zone] or {}
             local b = index[zone][cle]
             if not b then
-                b = { cle = cle, nom = info[2], ids = {} }
+                b = { cle = cle, nom = info[2], ids = {}, pnj = pnjs[info[1]] and pnjs[info[1]][info[2]] or nil }
                 index[zone][cle] = b
                 r.parZone[zone] = r.parZone[zone] or {}
                 table.insert(r.parZone[zone], b)
@@ -616,6 +627,11 @@ function base.Rencontres()
     for _, l in pairs(r.parZone) do table.sort(l, function(a, b) return a.nom < b.nom end) end
     rencontres = r
     return r
+end
+-- La zone d'un donjon d'apres son nom dans le journal des donjons.
+function base.ZoneDuJournal(nom)
+    local r = base.Rencontres()
+    return r and r.zoneDeNom[NomDeBase(nom)] or nil
 end
 function base.RencontresDeZone(zone)
     local r = base.Rencontres()

@@ -210,6 +210,13 @@ end
 
 local function Fini(e) return (e.total or 0) > 0 and (e.fait or 0) >= e.total end
 
+-- Paliers d'une categorie entiere : un haut fait a 10, 25, 50, 75 et 100 %
+-- de ce qu'elle compte (zones explorees, rares, objets, quetes, donjons),
+-- 10 points chacun. En pourcentage : ils suivent le contenu du jeu.
+local PALIERS_CATEGORIE = { 10, 25, 50, 75, 100 }
+local CATEGORIES_A_PALIERS = { exploration = true, rares = true, objets = true, quetes = true, donjons = true }
+local V_PALIER_CATEGORIE = 10
+
 -- Les hauts faits d'un resultat : { [cle] = { pts, nom, cat, sous, element } }
 -- et le total possible.
 local function HautsFaits(cleCat, r, faits, possibles)
@@ -232,13 +239,26 @@ local function HautsFaits(cleCat, r, faits, possibles)
             end
         end
     end
+    if CATEGORIES_A_PALIERS[cleCat] and r and (r.total or 0) > 0 then
+        local c = calcul.Categorie and calcul.Categorie(cleCat)
+        local nomCat = c and c.nom and c.nom() or cleCat
+        local part = (r.fait or 0) * 100 / r.total
+        for _, palier in ipairs(PALIERS_CATEGORIE) do
+            local k = cleCat .. "|paliers|" .. palier
+            possibles[k] = V_PALIER_CATEGORIE
+            if part >= palier then
+                faits[k] = { pts = V_PALIER_CATEGORIE, nom = string.format("%s : %d %%", nomCat, palier),
+                    icone = c and c.icone, cat = cleCat, sous = "paliers", element = palier }
+            end
+        end
+    end
 end
 
 -- Les dates d'obtention, dans la fiche du personnage : ce qui etait deja
 -- fini au premier releve d'une categorie n'a pas de date (0).
 -- Un nouveau releve d'une categorie (nouvelle facon de compter) repart
 -- comme un premier releve : rien n'est annonce d'un coup.
-local VERSION_HF = 3
+local VERSION_HF = 4
 calcul.nouveaux = {}
 local function Dater(cle, cleCat, faits)
     local f = NS.base.Fiche(cle)
@@ -247,6 +267,13 @@ local function Dater(cle, cleCat, faits)
     local init = NS.base.Table(f, "hautsFaitsInit")
     local maintenant = NS.Appeler(time) or 0
     local deja = init[cleCat] == VERSION_HF
+    -- Nouvelle facon de compter : ce qui ne compte plus (ex. les suites de
+    -- quetes ordinaires) quitte la fiche.
+    if not deja then
+        for k in pairs(hf) do
+            if k:match("^([^|]+)") == cleCat and not faits[k] then hf[k] = nil end
+        end
+    end
     for k, x in pairs(faits) do
         if x.cat == cleCat and hf[k] and not hf[k].icone then hf[k].icone = x.icone end
         if x.cat == cleCat and not hf[k] then
@@ -265,7 +292,7 @@ local memoPoints = {}
 function calcul.Points(portee)
     local version = NS.Version("tout")
     local m = memoPoints[portee]
-    if m and m.version == version then return m.pts, m.possible, m.faits end
+    if m and m.version == version then return m.pts, m.possible, m.faits, m.possibles end
     local faits, possibles = {}, {}
     local cleP = type(portee) == "string" and portee:match("^perso:(.+)$")
     local portees = (portee == "deux") and { "Horde", "Alliance" } or { portee }
@@ -283,8 +310,8 @@ function calcul.Points(portee)
     local pts, possible = 0, 0
     for _, x in pairs(faits) do pts = pts + x.pts end
     for _, v in pairs(possibles) do possible = possible + v end
-    memoPoints[portee] = { version = version, pts = pts, possible = possible, faits = faits }
-    return pts, possible, faits
+    memoPoints[portee] = { version = version, pts = pts, possible = possible, faits = faits, possibles = possibles }
+    return pts, possible, faits, possibles
 end
 
 -- Les derniers hauts faits du compte : { nom, pts, quand, perso }, du plus
