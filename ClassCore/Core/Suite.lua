@@ -260,7 +260,7 @@ Suite.ORDRE = {
     { cle = "PvPCore", icone = "Interface\\Icons\\INV_BannerPVP_02", discret = true, complement = true },
     -- Les hauts faits (finir le jeu, avancement en pourcentage) : discret
     -- tant qu'il n'est pas publie (montre seulement s'il est installe).
-    { cle = "AchievementCore", icone = "Interface\\Icons\\INV_Misc_Ribbon_01", discret = true, complement = true },
+    { cle = "AchievementCore", nom = "GloryCore", icone = "Interface\\Icons\\INV_Misc_Ribbon_01", discret = true, complement = true },
     -- Ma classe (quetes de classe, sorts, talents, familiers) : en beta,
     -- publie avec la suite.
     { cle = "ClassCore", icone = "Interface\\Icons\\INV_Misc_Book_09", discret = true, complement = true },
@@ -272,6 +272,14 @@ Suite.ORDRE = {
 -- complement, la colonne de droite montre tous les complements en onglets.
 -- ---------------------------------------------------------------------------
 Suite.ICONE_COMPLEMENTS = "Interface\\Icons\\INV_Misc_EngGizmos_01"
+-- Le nom montre d'un add-on : son nom d'usage s'il en a un (AchievementCore
+-- s'appelle GloryCore), sinon le nom de son dossier.
+function Suite.NomAffiche(cle)
+    for _, info in ipairs(Suite.ORDRE or {}) do
+        if info.cle == cle and info.nom then return info.nom end
+    end
+    return cle
+end
 function Suite.Complements()
     local liste = {}
     local function Ajouter(cle, icone, action)
@@ -1607,7 +1615,7 @@ local function IconeRonde(parent, taille, info)
     b:SetScript("OnClick", function(self) Suite.Ouvrir(self.cle) end)
     b:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(self.cle, 1, 0.82, 0)
+        GameTooltip:SetText(Suite.NomAffiche(self.cle), 1, 0.82, 0)
         if Suite.Installe(self.cle) then
             GameTooltip:AddLine(T.ouvrir, 1, 1, 1)
         else
@@ -1645,7 +1653,7 @@ local function IconeCarree(parent, info)
     b:SetScript("OnClick", function(self) Suite.Ouvrir(self.cle) end)
     b:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText(self.cle, 1, 0.82, 0)
+        GameTooltip:SetText(Suite.NomAffiche(self.cle), 1, 0.82, 0)
         if not self.extra and not Suite.Installe(self.cle) then GameTooltip:AddLine(T.absent, 0.6, 0.6, 0.6) end
         GameTooltip:Show()
     end)
@@ -1693,7 +1701,7 @@ local function OngletLateral(parent, info, auClic)
         self.survol = true
         if self.icone then self.icone:SetVertexColor(1, 1, 1) end
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText(self.cle, 1, 0.82, 0)
+        GameTooltip:SetText(Suite.NomAffiche(self.cle), 1, 0.82, 0)
         if not Suite.Installe(self.cle) then GameTooltip:AddLine(T.absent, 0.6, 0.6, 0.6) end
         GameTooltip:Show()
     end)
@@ -1740,8 +1748,8 @@ local function OngletJeu(fenetre, cle, rang)
         b:SetScript("OnClick", function() Suite.Ouvrir(cle) end)
         b:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(cle, 1, 0.82, 0)
-            GameTooltip:AddLine(TX("Open") .. " " .. cle, 1, 1, 1)
+            GameTooltip:SetText(Suite.NomAffiche(cle), 1, 0.82, 0)
+            GameTooltip:AddLine(TX("Open") .. " " .. Suite.NomAffiche(cle), 1, 1, 1)
             GameTooltip:Show()
         end)
         b:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -2208,7 +2216,7 @@ function Suite.OngletsComplements(cadre, cleCourante)
             b:HookScript("OnEnter", function(self)
                 self.icone:SetVertexColor(1, 1, 1)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(self.cle, 1, 0.82, 0)
+                GameTooltip:SetText(Suite.NomAffiche(self.cle), 1, 0.82, 0)
                 GameTooltip:Show()
             end)
             b:HookScript("OnLeave", function(self)
@@ -5211,13 +5219,14 @@ do
     for _, info in ipairs(Suite.ORDRE) do
         local nom = info.cle
         local cle = string.lower(nom)
+        local montre = info.nom or nom
         local deja = false
         for _, r in ipairs(Suite.RACCOURCIS) do if r.cle == cle then deja = true end end
         if not deja then
             table.insert(Suite.RACCOURCIS, rang, {
-                cle = cle, fr = nom, en = nom,
-                desc = "Ouvre ou ferme la fenêtre principale de " .. nom .. ".",
-                descEn = "Opens or closes the " .. nom .. " main window.",
+                cle = cle, fr = montre, en = montre,
+                desc = "Ouvre ou ferme la fenêtre principale de " .. montre .. ".",
+                descEn = "Opens or closes the " .. montre .. " main window.",
                 icone = (string.gsub(info.icone or "INV_Misc_QuestionMark", "^[Ii]nterface\\[Ii]cons\\", "")),
                 action = function() Suite.Ouvrir(nom) end,
                 dispo = function() return Suite.Installe(nom) end,
@@ -7939,8 +7948,8 @@ function Suite.FenetreAPages(o)
             table.insert(page.controles, li)
             return li
         end
-        function O.Curseur(r, mini, maxi, pas, lire, poser, format, boutons)
-            local c = Suite.Curseur(r, mini, maxi, pas, lire, poser, format, boutons)
+        function O.Curseur(r, mini, maxi, pas, lire, poser, format, boutons, grandPas)
+            local c = Suite.Curseur(r, mini, maxi, pas, lire, poser, format, boutons, grandPas)
             c.surParchemin = function() return charte.Fond and charte.Fond() == "parchemin" end
             c:SetPoint("RIGHT", r, "RIGHT", -10, 0)
             for _, b in ipairs(c.boutonsPM or {}) do Focus(b) end

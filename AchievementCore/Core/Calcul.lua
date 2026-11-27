@@ -183,3 +183,169 @@ end
 
 -- Oublie tout ce qui est garde (essais, changement de langue).
 function calcul.Oublier() memo = {} end
+
+-- ---------------------------------------------------------------------------
+-- Points : chaque element fini est un haut fait, qui vaut selon le bareme
+-- (5 petit, 10 courant, 25 gros, 50 rare). Un personnage a ses points ; le
+-- compte compte chaque haut fait une fois, des qu'un personnage l'a.
+-- ---------------------------------------------------------------------------
+
+local BAREME = {
+    quetes = { zones = 25, suites = 10, themes = 10, camps = 0 },
+    exploration = 10,
+    donjons = { donjons = 10, raids = 25 },
+    rares = 10,
+    objets = 50,
+    metiers = 25,
+    races = 10,
+    reputations = 25,
+    jcj = 25,
+    heritage = 10,
+}
+function calcul.Valeur(cleCat, cleSous)
+    local b = BAREME[cleCat]
+    if type(b) == "table" then return b[cleSous] or 10 end
+    return b or 10
+end
+
+local function Fini(e) return (e.total or 0) > 0 and (e.fait or 0) >= e.total end
+
+-- Les hauts faits d'un resultat : { [cle] = { pts, nom, cat, sous, element } }
+-- et le total possible.
+local function HautsFaits(cleCat, r, faits, possibles)
+    for _, s in ipairs(r and r.sous or {}) do
+        local v = calcul.Valeur(cleCat, s.cle)
+        if v > 0 then
+            for _, e in ipairs(s.elements or {}) do
+                local k = cleCat .. "|" .. tostring(s.cle) .. "|" .. tostring(e.cle)
+                possibles[k] = v
+                if Fini(e) then
+                    faits[k] =
+                        { pts = v, nom = e.nom, icone = e.icone, cat = cleCat, sous = s.cle, element = e.cle }
+                end
+            end
+        end
+    end
+end
+
+-- Les dates d'obtention, dans la fiche du personnage : ce qui etait deja
+-- fini au premier releve d'une categorie n'a pas de date (0).
+local function Dater(cle, cleCat, faits)
+    local f = NS.base.Fiche(cle)
+    if not f then return end
+    local hf = NS.base.Table(f, "hautsFaits")
+    local init = NS.base.Table(f, "hautsFaitsInit")
+    local maintenant = NS.Appeler(time) or 0
+    for k, x in pairs(faits) do
+        if x.cat == cleCat and not hf[k] then
+            hf[k] = { t = init[cleCat] and maintenant or 0, nom = x.nom, pts = x.pts }
+        end
+    end
+    init[cleCat] = true
+end
+
+local memoPoints = {}
+-- Points d'une portee : gagnes, possibles, et la liste des hauts faits.
+function calcul.Points(portee)
+    local version = NS.Version("tout")
+    local m = memoPoints[portee]
+    if m and m.version == version then return m.pts, m.possible, m.faits end
+    local faits, possibles = {}, {}
+    local cleP = type(portee) == "string" and portee:match("^perso:(.+)$")
+    local portees = (portee == "deux") and { "Horde", "Alliance" } or { portee }
+    for _, cat in ipairs(NS.categories) do
+        if not (cat.Absente and cat.Absente()) then
+            for _, pp in ipairs(portees) do
+                local r = calcul.Resultat(cat.cle, pp)
+                if r then
+                    HautsFaits(cat.cle, r, faits, possibles)
+                    if cleP then Dater(cleP, cat.cle, faits) end
+                end
+            end
+        end
+    end
+    local pts, possible = 0, 0
+    for _, x in pairs(faits) do pts = pts + x.pts end
+    for _, v in pairs(possibles) do possible = possible + v end
+    memoPoints[portee] = { version = version, pts = pts, possible = possible, faits = faits }
+    return pts, possible, faits
+end
+
+-- Les derniers hauts faits du compte : { nom, pts, quand, perso }, du plus
+-- recent au plus ancien (seulement ceux dates).
+function calcul.Derniers(max)
+    local liste = {}
+    for _, p in ipairs(persos.Liste()) do
+        local f = NS.base.DB().persos[p.cle]
+        for k, x in pairs(type(f) == "table" and type(f.hautsFaits) == "table" and f.hautsFaits or {}) do
+            if type(x) == "table" and (x.t or 0) > 0 then
+                table.insert(liste, { cle = k, nom = x.nom, pts = x.pts, quand = x.t, perso = p })
+            end
+        end
+    end
+    table.sort(liste, function(a, b) return a.quand > b.quand end)
+    while #liste > (max or 6) do table.remove(liste) end
+    return liste
+end
+
+-- ---------------------------------------------------------------------------
+-- Estimation du temps pour atteindre un niveau, au rythme reel : celui du
+-- personnage a ces niveaux, sinon celui de ses autres personnages (un
+-- reroll profite du chemin deja fait), sinon son rythme le plus proche.
+-- Rend { xp, secondes (ou nil), source (nom d'un autre personnage ou nil) }.
+-- ---------------------------------------------------------------------------
+
+local MESURE_MINI = 300 -- secondes de jeu mesurees pour qu'un rythme compte
+
+local function RythmeDe(cle, niveau, ecart)
+    local r = persos.Rythme(cle)
+    local xp, s = 0, 0
+    for n = niveau - (ecart or 0), niveau + (ecart or 0) do
+        local x = r[n]
+        if type(x) == "table" then xp, s = xp + (x.xp or 0), s + (x.s or 0) end
+    end
+    if s >= MESURE_MINI and xp > 0 then return xp / s end
+    return nil
+end
+
+local function RythmeAuNiveau(p, niveau)
+    local v = RythmeDe(p.cle, niveau, 0)
+    if v then return v end
+    -- Les autres personnages, au meme niveau puis tout pres.
+    for _, ecart in ipairs({ 0, 2 }) do
+        local meilleur, nom
+        for _, autre in ipairs(persos.Liste()) do
+            if autre.cle ~= p.cle then
+                local w = RythmeDe(autre.cle, niveau, ecart)
+                if w and (not meilleur or w > meilleur) then meilleur, nom = w, autre.nom end
+            end
+        end
+        if meilleur then return meilleur, nom end
+    end
+    return RythmeDe(p.cle, niveau, 3)
+end
+
+function calcul.Estimation(p, cible)
+    local ref = NS.ref
+    local niveau = p.niveau or 1
+    local xp = 0
+    local moi = p.cle == NS.ClePersonnage()
+    local secondes, source, inconnu = 0, nil, false
+    for n = niveau, cible - 1 do
+        local besoin = ref.XP_NIVEAU[n] or 0
+        if n == niveau and moi then
+            local actuel = tonumber(NS.Sur(NS.Jeu("UnitXP", "player"))) or 0
+            local maxi = tonumber(NS.Sur(NS.Jeu("UnitXPMax", "player"))) or besoin
+            besoin = math.max(0, maxi - actuel)
+        end
+        xp = xp + besoin
+        local v, nom = RythmeAuNiveau(p, n)
+        if v then
+            secondes = secondes + besoin / v
+            if nom and not source then source = nom end
+        else
+            inconnu = true
+        end
+    end
+    return { xp = xp, secondes = (not inconnu) and secondes or nil, source = source }
+end

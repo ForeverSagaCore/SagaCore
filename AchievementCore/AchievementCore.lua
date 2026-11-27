@@ -1,7 +1,7 @@
 local _, NS = ...
 
--- AchievementCore : demarrage, evenements, commandes.
---   /achievementcore (ou /ach)   la fenetre
+-- AchievementCore (nom d'usage : GloryCore) : demarrage, evenements, commandes.
+--   /glorycore, /achievementcore (ou /ach)   la fenetre
 --   /ach releve                  refait tous les releves du personnage
 
 local T = NS.T
@@ -23,30 +23,63 @@ local function Bientot(cle, delai, fn)
     if apres then apres(delai, Faire) else Faire() end
 end
 
--- Boss des raids : la mort d'un PNJ boss de la base, lue dans le journal de
--- combat, seulement dans une instance qui en a.
+-- Le journal de combat, toujours lu, le plus vite possible :
+--   boss des raids : la mort d'un PNJ boss de la base, dans son instance ;
+--   rares : la mort d'un rare que le joueur, son familier ou son groupe a
+--   touche (ou dont il a donne le coup fatal).
 local journalOuvert = false
 local function SuivreLeJournal()
-    local zone = releve.instance
-    local avec = zone and NS.base.BossDeZone(zone) ~= nil
-    if avec and not journalOuvert then
-        journalOuvert = pcall(cadre.RegisterEvent, cadre, "COMBAT_LOG_EVENT_UNFILTERED")
-    elseif not avec and journalOuvert then
-        pcall(cadre.UnregisterEvent, cadre, "COMBAT_LOG_EVENT_UNFILTERED")
-        journalOuvert = false
-    end
+    if not journalOuvert then journalOuvert = pcall(cadre.RegisterEvent, cadre, "COMBAT_LOG_EVENT_UNFILTERED") end
 end
 
+local AFFILIATION = 0x7 -- moi, mon groupe, mon raid (COMBATLOG_OBJECT_AFFILIATION_*)
+local idDe, nIds = {}, 0
+local touches = {}
+local function IdDe(guid)
+    local id = idDe[guid]
+    if id == nil then
+        id = tonumber(guid:match("^Creature%-%d+%-%d+%-%d+%-%d+%-(%d+)")) or false
+        nIds = nIds + 1
+        if nIds > 3000 then idDe, nIds, touches = {}, 0, {} end
+        idDe[guid] = id
+    end
+    return id
+end
+
+local function RareTue(id)
+    local f = NS.base.Fiche(NS.ClePersonnage())
+    if not f then return end
+    local rares = NS.base.Table(f, "rares")
+    if rares[id] then return end
+    rares[id] = NS.Appeler(time) or true
+    NS.Changer("rares", "donjons")
+end
+
+local band = _G.bit and _G.bit.band
 local function MortDansLeJournal()
     local lire = _G.CombatLogGetCurrentEventInfo
     if not lire then return end
-    local _, sousEvenement, _, _, _, _, _, guid = lire()
-    if NS.Sur(sousEvenement) ~= "UNIT_DIED" and NS.Sur(sousEvenement) ~= "PARTY_KILL" then return end
+    local _, sousEvenement, _, _, _, drapeauxSource, _, guid = lire()
+    sousEvenement = NS.Sur(sousEvenement)
     guid = NS.Sur(guid)
     if type(guid) ~= "string" then return end
-    local id = tonumber(guid:match("^%a+%-%d+%-%d+%-%d+%-%d+%-(%d+)"))
+    if sousEvenement ~= "UNIT_DIED" and sousEvenement ~= "PARTY_KILL" then
+        -- Un coup porte par moi ou mon groupe sur un rare : il compte a sa mort.
+        drapeauxSource = NS.Sur(drapeauxSource)
+        if band and type(drapeauxSource) == "number" and band(drapeauxSource, AFFILIATION) ~= 0 then
+            local id = IdDe(guid)
+            if id and NS.base.EstRare(id) then touches[guid] = true end
+        end
+        return
+    end
+    local id = IdDe(guid)
+    if not id then return end
+    if NS.base.EstRare(id) and (touches[guid] or sousEvenement == "PARTY_KILL") then
+        touches[guid] = nil
+        RareTue(id)
+    end
     local zone = releve.instance
-    if not (id and zone) then return end
+    if not zone then return end
     for _, b in ipairs(NS.base.BossDeZone(zone) or {}) do
         if b.id == id then
             local f = NS.base.Fiche(NS.ClePersonnage())
@@ -67,6 +100,7 @@ local EVENEMENTS = {
     "TRADE_SKILL_SHOW", "TRADE_SKILL_LIST_UPDATE", "SKILL_LINES_CHANGED", "NEW_RECIPE_LEARNED",
     "UPDATE_FACTION", "PLAYER_LEVEL_UP", "ENCOUNTER_END", "BOSS_KILL",
     "PLAYER_PVP_RANK_CHANGED", "PLAYER_PVP_KILLS_CHANGED", "UPDATE_BATTLEFIELD_STATUS", "UPDATE_BATTLEFIELD_SCORE",
+    "PLAYER_XP_UPDATE",
 }
 
 cadre:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4, a5)
@@ -75,6 +109,8 @@ cadre:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4, a5)
         NS.base.Init()
         for _, e in ipairs(EVENEMENTS) do pcall(cadre.RegisterEvent, cadre, e) end
         Proteger("fenetre", NS.fenetre.Construire)
+        SuivreLeJournal()
+        Proteger("rythme", releve.Rythme)
         -- Les releves un peu apres la connexion (le jeu doit etre pret), les
         -- grandes listes ensuite, par petits morceaux.
         Bientot("tout", 4, releve.Tout)
@@ -99,6 +135,8 @@ cadre:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4, a5)
         Bientot("reputations", 3, releve.Reputations)
     elseif ev == "PLAYER_LEVEL_UP" then
         Bientot("niveau", 1, releve.Identite)
+    elseif ev == "PLAYER_XP_UPDATE" then
+        Proteger("rythme", releve.Rythme)
     elseif ev == "ENCOUNTER_END" then
         Proteger("rencontre", releve.Rencontre, a1, a2, a5)
     elseif ev == "BOSS_KILL" then
@@ -112,6 +150,7 @@ end)
 
 SLASH_ACHIEVEMENTCORE1 = "/achievementcore"
 SLASH_ACHIEVEMENTCORE2 = "/ach"
+SLASH_ACHIEVEMENTCORE3 = "/glorycore"
 SlashCmdList.ACHIEVEMENTCORE = function(arg)
     arg = (arg or ""):lower()
     if arg:match("^rel") or arg:match("^scan") then

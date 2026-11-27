@@ -542,6 +542,19 @@ function suivi.Objectifs()
     return liste
 end
 
+-- Pour GloryCore (page Objectifs et parcours) : ce que le suivi montre pour
+-- le personnage connecte, en lecture seule : { nom, detail, pct }.
+_G.CraftCoreAPI = _G.CraftCoreAPI or {}
+_G.CraftCoreAPI.Suivis = function()
+    local res = {}
+    for _, o in ipairs(suivi.Objectifs() or {}) do
+        if type(o) == "table" and o.nom and not o.atteint then
+            table.insert(res, { nom = o.nom, detail = o.detail, pct = tonumber(o.pct) or 0 })
+        end
+    end
+    return res
+end
+
 -- La barre d'avancement de QuestCore : texture des competences du jeu, fine
 -- bordure d'infobulle aux coins arrondis, pourcentage dedans.
 local function Barre(parent)

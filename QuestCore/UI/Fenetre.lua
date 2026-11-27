@@ -1008,7 +1008,12 @@ local function RendreHistoire(contenu, p, index, y)
                         local cleP = NS.ClePersonnage()
                         local pc = cleP and NS.parcours.CreerZone(cleP, p, zoneId, nomZ, ids)
                         if pc then
+                            -- Comme pour une suite : la page Itineraires s'ouvre
+                            -- sur le nouvel itineraire, avec son bouton pour le
+                            -- guider tout de suite.
                             NS.Dire(string.format(L.STORY_ZONE_ROUTE_DONE, pc.nom))
+                            etat.page = "parcours"
+                            etat.ouvertes["pc" .. pc.id] = true
                             if ParcoursChange then ParcoursChange() else fen.Rendre() end
                         end
                     end },
