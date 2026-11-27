@@ -219,6 +219,11 @@ local function HautsFaits(cleCat, r, faits, possibles)
             for _, e in ipairs(s.elements or {}) do
                 local k = cleCat .. "|" .. tostring(s.cle) .. "|" .. tostring(e.cle)
                 possibles[k] = v
+                -- Les paliers d'un metier : un petit haut fait chacun (5).
+                for _, palier in ipairs(e.paliers or {}) do
+                    faits[k .. "|" .. palier] = { pts = 5, nom = tostring(e.nom) .. " " .. palier, icone = e.icone, cat = cleCat, sous = s.cle, element = e.cle }
+                end
+                for n = 1, (e.paliers and #(NS.ref.RANGS_METIER or {}) or 0) do possibles[k .. "|p" .. n] = 5 end
                 if Fini(e) then
                     faits[k] =
                         { pts = v, nom = e.nom, icone = e.icone, cat = cleCat, sous = s.cle, element = e.cle }
