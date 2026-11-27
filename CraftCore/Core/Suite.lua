@@ -226,7 +226,7 @@ if not _G.SagaCoreUnifieur then
     end)
 end
 
-local VERSION = 150
+local VERSION = 151
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -1178,25 +1178,24 @@ local function Calque(texture, cle, rang)
     if hooksecurefunc then hooksecurefunc(texture, "Hide", function() c:Hide() end) end
     return c
 end
-function Suite.PoserVisagePerso(texture, p)
+-- Le seul endroit de la suite qui pose un portrait de personnage : partout
+-- (bande, lignes, cartes, banniere), le vrai portrait est pose dans le
+-- cercle de sa classe, un peu plus petit, et le cercle de couleur en fait
+-- le tour, de la meme epaisseur. taille : la largeur de la texture, si elle
+-- n'est pas encore mesurable.
+function Suite.PoserVisagePerso(texture, p, taille)
     local vivant = Calque(texture, "calqueVivant", 1)
     local depose = Calque(texture, "calqueDepose", 2)
     vivant:Hide() depose:Hide()
-    -- Le vrai portrait et l'image deposee, decoupes en rond ; dans la bande,
-    -- poses dans le cercle de classe (sa couleur en fait le tour).
-    local dansCercle = texture:GetParent() and texture:GetParent().portraitDansCercle
+    local w = taille or texture:GetWidth()
+    if not w or w <= 0 then w = texture:GetHeight() end
+    if not w or w <= 0 then w = 29 end
+    local r = math.floor(w * 0.2 + 0.5)
     for _, c in ipairs({ vivant, depose }) do
         if c.SetMask and not c.rond then c.rond = true pcall(c.SetMask, c, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
-        if dansCercle then
-            -- Le portrait couvre exactement l'embleme des autres cercles : le
-            -- cercle de couleur garde la meme epaisseur pour tous.
-            local w = texture:GetParent():GetWidth()
-            if not w or w <= 0 then w = 29 end
-            local r = math.floor(w * 0.2 + 0.5)
-            c:ClearAllPoints()
-            c:SetPoint("TOPLEFT", texture, "TOPLEFT", r, -r)
-            c:SetPoint("BOTTOMRIGHT", texture, "BOTTOMRIGHT", -r, r)
-        end
+        c:ClearAllPoints()
+        c:SetPoint("TOPLEFT", texture, "TOPLEFT", r, -r)
+        c:SetPoint("BOTTOMRIGHT", texture, "BOTTOMRIGHT", -r, r)
     end
     pcall(texture.SetTexCoord, texture, 0, 1, 0, 1)
     -- L'icone ronde de la classe, celle du jeu (recherche de groupe, cadre
