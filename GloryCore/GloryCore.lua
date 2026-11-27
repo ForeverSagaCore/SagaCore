@@ -1,14 +1,14 @@
 local _, NS = ...
 
--- AchievementCore (nom d'usage : GloryCore) : demarrage, evenements, commandes.
---   /glorycore, /achievementcore (ou /ach)   la fenetre
+-- GloryCore : demarrage, evenements, commandes.
+--   /glorycore (ou /ach)         la fenetre
 --   /ach releve                  refait tous les releves du personnage
 
 local T = NS.T
 local releve = NS.releve
 local Proteger = NS.Proteger
 
-if NS.suite and NS.suite.Annoncer then NS.suite.Annoncer("AchievementCore") end
+if NS.suite and NS.suite.Annoncer then NS.suite.Annoncer("GloryCore") end
 
 local cadre = CreateFrame("Frame")
 cadre:RegisterEvent("PLAYER_LOGIN")
@@ -208,10 +208,9 @@ cadre:SetScript("OnEvent", function(_, ev, a1, a2, a3, a4, a5)
     end
 end)
 
-SLASH_ACHIEVEMENTCORE1 = "/achievementcore"
-SLASH_ACHIEVEMENTCORE2 = "/ach"
-SLASH_ACHIEVEMENTCORE3 = "/glorycore"
-SlashCmdList.ACHIEVEMENTCORE = function(arg)
+SLASH_GLORYCORE1 = "/glorycore"
+SLASH_GLORYCORE2 = "/ach"
+SlashCmdList.GLORYCORE = function(arg)
     arg = (arg or ""):lower()
     if arg:match("^rel") or arg:match("^scan") then
         releve.Tout()

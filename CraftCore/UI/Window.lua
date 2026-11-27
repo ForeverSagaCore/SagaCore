@@ -6528,6 +6528,7 @@ local function Construire()
     fab.texte:SetWordWrap(false)
     fab.texte:SetWidth(176)
     fab:Hide()
+    fab:HookScript("OnHide", function() if win.suiteNouveautes then win.suiteNouveautes:Show() end end)
     win.barreFabrication = fab
     local function Suivre()
         local lecture = NS.Lecture("UnitCastingInfo")
@@ -6545,6 +6546,7 @@ local function Construire()
             end
             fab:SetValue(0)
             fab:Show()
+            if win.suiteNouveautes then win.suiteNouveautes:Hide() end
         end
     end
     fab:SetScript("OnUpdate", function(self)
@@ -6617,6 +6619,10 @@ local function Construire()
     end)
     aide:SetScript("OnLeave", function() GameTooltip:Hide() end)
     win.boutonAide = aide
+    -- Le pied commun de la suite (Commandes, Aide, Derniere mise a jour)
+    -- reprend l'aide de la page et les commandes de cette fenetre.
+    win.aideDeLaPage = function() if NS.aide then NS.aide.Basculer(ecran.page) end end
+    win.lignesDeCommandes = function() return barre.info and barre.info.lignes end
 
     -- Bandeau du bas, hors de la zone defilante : il ne bouge pas quand on fait
     -- defiler, et la place lui est reservee avant d'etre occupee, donc il ne
@@ -6844,6 +6850,12 @@ function ecran.Montrer(cle)
     if #lignes == 0 then table.insert(lignes, { L.KEYS_UNSET, "" }) end
     table.insert(lignes, { "/cc", L.KEYS_SLASH_WHAT })
     fenetre.barre.info.lignes = lignes
+    -- Pied commun de la suite present : ses boutons remplacent le i, le mot
+    -- Commandes et le bouton Aide de CraftCore.
+    local commun = fenetre.suitePied ~= nil
+    fenetre.barre.info:SetShown(not commun)
+    fenetre.barre.touches:SetShown(not commun)
+    if fenetre.boutonAide then fenetre.boutonAide:SetShown(not commun) end
 
     local okPersos, souciPersos = pcall(SynchroniserOngletsDePersonnage, fenetre)
     if not okPersos then
@@ -7113,7 +7125,7 @@ function ecran.Cible(nom)
     if nom == "persos" then cible = win.bandePersos
     elseif nom == "menu" then cible = win.menu
     elseif nom == "metiers" then cible = win.onglets[(win.ordreOnglets or {})[1] or ""]
-    elseif nom == "aide" then cible = win.boutonAide
+    elseif nom == "aide" then cible = (win.suiteAide and win.suiteAide:IsShown() and win.suiteAide) or win.boutonAide
     elseif nom == "barre" then cible = win.barre
     elseif nom == "contenu" then cible = (ecran.page == "equipement") and win.zoneFixe or win.defilement
     elseif nom == "filtres" then cible = win.contenu.caseConnues

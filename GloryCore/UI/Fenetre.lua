@@ -1,6 +1,6 @@
 local _, NS = ...
 
--- La fenetre d'AchievementCore, comme le journal des hauts faits du jeu mais
+-- La fenetre d'GloryCore, comme le journal des hauts faits du jeu mais
 -- avec les conventions de la suite : les categories a gauche (menu de la
 -- fenetre a pages), l'avancement a droite. Chaque page descend sur trois
 -- niveaux : la categorie (ses sous-categories), une sous-categorie (ses
@@ -1431,7 +1431,7 @@ F.historique = {
 }
 
 -- ---------------------------------------------------------------------------
--- La page de la suite complete (AchievementCore installe seul)
+-- La page de la suite complete (GloryCore installe seul)
 -- ---------------------------------------------------------------------------
 
 -- Les Parametres : l'annonce des hauts faits, la danse.
@@ -1488,8 +1488,8 @@ local function PageSuite()
         end,
         rendre = function(page)
             page.t1:SetText("Forever SagaCore")
-            page.intro:SetText(T("AchievementCore fait partie de Forever SagaCore, une suite d'add-ons pour WoW Forever : fabrications et métiers (CraftCore), quêtes et trajets (QuestCore), carte et services (MapCore), héritage (LegacyCore). Installés ensemble, ils partagent la même fenêtre, les mêmes réglages et la même manette, et AchievementCore lit leurs relevés.",
-                "AchievementCore is part of Forever SagaCore, a suite of add-ons for WoW Forever : crafting and professions (CraftCore), quests and routes (QuestCore), map and services (MapCore), legacy (LegacyCore). Installed together, they share one window, the same settings and the same gamepad controls, and AchievementCore reads their records."))
+            page.intro:SetText(T("GloryCore fait partie de Forever SagaCore, une suite d'add-ons pour WoW Forever : fabrications et métiers (CraftCore), quêtes et trajets (QuestCore), carte et services (MapCore), héritage (LegacyCore). Installés ensemble, ils partagent la même fenêtre, les mêmes réglages et la même manette, et GloryCore lit leurs relevés.",
+                "GloryCore is part of Forever SagaCore, a suite of add-ons for WoW Forever : crafting and professions (CraftCore), quests and routes (QuestCore), map and services (MapCore), legacy (LegacyCore). Installed together, they share one window, the same settings and the same gamepad controls, and GloryCore reads their records."))
             page.t2:SetText(T("Retrouvez la suite complète sur CurseForge :", "Get the complete suite on CurseForge :"))
             page.rLien.nom:SetText("")
             page.aide:SetText(T("Cliquez sur l'adresse, puis Ctrl+C (Cmd+C sur Mac) pour la copier.", "Click the address, then Ctrl+C (Cmd+C on Mac) to copy it."))
@@ -1521,8 +1521,8 @@ function F.Construire()
     table.insert(pages, PageReglages())
     if S.Seul and S.Seul() then table.insert(pages, PageSuite()) end
     F.w = S.FenetreAPages({
-        nom = "AchievementCoreFenetre", cle = "AchievementCore", icone = "Interface\\Icons\\INV_Misc_Ribbon_01",
-        titre = function() return "GloryCore" end,
+        nom = "GloryCoreFenetre", cle = "GloryCore", icone = "Interface\\Icons\\INV_Misc_Ribbon_01",
+        titre = function() return T("GloryCore (bêta)", "GloryCore (beta)") end,
         pages = pages,
         -- La bande des personnages choisit le personnage montre.
         persoChoisi = function()
@@ -1571,7 +1571,7 @@ end
 
 function F.Ouvrir()
     local S = _G.CoreSuite
-    if F.Construire() and S and S.Ouvrir then S.Ouvrir("AchievementCore") return true end
+    if F.Construire() and S and S.Ouvrir then S.Ouvrir("GloryCore") return true end
     return false
 end
 

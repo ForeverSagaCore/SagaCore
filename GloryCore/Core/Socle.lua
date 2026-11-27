@@ -1,8 +1,8 @@
 local _, NS = ...
 
--- Socle d'AchievementCore : ce que le socle de la suite (Suite.lua,
+-- Socle d'GloryCore : ce que le socle de la suite (Suite.lua,
 -- Charte.lua) attend de chaque add-on, la base de sauvegarde et les lectures
--- sous filet. AchievementCore peut ainsi vivre seul, avec la meme fenetre et
+-- sous filet. GloryCore peut ainsi vivre seul, avec la meme fenetre et
 -- les memes reglages que la suite complete.
 
 NS.VERSION = "0.1.0"
@@ -51,7 +51,7 @@ function NS.Jeu(chemin, ...)
 end
 
 function NS.Dire(texte)
-    if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage("|cffffd100AchievementCore|r " .. tostring(texte)) end
+    if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage("|cffffd100GloryCore|r " .. tostring(texte)) end
 end
 
 -- "Nom - Royaume", la meme cle que les autres add-ons de la suite.
@@ -114,8 +114,8 @@ end
 -- ---------------------------------------------------------------------------
 
 function base.Init()
-    AchievementCoreDB = type(AchievementCoreDB) == "table" and AchievementCoreDB or {}
-    local d = AchievementCoreDB
+    GloryCoreDB = type(GloryCoreDB) == "table" and GloryCoreDB or {}
+    local d = GloryCoreDB
     d.persos = type(d.persos) == "table" and d.persos or {}
     d.reglages = type(d.reglages) == "table" and d.reglages or {}
     d.reglages.general = type(d.reglages.general) == "table" and d.reglages.general or {}
@@ -131,8 +131,8 @@ function base.Init()
 end
 
 function base.DB()
-    if type(AchievementCoreDB) ~= "table" then return base.Init() end
-    return AchievementCoreDB
+    if type(GloryCoreDB) ~= "table" then return base.Init() end
+    return GloryCoreDB
 end
 
 function base.ReglagesGeneraux()

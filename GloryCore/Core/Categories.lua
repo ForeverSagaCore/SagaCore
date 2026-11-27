@@ -1,6 +1,6 @@
 local _, NS = ...
 
--- Les categories d'AchievementCore : ce qu'il faut faire pour finir le jeu,
+-- Les categories d'GloryCore : ce qu'il faut faire pour finir le jeu,
 -- et ce qui est deja fait, pour un contexte (un personnage ou un camp, voir
 -- Calcul.lua). Une categorie rend des sous-categories, chacune ses elements,
 -- chaque element ses criteres (a la demande : Detail). Tout est compte en

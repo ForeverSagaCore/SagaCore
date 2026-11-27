@@ -3,7 +3,7 @@
 ## Notes: Your own map: whole zones, markers with notes, circled areas. Shows QuestCore quests when installed.
 ## Notes-frFR: Votre carte : zones entières, repères avec notes, zones entourées. Affiche les quêtes de QuestCore s'il est installé.
 ## Author: MapCore
-## Version: 2.5.6
+## Version: 3.0.0
 ## IconTexture: Interface\Icons\INV_Misc_Map_01
 ## OptionalDeps: QuestCore, CraftCore
 ## SavedVariables: MapCoreDB, CoreSuiteDB
@@ -19,6 +19,8 @@ Locale\Langue.lua
 Core\Mouchard.lua
 Core\Core.lua
 Core\Suite.lua
+Core\Aides.lua
+Core\Nouveautes.lua
 Core\Messages.lua
 Data\Reveal.lua
 Data\Services.lua

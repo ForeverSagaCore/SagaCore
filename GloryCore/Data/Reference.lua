@@ -1,6 +1,6 @@
 local _, NS = ...
 
--- Donnees de reference d'AchievementCore : ce que le jeu ne dit pas aux
+-- Donnees de reference d'GloryCore : ce que le jeu ne dit pas aux
 -- add-ons (combinaisons de races et classes, metiers, themes de quetes).
 -- Tout ce que les releves decouvrent en plus (une combinaison propre a
 -- WoW Forever, un metier, une faction) s'y ajoute de lui-meme.

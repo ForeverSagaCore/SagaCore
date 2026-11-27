@@ -37,7 +37,7 @@ if not _G.SagaCoreRoyaume then
     local PROVISOIRE = "Forever"
     -- Les sauvegardes presentes (sans trou : ipairs s'arreterait au premier absent).
     local NOMS_BASES = { "QuestCoreDB", "CraftCoreDB", "MapCoreDB", "LegacyCoreDB", "TradeCoreDB",
-        "FriendsCoreDB", "AchievementCoreDB", "PvPCoreDB", "ClassCoreDB" }
+        "FriendsCoreDB", "GloryCoreDB", "PvPCoreDB", "ClassCoreDB" }
     local BASES = function(db)
         local l = {}
         for _, n in ipairs(NOMS_BASES) do if type(_G[n]) == "table" then table.insert(l, _G[n]) end end
@@ -153,7 +153,7 @@ if not _G.SagaCoreRoyaume then
             type(_G.QuestCoreDB) == "table" and _G.QuestCoreDB.persos,
             type(_G.LegacyCoreDB) == "table" and _G.LegacyCoreDB.persos,
             type(_G.MapCoreDB) == "table" and _G.MapCoreDB.persos,
-            type(_G.AchievementCoreDB) == "table" and _G.AchievementCoreDB.persos,
+            type(_G.GloryCoreDB) == "table" and _G.GloryCoreDB.persos,
         }
         for i = 1, 5 do
             local l = listes[i]
@@ -226,7 +226,7 @@ if not _G.SagaCoreUnifieur then
     end)
 end
 
-local VERSION = 203
+local VERSION = 204
 
 local Suite = _G.CoreSuite
 if Suite and (Suite.version or 0) >= VERSION then
@@ -248,6 +248,9 @@ Suite.ORDRE = {
     { cle = "QuestCore", icone = "Interface\\Icons\\INV_Misc_Book_08" },
     { cle = "MapCore", icone = "Interface\\Icons\\INV_Misc_Map_01" },
     { cle = "LegacyCore", icone = "Interface\\Icons\\Spell_Holy_SealOfWisdom" },
+    -- Les hauts faits (finir le jeu, des points pour chaque haut fait) :
+    -- dans la colonne, au-dessus de StuffCore ; montre s'il est installe.
+    { cle = "GloryCore", icone = "Interface\\Icons\\INV_Misc_Ribbon_01", discret = true },
     -- Mon equipement et les caisses : un add-on a part (servi par CraftCore).
     { cle = "StuffCore", icone = "Interface\\Icons\\INV_Chest_Chain" },
     -- Une petite aide : les add-ons amis (itineraires detailles...).
@@ -258,9 +261,6 @@ Suite.ORDRE = {
     -- Le JcJ (carte de champ de bataille, honneur) : discret tant qu'il n'est
     -- pas publie (montre seulement s'il est installe).
     { cle = "PvPCore", icone = "Interface\\Icons\\INV_BannerPVP_02", discret = true, complement = true },
-    -- Les hauts faits (finir le jeu, avancement en pourcentage) : discret
-    -- tant qu'il n'est pas publie (montre seulement s'il est installe).
-    { cle = "AchievementCore", nom = "GloryCore", icone = "Interface\\Icons\\INV_Misc_Ribbon_01", discret = true, complement = true },
     -- Ma classe (quetes de classe, sorts, talents, familiers) : en beta,
     -- publie avec la suite.
     { cle = "ClassCore", icone = "Interface\\Icons\\INV_Misc_Book_09", discret = true, complement = true },
@@ -272,8 +272,8 @@ Suite.ORDRE = {
 -- complement, la colonne de droite montre tous les complements en onglets.
 -- ---------------------------------------------------------------------------
 Suite.ICONE_COMPLEMENTS = "Interface\\Icons\\INV_Misc_EngGizmos_01"
--- Le nom montre d'un add-on : son nom d'usage s'il en a un (AchievementCore
--- s'appelle GloryCore), sinon le nom de son dossier.
+-- Le nom montre d'un add-on : son nom d'usage s'il en a un, sinon le nom
+-- de son dossier.
 function Suite.NomAffiche(cle)
     for _, info in ipairs(Suite.ORDRE or {}) do
         if info.cle == cle and info.nom then return info.nom end
@@ -285,11 +285,8 @@ function Suite.Complements()
     local function Ajouter(cle, icone, action)
         table.insert(liste, { cle = cle, icone = icone, action = action })
     end
-    -- Les vrais outils d'abord (hauts faits, auras, macros, echanges, JcJ),
+    -- Les vrais outils d'abord (auras, macros, echanges, JcJ),
     -- FriendsCore, le petit plus, tout en bas.
-    if Suite.membres.AchievementCore then
-        Ajouter("AchievementCore", "Interface\\Icons\\INV_Misc_Ribbon_01")
-    end
     if Suite.membres.AuraCore or (_G.SlashCmdList and _G.SlashCmdList.AURACORE) then
         Ajouter("AuraCore", "Interface\\Icons\\Spell_Holy_AuraOfLight", function()
             if Suite.membres.AuraCore then Suite.Ouvrir("AuraCore")
@@ -308,7 +305,7 @@ function Suite.Complements()
     end
     return liste
 end
-local CLES_COMPLEMENTS = { FriendsCore = true, AuraCore = true, Macros = true, TradeCore = true, PvPCore = true, AchievementCore = true, ClassCore = true }
+local CLES_COMPLEMENTS = { FriendsCore = true, AuraCore = true, Macros = true, TradeCore = true, PvPCore = true, ClassCore = true }
 function Suite.EstComplement(cle) return cle ~= nil and CLES_COMPLEMENTS[cle] == true end
 -- Ouvre un complement (et ferme la fenetre de complement d'ou l'on vient).
 function Suite.OuvrirComplement(cle, depuis)
@@ -1438,6 +1435,9 @@ local function Reglages()
     local d = CoreSuiteDB
     if type(d.angle) ~= "number" then d.angle = 215 end
     if d.barreAffichee == nil then d.barreAffichee = true end
+    -- AchievementCore s'appelle desormais GloryCore (dossier et cle).
+    if d.dernierComplement == "AchievementCore" then d.dernierComplement = nil end
+    if d.dernier == "AchievementCore" then d.dernier = "GloryCore" end
     return d
 end
 
@@ -1804,7 +1804,7 @@ end
 -- copie d'essai (dossiers XDev), ou l'inverse, puis recharge l'interface.
 -- Jamais les deux suites actives a la fois.
 -- ---------------------------------------------------------------------------
-Suite.ADDONS_SUITE = { "CraftCore", "QuestCore", "MapCore", "LegacyCore", "StuffCore", "FriendsCore", "AuraCore", "PvPCore", "AchievementCore", "ClassCore" }
+Suite.ADDONS_SUITE = { "CraftCore", "QuestCore", "MapCore", "LegacyCore", "StuffCore", "FriendsCore", "AuraCore", "PvPCore", "GloryCore", "ClassCore" }
 -- Trois suites cote a cote, une seule active :
 --   normale  : les dossiers X ;
 --   Dev      : les dossiers XDev, la version d'essai (/sagadev) ;
@@ -3357,14 +3357,9 @@ function Suite.OuvrirReglagesGeneraux()
             table.insert(c.choix, b)
             precedent = b
         end
-        -- Fond : l'illustration de la faction, sur la zone sombre.
-        local zoneFond = c.Inset or c.fond
-        if zoneFond and zoneFond.CreateTexture then
-            local t = zoneFond:CreateTexture(nil, "BACKGROUND", nil, 5)
-            t:SetPoint("TOPLEFT", zoneFond, "TOPLEFT", 3, -3)
-            t:SetPoint("BOTTOMRIGHT", zoneFond, "BOTTOMRIGHT", -3, 3)
-            if not Suite.FondDeFaction(t) then t:Hide() end
-        end
+        -- Fond : celui que le joueur a choisi (parchemin ou roche grise),
+        -- rogne a la taille de la fenetre, jamais etire.
+        pcall(Suite.FondChoisi, c)
         local function Bouton(libelle, largeur, voisin)
             if charte and charte.BoutonDePied and c.pied then return charte.BoutonDePied(c, libelle, largeur, voisin) end
             local b = CreateFrame("Button", nil, c, "UIPanelButtonTemplate")
@@ -3474,6 +3469,14 @@ function Suite.RendreReglagesGeneraux()
         b:SetChecked(b.code == choisi)
     end
     c.appliquer:SetEnabled(c.enAttente ~= nil and (c.enAttente or nil) ~= enregistre)
+    -- Les textes a l'encre sur le parchemin (les boutons gardent les leurs).
+    local okF, parchemin = pcall(Suite.MontrerFondChoisi, c)
+    local charte = NS.charte
+    if okF and c.parchemin and charte and charte.EncrerTextes then
+        local textes = { c.description, c.titreLangue }
+        for _, b in ipairs(c.choix) do table.insert(textes, b.texte) end
+        pcall(charte.EncrerTextes, textes, parchemin == true)
+    end
 end
 
 -- Bouton Reglages dans le pied, a gauche de Fermer : le meme bouton du jeu.
@@ -3493,6 +3496,546 @@ local function BoutonReglages(cadre)
     b:SetScript("OnLeave", function() GameTooltip:Hide() end)
     b:SetScript("OnClick", function() Suite.OuvrirReglagesGeneraux() end)
     cadre.suiteReglages = b
+end
+
+-- ---------------------------------------------------------------------------
+-- Pied commun a toutes les fenetres de la suite : Commandes et Aide a
+-- gauche, Derniere mise a jour au milieu, Reglages et Fermer a droite.
+-- Les trois premiers ouvrent la fenetre d'informations de la suite, sur
+-- l'onglet voulu (Aide, Commandes, Derniere mise a jour), au-dessus de tout.
+-- Une fenetre peut donner sa propre aide (cadre.aideDeLaPage) et ses propres
+-- commandes (cadre.lignesDeCommandes : { { touche, ce que ca fait } }).
+-- ---------------------------------------------------------------------------
+do
+    local function TRi(fr, en) return Suite.Langue() == "frFR" and fr or en end
+    local function T2(t)
+        if type(t) ~= "table" then return t or "" end
+        return Suite.Langue() == "frFR" and (t.fr or t[1] or "") or (t.en or t[2] or t.fr or t[1] or "")
+    end
+    Suite.ONGLETS_INFO = { "aide", "commandes", "nouveautes" }
+    local function LibelleInfo(onglet)
+        if onglet == "aide" then return TRi("Aide", "Help") end
+        if onglet == "commandes" then return TRi("Commandes", "Controls") end
+        return TRi("Dernière mise à jour", "Latest update")
+    end
+    Suite.LibelleInfo = LibelleInfo
+
+    -- Un parchemin du dossier Media (2048 x 1024) pose sans etre etire ni
+    -- tasse : la zone garde sa forme, l'image est rognee au centre.
+    function Suite.RognerParchemin(p)
+        local charte = NS.charte
+        if not (p and p.grain and charte and charte.TextureChoisie) then return end
+        local def = charte.TextureChoisie()
+        if not (def and def.fichier) then return end
+        local w, h = p.grain:GetWidth() or 0, p.grain:GetHeight() or 0
+        if w <= 0 or h <= 0 then return end
+        local ratio = def.ratio or 2
+        local zone = w / h
+        if zone < ratio then
+            local part = zone / ratio
+            local g = (1 - part) / 2
+            p.grain:SetTexCoord(g, g + part, 0, 1)
+        else
+            local part = ratio / zone
+            local hh = (1 - part) / 2
+            p.grain:SetTexCoord(0, 1, hh, hh + part)
+        end
+    end
+
+    -- Le fond choisi par le joueur (parchemin ou roche grise) dans une petite
+    -- fenetre de la suite.
+    function Suite.FondChoisi(c)
+        local charte = NS.charte
+        if not (charte and charte.Parchemin and c and c.fond) then return nil end
+        local p = c.parchemin or charte.Parchemin(c, { "TOPLEFT", c.fond, "TOPLEFT", 3, -3 },
+            { "BOTTOMRIGHT", c.fond, "BOTTOMRIGHT", -3, 3 }, c.fond)
+        if not c.suiteRognage then
+            c.suiteRognage = true
+            c.fond:HookScript("OnSizeChanged", function() Suite.RognerParchemin(p) end)
+        end
+        return p
+    end
+    function Suite.MontrerFondChoisi(c)
+        local charte = NS.charte
+        local p = c and c.parchemin
+        if not (p and charte) then return false end
+        local parchemin = charte.Fond and charte.Fond() == "parchemin"
+        if parchemin and charte.PoserTextureDeParchemin then
+            if not charte.PoserTextureDeParchemin(p.grain, charte.TextureChoisie()) then
+                charte.PoserTextureDeParchemin(p.grain, charte.TEXTURES_PARCHEMIN[1])
+            end
+        end
+        p.Montrer(parchemin)
+        Suite.RognerParchemin(p)
+        return parchemin
+    end
+
+    -- -----------------------------------------------------------------------
+    -- Les commandes : la fenetre d'abord, puis la manette et la discussion.
+    -- -----------------------------------------------------------------------
+    local SLASH = {
+        CraftCore = { { "/cc", { "Ouvre CraftCore (ou /craftcore)", "Opens CraftCore (or /craftcore)" } },
+            { "/cc trouver ...", { "Cherche une recette ou un objet", "Finds a recipe or an item" } } },
+        StuffCore = { { "/stuff", { "Ouvre Mon équipement (ou /stuffcore)", "Opens My gear (or /stuffcore)" } } },
+        QuestCore = { { "/qc", { "Ouvre QuestCore (ou /questcore)", "Opens QuestCore (or /questcore)" } } },
+        MapCore = { { "/mc", { "Ouvre MapCore (ou /mapcore)", "Opens MapCore (or /mapcore)" } } },
+        LegacyCore = { { "/lc", { "Ouvre LegacyCore (ou /legacycore)", "Opens LegacyCore (or /legacycore)" } } },
+        GloryCore = { { "/glorycore", { "Ouvre GloryCore (ou /ach)", "Opens GloryCore (or /ach)" } },
+            { "/ach releve", { "Refait tous les relevés du personnage", "Refreshes all of the character's records" } } },
+        ClassCore = { { "/classcore", { "Ouvre ClassCore", "Opens ClassCore" } } },
+        AuraCore = { { "/auracore", { "Ouvre AuraCore", "Opens AuraCore" } } },
+        PvPCore = { { "/pvpcore", { "Ouvre PvPCore", "Opens PvPCore" } } },
+    }
+    local function LignesManette()
+        local G = GlyphePad
+        local l = {}
+        local function A(touches, fr, en)
+            local t = {}
+            for _, k in ipairs(touches) do table.insert(t, G(k)) end
+            table.insert(l, { table.concat(t, " "), TRi(fr, en) })
+        end
+        A({ "PADLSHOULDER", "PADRSHOULDER" }, "Page précédente, page suivante", "Previous page, next page")
+        A({ "PADBACK" }, "Entrer dans la page (liseré doré), puis en sortir", "Enter the page (gold border), then leave it")
+        A({ "PADDUP", "PADDDOWN", "PADDLEFT", "PADDRIGHT" }, "Dans la page : choisir ; hors de la page : faire défiler", "In the page : choose ; outside : scroll")
+        A({ "PAD1" }, "Valider", "Select")
+        A({ "PAD3" }, "Clic droit", "Right click")
+        A({ "PADLSTICK", "PADRSTICK" }, "Add-on précédent, add-on suivant (colonne de gauche)", "Previous add-on, next add-on (left column)")
+        A({ "PADLTRIGGER", "PADRTRIGGER" }, "Onglet ou complément précédent, suivant (colonne de droite)", "Previous, next tab or companion (right column)")
+        A({ "PAD4" }, "Aide", "Help")
+        A({ "PADFORWARD" }, "Réglages généraux", "General settings")
+        A({ "PAD2" }, "Retour, puis fermer", "Back, then close")
+        return l
+    end
+
+    -- -----------------------------------------------------------------------
+    -- La fenetre d'informations
+    -- -----------------------------------------------------------------------
+    -- Plus grande que les reglages generaux (360 x 500), plus petite que les
+    -- fenetres des add-ons (1060 x 740).
+    local LARGEUR_I, HAUTEUR_I = 640, 620
+    local LARGEUR_T = LARGEUR_I - 2 * 12 - 2 * 10 - 30
+
+    local function Prendre(f, sorte)
+        f.pool[sorte] = f.pool[sorte] or {}
+        f.rang[sorte] = (f.rang[sorte] or 0) + 1
+        local l = f.pool[sorte][f.rang[sorte]]
+        if l then return l end
+        local c = f.contenu
+        if sorte == "repli" then
+            l = CreateFrame("Button", nil, c)
+            l:SetHeight(22)
+            l.signe = l:CreateTexture(nil, "ARTWORK")
+            l.signe:SetSize(14, 14)
+            l.signe:SetPoint("LEFT", l, "LEFT", 0, 0)
+            l.texte = l:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            l.texte:SetPoint("LEFT", l.signe, "RIGHT", 6, 0)
+            l.texte:SetJustifyH("LEFT")
+            l.texte:SetWordWrap(false)
+            l.date = l:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+            l.date:SetPoint("RIGHT", l, "RIGHT", -4, 0)
+            l.date:SetJustifyH("RIGHT")
+            l.date:SetWordWrap(false)
+            l:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+            l:SetScript("OnClick", function(self)
+                f.ouverts[self.cle] = not f.ouverts[self.cle]
+                f.focusCle = self.cle
+                Suite.RendreInfo()
+            end)
+        elseif sorte == "deux" then
+            l = CreateFrame("Frame", nil, c)
+            l.gauche = l:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            l.gauche:SetPoint("TOPLEFT", l, "TOPLEFT", 0, 0)
+            l.gauche:SetWidth(150)
+            l.gauche:SetJustifyH("LEFT")
+            l.gauche:SetWordWrap(false)
+            l.droite = l:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            l.droite:SetPoint("TOPLEFT", l, "TOPLEFT", 160, 0)
+            l.droite:SetJustifyH("LEFT")
+            l.droite:SetWordWrap(true)
+        else
+            l = CreateFrame("Frame", nil, c)
+            local police = (sorte == "titre" and "GameFontNormal") or (sorte == "detail" and "GameFontDisableSmall") or "GameFontHighlight"
+            l.texte = l:CreateFontString(nil, "OVERLAY", police)
+            l.texte:SetJustifyH("LEFT")
+            l.texte:SetWordWrap(true)
+            if l.texte.SetSpacing then l.texte:SetSpacing(2) end
+            if sorte == "puce" then
+                l.puce = l:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+                l.puce:SetPoint("TOPLEFT", l, "TOPLEFT", 0, 0)
+                l.puce:SetText("•")
+                l.texte:SetPoint("TOPLEFT", l, "TOPLEFT", 14, 0)
+            else
+                l.texte:SetPoint("TOPLEFT", l, "TOPLEFT", 0, 0)
+            end
+            if sorte == "titre" then
+                l.filet = l:CreateTexture(nil, "ARTWORK")
+                l.filet:SetHeight(1)
+                l.filet:SetPoint("TOPLEFT", l.texte, "BOTTOMLEFT", 0, -3)
+                l.filet:SetPoint("RIGHT", l, "RIGHT", 0, 0)
+            end
+        end
+        l.sorte = sorte
+        f.pool[sorte][f.rang[sorte]] = l
+        return l
+    end
+
+    -- Pose une ligne a la suite. retrait : decalage a gauche (replis).
+    local function Poser(f, sorte, a, b, retrait, ecart)
+        local l = Prendre(f, sorte)
+        retrait = retrait or 0
+        f.y = f.y + (ecart or 0)
+        l:ClearAllPoints()
+        l:SetPoint("TOPLEFT", f.contenu, "TOPLEFT", retrait, -f.y)
+        local largeur = LARGEUR_T - retrait
+        l:SetWidth(largeur)
+        local h
+        if sorte == "repli" then
+            l.texte:SetFontObject(a.groupe and "GameFontNormal" or "GameFontHighlight")
+            l.texte:SetText(a.texte)
+            l.texte:SetWidth(largeur - 30 - (a.date and 90 or 0))
+            l.date:SetText(a.date or "")
+            l.cle = a.cle
+            local ouvert = f.ouverts[a.cle]
+            l.signe:SetTexture(ouvert and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up")
+            h = 22
+            table.insert(f.focusables, l)
+        elseif sorte == "deux" then
+            l.gauche:SetText(a or "")
+            l.droite:SetWidth(largeur - 160)
+            l.droite:SetText(b or "")
+            h = math.max(l.gauche:GetStringHeight() or 14, l.droite:GetStringHeight() or 14)
+        else
+            l.texte:SetWidth(largeur - (sorte == "puce" and 14 or 0))
+            if sorte == "titre" then
+                -- Le titre de rubrique de la suite (police et filet du fond).
+                local charte = NS.charte
+                if not (charte and charte.TitreDeSection and pcall(charte.TitreDeSection, l.texte, l.filet)) then
+                    l.filet:SetColorTexture(1, 0.82, 0, 0.25)
+                end
+            end
+            l.texte:SetText(a or "")
+            h = l.texte:GetStringHeight() or 14
+            if sorte == "titre" then h = h + 6 end
+        end
+        l:SetHeight(math.max(1, h))
+        l.y = f.y
+        l:Show()
+        f.y = f.y + h
+        return l
+    end
+
+    -- Le texte des notes : **gras** passe en or, les liens gardent leur texte.
+    local function Mise(texte)
+        texte = tostring(texte or "")
+        texte = texte:gsub("%*%*(.-)%*%*", "|cffffd100%1|r")
+        texte = texte:gsub("%[(.-)%]%((.-)%)", "%1")
+        texte = texte:gsub("`(.-)`", "%1")
+        return texte
+    end
+
+    local function Blocs(f, blocs, retrait)
+        for _, b in ipairs(blocs or {}) do
+            local sorte, texte = b[1], Mise(T2(b[2]))
+            if sorte == "h" then Poser(f, "titre", texte, nil, retrait, 10)
+            elseif sorte == "li" then Poser(f, "puce", texte, nil, retrait + 6, 4)
+            elseif sorte == "d" then Poser(f, "detail", texte, nil, retrait, 4)
+            else Poser(f, "texte", texte, nil, retrait, 6) end
+        end
+    end
+
+    local function VersionInstallee()
+        local lire = (_G.C_AddOns and _G.C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
+        if not lire then return nil end
+        for _, cle in ipairs(Suite.ADDONS_SUITE or {}) do
+            local ok, v = pcall(lire, cle, "X-SagaCore-Version")
+            if ok and type(v) == "string" and v ~= "" then return v end
+        end
+        return nil
+    end
+
+    local function RendreNouveautes(f)
+        local donnees = _G.CoreSuiteNouveautes
+        local v = VersionInstallee()
+        Poser(f, "detail", TRi("Toutes les versions de Forever SagaCore, de la plus récente à la première. Cliquez sur une version pour la déplier.",
+            "Every version of Forever SagaCore, newest first. Click a version to unfold it. The notes are written in French.")
+            .. (v and ("  " .. TRi("Version installée : ", "Installed version : ") .. v) or ""), nil, 0, 0)
+        if type(donnees) ~= "table" then return end
+        if not f.ouvertsPoses then
+            f.ouvertsPoses = true
+            local g = donnees[1]
+            if g then
+                f.ouverts[g.cle] = true
+                if g.versions and g.versions[1] then f.ouverts["v" .. g.versions[1].v] = true end
+            end
+        end
+        for _, g in ipairs(donnees) do
+            Poser(f, "repli", { cle = g.cle, texte = Mise(T2(g.titre)), groupe = true, date = g.periode }, nil, 0, 10)
+            if f.ouverts[g.cle] then
+                if g.resume then Poser(f, "texte", Mise(T2(g.resume)), nil, 20, 4) end
+                for _, ver in ipairs(g.versions or {}) do
+                    local cle = "v" .. ver.v
+                    Poser(f, "repli", { cle = cle, texte = ver.v .. "  " .. Mise(T2(ver.titre)), date = ver.date }, nil, 20, 4)
+                    if f.ouverts[cle] then
+                        Blocs(f, ver.blocs, 40)
+                        f.y = f.y + 6
+                    end
+                end
+            end
+        end
+    end
+
+    local function RendreCommandes(f)
+        local cle, depuis = Suite.infoCle, Suite.infoDepuis
+        local propres
+        if depuis and depuis.lignesDeCommandes then
+            local ok, l = pcall(depuis.lignesDeCommandes)
+            if ok and type(l) == "table" and #l > 0 then propres = l end
+        end
+        if propres then
+            Poser(f, "titre", TRi("Dans cette fenêtre", "In this window") .. " (" .. Suite.NomAffiche(cle or "") .. ")", nil, 0, 0)
+            for _, l in ipairs(propres) do Poser(f, "deux", l[1], l[2], 6, 4) end
+        end
+        Poser(f, "titre", TRi("Manette, dans toute la suite", "Gamepad, everywhere in the suite"), nil, 0, propres and 14 or 0)
+        for _, l in ipairs(LignesManette()) do Poser(f, "deux", l[1], l[2], 6, 4) end
+        Poser(f, "titre", TRi("Clavier et souris", "Keyboard and mouse"), nil, 0, 14)
+        Poser(f, "deux", TRi("Échap", "Escape"), TRi("Ferme la fenêtre du dessus", "Closes the window on top"), 6, 4)
+        Poser(f, "deux", TRi("Molette", "Wheel"), TRi("Fait défiler la page", "Scrolls the page"), 6, 4)
+        Poser(f, "deux", TRi("Raccourcis", "Key bindings"), TRi("Options du jeu › Raccourcis › AddOns : une touche pour ouvrir chaque add-on", "Game options › Keybindings › AddOns : a key to open each add-on"), 6, 4)
+        Poser(f, "titre", TRi("Discussion", "Chat"), nil, 0, 14)
+        local vus = {}
+        local function Slash(c)
+            if vus[c] or not SLASH[c] then return end
+            vus[c] = true
+            for _, l in ipairs(SLASH[c]) do Poser(f, "deux", l[1], T2(l[2]), 6, 4) end
+        end
+        if cle then Slash(cle) end
+        Poser(f, "deux", "/sagacore", TRi("Rouvre la suite là où vous l'aviez laissée", "Reopens the suite where you left it"), 6, 4)
+        Poser(f, "deux", "/sagacore stop", TRi("Arrête le guidage en cours", "Stops the current guidance"), 6, 4)
+        Poser(f, "deux", "/sagacore messages", TRi("Réglages des messages de la suite dans la discussion", "Settings of the suite's chat messages"), 6, 4)
+        for _, info in ipairs(Suite.ORDRE or {}) do
+            if Suite.Installe(info.cle) then Slash(info.cle) end
+        end
+    end
+
+    local function RendreAide(f)
+        local cle, depuis = Suite.infoCle, Suite.infoDepuis
+        local aides = _G.CoreSuiteAides
+        local a = type(aides) == "table" and (aides[cle or ""] or aides.Suite) or nil
+        if not a then
+            Poser(f, "texte", TRi("Pas encore d'aide pour cette fenêtre.", "No help for this window yet."), nil, 0, 0)
+            return
+        end
+        Poser(f, "titre", Suite.NomAffiche(cle or ""), nil, 0, 0)
+        if a.intro then Poser(f, "texte", Mise(T2(a.intro)), nil, 0, 6) end
+        -- La page ouverte d'abord, si l'aide en parle.
+        local page, libelle
+        if depuis and depuis.suitePage then
+            local ok, p, l = pcall(depuis.suitePage)
+            if ok then page, libelle = p, l end
+        end
+        if page and a.pages and a.pages[page] then
+            Poser(f, "titre", TRi("Cette page", "This page") .. (libelle and (" : " .. libelle) or ""), nil, 0, 14)
+            Poser(f, "texte", Mise(T2(a.pages[page])), nil, 0, 6)
+        end
+        for _, s in ipairs(a.sections or {}) do
+            Poser(f, "titre", Mise(T2(s.titre)), nil, 0, 14)
+            for _, l in ipairs(s.lignes or {}) do Poser(f, "puce", Mise(T2(l)), nil, 6, 4) end
+        end
+        if aides.Suite and a ~= aides.Suite then
+            local s = aides.Suite
+            Poser(f, "titre", TRi("Toute la suite", "The whole suite"), nil, 0, 14)
+            for _, l in ipairs(s.lignes or {}) do Poser(f, "puce", Mise(T2(l)), nil, 6, 4) end
+        end
+    end
+
+    function Suite.RendreInfo()
+        local f = Suite.fenetreInfo
+        if not (f and f:IsShown()) then return end
+        local onglet = Suite.infoOnglet or "aide"
+        if f.titre then f.titre:SetText(LibelleInfo(onglet)) end
+        local pad = ManetteActive()
+        for rang, b in ipairs(f.onglets) do
+            local choisi = b.onglet == onglet
+            local glyphe = ""
+            if pad and rang == 1 then glyphe = GlyphePad("PADLSHOULDER") .. " " end
+            b:SetText(glyphe .. LibelleInfo(b.onglet) .. ((pad and rang == #f.onglets) and (" " .. GlyphePad("PADRSHOULDER")) or ""))
+            b:SetWidth(math.floor((b:GetTextWidth() or 80) + 30))
+            if choisi then b:LockHighlight() else b:UnlockHighlight() end
+            local fs = b:GetFontString()
+            if fs then
+                if choisi then fs:SetTextColor(1, 0.82, 0) else fs:SetTextColor(1, 1, 1) end
+            end
+        end
+        for sorte, liste in pairs(f.pool) do
+            for _, l in ipairs(liste) do l:Hide() end
+            f.rang[sorte] = 0
+        end
+        f.y, f.focusables = 0, {}
+        if onglet == "nouveautes" then RendreNouveautes(f)
+        elseif onglet == "commandes" then RendreCommandes(f)
+        else RendreAide(f) end
+        f.contenu:SetHeight(math.max(1, f.y + 10))
+        local parchemin = Suite.MontrerFondChoisi(f)
+        local charte = NS.charte
+        if charte and charte.Encrer then pcall(charte.Encrer, f.contenu, parchemin) end
+        -- Manette : la ligne choisie garde sa surbrillance.
+        f.focus = nil
+        for rang, l in ipairs(f.focusables) do
+            if l.cle == f.focusCle then f.focus = rang end
+            l:UnlockHighlight()
+        end
+        if pad and f.focus and f.focusables[f.focus] then f.focusables[f.focus]:LockHighlight() end
+    end
+
+    local function Construire()
+        local charte = NS.charte
+        if not (charte and charte.Fenetre) then return nil end
+        local f = charte.Fenetre("CoreSuiteInfo", LARGEUR_I, HAUTEUR_I, { portrait = false, surgit = true })
+        f:SetPoint("CENTER")
+        f:SetToplevel(true)
+        table.insert(UISpecialFrames, "CoreSuiteInfo")
+        Suite.FondChoisi(f)
+        f.pool, f.rang, f.ouverts, f.focusables = {}, {}, {}, {}
+        f.onglets = {}
+        local precedent
+        for _, o in ipairs(Suite.ONGLETS_INFO) do
+            local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+            b:SetHeight(22)
+            b.onglet = o
+            b:SetScript("OnClick", function(self) Suite.infoOnglet = self.onglet Suite.RendreInfo() end)
+            if precedent then b:SetPoint("LEFT", precedent, "RIGHT", 6, 0)
+            else b:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, 0) end
+            table.insert(f.onglets, b)
+            precedent = b
+        end
+        local okD, defil = pcall(CreateFrame, "ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+        if not okD or not defil then defil = CreateFrame("ScrollFrame", nil, f) end
+        defil:SetPoint("TOPLEFT", f.zone, "TOPLEFT", 0, -34)
+        defil:SetPoint("BOTTOMRIGHT", f.zone, "BOTTOMRIGHT", -24, 0)
+        local contenu = CreateFrame("Frame", nil, defil)
+        contenu:SetSize(LARGEUR_T, 1)
+        defil:SetScrollChild(contenu)
+        f.defilement, f.contenu = defil, contenu
+        local fermer = charte.BoutonDePied(f, TX("Close"), 110)
+        fermer:SetScript("OnClick", function() f:Hide() end)
+        f.fermerBas = fermer
+        f:SetScript("OnShow", function() Suite.RendreInfo() end)
+        -- Manette : LB / RB changent d'onglet, la croix choisit une version
+        -- (ou fait defiler), A deplie, B ferme.
+        if f.EnableGamePadButton and pcall(f.EnableGamePadButton, f, true) then
+            local function Defiler(pas)
+                local max = defil:GetVerticalScrollRange() or 0
+                defil:SetVerticalScroll(math.max(0, math.min(max, (defil:GetVerticalScroll() or 0) + pas)))
+            end
+            local function Montrer(l)
+                if not l then return end
+                local haut = defil:GetVerticalScroll() or 0
+                local h = defil:GetHeight() or 400
+                if l.y < haut then defil:SetVerticalScroll(l.y)
+                elseif l.y + 22 > haut + h then
+                    local max = defil:GetVerticalScrollRange() or 0
+                    defil:SetVerticalScroll(math.min(max, l.y + 22 - h + 40))
+                end
+            end
+            f:SetScript("OnGamePadButtonDown", function(_, bouton)
+                if bouton == "PAD2" then f:Hide() return end
+                if bouton == "PADLSHOULDER" or bouton == "PADRSHOULDER" then
+                    local rang = 1
+                    for i, o in ipairs(Suite.ONGLETS_INFO) do if o == Suite.infoOnglet then rang = i end end
+                    rang = math.max(1, math.min(#Suite.ONGLETS_INFO, rang + (bouton == "PADRSHOULDER" and 1 or -1)))
+                    Suite.infoOnglet = Suite.ONGLETS_INFO[rang]
+                    defil:SetVerticalScroll(0)
+                    Suite.RendreInfo()
+                    return
+                end
+                local liste = f.focusables
+                if bouton == "PADDUP" or bouton == "PADDDOWN" then
+                    if #liste == 0 then Defiler(bouton == "PADDUP" and -60 or 60) return end
+                    local rang = f.focus or 0
+                    rang = math.max(1, math.min(#liste, rang + (bouton == "PADDDOWN" and 1 or -1)))
+                    if f.focus and liste[f.focus] then liste[f.focus]:UnlockHighlight() end
+                    f.focus = rang
+                    f.focusCle = liste[rang].cle
+                    liste[rang]:LockHighlight()
+                    Montrer(liste[rang])
+                    return
+                end
+                if bouton == "PADDLEFT" or bouton == "PADDRIGHT" then Defiler(bouton == "PADDLEFT" and -120 or 120) return end
+                if bouton == "PAD1" and f.focus and liste[f.focus] then liste[f.focus]:Click() return end
+            end)
+        end
+        f:Hide()
+        return f
+    end
+
+    -- Ouvre la fenetre d'informations sur un onglet, pour l'add-on `cle`
+    -- (depuis : la fenetre d'ou l'on vient, pour sa page et ses commandes).
+    function Suite.OuvrirInfo(onglet, cle, depuis)
+        local f = Suite.fenetreInfo
+        if not f then
+            f = Construire()
+            if not f then return end
+            Suite.fenetreInfo = f
+        end
+        Suite.infoOnglet = onglet or Suite.infoOnglet or "aide"
+        if cle then Suite.infoCle = cle end
+        if depuis then Suite.infoDepuis = depuis end
+        f.defilement:SetVerticalScroll(0)
+        if f:IsShown() then Suite.RendreInfo() else f:Show() end
+        if f.Raise then f:Raise() end
+    end
+    function Suite.InfoOuverte()
+        return Suite.fenetreInfo ~= nil and Suite.fenetreInfo:IsShown()
+    end
+
+    -- Les trois boutons du pied (Reglages et Fermer y sont deja).
+    function Suite.PiedCommun(cadre, cle)
+        if not (cadre and cadre.pied) or cadre.suitePied then return end
+        local charte = NS.charte
+        local H = charte and charte.HAUTEUR_BOUTON or 22
+        local ECART = charte and charte.ECART or 8
+        local function CleCourante()
+            local r = cadre.suiteEntete
+            return (r and r.courante) or cle
+        end
+        local function Bouton(auClic)
+            local b = CreateFrame("Button", nil, cadre.pied, "UIPanelButtonTemplate")
+            b:SetHeight(H)
+            b:SetScript("OnClick", auClic)
+            return b
+        end
+        local p = {}
+        p.commandes = Bouton(function() Suite.OuvrirInfo("commandes", CleCourante(), cadre) end)
+        p.commandes:SetPoint("LEFT", cadre.pied, "LEFT", 0, 0)
+        p.aide = Bouton(function()
+            if cadre.aideDeLaPage then
+                local ok = pcall(cadre.aideDeLaPage)
+                if ok then return end
+            end
+            Suite.OuvrirInfo("aide", CleCourante(), cadre)
+        end)
+        p.aide:SetPoint("LEFT", p.commandes, "RIGHT", ECART, 0)
+        p.nouveautes = Bouton(function() Suite.OuvrirInfo("nouveautes", CleCourante(), cadre) end)
+        p.nouveautes:SetPoint("CENTER", cadre.pied, "CENTER", 0, 0)
+        cadre.suitePied = p
+        cadre.suiteAide = p.aide
+        cadre.suiteNouveautes = p.nouveautes
+        Suite.LibellesDuPied(cadre)
+    end
+
+    -- Libelles du pied (glyphe de la manette sur Aide quand elle est branchee).
+    function Suite.LibellesDuPied(cadre)
+        local p = cadre and cadre.suitePied
+        if not p then return end
+        local pad = ManetteActive()
+        local function Poser(b, texte)
+            b:SetText(texte)
+            b:SetWidth(math.max(90, math.floor((b:GetTextWidth() or 60) + 28)))
+        end
+        Poser(p.commandes, LibelleInfo("commandes"))
+        Poser(p.aide, (pad and (GlyphePad("PAD4") .. " ") or "") .. LibelleInfo("aide"))
+        Poser(p.nouveautes, LibelleInfo("nouveautes"))
+    end
 end
 
 -- Les complements en onglets sur le bord DROIT d'une fenetre de complement,
@@ -3601,6 +4144,7 @@ function Suite.Entete(cadre, cleCourante)
     rangee.r3 = cadre:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     if rangee.boutons[#rangee.boutons] then rangee.r3:SetPoint("TOP", rangee.boutons[#rangee.boutons], "BOTTOM", 0, -10) end
     pcall(BoutonReglages, cadre)
+    pcall(Suite.PiedCommun, cadre, cleCourante)
     -- Tout en bas de la colonne : Alliance et Horde, pour le theme.
     rangee.factions = {}
     local dessous
@@ -3735,6 +4279,14 @@ function Suite.ManetteBas(cleCourante, bouton)
     if Suite.fenetreMacros and Suite.fenetreMacros:IsShown() then return true end
     local ic = _G.AuraCoreReglages
     if ic and ic:IsShown() then return true end
+    -- Aide, commandes et nouveautes ouvertes : la manette est a elles.
+    if Suite.InfoOuverte and Suite.InfoOuverte() then return true end
+    -- Y : l'aide de la fenetre (si la fenetre ne l'a pas deja prise).
+    if bouton == "PAD4" then
+        local m = Suite.membres[cleCourante]
+        local f = m and m.fenetre and m.fenetre()
+        if f and f.IsShown and f:IsShown() and f.suiteAide then f.suiteAide:Click() return true end
+    end
     -- Menu (Start) : les reglages generaux.
     if bouton == "PADFORWARD" then
         Suite.OuvrirReglagesGeneraux()
@@ -4017,6 +4569,7 @@ function Suite.Actualiser()
             if cc and cc.suiteLT then cc.suiteLT:SetShown(pad) cc.suiteRT:SetShown(pad) end
             local reg = rangee.cadre and rangee.cadre.suiteReglages
             if reg then reg:SetText((pad and (GlyphePad("PADFORWARD") .. " ") or "") .. TX("Settings")) end
+            if rangee.cadre then pcall(Suite.LibellesDuPied, rangee.cadre) end
         end
         for _, b in ipairs(rangee.boutons) do
             local installe = Suite.Installe(b.cle)
@@ -6565,7 +7118,7 @@ end
 -- explication que le jeu n'execute pas (#), puis la commande.
 local COURTS = {
     pilotefab = "PFa", pilotequetes = "PQu", ouvrir = "Sui", craftcore = "CrC", questcore = "QuC",
-    mapcore = "MaC", legacycore = "LeC", stuffcore = "StC", tradecore = "TrC", pvpcore = "PvP", achievementcore = "AcC", fabrications = "SFa", quetes = "SQu", suivis = "PSu",
+    mapcore = "MaC", legacycore = "LeC", stuffcore = "StC", tradecore = "TrC", pvpcore = "PvP", glorycore = "GlC", fabrications = "SFa", quetes = "SQu", suivis = "PSu",
     stop = "Stp", rendus = "Ren", recolte = "Rec", metier = "Met", oui = "Oui", non = "Non",
     messages = "Msg", reglages = "Rgl", improve = "IC", raccourcis = "Pan",
 }
@@ -8495,7 +9048,7 @@ Suite.BrancherIconesSuivis = BrancherSuivis
 -- ---------------------------------------------------------------------------
 
 local FENETRES_INFOBULLE = { CoreSuiteMacroCore = "droite", CraftCoreSuivi = "droite", QuestCoreSuivi = "gauche",
-    AchievementCoreFenetre = "droite" }
+    GloryCoreFenetre = "droite" }
 Suite.FENETRES_INFOBULLE = FENETRES_INFOBULLE
 
 function Suite.CoteInfobulle(nom)
@@ -9588,6 +10141,12 @@ function Suite.FenetreAPages(o)
     cadre:SetScript("OnShow", function() w.Rendre() end)
     cadre:HookScript("OnHide", function() Entrer(false) end)
     pcall(Suite.Entete, cadre, o.cle)
+    -- L'aide de la suite commence par la page ouverte.
+    cadre.suitePage = function()
+        local page = PageCourante()
+        local ok, libelle = pcall(page.libelle)
+        return page.cle, ok and libelle or nil
+    end
     Suite.Inscrire(o.cle, { ouvrir = function() cadre:Show() end, fenetre = function() return cadre end })
     return w
 end
@@ -10654,7 +11213,7 @@ end }
 -- ---------------------------------------------------------------------------
 
 Suite.FENETRES_FONDU = { "CraftCoreWindow", "QuestCoreFenetre", "MapCoreFenetre", "LegacyCoreFenetre",
-    "TradeCoreFenetre", "AuraCoreFenetre", "AchievementCoreFenetre", "CoreSuiteReglages", "CoreSuiteMacros", "SagaCoreMessages" }
+    "TradeCoreFenetre", "AuraCoreFenetre", "GloryCoreFenetre", "CoreSuiteReglages", "CoreSuiteMacros", "SagaCoreMessages" }
 local ALPHA_MARCHE = 0.1
 
 -- En vol : trajet de maitre de vol ou monture volante.
