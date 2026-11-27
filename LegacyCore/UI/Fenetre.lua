@@ -146,6 +146,7 @@ local function Poser(contenu, index, y, o)
     if o.icone then
         l.icone:ClearAllPoints()
         l.icone:SetPoint("TOPLEFT", l, "TOPLEFT", x, -1)
+        if _G.CoreSuite and _G.CoreSuite.RetirerRond then _G.CoreSuite.RetirerRond(l.icone) end
         l.icone:SetTexture(o.icone)
         l.icone:SetTexCoord(0, 1, 0, 1)
         l.icone:SetDesaturated(o.desature == true)
