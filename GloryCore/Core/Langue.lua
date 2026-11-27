@@ -1,6 +1,6 @@
 local _, NS = ...
 
--- Langue d'AchievementCore : francais et anglais dans le code (T(fr, en)). La
+-- Langue d'GloryCore : francais et anglais dans le code (T(fr, en)). La
 -- langue est celle de la suite (reglages generaux), sinon celle du jeu.
 
 local function Langue()

@@ -13,6 +13,8 @@
 Core\Socle.lua
 Core\Langue.lua
 Core\Suite.lua
+Core\Aides.lua
+Core\Nouveautes.lua
 UI\Charte.lua
 Core\Honneur.lua
 Core\Victoires.lua

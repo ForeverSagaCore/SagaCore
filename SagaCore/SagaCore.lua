@@ -7,7 +7,7 @@
 -- melange), puis recharge l'interface. Toujours actif, independant des
 -- suites. Prive.  /saga : la meme fenetre.
 
-local ADDONS = { "CraftCore", "QuestCore", "MapCore", "LegacyCore", "StuffCore", "FriendsCore", "AuraCore", "PvPCore", "AchievementCore", "ClassCore" }
+local ADDONS = { "CraftCore", "QuestCore", "MapCore", "LegacyCore", "StuffCore", "FriendsCore", "AuraCore", "PvPCore", "GloryCore", "ClassCore" }
 local PRIVES = { "TradeCore" }   -- ta version seulement (jamais publie)
 local SUFFIXES = { normale = "", dev = "Dev", live = "Live" }
 

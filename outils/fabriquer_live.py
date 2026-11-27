@@ -18,7 +18,7 @@ import io, os, re, shutil, subprocess, sys, tarfile
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Toutes les suites connues aujourd'hui : SagaLive.lua coupe ce qui n'est pas Live.
-TOUS = ["CraftCore", "QuestCore", "MapCore", "LegacyCore", "StuffCore", "FriendsCore", "AuraCore", "PvPCore", "AchievementCore", "ClassCore"]
+TOUS = ["CraftCore", "QuestCore", "MapCore", "LegacyCore", "StuffCore", "FriendsCore", "AuraCore", "PvPCore", "GloryCore", "ClassCore"]
 PRIVES = ["TradeCore"]
 
 def git(*args):

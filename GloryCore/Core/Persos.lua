@@ -1,7 +1,7 @@
 local _, NS = ...
 
 -- Les personnages du compte, tels que toute la suite les connait : nos
--- releves (AchievementCoreDB), QuestCore (quetes faites, race), CraftCore
+-- releves (GloryCoreDB), QuestCore (quetes faites, race), CraftCore
 -- (metiers, recettes, sacs et banque), LegacyCore (niveau, classe). Chaque
 -- lecture prend l'add-on qui la donne, sinon notre propre releve.
 
@@ -16,7 +16,7 @@ end
 local function QC(cle) local d = DB("QuestCoreDB") return d and type(d.persos) == "table" and type(d.persos[cle]) == "table" and d.persos[cle] or nil end
 local function CC(cle) local d = DB("CraftCoreDB") return d and type(d.personnages) == "table" and type(d.personnages[cle]) == "table" and d.personnages[cle] or nil end
 local function LC(cle) local d = DB("LegacyCoreDB") return d and type(d.persos) == "table" and type(d.persos[cle]) == "table" and d.persos[cle] or nil end
-local function AC(cle) local d = DB("AchievementCoreDB") return d and type(d.persos) == "table" and type(d.persos[cle]) == "table" and d.persos[cle] or nil end
+local function AC(cle) local d = DB("GloryCoreDB") return d and type(d.persos) == "table" and type(d.persos[cle]) == "table" and d.persos[cle] or nil end
 persos.QC, persos.CC, persos.LC, persos.AC = QC, CC, LC, AC
 
 local function Faction(f)
@@ -58,7 +58,7 @@ function persos.Liste()
         if n and (not p.niveau or n > p.niveau) then p.niveau = n end
         if not p.sexe and tonumber(info.sexe) then p.sexe = tonumber(info.sexe) end
     end
-    for cle, f in pairs((DB("AchievementCoreDB") or {}).persos or {}) do
+    for cle, f in pairs((DB("GloryCoreDB") or {}).persos or {}) do
         if type(f) == "table" then Ajouter(cle, f) end
     end
     for cle, f in pairs((DB("QuestCoreDB") or {}).persos or {}) do
@@ -197,7 +197,7 @@ function persos.Catalogue()
             end
         end
     end
-    local a = DB("AchievementCoreDB")
+    local a = DB("GloryCoreDB")
     for id, r in pairs(a and type(a.recettes) == "table" and a.recettes or {}) do
         local n = tonumber(id) or id
         if type(r) == "table" and tonumber(r.ligne) and not t[n] then t[n] = { ligne = tonumber(r.ligne), nom = r.nom } end
