@@ -2869,6 +2869,133 @@ function suivi.LieuxRecoltables(objectifs)
     return suivi.LieuxDe(voulus)
 end
 
+-- ---------------------------------------------------------------------------
+-- A INSERER dans CraftCore/UI/Suivi.lua, juste apres la fonction
+-- suivi.LieuxRecoltables (elle se termine par « return suivi.LieuxDe(voulus)
+-- end ») et avant le commentaire « Pour la vue d'ensemble de MapCore : le
+-- circuit de recolte ». Elle utilise les locales du fichier MetierDeMatiere,
+-- ManquesDe et CONNUS, deja definies plus haut.
+-- ---------------------------------------------------------------------------
+
+-- Pour QuestCore (infobulle d'un itineraire de toute une zone) : ce que la
+-- zone offre au personnage connecte. Lecture seule.
+
+-- Rang de recolte requis par matiere (jeu d'origine).
+local REQUIS_RECOLTE = {
+    -- Herbes
+    [2447] = 1, [765] = 1, [2449] = 15, [785] = 50, [2450] = 70, [3820] = 85, [2453] = 100,
+    [3355] = 115, [3369] = 120, [3356] = 125, [3357] = 150, [3818] = 160, [3821] = 170,
+    [3358] = 185, [3819] = 195, [4625] = 205, [8831] = 210, [8836] = 220, [8838] = 230,
+    [8839] = 235, [8845] = 245, [8846] = 250, [13464] = 260, [13463] = 270, [13465] = 280,
+    [13466] = 285, [13467] = 290, [13468] = 300,
+    -- Minerais (le minerai, pas les pierres ni les gemmes qui en tombent)
+    [2770] = 1, [2771] = 65, [2775] = 75, [2772] = 125, [2776] = 155, [3858] = 175,
+    [7911] = 230, [11370] = 230, [10620] = 245,
+}
+local LIGNE_RECOLTE = { herbes = "182", minerais = "186" }
+-- Couleurs de difficulte du jeu (TradeSkillTypeColor) : orange, jaune, vert, gris.
+local COULEURS_RECOLTE = {
+    { 25, { 1, 0.5, 0.25 } }, { 50, { 1, 1, 0 } }, { 100, { 0.25, 0.75, 0.25 } }, { math.huge, { 0.5, 0.5, 0.5 } },
+}
+local function CouleurRecolte(rang, requis)
+    for _, c in ipairs(COULEURS_RECOLTE) do
+        if rang < requis + c[1] then return c[2] end
+    end
+    return COULEURS_RECOLTE[#COULEURS_RECOLTE][2]
+end
+-- Releve en jeu : une recolte deja faite sur cette carte (tous personnages).
+local function Releve(objet, carte)
+    local d = CraftCoreDB
+    local lieux = type(d) == "table" and type(d.lieux) == "table" and d.lieux[objet]
+    return type(lieux) == "table" and type(lieux[carte]) == "table" and #lieux[carte] > 0
+end
+local function DansLaZone(objet, carteZone)
+    if Releve(objet, carteZone) then return true end
+    local zones = NS.noeudsJeu and NS.noeudsJeu.Presence and NS.noeudsJeu.Presence(objet)
+    return type(zones) == "table" and zones[carteZone] == true
+end
+
+-- Les herbes et minerais de la zone (carte de type zone) que le personnage
+-- connecte sait recolter a son rang : { objet, nom, icone, metier, requis,
+-- couleur }, le rang requis le plus haut d'abord.
+_G.CraftCoreAPI.RecoltesDeZone = function(carteZone)
+    local res = {}
+    carteZone = tonumber(carteZone)
+    local fiche = NS.base.Personnage and NS.base.Personnage()
+    local siens = fiche and type(fiche.metiers) == "table" and fiche.metiers
+    if not (carteZone and siens) then return res end
+    for objet, requis in pairs(REQUIS_RECOLTE) do
+        local metier = MetierDeMatiere(objet)
+        local m = metier and siens[LIGNE_RECOLTE[metier] or ""]
+        local rang = type(m) == "table" and tonumber(m.rang) or nil
+        if rang and requis <= rang and DansLaZone(objet, carteZone) then
+            table.insert(res, { objet = objet, nom = NS.inventaire.NomDObjet(objet) or ("#" .. objet),
+                icone = NS.Appeler(NS.jeu.iconeObjet, objet), metier = metier, requis = requis,
+                couleur = CouleurRecolte(rang, requis) })
+        end
+    end
+    table.sort(res, function(a, b)
+        if a.requis ~= b.requis then return a.requis > b.requis end
+        return a.objet < b.objet
+    end)
+    return res
+end
+
+-- Les composants qui manquent aux projets suivis et qu'on trouve dans la
+-- zone : recolte (herbes, minerais), butin des monstres de la zone, ou
+-- marchand de la zone. { objet, nom, icone, manque, source ("recolte" |
+-- "butin" | "marchand") }, le plus gros manque d'abord. `aire` : la zone de
+-- la base (AreaID), pour le butin et les marchands. Garde 30 secondes.
+local PNJ_MAX = 300 -- monstres examines par objet, au plus
+local composantsMemo = {}
+_G.CraftCoreAPI.ComposantsDeZone = function(carteZone, aire)
+    carteZone, aire = tonumber(carteZone), tonumber(aire)
+    if not carteZone then return {} end
+    local maintenant = NS.Appeler(GetTime) or 0
+    local cle = carteZone .. ":" .. tostring(aire)
+    local m = composantsMemo[cle]
+    if m and maintenant >= m.quand and maintenant - m.quand < 30 then return m.liste end
+    local Lire = NS.marchands and NS.marchands.Lire
+    local camp = NS.Appeler(NS.Lecture("UnitFactionGroup"), "player")
+    camp = camp == "Horde" and "H" or "A"
+    local function DeLaZone(pnj)
+        return aire and Lire and tonumber(Lire("NpcDB", pnj, "zoneID")) == aire
+    end
+    local res = {}
+    local ok, objectifs = pcall(suivi.Objectifs)
+    for objet, manque in pairs(ManquesDe(ok and objectifs or {})) do
+        objet = tonumber(objet)
+        local source
+        local metier = objet and MetierDeMatiere(objet)
+        local api = _G.CraftCoreAPI
+        if metier and api.ARecolte and api.ARecolte(metier) and DansLaZone(objet, carteZone) then source = "recolte" end
+        if objet and not source and Lire then
+            local pnjs = Lire("ItemDB", objet, "npcDrops")
+            for k, pnj in ipairs(type(pnjs) == "table" and pnjs or {}) do
+                if k > PNJ_MAX then break end
+                if DeLaZone(pnj) then source = "butin" break end
+            end
+        end
+        if objet and not source and Lire then
+            local vendeurs = Lire("ItemDB", objet, "vendors")
+            for _, pnj in ipairs(type(vendeurs) == "table" and vendeurs or {}) do
+                local amical = Lire("NpcDB", pnj, "friendlyToFaction")
+                if DeLaZone(pnj) and type(amical) == "string" and string.find(amical, camp, 1, true) then source = "marchand" break end
+            end
+        end
+        if source then
+            table.insert(res, { objet = objet, nom = NS.inventaire.NomDObjet(objet) or ("#" .. objet),
+                icone = NS.Appeler(NS.jeu.iconeObjet, objet), manque = manque, source = source })
+        end
+    end
+    table.sort(res, function(a, b)
+        if a.manque ~= b.manque then return a.manque > b.manque end
+        return a.objet < b.objet
+    end)
+    composantsMemo[cle] = { quand = maintenant, liste = res }
+    return res
+end
+
 -- Pour la vue d'ensemble de MapCore : le circuit de recolte (lieux connus
 -- des matieres qui manquent), et son guidage.
 _G.CraftCoreAPI = _G.CraftCoreAPI or {}
