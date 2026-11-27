@@ -570,8 +570,8 @@ local function Fabrique(z)
     f.visage:SetAllPoints()
     f.anneau = C.Anneau(f, IMAGE)
     f.anneau:SetPoint("TOPLEFT", f, "TOPLEFT", PAD, -PAD)
-    -- L'icone ronde (24) dans l'anneau dore : meme encombrement (32).
-    f.rond = C.Pastille(f, 24)
+    -- L'icone ronde dans l'anneau dore, de la taille du cercle d'un portrait.
+    f.rond = C.Pastille(f, 30)
     f.rond:SetPoint("CENTER", f, "TOPLEFT", PAD + IMAGE / 2, -(PAD + IMAGE / 2))
     f.droite = C.Texte(f, "GameFontHighlight", C.BLANC, "RIGHT")
     f.droite:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -(PAD + 2))
@@ -1117,9 +1117,9 @@ local function IconeDePortee(portee)
     return "Interface\\Icons\\INV_Misc_GroupNeedMore"
 end
 
-local function OptionPortee(portee, lire, choisie)
+local function OptionPortee(portee, lire)
     local fait, total = lire(portee)
-    local o = { nom = calcul.NomDePortee(portee), auClic = function() F.PoserPortee(portee) F.Rendre() end, actif = portee == choisie }
+    local o = { nom = calcul.NomDePortee(portee), auClic = function() F.PoserPortee(portee) F.Rendre() end }
     local cle = portee:match("^perso:(.+)$")
     local p = cle and persos.Par(cle)
     if p then o.perso, o.couleurNom = p, ref.CouleurDeClasse(p.classe) else o.icone = IconeDePortee(portee) end
@@ -1211,12 +1211,17 @@ local function RendreCategorie(page, cat)
     y = Banniere(page, y, { icone = (element and element.icone) or (sous and sous.icone) or cat.icone, nom = titre,
         sous = string.format("%s / %s   %s", NS.Nombre(x.fait or 0), NS.Nombre(x.total or 0), calcul.NomDePortee(portee)),
         droite = TextePoints(PointsDe(cat.cle, portee)), points = true, barre = v, couleurBarre = Couleur(v, portee) })
-    -- Les portees : le personnage d'abord, seul sur sa rangee, puis les trois camps.
+    -- Les camps (tous, le camp du personnage, l'autre), puis le personnage :
+    -- sa carte ouvre le detail de ce qu'on regarde, pour lui.
+    local carteDuPerso
     if not cat.plat then
-        local lire, choisie = Lecteur(cat, nav), F.Portee()
+        local lire = Lecteur(cat, nav)
         local pp = PorteePerso()
-        if pp then y = Grille(page, y, { OptionPortee(pp, lire, choisie) }) end
-        y = Grille(page, y, { OptionPortee("Horde", lire, choisie), OptionPortee("Alliance", lire, choisie), OptionPortee("deux", lire, choisie) })
+        local pPerso = pp and persos.Par(pp:match("^perso:(.+)$"))
+        local monCamp = (pPerso and pPerso.faction == "Horde") and "Horde" or "Alliance"
+        local autre = monCamp == "Horde" and "Alliance" or "Horde"
+        y = Grille(page, y, { OptionPortee("deux", lire), OptionPortee(monCamp, lire), OptionPortee(autre, lire) })
+        if pp then carteDuPerso = OptionPortee(pp, lire) end
     end
     if cat.plat then
         -- Reputations : chaque groupe sous son titre ; la barre a la couleur du rang du jeu.
@@ -1245,8 +1250,13 @@ local function RendreCategorie(page, cat)
         page.hauteur = page.yZone + y + 10
         return
     end
+    -- Le detail : sous la carte du personnage (ou le nom du camp choisi).
+    local function EnTete()
+        if carteDuPerso then y = Grille(page, y, { carteDuPerso }) end
+        if not portee:match("^perso:") then y = Titre2(page, string.format(T("Pour %s", "For %s"), calcul.NomDePortee(portee)), y) end
+    end
     if not sous then
-        y = Titre2(page, string.format(T("Pour %s", "For %s"), calcul.NomDePortee(portee)), y)
+        EnTete()
         if #res.sous == 0 then nn = nn + 1 y = Note2(page, nn, T("Rien à faire ici pour cette portée.", "Nothing to do here for this scope."), y) end
         local liste = {}
         for _, s in ipairs(res.sous) do
@@ -1277,7 +1287,7 @@ local function RendreCategorie(page, cat)
     page.nbPages = math.max(1, math.ceil(#brut / PAR_PAGE))
     if nav.page > page.nbPages then nav.page = page.nbPages end
     if page.nbPages > 1 then y = PoserRangee(page, page.rPage, y, T("Page", "Page")) end
-    y = Titre2(page, string.format(T("Pour %s", "For %s"), calcul.NomDePortee(portee)), y)
+    EnTete()
     if #brut == 0 then nn = nn + 1 y = Note2(page, nn, T("Aucun élément à montrer.", "Nothing to show."), y) end
     local debut = (nav.page - 1) * PAR_PAGE + 1
     local liste = {}
