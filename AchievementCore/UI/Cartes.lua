@@ -48,7 +48,6 @@ end
 C.PoliceChiffres = PoliceChiffres
 
 local function Texte(parent, police, couleur, justif)
-    if police == "chiffres" then police = PoliceChiffres() end
     local fs = parent:CreateFontString(nil, "OVERLAY", police or "GameFontHighlightSmall")
     fs:SetJustifyH(justif or "LEFT")
     fs:SetWordWrap(false)
@@ -224,9 +223,10 @@ function C.PoserAnneau(a, v, couleur, texte)
     a.plein:SetShown(v >= 0.995)
 end
 
--- La pastille des points : le ruban dans l'anneau dore du jeu (memes
--- proportions que les onglets ronds des suivis).
-function C.Pastille(parent, taille)
+-- Une icone ronde dans l'anneau dore du jeu (memes proportions que les
+-- onglets ronds des suivis) : la pastille des points (le ruban), ou une
+-- banniere de camp.
+function C.Pastille(parent, taille, icone)
     taille = taille or 20
     local p = CreateFrame("Frame", nil, parent)
     p:SetSize(taille, taille)
@@ -237,7 +237,7 @@ function C.Pastille(parent, taille)
     p.icone = p:CreateTexture(nil, "ARTWORK")
     p.icone:SetPoint("CENTER")
     p.icone:SetSize(taille * 13 / 20, taille * 13 / 20)
-    p.icone:SetTexture("Interface\\Icons\\INV_Misc_Ribbon_01")
+    p.icone:SetTexture(icone or "Interface\\Icons\\INV_Misc_Ribbon_01")
     p.icone:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     if p.CreateMaskTexture then
         local m = p:CreateMaskTexture()

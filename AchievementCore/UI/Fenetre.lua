@@ -534,7 +534,11 @@ end
 
 local C = NS.cartes
 local ECART = C.ECART
-local H_CAT, H_LIGNE, H_BARRE = 48, 38, 48
+-- Mesures communes : 10 de marge interieure partout, icones et portraits
+-- de 32, textes a 54 du bord ; deux polices de texte (12 et 10).
+local PAD, ICONE, X_TEXTE = 10, 32, 54
+local H_CAT = 56
+local H_SEUL, H_DETAIL, H_BARRE, H_COMPLET = 44, 50, 50, 62
 
 -- Les cartes de chaque page, gardees d'un rendu a l'autre.
 local function Reserves(page)
@@ -545,36 +549,29 @@ local function Reserves(page)
     r.cat = C.Reserve(function()
         local f = C.Panneau(z, true)
         f.anneau = C.Anneau(f)
-        f.anneau:SetPoint("LEFT", f, "LEFT", 6, 0)
+        f.anneau:SetPoint("LEFT", f, "LEFT", PAD, 0)
         f.nom = C.Texte(f, "GameFontHighlight", C.BLANC)
-        f.nom:SetPoint("TOPLEFT", f, "TOPLEFT", 52, -9)
-        f.nom:SetPoint("RIGHT", f, "RIGHT", -6, 0)
+        f.nom:SetPoint("TOPLEFT", f, "TOPLEFT", PAD + C.TAILLE_ANNEAU + 12, -13)
+        f.nom:SetPoint("RIGHT", f, "RIGHT", -PAD, 0)
         f.detail = C.Texte(f, "GameFontHighlightSmall", C.GRIS)
-        f.detail:SetPoint("TOPLEFT", f.nom, "BOTTOMLEFT", 0, -4)
-        f.detail:SetPoint("RIGHT", f, "RIGHT", -6, 0)
+        f.detail:SetPoint("TOPLEFT", f.nom, "BOTTOMLEFT", 0, -5)
+        f.detail:SetPoint("RIGHT", f, "RIGHT", -PAD, 0)
         return f
     end)
-    -- Carte de liste : icone (ou portrait), nom et valeur sur la ligne 1,
-    -- detail sur la ligne 2, barre pleine largeur dessous (jamais sur un
-    -- texte).
+    -- Carte de liste : icone, portrait ou icone ronde ; nom et valeur sur
+    -- la ligne 1, detail sur la ligne 2, barre pleine largeur dessous.
     r.ligne = C.Reserve(function()
         local f = C.Panneau(z, true)
-        f.ic = C.Icone(f, 26)
+        f.ic = C.Icone(f, ICONE)
         f.porteur = CreateFrame("Frame", nil, f)
-        f.porteur:SetSize(26, 26)
+        f.porteur:SetSize(ICONE, ICONE)
         f.visage = f.porteur:CreateTexture(nil, "ARTWORK")
         f.visage:SetAllPoints()
-        f.droite = C.Texte(f, "chiffres", C.OR, "RIGHT")
-        f.droite:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -7)
+        f.rond = C.Pastille(f, 24)
+        f.droite = C.Texte(f, "GameFontHighlight", C.BLANC, "RIGHT")
         f.nom = C.Texte(f, "GameFontHighlight", C.BLANC)
-        f.nom:SetPoint("TOPLEFT", f, "TOPLEFT", 42, -9)
-        f.nom:SetPoint("RIGHT", f.droite, "LEFT", -8, 0)
         f.detail = C.Texte(f, "GameFontHighlightSmall", C.GRIS)
-        f.detail:SetPoint("TOPLEFT", f.nom, "BOTTOMLEFT", 0, -4)
-        f.detail:SetPoint("RIGHT", f, "RIGHT", -10, 0)
         f.barre = C.Barre(f, 6)
-        f.barre:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 42, 9)
-        f.barre:SetPoint("RIGHT", f, "RIGHT", -10, 0)
         return f
     end)
     r.titre = C.Reserve(function() return C.TitreDeColonne(z) end)
@@ -588,39 +585,62 @@ end
 
 -- Une carte de liste. o : icone | perso, nom, couleurNom, detail, droite,
 -- couleurDroite, barre (0..1), couleurBarre, auClic, survol.
+-- La hauteur d'une carte de liste selon ce qu'elle montre.
+local function HauteurLigne(o)
+    if o.hauteur then return o.hauteur end
+    local avecDetail = o.detail ~= nil and o.detail ~= ""
+    if avecDetail and o.barre then return H_COMPLET end
+    if avecDetail then return H_DETAIL end
+    if o.barre then return H_BARRE end
+    return H_SEUL
+end
+
 local function CarteLigne(page, x, y, l, o)
     local f = Reserves(page).ligne.Prendre(page.zone)
-    local h = o.barre and H_BARRE or H_LIGNE
+    local h = HauteurLigne(o)
     C.Placer(f, page.zone, x, y, l, h)
-    -- L'icone ou le portrait, au milieu de la hauteur de la carte.
-    f.ic:ClearAllPoints()
-    f.ic:SetPoint("LEFT", f, "LEFT", 8, 0)
-    f.porteur:ClearAllPoints()
-    f.porteur:SetPoint("LEFT", f, "LEFT", 8, 0)
+    -- L'image, au milieu de la hauteur, a 10 du bord.
+    f.ic:Hide() f.porteur:Hide() f.rond:Hide()
     if o.perso then
-        f.ic:Hide()
+        f.porteur:ClearAllPoints()
+        f.porteur:SetPoint("LEFT", f, "LEFT", PAD, 0)
         f.porteur:Show()
-        persos.Visage(f.visage, o.perso, 26)
+        persos.Visage(f.visage, o.perso, ICONE)
+    elseif o.rond then
+        -- Icone ronde (24) dans l'anneau dore : meme encombrement qu'un portrait.
+        f.rond:ClearAllPoints()
+        f.rond:SetPoint("CENTER", f, "LEFT", PAD + ICONE / 2, 0)
+        f.rond.icone:SetTexture(o.icone)
+        f.rond:Show()
     else
-        f.porteur:Hide()
-        f.ic:Show()
+        f.ic:ClearAllPoints()
+        f.ic:SetPoint("LEFT", f, "LEFT", PAD, 0)
         f.ic.icone:SetTexture(o.icone or ICONE_POINTS)
         f.ic.icone:SetDesaturated(o.desature == true)
+        f.ic:Show()
     end
+    local avecDetail = o.detail ~= nil and o.detail ~= ""
+    -- Le bloc de texte (et la barre) centre verticalement dans la carte.
+    local hBloc = 14 + (avecDetail and 17 or 0) + (o.barre and 14 or 0)
+    local haut = math.floor((h - hBloc) / 2)
+    f.droite:ClearAllPoints()
+    f.droite:SetPoint("TOPRIGHT", f, "TOPRIGHT", -PAD, -haut)
+    f.droite:SetText(o.droite or "")
+    C.Couleurer(f.droite, C.BLANC)
+    f.nom:ClearAllPoints()
+    f.nom:SetPoint("TOPLEFT", f, "TOPLEFT", X_TEXTE, -haut)
+    f.nom:SetPoint("RIGHT", f.droite, "LEFT", -8, 0)
     f.nom:SetText(o.nom or "")
     C.Couleurer(f.nom, o.couleurNom or C.BLANC)
     f.nom.nomDePerso = o.perso and true or nil
+    f.detail:ClearAllPoints()
+    f.detail:SetPoint("TOPLEFT", f, "TOPLEFT", X_TEXTE, -(haut + 17))
+    f.detail:SetPoint("RIGHT", f, "RIGHT", -PAD, 0)
     f.detail:SetText(o.detail or "")
-    f.detail:SetShown(o.detail ~= nil and o.detail ~= "")
-    f.droite:SetText(o.droite or "")
-    C.Couleurer(f.droite, o.couleurDroite or C.OR)
-    -- Sans detail ni barre : le nom au milieu de la carte.
-    f.nom:ClearAllPoints()
-    local seul = not o.barre and not f.detail:IsShown()
-    if seul then f.nom:SetPoint("LEFT", f, "LEFT", 42, 0) else f.nom:SetPoint("TOPLEFT", f, "TOPLEFT", 42, -9) end
-    f.nom:SetPoint("RIGHT", f.droite, "LEFT", -8, 0)
-    f.droite:ClearAllPoints()
-    if seul then f.droite:SetPoint("RIGHT", f, "RIGHT", -10, 0) else f.droite:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -7) end
+    f.detail:SetShown(avecDetail)
+    f.barre:ClearAllPoints()
+    f.barre:SetPoint("TOPLEFT", f, "TOPLEFT", X_TEXTE, -(haut + (avecDetail and 34 or 19)))
+    f.barre:SetPoint("RIGHT", f, "RIGHT", -PAD, 0)
     f.barre:SetShown(o.barre ~= nil)
     if o.barre then C.PoserBarre(f.barre, o.barre, o.couleurBarre) end
     f:SetScript("OnClick", o.auClic or function() end)
@@ -710,7 +730,7 @@ local function PageHautsFaits(cle, icone, libelle, rendre, section, avant)
             page.intro:SetWidth(O.LARGEUR - 240)
             -- Les points sous le filet du titre, a droite de l'explication :
             -- rien sur la ligne du titre.
-            page.points = C.Texte(page.cadre, "chiffres", C.OR, "RIGHT")
+            page.points = C.Texte(page.cadre, "GameFontNormal", C.OR, "RIGHT")
             page.points.couleurPropre = nil
             page.points:SetPoint("RIGHT", page.cadre, "RIGHT", -10, 0)
             page.points:SetPoint("TOP", page.intro, "TOP", 0, 1)
@@ -835,7 +855,7 @@ local function Banniere(page)
     f.texteBarre:SetPoint("LEFT", f.barre, "RIGHT", 10, 0)
     f.anneau = C.Anneau(f)
     f.anneau:SetPoint("RIGHT", f, "RIGHT", -14, 0)
-    f.points = C.Texte(f, "chiffres", C.OR, "RIGHT")
+    f.points = C.Texte(f, "GameFontNormal", C.OR, "RIGHT")
     f.points:SetPoint("RIGHT", f.anneau, "LEFT", -12, 7)
     f.pastille = C.Pastille(f, 20)
     f.pastille:SetPoint("RIGHT", f.points, "LEFT", -6, 0)
@@ -1249,7 +1269,7 @@ local function BanniereCat(page)
     f.detail:SetPoint("RIGHT", f, "RIGHT", -230, 0)
     f.anneau = C.Anneau(f)
     f.anneau:SetPoint("RIGHT", f, "RIGHT", -14, 0)
-    f.points = C.Texte(f, "chiffres", C.OR, "RIGHT")
+    f.points = C.Texte(f, "GameFontNormal", C.OR, "RIGHT")
     f.points:SetPoint("RIGHT", f.anneau, "LEFT", -12, 0)
     f.pastille = C.Pastille(f, 20)
     f.pastille:SetPoint("RIGHT", f.points, "LEFT", -6, 0)
@@ -1263,39 +1283,37 @@ local function IconeDePortee(portee)
     return "Interface\\Icons\\INV_Misc_GroupNeedMore"
 end
 
--- Les quatre portees en tuiles : la choisie a le liseré d'or.
+-- Les portees en tuiles : le personnage seul sur sa ligne, puis les trois
+-- camps cote a cote ; images toutes rondes ; la choisie a le liseré d'or.
 local function TuilesDePortee(page, y, lire)
-    local lignes = {}
-    local pp = PorteePerso()
-    if pp then table.insert(lignes, pp) end
-    table.insert(lignes, "Horde")
-    table.insert(lignes, "Alliance")
-    table.insert(lignes, "deux")
     local L = page.zone:GetWidth()
-    local cols = #lignes
-    local l = math.floor((L - (cols - 1) * ECART) / cols)
     local choisie = F.Portee()
-    for k, portee in ipairs(lignes) do
+    local function Tuile(portee, x, yy, l)
         local fait, total = lire(portee)
-        local o = { nom = calcul.NomDePortee(portee), auClic = function() F.PoserPortee(portee) F.Rendre() end }
+        local o = { nom = calcul.NomDePortee(portee), auClic = function() F.PoserPortee(portee) F.Rendre() end, hauteur = H_BARRE }
         local cle = portee:match("^perso:(.+)$")
         local p = cle and persos.Par(cle)
-        if p then o.perso, o.couleurNom = p, ref.CouleurDeClasse(p.classe) else o.icone = IconeDePortee(portee) end
+        if p then o.perso, o.couleurNom = p, ref.CouleurDeClasse(p.classe) else o.rond, o.icone = true, IconeDePortee(portee) end
         if total and total > 0 then
             o.barre = fait / total
             o.couleurBarre = p and ref.CouleurDeClasse(p.classe) or C.Etat(fait, total)
-            o.droite = NS.Pct(fait, total) .. "%"
-            o.couleurDroite = C.Etat(fait, total)
+            o.droite = NS.Pct(fait, total) .. " %"
         else
-            o.detail = total and T("rien à faire", "nothing to do") or T("en préparation", "preparing")
-            o.droite = ""
+            o.barre = 0
+            o.droite = total and T("rien à faire", "nothing to do") or T("en préparation", "preparing")
         end
-        if not o.barre then o.barre = 0 end
-        CarteLigne(page, (k - 1) * (l + ECART), y, l, o)
+        CarteLigne(page, x, yy, l, o)
         local f = Reserves(page).ligne.liste[Reserves(page).ligne.n]
         f.actif = portee == choisie or nil
         C.Teinter(f)
     end
+    local pp = PorteePerso()
+    if pp then
+        Tuile(pp, 0, y, L)
+        y = y + H_BARRE + ECART
+    end
+    local l = math.floor((L - 2 * ECART) / 3)
+    for k, portee in ipairs({ "Horde", "Alliance", "deux" }) do Tuile(portee, (k - 1) * (l + ECART), y, l) end
     return y + H_BARRE + ECART
 end
 
@@ -1404,12 +1422,13 @@ local function RendreCategorie(page, cat)
             local yy = y
             for k, e in ipairs(s.elements) do
                 local col = (k - 1) % 2
-                if col == 0 and k > 1 then yy = yy + H_BARRE + ECART end
+                if col == 0 and k > 1 then yy = yy + H_COMPLET + ECART end
                 local rang = tonumber(e.rang) or 0
                 local nomRang = rang > 0 and ref.NomDeRang and ref.NomDeRang(rang) or ""
                 local couleurs = _G.FACTION_BAR_COLORS
                 local fc = type(couleurs) == "table" and couleurs[math.max(1, math.min(8, rang))]
-                local o = { icone = e.icone, nom = e.nom, detail = nomRang, couleurBarre = fc and { fc.r, fc.g, fc.b } or C.OR, auClic = function() end }
+                local o = { icone = e.icone, nom = e.nom, detail = nomRang ~= "" and nomRang or " ", hauteur = H_COMPLET,
+                    couleurBarre = fc and { fc.r, fc.g, fc.b } or C.OR, auClic = function() end }
                 if e.valeur and e.mini and e.maxi and e.maxi > e.mini and rang < 8 then
                     local dans, taille = math.max(0, e.valeur - e.mini), e.maxi - e.mini
                     o.barre = dans / taille
@@ -1422,7 +1441,7 @@ local function RendreCategorie(page, cat)
                 end
                 CarteLigne(page, col * (l + ECART), yy, l, o)
             end
-            if #s.elements > 0 then y = yy + H_BARRE + ECART end
+            if #s.elements > 0 then y = yy + H_COMPLET + ECART end
         end
         page.hauteur = page.yZone + y + 10
         return
@@ -1470,7 +1489,7 @@ local function RendreCategorie(page, cat)
         local yy = y
         for k, c in ipairs(morceau) do
             local col = (k - 1) % 2
-            if col == 0 and k > 1 then yy = yy + H_LIGNE + ECART end
+            if col == 0 and k > 1 then yy = yy + H_DETAIL + ECART end
             local f = CritereFait(c, portee)
             local icone = c.icone
             if c.objet then icone = NS.IconeDObjet(c.objet) end
@@ -1479,9 +1498,9 @@ local function RendreCategorie(page, cat)
             CarteLigne(page, col * (l + ECART), yy, l, { icone = icone or cat.icone, nom = nom,
                 couleurNom = f and C.BLANC or C.VIDE, detail = DetailCritere(c, portee),
                 droite = DroiteCarte(c, portee), couleurDroite = C.VERT,
-                survol = Infobulle(c), auClic = function() end, desature = not f })
+                survol = Infobulle(c), auClic = function() end, desature = not f, hauteur = H_DETAIL })
         end
-        if #morceau > 0 then y = yy + H_LIGNE + ECART end
+        if #morceau > 0 then y = yy + H_DETAIL + ECART end
     else
         -- Les elements : trois colonnes de cartes a anneau.
         y = Grille(page, y, 3, morceau, function(e, xx, yy, l)
@@ -1635,7 +1654,7 @@ function F.Construire()
     local pages = {
         PageHautsFaits("compte", "Interface\\Icons\\INV_Misc_Ribbon_01", function() return T("Mon compte", "My account") end, RendreCompte, hautsFaits),
         PageHautsFaits("perso", "Interface\\Icons\\INV_Misc_GroupNeedMore", function() return T("Mon personnage", "My character") end, RendrePerso),
-        PageHautsFaits("objectifs", "Interface\\Icons\\INV_Misc_Map_01", function() return T("Objectifs et parcours", "Goals and routes") end, RendreObjectifs, nil, AvantObjectifs),
+        PageHautsFaits("objectifs", "Interface\\Icons\\INV_Misc_Map_01", function() return T("Mes objectifs", "My goals") end, RendreObjectifs, nil, AvantObjectifs),
     }
     local premiere = true
     for _, cat in ipairs(NS.categories) do
