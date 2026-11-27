@@ -1691,6 +1691,7 @@ RendreVueParcours = function(moi, index, y)
             marqueTexture = ouvert and "Interface\\Buttons\\UI-MinusButton-Up" or "Interface\\Buttons\\UI-PlusButton-Up",
             droite = pct .. " %", couleurDroite = pct >= 100 and { 0.31, 0.82, 0.41 } or { 1, 1, 1 },
             separateur = index > 1, apres = 4,
+            survol = pc.genre == "zone" and function(tt) NS.ref.InfobulleDeZone(tt, moi, pc) end or nil,
             auClic = function(_, bouton)
                 if bouton == "RightButton" then NS.fenetre.OuvrirParcours() return end
                 s.parcoursOuverts[idP] = not s.parcoursOuverts[idP] or nil

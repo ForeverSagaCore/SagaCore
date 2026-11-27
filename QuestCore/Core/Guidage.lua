@@ -272,6 +272,24 @@ end
 -- visee. La cible d'avant compte 20 % plus pres (la meme regle que la
 -- chaine) : elle ne change que pour nettement mieux, ou si quelque chose a
 -- change (quete prise, rendue, objectif fini, lieu visite, sacs, journal).
+--
+-- Ce que le jeu impose, compte le long de chaque enchainement :
+--   les sacs : places libres, objets gris (a vendre ou a jeter), butin
+--   ordinaire a vendre, composants a poster ; chaque objectif prend la place
+--   de ses objets de quete restants et du butin des monstres a tuer ; sans
+--   la place, on jette du gris, sinon c'est un aller-retour chez le vendeur
+--   le plus proche (ou, sans vendeur connu, l'objectif vaut moins) ;
+--   les services pres d'une visite (QuestieDB : vendeur, reparation,
+--   aubergiste, banquier, maitre de vol ; boites aux lettres) : on y vend et
+--   on y poste dans la meme visite que les rendus ;
+--   le temps d'un objectif : monstres a tuer, objets a ramasser ; sa valeur
+--   compte quand il est fini, et son rendu compte la ou se trouve son
+--   receveur (dans la suite de l'enchainement, ou apres) ;
+--   une quete a un ou deux objets pres, sur place, vaut plus d'etre finie
+--   maintenant ;
+--   les vols connus du personnage (relus a l'ouverture de la carte des vols)
+--   raccourcissent les longs trajets.
+-- Rien n'est jamais appele qui agisse : ce n'est que de la lecture.
 local PLAN = {
     VITESSE = 7,        -- yards par seconde, a pied (comme la duree de la fleche)
     RAYON = 40,         -- une meme visite : un camp, le centre d'un village
@@ -286,13 +304,42 @@ local PLAN = {
     V_SUITE = 0.3,      -- par suite debloquee : la chaine continue
     V_SUITE_ICI = 0.5,  -- et sa prise sur place, dans la meme visite
     V_ORDRE = 0.2,      -- la visite qui porte l'etape suivante de l'itineraire
-    V_SAC = 0.5,        -- par place de sac liberee, sacs pleins
+    V_SAC = 0.5,        -- par place liberee par un rendu, sacs presque pleins (sacs illisibles)
+    V_PLACE = 0.25,     -- par place de marge regagnee dans une visite, sacs presque pleins
     SAC_SEUIL = 6,      -- la pression des sacs commence sous 6 places libres
-    BUTIN_PLEIN = 0.3,  -- un objectif a ramasser, sacs pleins
+    BUTIN_PLEIN = 0.3,  -- un objectif a ramasser, sacs pleins (sacs illisibles)
     V_JOURNAL = 0.3,    -- un rendu, journal presque plein
     JOURNAL_MAX = 20,
     V_NIVEAU = 0.5,     -- par etape que le niveau gagne rend prenable (2 au plus)
     ECHELLE = 30000,    -- yards par unite de carte de continent, si le jeu ne le dit pas
+    -- Le temps d'un objectif.
+    T_TUER = 20,        -- secondes par monstre : le trouver, le tuer, le depouiller
+    TAUX_BUTIN = 0.5,   -- un monstre sur deux donne l'objet de quete
+    T_RAMASSER = 12,    -- secondes par objet ramasse ou utilise dans le monde
+    T_OBJ_MAX = 600,    -- un objectif ne compte jamais plus de 10 minutes
+    PRESQUE = 2,        -- « presque fini » : 2 unites ou moins
+    V_PRESQUE = 1.0,    -- et sur place (premiere visite) : il vaut un rendu de plus
+    SUR_PLACE = 100,    -- yards
+    -- Les sacs.
+    BRIC = 0.25,        -- places prises par le butin ordinaire, par monstre tue
+    EMPILE = 20,        -- empilement d'un objet de quete inconnu du jeu
+    T_JETER = 4,        -- secondes par objet gris jete
+    PERTE_JETER = 0.03, -- et ce qu'on y perd (argent)
+    FACT_GRIS = 0.6,    -- une place grise vaut 60 % d'une place libre
+    PEN_SAC = 0.5,      -- finir l'enchainement les sacs pleins (marge nulle)
+    SACS_TTL = 1,       -- secondes de relecture des sacs
+    -- Les services.
+    RAYON_SERVICE = 60, -- un service a moins de 60 yards fait partie de la visite
+    VENDEUR_LOIN = 1500,-- au-dela, pas d'aller-retour chez le vendeur
+    CELLULE = 150,      -- grille des services, en yards
+    LOT = 300,          -- PNJ lus par image pendant la lecture des services
+    VENTE_SOUS = 12,    -- on vend quand il reste moins de 12 places libres
+    T_VENTE = 10, T_POSTER = 25, T_REPARER = 5,
+    USURE = 0.25,       -- reparer sous 25 % de durabilite
+    V_REPARER = 0.4,
+    VOL_VITESSE = 25,   -- yards par seconde en vol, detours compris
+    T_VOL = 30,         -- parler, decoller, atterrir
+    VOL_MIN = 700,      -- pas de vol pour moins de 700 yards
 }
 
 -- Yards par unite de la carte du continent, en x et en y.
@@ -373,6 +420,382 @@ local function SuitesDebloquees(pt, moi, continent, sx, sy, cache)
     return res
 end
 
+-- ---------------------------------------------------------------------------
+-- Services : vendeurs, reparation, aubergistes, banquiers, maitres de vol
+-- (drapeaux des PNJ de QuestieDB) et boites aux lettres (objets de la base).
+-- Lus une fois, par lots, la premiere fois qu'un itineraire est guide ; puis
+-- reportes sur chaque continent, dans une grille.
+-- ---------------------------------------------------------------------------
+local DRAPEAUX = { { "vendeur", 4 }, { "vol", 8 }, { "auberge", 128 }, { "banque", 256 }, { "reparation", 16384 } }
+-- Les boites aux lettres de la base de WoW Forever (ObjectDB, nom « Mailbox »).
+local BOITES = {
+    32349, 142075, 142089, 142093, 142094, 142095, 142102, 142103, 142109, 142110, 142111, 142117,
+    142119, 143981, 143982, 143983, 143984, 143985, 143986, 143987, 143988, 143989, 143990, 144011,
+    144112, 144125, 144126, 144127, 144128, 144129, 144130, 144131, 144179, 153578, 153716, 157637,
+    163313, 163645, 164618, 164840, 171556, 171699, 171752, 173047, 173221, 176319, 176324, 176404,
+    177044, 178864, 179895, 179896, 180451, 181236, 181380, 181381, 181639, 182567, 182939, 182946,
+    183167, 184085, 184147, 184148, 184652, 184944, 185477, 186230, 186629, 556646, 556693, 560880,
+    560881, 560883, 560884, 560885, 560886, 560887, 560888, 560901, 561073, 561074, 561075, 602722,
+    642744, 642745, 644436, 644437, 644438, 644439, 644440, 644441, 644488, 650428, 650577, 650593,
+    650666, 651604, 652323, 652324, 655669, 656700, 656748, 658827, 658919, 658920, 658921, 658922,
+    658923, 658924, 658925, 658926, 658927, 658970, 659159, 659816, 659829, 659837, 696264, 696265,
+    696266, 696267, 696268, 696269, 696270, 696271, 696272, 696273, 696274, 696275, 696276, 696277,
+    696278, 696279, 696280, 696281, 696374, 696434, 696607, 696751, 703257, 703896,
+}
+local services = { liste = nil, file = nil, rang = 1, continents = {} }
+
+local function ADrapeau(f, b) return math.floor(f / b) % 2 == 1 end
+
+local function MonCamp()
+    local camp = NS.Appeler(NS.Lecture("UnitFactionGroup"), "player")
+    return camp == "Alliance" and "A" or (camp == "Horde" and "H" or nil)
+end
+
+-- Les lieux d'une fiche de la base ({ [zone] = { { x, y }, ... } }).
+local function AjouterLieux(liste, lieux, genres)
+    if type(lieux) ~= "table" or not (NS.carte and NS.carte.CarteDeZone) then return end
+    for zone, pts in pairs(lieux) do
+        local carte = tonumber(zone) and NS.carte.CarteDeZone(tonumber(zone))
+        if carte and type(pts) == "table" then
+            for _, p in ipairs(pts) do
+                local x, y = type(p) == "table" and tonumber(p[1]), type(p) == "table" and tonumber(p[2])
+                if x and y and x >= 0 and y >= 0 then
+                    table.insert(liste, { carte = carte, x = x / 100, y = y / 100, g = genres })
+                end
+            end
+        end
+    end
+end
+
+-- Un PNJ : ses services, s'il en rend et qu'il est amical (nil : hostile aux deux).
+local function LirePNJ(liste, id, camp)
+    local f = tonumber(NS.ref.Lire("NpcDB", id, "npcFlags"))
+    if not f or f < 4 then return end
+    local genres
+    for _, d in ipairs(DRAPEAUX) do
+        if ADrapeau(f, d[2]) then genres = genres or {} genres[d[1]] = true end
+    end
+    if not genres then return end
+    local amical = NS.ref.Lire("NpcDB", id, "friendlyToFaction")
+    if type(amical) ~= "string" or (camp and not string.find(amical, camp, 1, true)) then return end
+    AjouterLieux(liste, NS.ref.Lire("NpcDB", id, "spawns"), genres)
+end
+
+-- Lit `n` PNJ de plus ; vrai quand tout est lu.
+local function Avancer(n)
+    local s = services
+    if s.liste then return true end
+    if not s.file then
+        s.file, s.lu, s.rang, s.camp = {}, {}, 1, MonCamp()
+        local base = NS.ref.Base and NS.ref.Base("NpcDB")
+        local ok, ids = false, nil
+        if type(base) == "table" and type(base.GetAllIds) == "function" then ok, ids = pcall(base.GetAllIds) end
+        for k, v in pairs(ok and type(ids) == "table" and ids or {}) do
+            local id = type(v) == "number" and v or (type(k) == "number" and k) or nil
+            if id then table.insert(s.file, id) end
+        end
+        table.sort(s.file)
+        for _, id in ipairs(BOITES) do
+            pcall(AjouterLieux, s.lu, NS.ref.Lire("ObjectDB", id, "spawns"), { courrier = true })
+        end
+    end
+    local fin = math.min(#s.file, s.rang + n - 1)
+    for i = s.rang, fin do pcall(LirePNJ, s.lu, s.file[i], s.camp) end
+    s.rang = fin + 1
+    if s.rang > #s.file then s.liste, s.file, s.lu = s.lu, nil, nil return true end
+    return false
+end
+
+-- La lecture par lots, hors combat, une seule fois.
+local function DemarrerServices()
+    if services.liste or services.cadre then return end
+    local CF = _G.CreateFrame
+    if type(CF) ~= "function" then return end
+    local ok, cadre = pcall(CF, "Frame")
+    if not ok or type(cadre) ~= "table" or not cadre.SetScript then return end
+    services.cadre = cadre
+    cadre:SetScript("OnUpdate", function(self)
+        local combat = NS.Lecture("InCombatLockdown")
+        if combat and combat() then return end
+        local okA, fini = pcall(Avancer, PLAN.LOT)
+        if not okA then services.liste = services.liste or {} end
+        if not okA or fini then self:SetScript("OnUpdate", nil) end
+    end)
+end
+
+local function Grille(liste, sx, sy)
+    local cell = PLAN.CELLULE
+    local gr = { cell = cell, sx = sx, sy = sy, cases = {} }
+    for _, e in ipairs(liste) do
+        local k = math.floor(e.x * sx / cell) .. ":" .. math.floor(e.y * sy / cell)
+        gr.cases[k] = gr.cases[k] or {}
+        table.insert(gr.cases[k], e)
+    end
+    return gr
+end
+
+-- Les services du continent, en grille (nil tant qu'ils ne sont pas lus).
+local function ServicesDuContinent(continent, sx, sy)
+    if not services.liste then DemarrerServices() return nil end
+    local c = services.continents[continent]
+    if c then return c end
+    local liste = {}
+    for _, e in ipairs(services.liste) do
+        local x, y = NS.carte.Reporter(e, continent)
+        if x then table.insert(liste, { x = x, y = y, g = e.g }) end
+    end
+    table.sort(liste, function(a, b) if a.x ~= b.x then return a.x < b.x end return a.y < b.y end)
+    c = Grille(liste, sx, sy)
+    services.continents[continent] = c
+    return c
+end
+
+-- La distance (yards) du service `genre` le plus proche de `p`, a moins de
+-- `rayon`, ou nil.
+local function Proche(gr, p, genre, rayon)
+    if not gr then return nil end
+    local cell = gr.cell
+    local cx, cy = math.floor(p.x * gr.sx / cell), math.floor(p.y * gr.sy / cell)
+    local r = math.ceil(rayon / cell)
+    local best
+    for dx = -r, r do
+        for dy = -r, r do
+            local case = gr.cases[(cx + dx) .. ":" .. (cy + dy)]
+            for _, e in ipairs(case or {}) do
+                if e.g[genre] then
+                    local d = Yards(p, e, gr.sx, gr.sy)
+                    if d <= rayon and (not best or d < best) then best = d end
+                end
+            end
+        end
+    end
+    return best
+end
+
+-- Les vols connus du personnage, notes a chaque ouverture de la carte des vols.
+local function NoterVols()
+    local moi = Moi()
+    if type(moi) ~= "table" then return end
+    local carte = NS.Appeler(NS.Lecture("GetTaxiMapID"))
+    if not carte then return end
+    moi.volsConnus = type(moi.volsConnus) == "table" and moi.volsConnus or {}
+    local tous = NS.Lecture("C_TaxiMap.GetAllTaxiNodes")
+    local noeuds = tous and NS.Appeler(tous, carte)
+    if type(noeuds) == "table" then
+        for _, n in ipairs(noeuds) do
+            local pos = type(n) == "table" and n.position
+            local x, y = type(pos) == "table" and tonumber(pos.x), type(pos) == "table" and tonumber(pos.y)
+            if n.nodeID and x and y and n.state ~= 2 then
+                moi.volsConnus[n.nodeID] = { carte = carte, x = x, y = y, nom = n.name }
+            end
+        end
+        return
+    end
+    local nb = tonumber((NS.Appeler(NS.Lecture("NumTaxiNodes")))) or 0
+    for i = 1, nb do
+        local genre = NS.Appeler(NS.Lecture("TaxiNodeGetType"), i)
+        local x, y = NS.Appeler(NS.Lecture("TaxiNodePosition"), i)
+        local nom = NS.Appeler(NS.Lecture("TaxiNodeName"), i)
+        if (genre == "CURRENT" or genre == "REACHABLE") and tonumber(x) and tonumber(y) and nom then
+            moi.volsConnus[nom] = { carte = carte, x = tonumber(x), y = tonumber(y), nom = nom }
+        end
+    end
+end
+pcall(function()
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("TAXIMAP_OPENED")
+    f:SetScript("OnEvent", function() pcall(NoterVols) end)
+end)
+
+local function VolsDuContinent(moi, continent)
+    local res = {}
+    for _, v in pairs(type(moi.volsConnus) == "table" and moi.volsConnus or {}) do
+        local x, y = NS.carte.Reporter(v, continent)
+        if x then table.insert(res, { x = x, y = y }) end
+    end
+    table.sort(res, function(a, b) if a.x ~= b.x then return a.x < b.x end return a.y < b.y end)
+    return #res >= 2 and res or nil
+end
+
+-- Le temps d'un trajet : a pied, ou par deux vols connus si c'est plus court.
+local function VolProche(p, ctx)
+    if p.volPour ~= ctx.vols then
+        local best, bd
+        for _, v in ipairs(ctx.vols) do
+            local d = Yards(p, v, ctx.sx, ctx.sy)
+            if not bd or d < bd then best, bd = v, d end
+        end
+        p.volPour, p.vol, p.volD = ctx.vols, best, bd
+    end
+    return p.vol, p.volD
+end
+local function Trajet(a, b, ctx)
+    local d = Yards(a, b, ctx.sx, ctx.sy)
+    local t = d / PLAN.VITESSE
+    if ctx.vols and d > PLAN.VOL_MIN then
+        local va, da = VolProche(a, ctx)
+        local vb, db = VolProche(b, ctx)
+        if va and vb and va ~= vb then
+            local tv = (da + db) / PLAN.VITESSE + Yards(va, vb, ctx.sx, ctx.sy) / PLAN.VOL_VITESSE + PLAN.T_VOL
+            if tv < t then return tv end
+        end
+    end
+    return t
+end
+
+-- ---------------------------------------------------------------------------
+-- Les sacs et l'equipement (lecture seule)
+-- ---------------------------------------------------------------------------
+-- { libres, gris (qualite 0 : a vendre ou a jeter), divers (butin ordinaire
+-- blanc a vendre), marchandises (composants non lies : a poster ou a mettre
+-- en banque), parObjet = { [objet] = { places, n } } }, ou nil.
+local sacsMemo, sacsQuand
+local function LireSacs()
+    local maintenant = tonumber((NS.Appeler(NS.Lecture("GetTime")))) or 0
+    if sacsMemo and sacsQuand and maintenant >= sacsQuand and maintenant - sacsQuand < PLAN.SACS_TTL then return sacsMemo end
+    local libresF = NS.Lecture("C_Container.GetContainerNumFreeSlots", "GetContainerNumFreeSlots")
+    local placesF = NS.Lecture("C_Container.GetContainerNumSlots", "GetContainerNumSlots")
+    local infoF = NS.Lecture("C_Container.GetContainerItemInfo", "GetContainerItemInfo")
+    if not (libresF and placesF and infoF) then return nil end
+    local instant = NS.Lecture("C_Item.GetItemInfoInstant", "GetItemInfoInstant")
+    local s = { libres = 0, gris = 0, divers = 0, marchandises = 0, parObjet = {} }
+    for sac = 0, 4 do
+        local ok, libres, famille = pcall(libresF, sac)
+        if ok and tonumber(libres) and (famille == nil or famille == 0) then
+            s.libres = s.libres + tonumber(libres)
+            local okN, n = pcall(placesF, sac)
+            for place = 1, (okN and tonumber(n)) or 0 do
+                local okI, a, b, _, d, _, _, _, _, i9, i10 = pcall(infoF, sac, place)
+                local id, nb, qualite, sansValeur, lie
+                if okI and type(a) == "table" then
+                    id, nb, qualite, sansValeur, lie = a.itemID, a.stackCount, a.quality, a.hasNoValue, a.isBound
+                elseif okI and a ~= nil then
+                    id, nb, qualite, sansValeur = i10, b, d, i9
+                end
+                id = tonumber(id)
+                if id then
+                    local o = s.parObjet[id] or { places = 0, n = 0 }
+                    s.parObjet[id] = o
+                    o.places, o.n = o.places + 1, o.n + (tonumber(nb) or 1)
+                    local classe = instant and select(6, NS.Appeler(instant, id))
+                    if qualite == 0 then s.gris = s.gris + 1
+                    elseif classe == 12 then -- objet de quete : il part au rendu
+                    elseif classe == 7 and not lie then s.marchandises = s.marchandises + 1
+                    elseif classe == 15 and (tonumber(qualite) or 1) <= 1 and not sansValeur then s.divers = s.divers + 1 end
+                end
+            end
+        end
+    end
+    sacsMemo, sacsQuand = s, maintenant
+    return s
+end
+
+-- La plus basse durabilite de l'equipement porte (0 a 1), ou nil.
+local function LireUsure()
+    local f = NS.Lecture("GetInventoryItemDurability")
+    if not f then return nil end
+    local mini
+    for place = 1, 18 do
+        local ok, c, m = pcall(f, place)
+        c, m = ok and tonumber(c), ok and tonumber(m)
+        if c and m and m > 0 and (not mini or c / m < mini) then mini = c / m end
+    end
+    return mini
+end
+guidage.LireSacs, guidage.LireUsure = LireSacs, LireUsure
+
+-- Combien d'un objet tiennent dans une place (nil si le jeu ne le sait pas).
+local function Empile(objet)
+    if not objet then return nil end
+    local n = tonumber((NS.Appeler(NS.Lecture("C_Item.GetItemMaxStackCount"), objet)))
+    if not n then n = tonumber((select(8, NS.Appeler(NS.Lecture("C_Item.GetItemInfo", "GetItemInfo"), objet)))) end
+    return (n and n > 0) and n or nil
+end
+
+-- ---------------------------------------------------------------------------
+-- Les points : genre, valeur, temps, place dans les sacs
+-- ---------------------------------------------------------------------------
+
+-- Le receveur d'une quete, en coordonnees du continent (le plus pres du point).
+local function Receveur(pt, continent, ctx, cache)
+    if cache[pt.id] ~= nil then return cache[pt.id] or nil end
+    local best, bd
+    local fin = NS.ref.Lire("QuestDB", pt.id, "finishedBy")
+    for k, base in ipairs({ "NpcDB", "ObjectDB" }) do
+        for _, qui in ipairs(type(fin) == "table" and type(fin[k]) == "table" and fin[k] or {}) do
+            local lieux = {}
+            AjouterLieux(lieux, NS.ref.Lire(base, qui, "spawns"), {})
+            for _, l in ipairs(lieux) do
+                local x, y = NS.carte.Reporter(l, continent)
+                if x then
+                    local d = Yards({ x = x, y = y }, pt, ctx.sx, ctx.sy)
+                    if not bd or d < bd then best, bd = { x = x, y = y }, d end
+                end
+            end
+        end
+    end
+    cache[pt.id] = best or false
+    return best
+end
+
+-- Ce qu'il reste a faire d'une quete en cours : unites, temps, places.
+local function Besoins(pt, moi, ctx)
+    local q = moi.quetes and moi.quetes[pt.id]
+    if type(q) ~= "table" or type(q.objectifs) ~= "table" then return end
+    local sac = ctx.sac
+    local okB, base = pcall(NS.ref.ObjetsRequis, moi, pt.id)
+    base = okB and type(base) == "table" and base or {}
+    local rangObjet, tuer, ramasser, places, restant, placesQ = 0, 0, 0, 0, 0, 0
+    for _, o in ipairs(q.objectifs) do
+        local req, n = tonumber(o.requis) or 0, tonumber(o.n) or 0
+        local objet
+        if o.type == "item" then
+            rangObjet = rangObjet + 1
+            objet = tonumber(o.objet) or (base[rangObjet] and tonumber(base[rangObjet].objet))
+        end
+        if not o.fait and req > n then
+            local r = req - n
+            restant = restant + r
+            if o.type == "item" then
+                local pile = Empile(objet) or (req == 1 and 1) or PLAN.EMPILE
+                local tenu = sac and objet and sac.parObjet[objet]
+                local deja = tenu and tenu.places or math.ceil(n / pile)
+                placesQ = placesQ + math.max(deja, math.ceil(req / pile))
+                places = places + math.max(0, math.ceil(req / pile) - deja)
+                local pnj = objet and NS.ref.Lire("ItemDB", objet, "npcDrops")
+                local obj = objet and NS.ref.Lire("ItemDB", objet, "objectDrops")
+                if type(pnj) == "table" and #pnj > 0 then tuer = tuer + r / PLAN.TAUX_BUTIN
+                elseif type(obj) == "table" and #obj > 0 then ramasser = ramasser + r end
+            elseif o.type == "monster" then tuer = tuer + r
+            else ramasser = ramasser + r end
+        end
+    end
+    pt.restant, pt.placesQ = restant, placesQ
+    pt.besoin = places + math.ceil(tuer * PLAN.BRIC - 1e-9)
+    -- Du butin sans quantite connue : une place au moins.
+    if restant == 0 and pt.butin then pt.besoin = 1 end
+    pt.temps = math.min(PLAN.T_OBJ_MAX, tuer * PLAN.T_TUER + ramasser * PLAN.T_RAMASSER)
+    pt.presque = restant > 0 and restant <= PLAN.PRESQUE or nil
+end
+
+-- Les places que libere un rendu : celles de ses objets de quete.
+local function Liberees(pt, moi, ctx)
+    local q = moi.quetes and moi.quetes[pt.id]
+    local okB, base = pcall(NS.ref.ObjetsRequis, moi, pt.id)
+    base = okB and type(base) == "table" and base or {}
+    local n, rang = 0, 0
+    for _, o in ipairs(q and q.objectifs or {}) do
+        if o.type == "item" then
+            rang = rang + 1
+            local objet = tonumber(o.objet) or (base[rang] and tonumber(base[rang].objet))
+            local tenu = ctx.sac and objet and ctx.sac.parObjet[objet]
+            if tenu then n = n + tenu.places
+            elseif not ctx.sac then n = n + 1 end
+        end
+    end
+    return n
+end
+
 -- Ce que chaque point fait, et son identite (stable quand le lieu bouge).
 local function Qualifier(points, moi, ctx)
     for _, pt in ipairs(points) do
@@ -384,10 +807,12 @@ local function Qualifier(points, moi, ctx)
         pt.xp = XPDe(pt.id, moi)
         pt.rang = ctx.rangDe and ctx.rangDe(pt.id) or nil
         if pt.genre == "rendre" then
-            local q = moi.quetes and moi.quetes[pt.id]
-            local n = 0
-            for _, o in ipairs(q and q.objectifs or {}) do if o.type == "item" then n = n + 1 end end
-            pt.libere = n
+            pt.libere = Liberees(pt, moi, ctx)
+        elseif pt.genre == "objectif" then
+            pcall(Besoins, pt, moi, ctx)
+        elseif pt.genre == "prendre" then
+            -- Une quete qui donne son objet en la prenant : une place.
+            pt.besoin = NS.ref.Lire("QuestDB", pt.id, "sourceItemId") and 1 or 0
         end
     end
 end
@@ -395,6 +820,10 @@ end
 -- Sacs, journal, niveau : ce qui pese sur toutes les visites.
 local function Contexte(moi, points, compte)
     local ctx = { rangDe = type(compte) == "table" and compte.rangDe or nil }
+    local okS, sac = pcall(guidage.LireSacs)
+    ctx.sac = okS and type(sac) == "table" and sac or nil
+    local okU, usure = pcall(guidage.LireUsure)
+    ctx.usure = okU and tonumber(usure) or nil
     Qualifier(points, moi, ctx)
     local xps = {}
     for _, pt in ipairs(points) do
@@ -403,10 +832,11 @@ local function Contexte(moi, points, compte)
     end
     table.sort(xps)
     ctx.xpRef = xps[math.floor((#xps + 1) / 2)]
-    local libres = NS.PlacesLibres and NS.PlacesLibres()
+    local libres = ctx.sac and ctx.sac.libres or (NS.PlacesLibres and NS.PlacesLibres())
     ctx.pression = libres and math.max(0, (PLAN.SAC_SEUIL - libres) / PLAN.SAC_SEUIL) or 0
     ctx.sacsPleins = libres == 0
-    ctx.palierSacs = (libres == nil and "?") or (libres == 0 and "0") or (libres <= 2 and "2") or "+"
+    local function Palier(n) return (n == nil and "?") or (n == 0 and "0") or (n <= 2 and "2") or (n < PLAN.SAC_SEUIL and "6") or "+" end
+    ctx.palierSacs = Palier(libres) .. "/" .. Palier(libres and libres + (ctx.sac and ctx.sac.gris or 0))
     local n = 0
     for _ in pairs(moi.quetes or {}) do n = n + 1 end
     local maxi = tonumber((NS.Appeler(NS.Lecture("C_QuestLog.GetMaxNumQuestsCanAccept")))) or PLAN.JOURNAL_MAX
@@ -432,7 +862,10 @@ end
 local function ValeurAction(pt, ctx)
     local b = Poids(pt.xp, ctx.xpRef)
     if pt.genre == "rendre" then
-        local v = PLAN.V_RENDRE * b + ctx.pression * PLAN.V_SAC * (pt.libere or 0)
+        local v = PLAN.V_RENDRE * b
+        -- Sacs illisibles : l'ancienne estimation (sinon, les sacs se comptent
+        -- le long de l'enchainement).
+        if not ctx.sac then v = v + ctx.pression * PLAN.V_SAC * (pt.libere or 0) end
         if ctx.journalPresquePlein then v = v + PLAN.V_JOURNAL end
         for _, s in ipairs(pt.suites or {}) do
             v = v + PLAN.V_SUITE
@@ -443,7 +876,7 @@ local function ValeurAction(pt, ctx)
         return ctx.journalPlein and 0 or PLAN.V_PRENDRE * b
     elseif pt.genre == "objectif" then
         local v = PLAN.V_OBJECTIF * b
-        if pt.butin and ctx.sacsPleins then v = v * PLAN.BUTIN_PLEIN end
+        if pt.butin and ctx.sacsPleins and not ctx.sac then v = v * PLAN.BUTIN_PLEIN end
         return v
     end
     return PLAN.V_DONJON * math.max(1, #(pt.ids or {}))
@@ -459,6 +892,8 @@ local function AvantDans(a, b)
     if ra ~= rb then return ra < rb end
     return a.ident < b.ident
 end
+
+local function Demi(t) return 0.5 ^ (t / PLAN.DEMI_VIE) end
 
 local function Grappes(points, ctx)
     local tries = {}
@@ -479,23 +914,129 @@ local function Grappes(points, ctx)
         table.insert(g.actions, pt)
     end
     for _, g in ipairs(grappes) do
-        local v, xpRendue, suivante = 0, 0, false
+        local vA, xpRendue, suivante = 0, 0, false
+        g.objs, g.libere, g.prise = {}, 0, 0
         for _, a in ipairs(g.actions) do
-            v = v + ValeurAction(a, ctx)
+            local v = ValeurAction(a, ctx)
+            if a.genre == "objectif" then
+                local b = Poids(a.xp, ctx.xpRef)
+                table.insert(g.objs, { v = v, temps = a.temps or 0, besoin = a.besoin or (a.butin and 1 or 0),
+                    presque = a.presque, poids = b, recv = a.receveur, vRendu = PLAN.V_RENDRE * b, ident = a.ident,
+                    placesQ = a.placesQ or 0 })
+            else
+                vA = vA + v
+                if a.genre == "rendre" then g.libere = g.libere + (a.libere or 0) end
+                if a.genre == "prendre" and not ctx.journalPlein then g.prise = g.prise + (a.besoin or 0) end
+            end
             if a.genre == "rendre" then xpRendue = xpRendue + (a.xp or 0) end
             if ctx.rangMin and a.rang == ctx.rangMin then suivante = true end
         end
-        if suivante then v = v + PLAN.V_ORDRE end
+        if suivante then vA = vA + PLAN.V_ORDRE end
         if ctx.xpManquante and xpRendue > 0 and xpRendue >= ctx.xpManquante then
-            v = v + PLAN.V_NIVEAU * math.min(2, ctx.debloqueNiveau or 0)
+            vA = vA + PLAN.V_NIVEAU * math.min(2, ctx.debloqueNiveau or 0)
         end
-        g.valeur = v
+        g.vA = vA
+        local vO, tO = 0, 0
+        for _, o in ipairs(g.objs) do tO = tO + o.temps vO = vO + o.v * Demi(tO) end
+        g.valeur = vA + vO
         g.duree = PLAN.T_VISITE + PLAN.T_ACTION * #g.actions + (g.entree and PLAN.T_DONJON or 0)
+        if not g.entree and ctx.grille then
+            local R = PLAN.RAYON_SERVICE
+            g.vendeur = Proche(ctx.grille, g, "vendeur", R) ~= nil
+            g.courrier = Proche(ctx.grille, g, "courrier", R) ~= nil
+            g.banque = Proche(ctx.grille, g, "banque", R) ~= nil
+            g.reparation = Proche(ctx.grille, g, "reparation", R) ~= nil
+        end
     end
     return grappes
 end
 
-local function Demi(t) return 0.5 ^ (t / PLAN.DEMI_VIE) end
+-- Le vendeur le plus proche d'une visite, pour un aller-retour (yards ou nil).
+local function VendeurLoin(g, ctx)
+    if g.loin == nil then g.loin = Proche(ctx.grille, g, "vendeur", PLAN.VENDEUR_LOIN) or false end
+    return g.loin or nil
+end
+
+-- Une visite a l'instant `arrivee`, sacs `s` (nil : sacs illisibles) et
+-- objectifs finis plus tot dont le rendu attend (`attente`). Rend les sacs
+-- apres, la duree, le gain, les objectifs en attente et ce qui s'y fait.
+local function Visiter(g, arrivee, s, attente, ctx, surPlace)
+    local duree = g.duree
+    local gain = g.vA * Demi(arrivee)
+    local fait = {}
+    -- Les rendus d'objectifs finis plus tot dans l'enchainement.
+    local reste = {}
+    for _, o in ipairs(attente) do
+        if o.recv and Yards(o.recv, g, ctx.sx, ctx.sy) <= PLAN.RAYON then
+            gain = gain + o.vRendu * Demi(arrivee)
+            duree = duree + PLAN.T_ACTION
+            if s then s = { l = s.l + o.placesQ, gr = s.gr, dv = s.dv, mc = s.mc, repare = s.repare } end
+        else
+            table.insert(reste, o)
+        end
+    end
+    local n
+    if s then
+        n = { l = math.max(0, s.l + g.libere - g.prise), gr = s.gr, dv = s.dv, mc = s.mc, repare = s.repare }
+        local avant = n.l
+        local pression = math.max(0, PLAN.SAC_SEUIL - (s.l + s.gr * PLAN.FACT_GRIS)) / PLAN.SAC_SEUIL
+        if g.vendeur and n.gr + n.dv > 0 and n.l < PLAN.VENTE_SOUS then
+            n.l, n.gr, n.dv = n.l + n.gr + n.dv, 0, 0
+            duree = duree + PLAN.T_VENTE
+            fait.vendre = true
+        end
+        if (g.courrier or g.banque) and n.mc > 0 and n.l < PLAN.SAC_SEUIL then
+            n.l, n.mc = n.l + n.mc, 0
+            duree = duree + PLAN.T_POSTER
+            fait.poster = g.courrier and "courrier" or "banque"
+        end
+        if g.reparation and ctx.usure and ctx.usure < PLAN.USURE and not n.repare then
+            n.repare = true
+            gain = gain + PLAN.V_REPARER * Demi(arrivee)
+            duree = duree + PLAN.T_REPARER
+            fait.reparer = true
+        end
+        -- Sacs presque pleins : chaque place de marge regagnee vaut (le gris
+        -- vendu un peu moins : on aurait pu le jeter).
+        local rendues = (n.l - avant) - (fait.vendre and s.gr * PLAN.FACT_GRIS or 0) + g.libere
+        if pression > 0 and rendues > 0 then
+            gain = gain + PLAN.V_PLACE * pression * math.min(PLAN.SAC_SEUIL, rendues) * Demi(arrivee)
+        end
+    end
+    local tO = 0
+    for _, o in ipairs(g.objs) do
+        local part = 1
+        if n and o.besoin > n.l then
+            local manque = o.besoin - n.l
+            local jete = math.min(manque, n.gr)
+            if jete > 0 then
+                n.gr, n.l, manque = n.gr - jete, n.l + jete, manque - jete
+                duree, tO = duree + jete * PLAN.T_JETER, tO + jete * PLAN.T_JETER
+                gain = gain - jete * PLAN.PERTE_JETER
+                fait.jeter = (fait.jeter or 0) + jete
+            end
+            if manque > 0 then
+                local d = ctx.grille and VendeurLoin(g, ctx)
+                if d then
+                    local t = 2 * d / PLAN.VITESSE + PLAN.T_VENTE
+                    duree, tO = duree + t, tO + t
+                    n.l, n.dv = n.l + manque + n.dv, 0
+                    fait.allerRetour = true
+                else
+                    part = n.l / o.besoin
+                    fait.sansPlace = true
+                end
+            end
+        end
+        if n then n.l = math.max(0, n.l - o.besoin * part) end
+        duree, tO = duree + o.temps, tO + o.temps
+        local v = o.v * part
+        if surPlace and o.presque then v = v + PLAN.V_PRESQUE * o.poids end
+        gain = gain + v * Demi(arrivee + tO)
+        if part >= 1 then table.insert(reste, o) end
+    end
+    return n, duree, gain, reste, fait
+end
 
 -- Le meilleur enchainement de visites depuis `ici`. La cible d'avant
 -- (plan.visee) y est comptee 20 % plus pres (PLAN.GARDE), comme dans la chaine.
@@ -504,7 +1045,7 @@ local function Planifier(points, ici, plan, ctx)
     local vivantes = {}
     for _, g in ipairs(Grappes(points, ctx)) do
         if g.valeur > 0 then
-            g.seule = g.valeur * Demi(Yards(ici, g, ctx.sx, ctx.sy) / PLAN.VITESSE)
+            g.seule = g.valeur * Demi(Trajet(ici, g, ctx))
             table.insert(vivantes, g)
         end
     end
@@ -525,31 +1066,49 @@ local function Planifier(points, ici, plan, ctx)
         if gVisee and not dedans then table.insert(cand, gVisee) end
     end
     local h = math.min(PLAN.HORIZON, #cand)
+    local s0 = ctx.sac and { l = ctx.sac.libres or 0, gr = ctx.sac.gris or 0, dv = ctx.sac.divers or 0,
+        mc = ctx.sac.marchandises or 0 } or nil
     local meilleur
-    local chemin, pris = {}, {}
-    local function Explorer(pos, t, score)
+    local chemin, pris, faits = {}, {}, {}
+    local function Explorer(pos, t, score, s, attente)
         if #chemin == h then
-            if not meilleur or score > meilleur.score then meilleur = { score = score, chemin = { unpack(chemin) } } end
+            local fin = score
+            -- Les rendus qui restent : apres l'enchainement, chez leur receveur.
+            for _, o in ipairs(attente) do
+                if o.recv then fin = fin + o.vRendu * Demi(t + Trajet(pos, o.recv, ctx)) end
+            end
+            if s then
+                local marge = s.l + s.gr * PLAN.FACT_GRIS
+                fin = fin - PLAN.PEN_SAC * math.max(0, PLAN.SAC_SEUIL - marge) / PLAN.SAC_SEUIL
+            end
+            if not meilleur or fin > meilleur.score then
+                meilleur = { score = fin, chemin = { unpack(chemin) }, fait = faits[1] }
+            end
             return
         end
         for k, g in ipairs(cand) do
             if not pris[k] then
-                local trajet = Yards(pos, g, ctx.sx, ctx.sy) / PLAN.VITESSE
+                local trajet = Trajet(pos, g, ctx)
                 -- La cible d'avant compte 20 % plus pres : elle ne cede la
                 -- place qu'a un enchainement nettement meilleur.
                 if #chemin == 0 and g == gVisee then trajet = trajet * PLAN.GARDE end
                 local arrivee = t + trajet
+                local surPlace = #chemin == 0 and Yards(ici, g, ctx.sx, ctx.sy) <= PLAN.SUR_PLACE
+                local s2, duree, gain, attente2, fait = Visiter(g, arrivee, s, attente, ctx, surPlace)
                 pris[k] = true
                 table.insert(chemin, g)
-                Explorer(g, arrivee + g.duree, score + g.valeur * Demi(arrivee))
+                faits[#chemin] = fait
+                Explorer(g, arrivee + duree, score + gain, s2, attente2)
+                faits[#chemin] = nil
                 table.remove(chemin)
                 pris[k] = nil
             end
         end
     end
-    Explorer(ici, 0, 0)
+    Explorer(ici, 0, 0, s0, {})
     plan.visee = meilleur.chemin[1].actions[1].ident
     plan.score = meilleur.score
+    plan.fait = meilleur.fait
     return meilleur.chemin
 end
 
@@ -563,7 +1122,7 @@ local function Signature(points, moi, ctx)
         table.insert(m, pt.ident .. "=" .. f)
     end
     table.sort(m)
-    return table.concat(m, ",") .. "|" .. ctx.palierSacs .. "|" .. ctx.palierJournal
+    return table.concat(m, ",") .. "|" .. ctx.palierSacs .. "|" .. ctx.palierJournal .. "|" .. (ctx.grille and "s" or "-")
 end
 
 -- L'ordre des etapes d'un itineraire : les visites planifiees, puis le
@@ -571,12 +1130,21 @@ end
 local function OrdreDItineraire(points, ici, moi, continent, etat, compte)
     local ctx = Contexte(moi, points, compte)
     ctx.sx, ctx.sy = Echelle(continent)
+    local okG, grille = pcall(ServicesDuContinent, continent, ctx.sx, ctx.sy)
+    ctx.grille = okG and grille or nil
+    local okV, vols = pcall(VolsDuContinent, moi, continent)
+    ctx.vols = okV and vols or nil
     local sig = Signature(points, moi, ctx)
     if type(etat.plan) ~= "table" or etat.plan.signature ~= sig then
-        etat.plan = { signature = sig, suites = {}, visee = nil }
+        etat.plan = { signature = sig, suites = {}, receveurs = {}, visee = nil }
     end
+    etat.plan.receveurs = etat.plan.receveurs or {}
     for _, pt in ipairs(points) do
         if pt.genre == "rendre" then pt.suites = SuitesDebloquees(pt, moi, continent, ctx.sx, ctx.sy, etat.plan.suites) end
+        if pt.genre == "objectif" and not pt.receveur then
+            local okR, r = pcall(Receveur, pt, continent, ctx, etat.plan.receveurs)
+            pt.receveur = okR and r or nil
+        end
     end
     local chemin = Planifier(points, ici, etat.plan, ctx)
     if not chemin then return nil end
@@ -594,6 +1162,8 @@ end
 
 -- Pour les essais hors du jeu.
 guidage.PLAN, guidage.Planifier, guidage.OrdreDItineraire = PLAN, Planifier, OrdreDItineraire
+guidage.Grille, guidage.ServicesEtat = Grille, services
+guidage.ServicesSynchrones = function() while not Avancer(100000) do end return services.liste end
 
 local function EtapesDeQuetes(ids, moi, etat, compte, suite)
     -- Les detours encore a rendre s'ajoutent (une seule fois chacun).

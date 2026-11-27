@@ -199,6 +199,42 @@ function ref.LignesObtenir(tt, p, id)
     end
 end
 
+-- Infobulle d'un itineraire de toute une zone : son nom, son avancement, puis
+-- ce que CraftCore sait de la zone pour ce personnage (herbes et minerais a
+-- sa portee, composants qui manquent a ses projets suivis). Une ligne par
+-- information, jamais sur deux lignes. Sans CraftCore : nom et avancement.
+function ref.InfobulleDeZone(tt, p, pc)
+    local L = NS.L
+    tt:SetText(tostring(pc.nom or "?"), 1, 0.82, 0)
+    local faites, total, pct = NS.parcours.Avancement(p, pc)
+    tt:AddLine(string.format(L.ROUTE_PROGRESS, faites, total, pct), 1, 1, 1)
+    local api = _G.CraftCoreAPI
+    local carte = pc.zone and NS.carte and NS.carte.CarteDeZone and NS.carte.CarteDeZone(pc.zone)
+    -- Seulement pour le personnage connecte (ses metiers, ses projets).
+    if not (api and carte and p and p.cle == NS.ClePersonnage()) then return end
+    local function Icone(icone) return icone and string.format("|T%s:14:14|t ", tostring(icone)) or "" end
+    local okR, recoltes = pcall(api.RecoltesDeZone or function() return {} end, carte)
+    if okR and type(recoltes) == "table" and #recoltes > 0 then
+        tt:AddLine(" ")
+        tt:AddLine(L.ROUTE_TIP_GATHER, 1, 0.82, 0)
+        for _, r in ipairs(recoltes) do
+            local c = type(r.couleur) == "table" and r.couleur or { 1, 1, 1 }
+            tt:AddDoubleLine(Icone(r.icone) .. tostring(r.nom), string.format(L.ROUTE_TIP_RANK, r.requis or 0),
+                c[1], c[2], c[3], 0.6, 0.6, 0.6)
+        end
+    end
+    local okC, composants = pcall(api.ComposantsDeZone or function() return {} end, carte, pc.zone)
+    if okC and type(composants) == "table" and #composants > 0 then
+        tt:AddLine(" ")
+        tt:AddLine(L.ROUTE_TIP_PROJECTS, 1, 0.82, 0)
+        local SOURCES = { recolte = L.ROUTE_TIP_SRC_GATHER, butin = L.ROUTE_TIP_SRC_LOOT, marchand = L.ROUTE_TIP_SRC_VENDOR }
+        for _, c in ipairs(composants) do
+            tt:AddDoubleLine(Icone(c.icone) .. tostring(c.nom),
+                string.format(L.ROUTE_TIP_NEED, SOURCES[c.source] or "", c.manque or 0), 1, 1, 1, 1, 0.82, 0)
+        end
+    end
+end
+
 -- Couleur de difficulte d'une quete pour un niveau de personnage, comme le
 -- journal du jeu : rouge, orange, jaune, vert, gris.
 function ref.CouleurDeNiveau(niveauQuete, niveauPerso)

@@ -796,6 +796,11 @@ local function RendreParcours(contenu, p, index, y, filtre)
             police = "GameFontNormalSmall", texte = pc.nom, couleur = { 1, 0.82, 0 },
             droite = string.format(L.ROUTE_PROGRESS, faites, total, pct),
             couleurDroite = pct >= 100 and { 0.31, 0.82, 0.41 } or { 1, 1, 1 },
+            survol = pc.genre == "zone" and function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                NS.ref.InfobulleDeZone(GameTooltip, p, pc)
+                GameTooltip:Show()
+            end or nil,
             auClic = function()
                 etat.ouvertes[cleOuverte] = not etat.ouvertes[cleOuverte] or nil
                 fen.Rendre()
