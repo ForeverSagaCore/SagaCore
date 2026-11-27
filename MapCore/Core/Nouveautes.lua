@@ -2,12 +2,29 @@
 -- Fenetre Derniere mise a jour de la suite. Copie identique dans chaque add-on qui
 -- porte Suite.lua : la copie la plus recente l'emporte.
 
-local VERSION = 3000000
+local VERSION = 3000001
 if type(_G.CoreSuiteNouveautesVersion) == "number" and _G.CoreSuiteNouveautesVersion >= VERSION then return end
 _G.CoreSuiteNouveautesVersion = VERSION
 
 _G.CoreSuiteNouveautes = {
-    { cle = "s3.0", titre = "3.0 : GloryCore et l'itinéraire qui choisit", periode = "28/11/2026", resume = "GloryCore rejoint la suite (des points pour chaque haut fait, des objectifs à votre rythme réel). L'itinéraire de QuestCore pèse les visites, les sacs et les rendus pour choisir le meilleur ordre. Toutes les fenêtres partagent le même pied : Commandes, Aide, Dernière mise à jour, Réglages, Fermer.", versions = {
+    { cle = "s3.0", titre = "3.0 : GloryCore et l'itinéraire qui choisit", periode = "28/11 au 28/11/2026", resume = "GloryCore rejoint la suite (des points pour chaque haut fait, des objectifs à votre rythme réel). L'itinéraire de QuestCore pèse les visites, les sacs et les rendus pour choisir le meilleur ordre. Toutes les fenêtres partagent le même pied : Commandes, Aide, Dernière mise à jour, Réglages, Fermer.", versions = {
+        { v = "3.0.1", date = "28/11/2026", titre = "Itinéraire de zone et GloryCore plus justes", blocs = {
+            { "p", "Correctif : l'itinéraire de zone reste dans sa zone, et GloryCore compte plus juste." },
+            { "h", "QuestCore" },
+            { "li", "**Itinéraire de zone.** Une quête finie qui se rend hors de la zone (en ville, par exemple) se fait en quittant la zone, plus au milieu du parcours. Elle passe dans un groupe à part du suivi, « À rendre en quittant la zone », avec le lieu, et la mention « ouvre une suite » quand son rendu en débloque une." },
+            { "li", "**Toutes les quêtes à prendre de la zone** sont visées, plus seulement les quatre suivantes : l'itinéraire mène chez leurs donneurs dans l'ordre le plus rentable." },
+            { "li", "**Le retour compte.** Dans tous les itinéraires, partir loin pour une seule action coûte maintenant le chemin du retour vers tout ce qui reste à faire." },
+            { "li", "**Quêtes de bas niveau.** Quand le suivi des quêtes de bas niveau du jeu est allumé (menu de la minicarte), les quêtes grises comptent comme les autres : carte, quêtes disponibles, itinéraires." },
+            { "h", "GloryCore (bêta)" },
+            { "li", "**Des points sur un maximum.** Mon compte, chaque personnage et chaque catégorie affichent « X / Y points ». Le maximum d'un personnage dépend de son camp, de sa race, de sa classe et de ses métiers." },
+            { "li", "**Suites de quêtes.** Seules les suites de quêtes de classe rapportent des points ; les suites du jeu ordinaire ne sont plus des hauts faits." },
+            { "li", "**Paliers.** Un haut fait de 10 points à 10, 25, 50, 75 et 100 % en exploration, rares, objets, quêtes et donjons. Ceux déjà atteints sont comptés sans être annoncés." },
+            { "li", "**Boss déjà vaincus.** Les victoires notées par le Journal des donjons pour chaque personnage comptent, même d'avant GloryCore, ainsi que les boss que des quêtes rendues demandaient de tuer." },
+            { "li", "**Portraits des boss.** Chaque boss a son vrai portrait dans le détail d'un donjon (pris au Journal des donjons, sans l'ouvrir), en gris tant qu'il n'est pas vaincu." },
+            { "li", "**Objets à sa portée.** Pour un personnage, seuls comptent les armures et les armes que sa classe peut porter (un mage n'a plus ni maille ni plaque)." },
+            { "li", "Le point d'exclamation des quêtes est plus petit dans son anneau." },
+            { "d", "Contenu : CraftCore, QuestCore, MapCore, LegacyCore, StuffCore, FriendsCore 3.0.1 ; AuraCore, ClassCore et GloryCore 3.0.1 (bêta)." },
+        } },
         { v = "3.0.0", date = "28/11/2026", titre = "GloryCore, itinéraire qui choisit, pied commun", blocs = {
             { "p", "Une nouvelle étape pour la suite : GloryCore arrive, l'itinéraire de QuestCore choisit lui-même le meilleur ordre, et toutes les fenêtres partagent le même pied, avec l'aide, les commandes et l'histoire de chaque version." },
             { "h", "GloryCore (bêta) : finir le jeu, en points" },

@@ -10,7 +10,7 @@
 ## Notes-zhCN: 角色周围的简洁圆环 : 增益、触发效果、消耗品和队伍增益，减益效果位于单独圆圈，使用游戏自带图标。
 ## Notes-zhTW: 角色周围的简洁圆环 : 增益、触发效果、消耗品和队伍增益，减益效果位于单独圆圈，使用游戏自带图标。
 ## Author: ForeverSagaCore
-## Version: 3.0.0
+## Version: 3.0.1
 ## IconTexture: Interface\Icons\Spell_Holy_AuraOfLight
 ## X-Category: Buffs & Debuffs
 ## X-Website: https://github.com/ForeverSagaCore/SagaCore

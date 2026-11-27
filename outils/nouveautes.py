@@ -103,6 +103,7 @@ TITRES = {
     "2.5.5": "Où apprendre une recette",
     "2.5.6": "Détours, commerce des caisses et entre joueurs",
     "3.0.0": "GloryCore, itinéraire qui choisit, pied commun",
+    "3.0.1": "Itinéraire de zone et GloryCore plus justes",
 }
 
 # Versions sans fichier de notes : ce qu'elles ont apporte.
