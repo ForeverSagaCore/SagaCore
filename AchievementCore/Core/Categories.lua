@@ -632,13 +632,15 @@ local function CategorieMetiers()
                 for _, p in ipairs(ctx.persos) do meilleur = math.max(meilleur, Rang(p)) end
                 local recettes = (not libre) and parLigne[ligne] or {}
                 local function Apprise(p, id) return recettesDe[p.cle][id] == true end
-                local fait = 0
-                for _, r in ipairs(ref.RANGS_METIER) do if meilleur >= r.rang then fait = fait + 1 end end
+                local fait, paliers, apprises = 0, {}, 0
+                for _, r in ipairs(ref.RANGS_METIER) do if meilleur >= r.rang then fait = fait + 1 table.insert(paliers, r.rang) end end
                 for _, r in ipairs(recettes) do
-                    for _, p in ipairs(ctx.persos) do if Apprise(p, r.id) then fait = fait + 1 break end end
+                    for _, p in ipairs(ctx.persos) do if Apprise(p, r.id) then fait = fait + 1 apprises = apprises + 1 break end end
                 end
                 local nom = libre and T("Métier principal à apprendre", "Main profession to learn") or ref.NomDeMetier(ligne, nomConnu)
-                Ajouter(res, s, { cle = "m" .. tostring(ligne), nom = nom, ordre = rang,
+                -- Chaque palier atteint (75, 150, 225, 300) est un haut fait a part.
+                Ajouter(res, s, { cle = "m" .. tostring(ligne), nom = nom, ordre = rang, paliers = paliers,
+                    detail = libre and T("À apprendre", "To learn") or string.format(T("Rang %d  Recettes %d / %d", "Rank %d  Recipes %d / %d"), meilleur, apprises, #recettes),
                     icone = m and m.icone or "Interface\\Icons\\INV_Misc_QuestionMark",
                     fait = fait, total = #ref.RANGS_METIER + #recettes,
                     Detail = function()
