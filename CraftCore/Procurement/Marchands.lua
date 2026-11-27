@@ -1529,6 +1529,42 @@ end
 -- (compagnon jusqu'a 150, expert jusqu'a 225, artisan au-dela), le plus
 -- proche. { nom, carte, x, y, zone, palier } ou nil. Sert partout ou une
 -- recette dit « chez un formateur », pour dire lequel et y guider.
+-- Ce que chaque maitre enseigne, releve quand on lui parle (fenetre du
+-- maitre) : [id du PNJ] = { [nom plie de la recette] = true }. Un maitre
+-- releve qui n'enseigne pas une recette n'est jamais propose pour elle.
+local function Enseignements()
+    local d = CraftCoreDB
+    if type(d) ~= "table" then return {} end
+    d.enseignements = type(d.enseignements) == "table" and d.enseignements or {}
+    return d.enseignements
+end
+local function PlierNom(nom)
+    if NS.caisses and NS.caisses.Plier then return NS.caisses.Plier(nom) end
+    return string.lower(tostring(nom or ""))
+end
+function avisRang.ReleverMaitre()
+    local guid = NS.Appeler(UnitGUID, "npc")
+    local id = type(guid) == "string" and tonumber(guid:match("^%a+%-%d+%-%d+%-%d+%-%d+%-(%d+)"))
+    local nombre = NS.Appeler(NS.Lecture("GetNumTrainerServices"))
+    local info = NS.Lecture("GetTrainerServiceInfo")
+    if not (id and nombre and info) then return end
+    local t = {}
+    for i = 1, nombre do
+        local nom, _, genre = NS.Appeler(info, i)
+        if type(nom) == "string" and genre ~= "header" then t[PlierNom(nom)] = true end
+    end
+    if next(t) then
+        t.vuLe = NS.Appeler(time)
+        Enseignements()[id] = t
+    end
+end
+-- Ce maitre enseigne-t-il cette recette ? true, false, ou nil (pas releve).
+function avisRang.Enseigne(id, recette)
+    local t = Enseignements()[tonumber(id)]
+    if type(t) ~= "table" or type(recette) ~= "table" or not recette.nom then return nil end
+    return t[PlierNom(recette.nom)] == true
+end
+
 function avisRang.FormateurPour(recette)
     if type(recette) ~= "table" then return nil end
     local R = NS.recettes
@@ -1537,11 +1573,34 @@ function avisRang.FormateurPour(recette)
     if not ligne then return nil end
     requis = tonumber(requis) or 0
     local palier = (requis > 225 and 225) or (requis > 150 and 150) or 75
-    local ok, cible = pcall(avisRang.MaitrePlusProche, ligne, palier)
+    -- Les maitres possibles : ceux dont on sait qu'ils l'enseignent d'abord ;
+    -- sinon ceux du palier, sans ceux dont on sait qu'ils ne l'enseignent pas.
+    local candidats, surs = {}, {}
+    if not maitres then LireMaitres() end
+    for _, id in ipairs(MaitresDuPalier(ligne, palier) or (maitres and maitres[ligne]) or {}) do
+        local e = avisRang.Enseigne(id, recette)
+        if e == true then table.insert(surs, id) elseif e == nil then table.insert(candidats, id) end
+    end
+    -- Un maitre releve d'un autre palier qui l'enseigne compte aussi.
+    for id, t in pairs(Enseignements()) do
+        if type(t) == "table" and recette.nom and t[PlierNom(recette.nom)] then
+            local deja = false
+            for _, x in ipairs(surs) do if x == id then deja = true end end
+            if not deja then table.insert(surs, id) end
+        end
+    end
+    local liste = #surs > 0 and surs or candidats
+    local ok, cible = pcall(avisRang.MaitrePlusProche, ligne, palier, liste)
     if not (ok and type(cible) == "table") then
         -- Pas sur le meme continent : le premier du palier, ou qu'il soit.
-        local okL, liste = pcall(avisRang.MaitresDuPalier, ligne, palier)
-        cible = okL and type(liste) == "table" and liste[1] or nil
+        local id = liste[1]
+        cible = id and { id = id, nom = LireDB("NpcDB", id, "name") or "?" } or nil
+        local spawns = id and LireDB("NpcDB", id, "spawns")
+        for zone, points in pairs(type(spawns) == "table" and spawns or {}) do
+            local carte = CarteDeZone(zone)
+            local p = type(points) == "table" and points[1]
+            if carte and p and tonumber(p[1]) then cible.carte, cible.x, cible.y = carte, p[1] / 100, p[2] / 100 break end
+        end
     end
     if type(cible) ~= "table" then return nil end
     local info = cible.carte and NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), cible.carte)
@@ -1551,6 +1610,13 @@ end
 
 -- Texte court : « chez <nom> (<zone>) », ou le texte general.
 function avisRang.TexteFormateur(recette)
+    -- Patron du camp : son vendeur. Autre recette de marchand : le texte general.
+    if NS.commerce and NS.commerce.TexteVendeur then
+        local okV, texte = pcall(NS.commerce.TexteVendeur, recette)
+        if okV and texte then return texte end
+    end
+    local okN, nature = pcall(NS.recettes.CommentApprendre, recette)
+    if okN and nature and nature ~= "RECIPES_HOW_TRAINER" then return NS.L[nature] end
     local f = avisRang.FormateurPour(recette)
     if not f then return NS.L.RECIPES_HOW_TRAINER end
     return string.format(NS.L.RECIPES_HOW_TRAINER_AT or "%s (%s)", tostring(f.nom), tostring(f.zone or "?"))
@@ -1564,8 +1630,8 @@ end
 
 -- Le maitre d'un metier le plus proche, sur le continent du personnage :
 -- { carte, x (0-1), y (0-1), nom }, ou nil (maitres pas encore lus, aucun).
-function avisRang.MaitrePlusProche(ligne, rangMax)
-    local duPalier = MaitresDuPalier(ligne, rangMax)
+function avisRang.MaitrePlusProche(ligne, rangMax, choix)
+    local duPalier = choix or MaitresDuPalier(ligne, rangMax)
     if not duPalier then
         LireMaitres()
         if not maitres then return nil end
@@ -1587,7 +1653,7 @@ function avisRang.MaitrePlusProche(ligne, rangMax)
                         local d = (x - jx) ^ 2 + (y - jy) ^ 2
                         if not meilleur or d < meilleur then
                             meilleur = d
-                            cible = { carte = carte, x = p[1] / 100, y = p[2] / 100, nom = LireDB("NpcDB", id, "name") or "?" }
+                            cible = { carte = carte, x = p[1] / 100, y = p[2] / 100, nom = LireDB("NpcDB", id, "name") or "?", id = id }
                         end
                     end
                 end
@@ -1750,5 +1816,16 @@ do
     f:SetScript("OnEvent", function()
         local apres = NS.Lecture("C_Timer.After")
         if apres then NS.Appeler(apres, 2, function() pcall(avisRang.Verifier) end) end
+    end)
+end
+
+-- Fenetre d'un maitre : ce qu'il enseigne est releve (puis relu a chaque mise
+-- a jour de sa liste), pour ne proposer que les maitres qui enseignent.
+do
+    local f = CreateFrame("Frame")
+    for _, ev in ipairs({ "TRAINER_SHOW", "TRAINER_UPDATE" }) do pcall(f.RegisterEvent, f, ev) end
+    f:SetScript("OnEvent", function()
+        local ok, souci = pcall(avisRang.ReleverMaitre)
+        if not ok and NS.base.NoterIncident then NS.base.NoterIncident("maitre, releve", souci) end
     end)
 end

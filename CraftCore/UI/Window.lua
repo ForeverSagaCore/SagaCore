@@ -567,6 +567,10 @@ local function PoserBoutonGuider(ligne, recette, nature)
                 NS.guidage.MaitreDeMetier(f.ligne, NS.recettes.NomDuMetier and NS.recettes.NomDuMetier(f.ligne) or "", f.palier, f)
             end
         end
+    elseif nature == "RECIPES_HOW_VENDOR" and NS.commerce and NS.guidage and NS.guidage.PNJCommerce
+        and select(2, pcall(NS.commerce.TexteVendeur, recette)) then
+        local _, _, idPNJ = pcall(NS.commerce.TexteVendeur, recette)
+        if idPNJ then action = function() NS.guidage.PNJCommerce(idPNJ) end end
     elseif nature == "RECIPES_HOW_VENDOR" and NS.guidage and NS.guidage.Marchand then
         local okO, objet = pcall(NS.recettes.ObjetDuPlan, recette)
         if okO and objet and NS.marchands and NS.marchands.Localisable and NS.marchands.Localisable(objet) then
@@ -3868,7 +3872,7 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
             for k, e in ipairs(aApprendre) do
                 if k > 6 then break end
                 local nature = catalogue.CommentApprendre(e.r)
-                local ou = (nature == "RECIPES_HOW_TRAINER" and NS.avisRang and NS.avisRang.TexteFormateur)
+                local ou = ((nature == "RECIPES_HOW_TRAINER" or nature == "RECIPES_HOW_VENDOR") and NS.avisRang and NS.avisRang.TexteFormateur)
                     and NS.avisRang.TexteFormateur(e.r) or (nature and L[nature] or "")
                 local icone = e.r.objetProduit and NS.Appeler(NS.jeu.iconeObjet, e.r.objetProduit) or nil
                 index, y = LigneSimple(contenu, index, y, icone, tostring(e.r.nom or e.r.id), string.format(L.PROG_LEARN_WHERE, e.requis, ou))
@@ -4076,7 +4080,7 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                 local nature, lignesSrc = catalogue.CommentApprendre(etape.recette)
                 -- A droite : le plan deja en main, sinon comment l'obtenir et
                 -- son prix releve a l'hotel des ventes (releve a chaque passage).
-                local droite = (((nature) == "RECIPES_HOW_TRAINER" and NS.avisRang and NS.avisRang.TexteFormateur) and NS.avisRang.TexteFormateur(etape.recette) or L[nature or ""] or "")
+                local droite = ((((nature) == "RECIPES_HOW_TRAINER" or (nature) == "RECIPES_HOW_VENDOR") and NS.avisRang and NS.avisRang.TexteFormateur) and NS.avisRang.TexteFormateur(etape.recette) or L[nature or ""] or "")
                 local okP, _, possede = pcall(catalogue.PlanPossede, etape.recette)
                 if okP and possede then
                     droite = string.format(L.GOAL_LEARN_HAVE, possede)
@@ -4389,7 +4393,7 @@ local function RendreProgressionDuMetier(contenu, index, y, ligneMetier, sien)
                 index, y, l = LigneSimple(contenu, index, y, "Interface\\Icons\\INV_Misc_Book_09",
                     string.format(L.GUIDE_LEARN, etape.recette.nom or "?"),
                     etape.faite and ("|cff4fd16a" .. (L.PROG_STEP_DONE or "Fait") .. "|r")
-                    or (string.format(L.GUIDE_LEARN_AT, etape.rangRequis or etape.de) .. "  " .. (((nature) == "RECIPES_HOW_TRAINER" and NS.avisRang and NS.avisRang.TexteFormateur) and NS.avisRang.TexteFormateur(etape.recette) or L[nature or ""] or "")))
+                    or (string.format(L.GUIDE_LEARN_AT, etape.rangRequis or etape.de) .. "  " .. ((((nature) == "RECIPES_HOW_TRAINER" or (nature) == "RECIPES_HOW_VENDOR") and NS.avisRang and NS.avisRang.TexteFormateur) and NS.avisRang.TexteFormateur(etape.recette) or L[nature or ""] or "")))
                 if l then
                     l.total:SetTextColor(0.31, 0.82, 0.41)
                     l:EnableMouse(true)

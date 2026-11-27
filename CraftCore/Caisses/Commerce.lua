@@ -363,6 +363,56 @@ function C.Patrons(fiche, metier)
     return liste
 end
 
+-- Le patron du camp qui apprend cette recette : objet, metier (ou nil).
+-- Par le lien deja fait (recette du catalogue), sinon par le nom.
+function C.PatronDeRecette(recette)
+    if type(recette) ~= "table" then return nil end
+    local b = Base()
+    if not b then return nil end
+    local nom = type(recette.nom) == "string" and NS.caisses.Plier(recette.nom)
+    for objet, p in pairs(b.patrons) do
+        if type(p) == "table" then
+            if p.recette and recette.id and tostring(p.recette) == tostring(recette.id) then return objet, D.PATRONS[objet] end
+            local apres = type(p.nom) == "string" and (p.nom:match(":%s*(.+)$") or p.nom)
+            if nom and apres and NS.caisses.Plier(apres) == nom then return objet, D.PATRONS[objet] end
+        end
+    end
+    return nil
+end
+
+-- « chez Nina Surefire (Carmines) » pour une recette du camp, ou nil.
+function C.TexteVendeur(recette)
+    local objet, metier = C.PatronDeRecette(recette)
+    if not objet then return nil end
+    local _, camp = C.Faction()
+    local id, n = C.PNJ(camp, metier)
+    if not n then return nil end
+    local f = D.FACTIONS[n.camp]
+    local info = f and NS.Appeler(NS.Lecture("C_Map.GetMapInfo"), f.carte)
+    return string.format(NS.L.RECIPES_HOW_TRAINER_AT or "%s (%s)", n.nom, type(info) == "table" and info.name or "?"), id
+end
+
+-- Au demarrage, les patrons sont lus peu a peu (infobulles), pour que les
+-- recettes du camp soient reconnues partout, onglet Caisses ouvert ou non.
+local function LireTousLesPatrons()
+    local liste = {}
+    for objet in pairs(D.PATRONS) do table.insert(liste, objet) end
+    local i = 1
+    local plusTard = NS.Lecture("C_Timer.After")
+    local function Paquet()
+        for _ = 1, 20 do
+            local objet = liste[i]
+            if not objet then return end
+            local p = Lire(objet)
+            if p then pcall(Recette, objet, D.PATRONS[objet]) end
+            i = i + 1
+        end
+        if plusTard then plusTard(0.2, Paquet) end
+    end
+    if plusTard then plusTard(5, Paquet) end
+end
+C.LireTousLesPatrons = LireTousLesPatrons
+
 -- Le vendeur d'un metier (ou d'un role) dans le camp du personnage.
 function C.PNJ(camp, metier, role)
     for id, n in pairs(D.PNJ) do
@@ -533,6 +583,7 @@ for _, ev in ipairs({ "PLAYER_LOGIN", "UPDATE_FACTION", "CURRENCY_DISPLAY_UPDATE
     pcall(f.RegisterEvent, f, ev)
 end
 f:SetScript("OnEvent", function(_, ev, a)
+    if ev == "PLAYER_LOGIN" then pcall(LireTousLesPatrons) end
     if ev == "GET_ITEM_INFO_RECEIVED" then
         if a and demandes[tonumber(a)] then demandes[tonumber(a)] = nil RafraichirBientot() end
         return
