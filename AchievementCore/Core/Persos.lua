@@ -239,7 +239,13 @@ function persos.Union(nom, liste, lecture, version)
 end
 
 -- Couleur et portrait, comme les lignes de personnage de LegacyCore.
-function persos.Visage(texture, p)
+function persos.Visage(texture, p, taille)
+    -- Comme partout dans la suite : le portrait dans le cercle de sa classe.
+    local S = _G.CoreSuite
+    if S and S.PoserVisagePerso then
+        S.PoserVisagePerso(texture, { classe = p.classe, nom = p.nom, moi = p.cle == NS.ClePersonnage() }, taille)
+        return
+    end
 
     texture:SetTexCoord(0, 1, 0, 1)
     if p.cle == NS.ClePersonnage() and _G.SetPortraitTexture and pcall(_G.SetPortraitTexture, texture, "player") then return end

@@ -781,7 +781,7 @@ local function RendrePersos(contenu, index, y)
         y = Poser(contenu, index, y + 2, { retrait = 4,
             visage = function(tex)
                 PoserVisage(tex, perso, perso.cle == courant)
-                tex:SetDesaturated(not debloque)
+                for _, t in ipairs({ tex, tex.calqueVivant, tex.calqueDepose }) do t:SetDesaturated(not debloque) end
             end,
             -- La couleur dit deja la classe : le nom seul.
             texte = NS.NomCourt(p.cle),
@@ -970,7 +970,12 @@ end
 -- ---------------------------------------------------------------------------
 
 PoserVisage = function(texture, p, estConnecte)
-
+    -- Comme partout dans la suite : le portrait dans le cercle de sa classe.
+    local S = _G.CoreSuite
+    if S and S.PoserVisagePerso then
+        S.PoserVisagePerso(texture, { classe = p.classe, nom = NS.NomCourt(p.cle), moi = estConnecte == true })
+        return
+    end
     texture:SetTexCoord(0, 1, 0, 1)
     if estConnecte and SetPortraitTexture and pcall(SetPortraitTexture, texture, "player") then return end
     -- L'icone ronde de classe du jeu (recherche de groupe), quand le client l'a.

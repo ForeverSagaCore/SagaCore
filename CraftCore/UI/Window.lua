@@ -6159,8 +6159,17 @@ PoserVisage = function(texture, fiche, estConnecte)
     local vivant = Calque(texture, "calqueVivant", 1)
     local depose = Calque(texture, "calqueDepose", 2)
     vivant:Hide() depose:Hide()
+    -- Le portrait se pose dans le cercle de sa classe, un peu plus petit :
+    -- le cercle de couleur en fait le tour, comme dans la bande.
+    local w = texture:GetWidth()
+    if not w or w <= 0 then w = texture:GetHeight() end
+    if not w or w <= 0 then w = 24 end
+    local r = math.floor(w * 0.2 + 0.5)
     for _, c in ipairs({ vivant, depose }) do
         if c.SetMask and not c.rond then c.rond = true pcall(c.SetMask, c, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
+        c:ClearAllPoints()
+        c:SetPoint("TOPLEFT", texture, "TOPLEFT", r, -r)
+        c:SetPoint("BOTTOMRIGHT", texture, "BOTTOMRIGHT", -r, r)
     end
     -- L'image deposee par le joueur passe avant tout.
     if PortraitDepose(depose, fiche) then depose:Show() end
