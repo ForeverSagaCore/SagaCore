@@ -221,9 +221,10 @@ local function HautsFaits(cleCat, r, faits, possibles)
                 possibles[k] = v
                 -- Les paliers d'un metier : un petit haut fait chacun (5).
                 for _, palier in ipairs(e.paliers or {}) do
-                    faits[k .. "|" .. palier] = { pts = 5, nom = tostring(e.nom) .. " " .. palier, icone = e.icone, cat = cleCat, sous = s.cle, element = e.cle }
+                    local nom = e.formatPalier and string.format(e.formatPalier, tostring(e.nom), palier) or (tostring(e.nom) .. " " .. palier)
+                    faits[k .. "|" .. palier] = { pts = 5, nom = nom, icone = e.icone, cat = cleCat, sous = s.cle, element = e.cle }
                 end
-                for n = 1, (e.paliers and #(NS.ref.RANGS_METIER or {}) or 0) do possibles[k .. "|p" .. n] = 5 end
+                for n = 1, (e.paliers and (e.nbPaliers or 0) or 0) do possibles[k .. "|p" .. n] = 5 end
                 if Fini(e) then
                     faits[k] =
                         { pts = v, nom = e.nom, icone = e.icone, cat = cleCat, sous = s.cle, element = e.cle }
@@ -237,7 +238,7 @@ end
 -- fini au premier releve d'une categorie n'a pas de date (0).
 -- Un nouveau releve d'une categorie (nouvelle facon de compter) repart
 -- comme un premier releve : rien n'est annonce d'un coup.
-local VERSION_HF = 2
+local VERSION_HF = 3
 calcul.nouveaux = {}
 local function Dater(cle, cleCat, faits)
     local f = NS.base.Fiche(cle)
