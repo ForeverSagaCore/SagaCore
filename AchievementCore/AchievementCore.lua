@@ -96,19 +96,43 @@ local function MortDansLeJournal()
 end
 
 -- Un haut fait obtenu : le bandeau du milieu de l'ecran (celui de
--- QuestCore), un son, et si le joueur l'a choisi, son personnage danse.
+-- QuestCore), qui clignote, reste fixe puis part en fondu ; le son du
+-- passage de niveau ; et le personnage danse (reglage, active par defaut),
+-- jamais en combat, et seulement une fois arrete (il attend qu'on s'arrete,
+-- quinze secondes au plus).
+local danseEnAttente = false
+local function DanserQuandArrete()
+    if danseEnAttente then return end
+    danseEnAttente = true
+    local essais = 0
+    local function Essayer()
+        essais = essais + 1
+        local vitesse = NS.Jeu("GetUnitSpeed", "player")
+        local combat = InCombatLockdown and InCombatLockdown()
+        if not combat and (tonumber(NS.Sur(vitesse)) or 0) == 0 then
+            danseEnAttente = false
+            pcall(_G.DoEmote, "DANCE")
+            return
+        end
+        if essais >= 30 or combat then danseEnAttente = false return end
+        local apres = NS.Lecture("C_Timer.After")
+        if apres then apres(0.5, Essayer) else danseEnAttente = false end
+    end
+    Essayer()
+end
+
 local function Annoncer(x)
     local reglages = NS.base.Reglages()
     if reglages.annoncerHautsFaits == false then return end
     local api = _G.QuestCoreAPI
     local titre = T("Haut fait : ", "Feat : ") .. tostring(x.nom or "?")
     local detail = string.format(T("+%d points", "+%d points"), x.pts or 0)
-    if not (api and api.Bandeau and api.Bandeau(titre, detail, true)) then NS.Dire(titre .. "  " .. detail) end
-    local son = _G.SOUNDKIT and (_G.SOUNDKIT.UI_ACHIEVEMENT_AWARDED or _G.SOUNDKIT.LEVELUPSOUND) or 888
+    local montre = api and api.Bandeau and api.Bandeau(titre, detail, true, nil,
+        { clignote = true, icone = x.icone or "Interface\\Icons\\INV_Misc_Ribbon_01" })
+    if not montre then NS.Dire(titre .. "  " .. detail) end
+    local son = _G.SOUNDKIT and _G.SOUNDKIT.LEVELUPSOUND or 888
     pcall(PlaySound, son)
-    if reglages.danserHautFait == true and _G.DoEmote and not (InCombatLockdown and InCombatLockdown()) then
-        pcall(_G.DoEmote, "DANCE")
-    end
+    if reglages.danserHautFait ~= false and _G.DoEmote then DanserQuandArrete() end
 end
 
 -- Apres un changement : les hauts faits du personnage connecte, un peu plus

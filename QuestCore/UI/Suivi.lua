@@ -3468,6 +3468,13 @@ local function ConstruireBandeau()
             for _, l in ipairs(lignesB) do l.utile = false end
             return
         end
+        -- Un haut fait : il clignote d'abord, reste fixe, puis part en fondu.
+        local maintenant = NS.Appeler(GetTime) or 0
+        if self.clignoteJusque and maintenant < self.clignoteJusque then
+            self:SetAlpha(0.35 + 0.65 * math.abs(math.cos((self.clignoteJusque - maintenant) * math.pi * 2.5)))
+            return
+        end
+        if self.fonduForce then self:SetAlpha(math.min(1, reste / self.fonduForce)) return end
         -- Disparition en fondu (sur la duree choisie) ou d'un coup.
         local r = ReglagesBandeau()
         if r.disparition == "fondu" and r.fondu > 0 then self:SetAlpha(math.min(1, reste / r.fondu))
@@ -3547,7 +3554,7 @@ local function PoserIcone(tex, terminee)
     end
 end
 
-local function Montrer(titre, detail, terminee, detail2)
+local function Montrer(titre, detail, terminee, detail2, opts)
     ConstruireBandeau()
     -- Une ligne par quete : la meme quete remplace sa ligne.
     local cible
@@ -3576,10 +3583,22 @@ local function Montrer(titre, detail, terminee, detail2)
     cible.texteDetail2 = detail2
     cible.couleur = terminee and { 0.31, 0.82, 0.41 } or { 1, 1, 1 }
     PoserIcone(cible.icone, terminee)
+    if type(opts) == "table" and opts.icone then
+        cible.icone:SetTexture(opts.icone)
+        pcall(cible.icone.SetTexCoord, cible.icone, 0.08, 0.92, 0.08, 0.92)
+    end
     Disposer()
     local r = ReglagesBandeau()
     -- Le fondu s'ajoute au temps d'affichage plein.
-    cadreB.fin = (NS.Appeler(GetTime) or 0) + r.duree + (r.disparition == "fondu" and r.fondu or 0)
+    local maintenant = NS.Appeler(GetTime) or 0
+    cadreB.fin = maintenant + r.duree + (r.disparition == "fondu" and r.fondu or 0)
+    cadreB.clignoteJusque, cadreB.fonduForce = nil, nil
+    if type(opts) == "table" and opts.clignote then
+        -- 1,2 s de clignotement, l'affichage fixe, puis 1,5 s de fondu.
+        cadreB.clignoteJusque = maintenant + 1.2
+        cadreB.fonduForce = 1.5
+        cadreB.fin = maintenant + 1.2 + math.max(3, r.duree) + 1.5
+    end
     cadreB:SetAlpha(1)
     cadreB:Show()
 end
@@ -3641,9 +3660,9 @@ end
 function bandeau.EnPlacement() return enPlacement == true end
 
 -- Pour l'avancement des membres du groupe (voir Journal.lua).
-function bandeau.Montrer(titre, detail, terminee, detail2)
+function bandeau.Montrer(titre, detail, terminee, detail2, opts)
     if enPlacement or not ReglagesBandeau().actif then return end
-    Montrer(titre, detail, terminee, detail2)
+    Montrer(titre, detail, terminee, detail2, opts)
 end
 
 -- Apercu depuis les Parametres : un exemple, avec les reglages en cours.
