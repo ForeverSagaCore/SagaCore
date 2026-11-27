@@ -1184,9 +1184,12 @@ function Suite.PoserVisagePerso(texture, p)
     local dansCercle = texture:GetParent() and texture:GetParent().portraitDansCercle
     for _, c in ipairs({ vivant, depose }) do
         if c.SetMask and not c.rond then c.rond = true pcall(c.SetMask, c, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
-        if dansCercle and not c.retrait then
-            c.retrait = true
-            local r = math.floor((texture:GetWidth() or 32) * 0.14 + 0.5)
+        if dansCercle then
+            -- Le portrait couvre exactement l'embleme des autres cercles : le
+            -- cercle de couleur garde la meme epaisseur pour tous.
+            local w = texture:GetParent():GetWidth()
+            if not w or w <= 0 then w = 29 end
+            local r = math.floor(w * 0.2 + 0.5)
             c:ClearAllPoints()
             c:SetPoint("TOPLEFT", texture, "TOPLEFT", r, -r)
             c:SetPoint("BOTTOMRIGHT", texture, "BOTTOMRIGHT", -r, r)
