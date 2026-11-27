@@ -22,5 +22,6 @@ Core\Base.lua
 Core\Releve.lua
 Core\Calcul.lua
 Core\Categories.lua
+UI\Cartes.lua
 UI\Fenetre.lua
 AchievementCore.lua
