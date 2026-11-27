@@ -1600,6 +1600,57 @@ local function RendreVuePvp(index, y)
     return index, y + 6
 end
 
+-- Le continent d'une carte, et celui ou se fait une quete (son prochain
+-- lieu : receveur, objectif ou donneur).
+local function ContinentDeCarte(carte)
+    local info = NS.Lecture("C_Map.GetMapInfo")
+    for _ = 1, 6 do
+        local i = carte and info and NS.Appeler(info, carte)
+        if type(i) ~= "table" then return nil end
+        if i.mapType == 2 then return carte, i.name end
+        carte = i.parentMapID
+    end
+    return nil
+end
+-- Rend le nom du continent quand la quete se fait sur un autre que le
+-- sien, sinon nil.
+local function AutreContinent(id, moi)
+    if not (NS.carte and NS.carte.PointsPour) then return nil end
+    local ok, points = pcall(NS.carte.PointsPour, id, moi)
+    local pt = ok and type(points) == "table" and points[1]
+    if not (pt and pt.carte) then return nil end
+    local ici = ContinentDeCarte(NS.Appeler(NS.Lecture("C_Map.GetBestMapForUnit"), "player"))
+    local la, nom = ContinentDeCarte(pt.carte)
+    if ici and la and ici ~= la then return nom or "?" end
+    return nil
+end
+
+-- Le plan du guidage en cours, en tete de l'itineraire guide : ce qu'on
+-- fait maintenant et les deux suivants, mis a jour en direct ; chaque ligne
+-- dit le numero de l'etape, l'action (prendre, faire, rendre) et ou.
+local COULEURS_ACTION = { prendre = { 1, 0.82, 0 }, cours = { 0.4, 0.75, 1 }, rendre = { 1, 0.6, 0.2 } }
+local function RendrePlan(moi, pc, index, y)
+    local S = NS.suite or _G.CoreSuite
+    local e = S and S.EtatGuidage and S.EtatGuidage()
+    local etapes = type(e) == "table" and e.etapes or nil
+    if not (etapes and etapes[1]) then return index, y end
+    local rangs = {}
+    for k, id in ipairs(pc.etapes or {}) do rangs[id] = k end
+    for k = 1, math.min(3, #etapes) do
+        local pt = etapes[k]
+        local etat = pt.etatQuete or (pt.id and NS.parcours.EtatEtape(moi, pt.id)) or "prendre"
+        local action = (etat == "rendre" and L.ROUTE_PLAN_TURNIN) or (etat == "cours" and L.ROUTE_PLAN_DO) or L.ROUTE_PLAN_TAKE
+        local numero = pt.id and rangs[pt.id]
+        local quoi = tostring(pt.titre or "?")
+        local texte = (numero and (numero .. ". ") or "") .. action .. " : " .. quoi
+        index = index + 1
+        y = Poser(index, y, (k == 1 and L.ROUTE_PLAN_NOW or L.ROUTE_PLAN_NEXT) .. "  " .. texte, { uneLigne = true,
+            couleur = k == 1 and (COULEURS_ACTION[etat] or { 1, 1, 1 }) or { 0.7, 0.7, 0.7 },
+            police = k == 1 and "GameFontNormal" or "GameFontNormalSmall", petit = k > 1 }) + (k == 1 and 4 or 2)
+    end
+    return index, y + 6
+end
+
 RendreVueParcours = function(moi, index, y)
     local s = Reglages()
     local categorie = s.routeCategorie or "divers"
@@ -1756,18 +1807,31 @@ RendreVueParcours = function(moi, index, y)
                     end
                     enCours, aRendre, aFaire = {}, {}, {}
                 end
+                -- Ce qui se fait sur un autre continent : mis de cote, en bas
+                -- (le guidage ne traverse pas un continent tant qu'il reste a
+                -- faire ici).
+                local ailleurs = {}
+                local function Trier(liste)
+                    local ici = {}
+                    for _, t in ipairs(liste) do
+                        local autre = AutreContinent(t.id, moi)
+                        if autre then t.continent = autre table.insert(ailleurs, t) else table.insert(ici, t) end
+                    end
+                    return ici
+                end
+                enCours, aRendre = Trier(enCours), Trier(aRendre)
+                -- Itineraire guide : le plan en direct, en tete.
+                if NS.guidage and NS.guidage.EstActif and NS.guidage.EstActif("parcours", { uid = pc.uid }) then
+                    index, y = RendrePlan(moi, pc, index, y)
+                end
                 if #enCours > 0 then
                     Groupe(L.TRACK_SECTION_ACTIVE, #enCours, { 0.4, 0.75, 1 })
                     for _, t in ipairs(enCours) do
                         index, y = RendreAvecChaine(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
                     end
                 end
-                if #aRendre > 0 then
-                    Groupe(L.TRACK_SECTION_DONE, #aRendre, { 1, 0.6, 0.2 })
-                    for _, t in ipairs(aRendre) do
-                        index, y = RendreAvecChaine(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
-                    end
-                end
+                local aRendreEnBas = aRendre
+                aRendre = {}
                 -- Deja montrees dans une suite plus haut : pas deux fois.
                 local resteAFaire = {}
                 for _, t in ipairs(aFaire) do if not dejaRendues[t.id] then table.insert(resteAFaire, t) end end
@@ -1785,6 +1849,25 @@ RendreVueParcours = function(moi, index, y)
                                 suivi.Rendre()
                             end })
                         end
+                    end
+                end
+                -- Les quetes a rendre toujours sous celles a faire.
+                if #aRendreEnBas > 0 then
+                    Groupe(L.TRACK_SECTION_DONE, #aRendreEnBas, { 1, 0.6, 0.2 })
+                    for _, t in ipairs(aRendreEnBas) do
+                        index, y = RendreAvecChaine(moi, moi.quetes, t.id, index, y, t.rang .. ". ")
+                    end
+                end
+                if #ailleurs > 0 then
+                    Groupe(L.ROUTE_GROUP_ELSEWHERE, #ailleurs, { 0.55, 0.55, 0.65 })
+                    for _, t in ipairs(ailleurs) do
+                        local niveau = tonumber(NS.ref.Lire("QuestDB", t.id, "questLevel")) or 0
+                        index = index + 1
+                        y = Poser(index, y, string.format("%d. [%d] %s", t.rang, niveau, NS.ref.NomDeQuete(t.id, moi)),
+                            { uneLigne = true, couleur = { 0.6, 0.6, 0.7 }, police = "GameFontNormalSmall", petit = true }) + 1
+                        index = index + 1
+                        y = Poser(index, y, string.format(L.ROUTE_ELSEWHERE_DETAIL, t.continent), { uneLigne = true, retrait = 22,
+                            couleur = { 0.5, 0.5, 0.55 }, police = "GameFontHighlightSmall", petit = true }) + 4
                     end
                 end
                 if #faites > 0 then
